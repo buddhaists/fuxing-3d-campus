@@ -12452,6 +12452,11 @@ function fitPrecinct(key) {
     flyTo(preset.p, preset.t, 900);
   }
   if (key !== 'campus') showToast(`已定位至片區：${preset.label}`);
+  else showToast('已返回全校鳥瞰視角');
+  if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+    setCatalogOpen(false);
+    detailEl.hidden = true;
+  }
 }
 
 document.querySelectorAll('#precinct-bar .precinct-pill').forEach(btn => {
@@ -12460,6 +12465,10 @@ document.querySelectorAll('#precinct-bar .precinct-pill').forEach(btn => {
 
 function resetOverview() {
   fitPrecinct('campus');
+  if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+    setCatalogOpen(false);
+    detailEl.hidden = true;
+  }
 }
 
 // ---- Building Isolation Mode (`單體欣賞`, PKU-3D Signature Feature) ----
@@ -12535,6 +12544,10 @@ function buildSceneLabels() {
     btn.addEventListener('click', e => {
       e.stopPropagation();
       selectLandmark(lm.id, 'manual');
+      if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+        detailEl.hidden = false;
+        setDetailCompact(true);
+      }
     });
     btn.addEventListener('pointerenter', () => setHovered(lm.id));
     btn.addEventListener('pointerleave', () => setHovered(null));
@@ -12606,7 +12619,13 @@ function renderPlacesList() {
             </span>
             <span class="place-tag">定位 ›</span>
           `;
-          btn.addEventListener('click', () => selectLandmark(lm.id, 'manual', fl, rm.code));
+          btn.addEventListener('click', () => {
+            selectLandmark(lm.id, 'manual', fl, rm.code);
+            if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+              setCatalogOpen(false);
+              detailEl.hidden = true;
+            }
+          });
           placesListEl.appendChild(btn);
         });
       });
@@ -12643,7 +12662,13 @@ function renderPlacesList() {
       </span>
       <span class="place-tag">${lm.category.slice(0, 2)}</span>
     `;
-    btn.addEventListener('click', () => selectLandmark(lm.id, 'manual'));
+    btn.addEventListener('click', () => {
+      selectLandmark(lm.id, 'manual');
+      if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+        setCatalogOpen(false);
+        detailEl.hidden = true;
+      }
+    });
     btn.addEventListener('pointerenter', () => setHovered(lm.id));
     btn.addEventListener('pointerleave', () => setHovered(null));
     placesListEl.appendChild(btn);
@@ -12667,7 +12692,13 @@ function renderPlacesList() {
               </span>
               <span class="place-tag">教室 ⌖</span>
             `;
-            btn.addEventListener('click', () => selectLandmark(lm.id, 'manual', fl, rm.code));
+            btn.addEventListener('click', () => {
+              selectLandmark(lm.id, 'manual', fl, rm.code);
+              if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+                setCatalogOpen(false);
+                detailEl.hidden = true;
+              }
+            });
             placesListEl.appendChild(btn);
           }
         });
@@ -12807,9 +12838,13 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
     // Hide environment panel if open so right `#detail` card is clearly visible
     document.getElementById('environment').hidden = true;
     document.getElementById('environment-open').setAttribute('aria-expanded', 'false');
-    if (window.innerWidth <= 820) setCatalogOpen(false);
-    detailEl.hidden = false;
-    detailEl.scrollTop = 0;
+    if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+      setCatalogOpen(false);
+      detailEl.hidden = true;
+    } else {
+      detailEl.hidden = false;
+      detailEl.scrollTop = 0;
+    }
   }
 
   isOrbiting = (origin === 'tour');
@@ -12847,6 +12882,9 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
         : (lm.views && (lm.views.front || lm.views.entrance || lm.views.oblique || Object.values(lm.views)[0])) || { p: [16, 25, 36], t: [16, 6, -26] };
       activeViewMode = (origin === 'tour') ? 'oblique' : ((lm.views && lm.views.front) ? 'front' : ((lm.views && lm.views.entrance) ? 'entrance' : 'oblique'));
       flyTo(targetV.p, targetV.t, 900);
+      if (origin === 'manual' && !highlightRoomCode) {
+        showToast(`已定位至地標：${lm.name}`);
+      }
     }
   } else if (lm.pxBounds) {
     // Center 2D Architectural Plan on selected landmark
@@ -14477,6 +14515,10 @@ function startTour(fromIndex = 0) {
   tourElapsed = 0;
   tourBarEl.classList.add('running');
   tourToggleBtn.textContent = '❚❚';
+  if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+    setCatalogOpen(false);
+    detailEl.hidden = true;
+  }
   goToTourStop(tourIdx);
 }
 
