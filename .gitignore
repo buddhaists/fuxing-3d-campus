@@ -1,0 +1,18 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary and backup files
+*.bak
+*.backup*
+*~
+*.swp
+*.tmp
+*.log
+
+# Screenshots and debug renders
+screenshot_*.png
+view_*.png
+crop_*.jpg
+crop_*.png
