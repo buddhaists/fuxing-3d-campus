@@ -1537,7 +1537,80 @@ window.addEventListener('unhandledrejection', e => {
       top: auto;
       bottom: 10px;
       width: auto;
-      max-height: 46dvh;
+      max-height: min(78dvh, calc(100dvh - 65px));
+    }
+    .catalog.is-collapsed {
+      transform: translateY(calc(100% + 20px));
+      opacity: 0;
+      pointer-events: none;
+    }
+    .catalog-header {
+      padding: 10px 14px 6px;
+    }
+    .catalog-header h1 {
+      font-size: 16px;
+    }
+    .catalog-header .eyebrow {
+      font-size: 10px;
+    }
+    .catalog-header .lede {
+      display: none;
+    }
+    .catalog .search {
+      margin: 6px 10px;
+    }
+    .catalog .search input {
+      height: 30px;
+      font-size: 11.5px;
+    }
+    .filters {
+      padding: 0 10px 5px;
+      gap: 3px;
+    }
+    .chip {
+      height: 24px;
+      padding: 0 8px;
+      font-size: 11px;
+    }
+    .precinct-bar {
+      padding: 0 10px 5px;
+      gap: 3px;
+    }
+    .precinct-pill {
+      height: 22px;
+      padding: 0 7px;
+      font-size: 10.5px;
+    }
+    .catalog-meta {
+      padding: 0 12px 5px;
+      font-size: 10.5px;
+    }
+    .place-list {
+      flex: 1 1 auto;
+      min-height: 120px;
+      padding: 2px 8px 6px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .place-item {
+      padding: 7px 6px;
+      gap: 6px;
+    }
+    .place-title {
+      font-size: 12px;
+    }
+    .place-sub {
+      font-size: 10.5px;
+    }
+    .tour-bar {
+      padding: 6px 10px;
+    }
+    .tour-start-btn {
+      height: 26px;
+      font-size: 11px;
+    }
+    .catalog-footer {
+      padding: 5px 12px 6px;
+      font-size: 10px;
     }
     .detail {
       left: 10px;
@@ -1545,13 +1618,27 @@ window.addEventListener('unhandledrejection', e => {
       top: auto;
       bottom: 10px;
       width: auto;
-      max-height: 54dvh;
+      max-height: min(72dvh, calc(100dvh - 65px));
     }
     .route-panel { left: 10px; right: 10px; bottom: 56px; width: auto; }
     .minimap-card, .map-footer { display: none; }
     .controls-grid { grid-template-columns: 1fr; }
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
     .plan-toolbar { top: 62px; flex-wrap: wrap; width: 92vw; justify-content: center; }
+  }
+
+  @media (max-height: 640px) and (min-width: 821px) {
+    .catalog-header { padding: 10px 14px 6px; }
+    .catalog-header h1 { font-size: 16px; }
+    .catalog-header .eyebrow { font-size: 10px; }
+    .catalog-header .lede { display: none; }
+    .catalog .search { margin: 6px 10px; }
+    .catalog .search input { height: 30px; font-size: 11.5px; }
+    .filters { padding: 0 10px 5px; }
+    .chip { height: 24px; font-size: 11px; }
+    .precinct-bar { padding: 0 10px 5px; }
+    .precinct-pill { height: 22px; font-size: 10.5px; }
+    .place-list { min-height: 100px; }
   }
 </style>
 </head>
