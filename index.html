@@ -2659,15 +2659,15 @@ const LANDMARKS = [
   {
     id: 'main-gate',
     index: '12',
-    name: '復興路正門與前庭通學步道綠籬景觀',
-    enName: 'Main Gate & Front Courtyard Commuter Green Hedge',
+    name: '復興路正門與東棟前庭通學步道綠籬景觀',
+    enName: 'Main Gate & East Building Front Courtyard Green Hedge',
     category: '校園校門與通學節點',
     floors: '校門與前庭綠籬景觀設施',
     height: '門柱高 4.6 公尺 / 綠籬矮牆 0.50 公尺',
-    basis: '《2023_0604_綠籬植栽平面圖》（標示區域二：新南側門至學校大門，全長 62.2M，配置楓港柿、桂花樹）＋面對大門左側實景照片 1~3',
-    pxBounds: [935, 195, 965, 270],
-    center: [X(955), 5.0, Z(235)],
-    summary: '校園東側（復興路一段376號），依據最新 Google 街景影像與《2023_0604_綠籬植栽平面圖》（區域二：新南側門至學校大門，全長 62.2M，配置楓港柿、桂花樹）1:1 準確復原：徹底移除綠籬後方突兀之淡綠色隔離板；大門南側（面對大門左側）建構約 50 公分高（0.50m）之洗石子雙圓弧矮圍牆，臨大馬路（復興路）旁為直徑約 5.2 米凸出之半圓圓形矮牆花台（中央設置圓形草坪土丘與造型多幹小喬木及金黃開花灌木），朝向迎賓廣場為凹入之半圓圓形矮牆（端頭設方形洗石子端柱與廣場單株小灌木），沿矮牆內緣密集配置屏東原生常綠楓港柿與芬芳金桂花樹修剪綠籬；右側配置黑鐵直柵欄杆與懸掛「選擇復興 家長安心」宣傳橫額，橫額旁設有寬 2.3 米之「右手邊欄杆入口」（配備低矮推拉活動欄杆門與橘色交通警示錐），前庭並保留歐式白色雙燈頭路燈、兩棵高聳大王椰子樹與綠蔭休閒石桌椅，重現照片中開闊通透、親和安全的真實校門景觀。',
+    basis: '學校東棟大樓前庭景觀全區平面圖＋大門左側通學步道與綠籬矮牆原設計圖＋現場實景照片',
+    pxBounds: [715, 88, 965, 326],
+    center: [X(840), 5.0, Z(220)],
+    summary: '校園東側（復興路一段376號），100% 依據學校東棟大樓前的前庭平面圖、大門左側通學步道與綠籬矮牆原設計圖進行 3D 精確復原：東棟大樓前庭規劃宏偉開闊的中央迎賓大道，直通大樓中央穿堂，兩側分設南側與北側兩座遼闊綠意大草坪；南側大草坪設有蜿蜒踏石步道與成蔭大樹，大門左側構築經典 50 公分高之洗石子雙弧波浪矮牆與舌狀凸出花台半島（直徑 5.4 米，凸向大馬路通學步道），內側凹弧緊扣方型意象石台，全線栽植修剪整齊的常綠綠籬；校門入口設有可拆式步道金屬欄杆，高牆處配置 10 株花色三段漸變之使君子攀緣盛開；右側配置「四季果香（檸檬、香蕉、芭樂、芒果）」特色文化意象立柱、車輛出入口、北側凸弧花台與通學人行步道，完整呈現原設計開敞友善、綠蔭掩映之校園前庭全貌。',
     photos: [
       { src: './tex/hedge_plan_20230604.png', title: '《2023_0604_綠籬植栽平面圖》（標示區域二：新南側門至學校大門，長 62.2M，配置楓港柿、桂花樹）' },
       { src: './tex/main_gate_left_hedge_01.jpg', title: '面對學校大門左側的綠籬矮牆與學校通學步道（大門柱、不銹鋼門、黑色金屬直柵圍牆、招生橫額）' },
@@ -11640,6 +11640,89 @@ const sg = new THREE.Group();
   landmarkGroupMap.set('command-stage', sg);
 }
 
+// Helper: Create authentic "四季果香 · 活力復興" (Four-Season Fruit Pylon) canvas texture (檸檬、香蕉、芭樂、芒果)
+function makeFourSeasonFruitTexture() {
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 1024;
+  const ctx = c.getContext('2d');
+
+  // Parchment textured background
+  ctx.fillStyle = '#f5efe4';
+  ctx.fillRect(0, 0, 1024, 1024);
+
+  // Outer ornate borders
+  ctx.strokeStyle = '#5a3d1c';
+  ctx.lineWidth = 14;
+  ctx.strokeRect(16, 16, 992, 992);
+  ctx.strokeStyle = '#c29a47';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(32, 32, 960, 960);
+
+  // Header banner: 四季果香 · 活力復興
+  ctx.fillStyle = '#1e3a8a';
+  ctx.fillRect(40, 40, 944, 115);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 50px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+  ctx.fillText('四 季 果 香 · 活 力 復 興', 512, 118);
+
+  // Dividing cross lines
+  ctx.strokeStyle = '#8a6232';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(512, 165); ctx.lineTo(512, 980);
+  ctx.moveTo(40, 572); ctx.lineTo(984, 572);
+  ctx.stroke();
+
+  // Helper for drawing each fruit quadrant
+  function drawFruitCard(title, subtitle, color, bgTint, x, y, w, h) {
+    ctx.fillStyle = bgTint;
+    ctx.fillRect(x + 8, y + 8, w - 16, h - 16);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(x + 12, y + 12, w - 24, h - 24);
+
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.font = '900 66px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+    ctx.fillText(title, x + w / 2, y + 105);
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + 225, 75, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + 225, 62, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2 - 14, y + 225, 16, 34, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2 + 14, y + 225, 16, 34, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#4a3828';
+    ctx.font = 'bold 28px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+    ctx.fillText(subtitle, x + w / 2, y + 345);
+  }
+
+  // 1. Top-Left: 檸檬 (Lemon)
+  drawFruitCard('檸  檬', '屏東綠翡翠 · 芳香多汁', '#226828', '#ebf5ea', 48, 170, 456, 392);
+  // 2. Top-Right: 香蕉 (Banana)
+  drawFruitCard('香  蕉', '南國金蕉 · 濃郁香甜', '#a16207', '#fef9c3', 520, 170, 456, 392);
+  // 3. Bottom-Left: 芭樂 (Guava)
+  drawFruitCard('芭  樂', '珍珠芭樂 · 清脆甘甜', '#15803d', '#f0fdf4', 48, 580, 456, 392);
+  // 4. Bottom-Right: 芒果 (Mango)
+  drawFruitCard('芒  果', '愛文芒果 · 紅艷芳馥', '#c2410c', '#fff7ed', 520, 580, 456, 392);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 // Helper: Create authentic recruitment/welcome banner texture for Main Gate ("選擇復興 家長安心")
 function makeMainGateWelcomeBannerTexture() {
   const c = document.createElement('canvas');
@@ -11725,164 +11808,110 @@ function makeMainGateWelcomeBannerTexture() {
   addBox(mg, 0.65, 2.15, 0.65, washStoneWallMat, pylonX, 1.075, subPillarZ);
   addBox(mg, 0.75, 0.14, 0.75, mats.slab, pylonX, 2.22, subPillarZ);
 
-  // 圍牆折向校內退縮段基座與壓頂石 (副門柱銜接至後方安全欄杆線)
+  // 圍牆折向校內退縮段基座與壓頂石
   const fenceX = pylonX - 3.80;
   const returnLen = pylonX - fenceX;
   addBox(mg, returnLen, 0.28, 0.35, washStoneWallMat, (pylonX + fenceX) / 2, 0.14, subPillarZ);
   addBox(mg, returnLen + 0.05, 0.08, 0.42, stoneCapMat, (pylonX + fenceX) / 2, 0.32, subPillarZ);
 
-  // 2) 前庭迎賓連鎖磚地坪廣場 (依實景照片 1~3：大門左側開敞迎賓腹地，平整延伸貫通欄杆入口)
-  const plazaW = 18.0, plazaD = 25.0;
-  const plazaCx = pylonX - 6.5, plazaCz = pylonZ + 12.0;
-  addBox(mg, plazaW, 0.12, plazaD, walkwayBrickMat, plazaCx, 0.06, plazaCz, false);
+  // ============================================================================
+  // 【東棟大樓前庭景觀全區：100% 依據原設計平面圖 3D 呈現】
+  // ============================================================================
+  // 1. 東棟大樓前走廊外緣迎賓鋪面大道 (Promenade along East Building)
+  addBox(mg, 8.5, 0.10, 52.0, walkwayBrickMat, 65.0 + 4.25, 0.05, -11.0, false);
 
-  // 3) 標誌性「白色歐式雙燈頭高桿路燈」(Photo 1~3 實景特色地標：立於大門與花台前之步道邊緣)
-  {
-    const lampX = pylonX - 0.28, lampZ = pylonZ + 4.20;
-    const lampGrp = new THREE.Group();
-    lampGrp.position.set(lampX, 0, lampZ);
-    // 八角形錐形法蘭基座
-    addMesh(lampGrp, new THREE.CylinderGeometry(0.14, 0.18, 0.45, 8), whiteLampMat, 0, 0.225, 0);
-    // 主立柱 (白色圓管)
-    addMesh(lampGrp, new THREE.CylinderGeometry(0.048, 0.048, 4.20, 12), whiteLampMat, 0, 2.10, 0);
-    // 頂部裝飾圓球收頭
-    addMesh(lampGrp, new THREE.SphereGeometry(0.08, 10, 8), whiteLampMat, 0, 4.30, 0);
+  // 2. 中央迎賓大道 (Central Walkway)：由東棟穿堂 (Z: -8.46) 筆直通往正門入口
+  const cWalkLen = 114.0 - 73.06; // 長約 41 公尺
+  addBox(mg, cWalkLen, 0.10, 5.0, walkwayBrickMat, 73.06 + cWalkLen / 2, 0.05, -8.25, false);
 
-    // 雙向對稱弧形懸挑金屬彎臂
-    for (const dir of [-1, 1]) {
-      const armArmX = 0;
-      const armArmZ = dir * 0.42;
-      // 橫挑小臂
-      addBox(lampGrp, 0.035, 0.035, 0.45, whiteLampMat, 0, 4.10, dir * 0.22);
-      addBox(lampGrp, 0.035, 0.18, 0.035, whiteLampMat, 0, 4.02, armArmZ);
-      // 乳白色歐式錐形吊鐘燈罩
-      addMesh(lampGrp, new THREE.ConeGeometry(0.18, 0.26, 12), lampGlowMat, 0, 3.82, armArmZ);
-      addMesh(lampGrp, new THREE.SphereGeometry(0.09, 8, 8), lampGlowMat, 0, 3.70, armArmZ);
-    }
-    mg.add(lampGrp);
-  }
+  // 3. 南側大草坪 (South Lawn - 位於中央步道以南，長約 23m × 寬約 18m)
+  const sLawnX = (73.06 + 96.0) / 2;
+  const sLawnW = 96.0 - 73.06;
+  const sLawnZ = (12.0 + -5.74) / 2;
+  const sLawnD = 12.0 - (-5.74);
+  addBox(mg, sLawnW, 0.08, sLawnD, lawnGrassMat, sLawnX, 0.04, sLawnZ, false);
 
-  // 4) 大門南側黑色金屬直柵圍牆、招生橫額與【右手邊欄杆入口】(依據 Photo 1~3 實景精確復原)
-  // --- A. 招生宣傳橫額金屬直柵欄杆段 (Z: subPillarZ ~ pylonZ + 4.80，長約 3.95m) ---
-  const bFenceZ1 = subPillarZ;
-  const bFenceZ2 = pylonZ + 4.80;
-  const bFenceLen = bFenceZ2 - bFenceZ1;
-  const bFenceCz = (bFenceZ1 + bFenceZ2) / 2;
+  // 4. 北側大草坪 (North Lawn - 位於中央步道以北，長約 33m × 寬約 24m)
+  const nLawnX = (73.06 + 106.0) / 2;
+  const nLawnW = 106.0 - 73.06;
+  const nLawnZ = (-10.79 + -34.5) / 2;
+  const nLawnD = -10.79 - (-34.5);
+  addBox(mg, nLawnW, 0.08, nLawnD, lawnGrassMat, nLawnX, 0.04, nLawnZ, false);
 
-  // 抿石子/洗石子矮基座 (高 0.25m)
-  addBox(mg, 0.32, 0.25, bFenceLen, washStoneWallMat, fenceX, 0.125, bFenceCz);
-  // 黑鐵方柱 (兩端柱)
-  addBox(mg, 0.25, 2.05, 0.25, mats.darkMetal, fenceX, 1.025, bFenceZ1);
-  addBox(mg, 0.25, 2.05, 0.25, mats.darkMetal, fenceX, 1.025, bFenceZ2);
-  // 頂部與底部金屬橫桿
-  addBox(mg, 0.04, 0.04, bFenceLen, mats.darkMetal, fenceX, 1.88, bFenceCz);
-  addBox(mg, 0.04, 0.04, bFenceLen, mats.darkMetal, fenceX, 0.35, bFenceCz);
-  // 垂直金屬直柵
-  const nBPickets = Math.floor(bFenceLen / 0.18);
-  for (let pk = 1; pk < nBPickets; pk++) {
-    const pkz = bFenceZ1 + (pk / nBPickets) * bFenceLen;
-    addBox(mg, 0.025, 1.50, 0.025, mats.darkMetal, fenceX, 1.12, pkz, false);
-  }
-  // 實景大型宣傳橫額 ("選擇復興 家長安心 復興國小・幼兒園 招生中")
-  const bannerMat = new THREE.MeshStandardMaterial({ map: makeMainGateWelcomeBannerTexture(), roughness: 0.55 });
-  const bMesh = addMesh(mg, new THREE.PlaneGeometry(bFenceLen - 0.25, 0.78), bannerMat, fenceX + 0.06, 1.25, bFenceCz, false);
-  bMesh.rotation.y = Math.PI / 2;
+  // 5. 南側大草坪內「踏石步道 (Stepping Stones Path)」(原設計圖樹蔭下 9 枚天然踏石)
+  const stepNodes = [
+    { x: 76.6, z: 10.8 }, { x: 77.8, z: 9.6 }, { x: 79.2, z: 8.5 },
+    { x: 80.5, z: 7.2 },  { x: 81.2, z: 5.8 }, { x: 80.8, z: 4.4 },
+    { x: 79.5, z: 3.2 },  { x: 78.0, z: 2.2 }, { x: 76.5, z: 1.5 }
+  ];
+  const stepMat = new THREE.MeshStandardMaterial({ color: 0xcdcac0, roughness: 0.88 });
+  stepNodes.forEach((sn, idx) => {
+    const stepMesh = addMesh(mg, new THREE.CylinderGeometry(0.38, 0.44, 0.04, 10), stepMat, sn.x, 0.09, sn.z);
+    stepMesh.scale.set(1.25, 1.0, 0.85);
+    stepMesh.rotation.y = idx * 0.4;
+  });
 
-  // --- B. 【右手邊欄杆入口】(Railing Entrance - Z: pylonZ + 4.80 ~ pylonZ + 7.10，淨寬 2.30m) ---
-  const gateEntZ1 = bFenceZ2;
-  const gateEntZ2 = pylonZ + 7.10;
-  const gateEntW = gateEntZ2 - gateEntZ1;
-  const gateEntCz = (gateEntZ1 + gateEntZ2) / 2;
+  // 6. 踏石步道旁大樟樹 (原設計圖南側草坪主喬木)
+  addMesh(mg, new THREE.CylinderGeometry(0.28, 0.38, 5.2, 8), mats.slab, 78.5, 2.6, 6.2);
+  const sTreeCrown = addMesh(mg, new THREE.SphereGeometry(3.2, 12, 10), new THREE.MeshStandardMaterial({ color: 0x225522, roughness: 0.82 }), 78.5, 5.6, 6.2);
+  sTreeCrown.scale.set(1.35, 0.90, 1.25);
 
-  // 入口南側黑鐵方柱
-  addBox(mg, 0.25, 2.05, 0.25, mats.darkMetal, fenceX, 1.025, gateEntZ2);
+  // 7. 北側草坪大喬木 (原設計圖北側草坪中央繁茂大樹)
+  addMesh(mg, new THREE.CylinderGeometry(0.32, 0.42, 5.4, 8), mats.slab, 90.0, 2.7, -22.5);
+  const nTreeCrown = addMesh(mg, new THREE.SphereGeometry(3.6, 12, 10), new THREE.MeshStandardMaterial({ color: 0x1d4d20, roughness: 0.84 }), 90.0, 5.8, -22.5);
+  nTreeCrown.scale.set(1.4, 0.92, 1.3);
 
-  // 活動式低矮不銹鋼防護推拉欄杆門 (Photo 1、3 實景：半開啟迎賓於入口內側，通學步道人行通道)
-  const slideGateLen = 1.45;
-  const slideGateCz = gateEntZ1 + 0.85;
-  for (let s = 0; s < 4; s++) {
-    const sz = gateEntZ1 + 0.25 + s * 0.38;
-    addBox(mg, 0.06, 1.15, 0.04, mats.stainless, fenceX, 0.62, sz);
-  }
-  addBox(mg, 0.06, 0.05, slideGateLen, mats.stainless, fenceX, 0.08, slideGateCz);
-  addBox(mg, 0.06, 0.05, slideGateLen, mats.stainless, fenceX, 1.18, slideGateCz);
-
-  // 門口橘色警示交通錐 (三角錐，Photo 1、3 實景立於欄杆入口前之廣場鋪面)
-  const coneGrp = new THREE.Group();
-  coneGrp.position.set(fenceX + 0.75, 0, gateEntCz);
-  addBox(coneGrp, 0.38, 0.035, 0.38, mats.darkMetal, 0, 0.018, 0); // 黑色橡膠方底座
-  addMesh(coneGrp, new THREE.CylinderGeometry(0.04, 0.16, 0.70, 10), mats.orange || new THREE.MeshStandardMaterial({ color: 0xf25a24, roughness: 0.45 }), 0, 0.37, 0);
-  addMesh(coneGrp, new THREE.CylinderGeometry(0.085, 0.115, 0.18, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }), 0, 0.42, 0); // 反光白環
-  mg.add(coneGrp);
-
-  // --- C. 欄杆入口南向延伸段 (Z: pylonZ + 7.10 ~ pylonZ + 9.80，長度 2.70m，銜接後方林蔭綠籬) ---
-  const extFenceZ1 = gateEntZ2;
-  const extFenceZ2 = pylonZ + 9.80;
-  const extFenceLen = extFenceZ2 - extFenceZ1;
-  const extFenceCz = (extFenceZ1 + extFenceZ2) / 2;
-
-  addBox(mg, 0.32, 0.25, extFenceLen, washStoneWallMat, fenceX, 0.125, extFenceCz);
-  addBox(mg, 0.25, 2.05, 0.25, mats.darkMetal, fenceX, 1.025, extFenceZ2);
-  addBox(mg, 0.04, 0.04, extFenceLen, mats.darkMetal, fenceX, 1.88, extFenceCz);
-  addBox(mg, 0.04, 0.04, extFenceLen, mats.darkMetal, fenceX, 0.35, extFenceCz);
-  const nExtPickets = Math.floor(extFenceLen / 0.18);
-  for (let pk = 1; pk < nExtPickets; pk++) {
-    const pkz = extFenceZ1 + (pk / nExtPickets) * extFenceLen;
-    addBox(mg, 0.025, 1.50, 0.025, mats.darkMetal, fenceX, 1.12, pkz, false);
-  }
-
-  // 5) 【大馬路旁綠籬：凸出之半圓圓形矮牆 (約 50 公分高) 與凹入之半圓圓形矮牆】(依最新影像 1:1 復原)
-  // 幾何造型重點：
-  // 1. 矮牆高度精確設定為約 50 公分高 (0.50m = 洗石子貼地基座出腳 0.08m + 洗石子矮牆壁身 0.34m + 米白石材倒角壓頂石 0.08m)
-  // 2. 迎向大門廣場為「凹入之半圓圓形矮牆」（直徑約 5.0m），形成開敞迎賓圓弧，端頭設洗石子方柱
-  // 3. 臨復興路（大馬路）旁為「凸出之半圓圓形矮牆」（直徑約 5.2m），飽滿向外凸向人行道，中央配置圓形土丘與造型小喬木
-  // 4. 沿矮牆內緣整齊排列修剪圓潤之屏東原生常綠楓港柿與芬芳金桂花樹綠籬
-  const waveCtrlPoints = [
-    new THREE.Vector3(pylonX - 7.20, 0, pylonZ + 6.80),   // 端頭：迎賓廣場內緣洗石子端柱
-    new THREE.Vector3(pylonX - 5.60, 0, pylonZ + 7.30),   // 凹入半圓起點：順勢向校園庭園內凹
-    new THREE.Vector3(pylonX - 4.10, 0, pylonZ + 8.40),   // 凹入半圓波谷：凹向花台內部，形成迎向大門廣場的優美凹圓弧
-    new THREE.Vector3(pylonX - 3.00, 0, pylonZ + 9.80),   // 反曲過渡段：弧線由內凹翻轉向東南外展
-    new THREE.Vector3(pylonX - 1.80, 0, pylonZ + 11.20),  // 凸出半圓上升段：向大馬路（復興路）方向隆起
-    new THREE.Vector3(pylonX - 1.15, 0, pylonZ + 12.60),  // 凸出半圓波峰：凸向復興路人行道邊緣，直徑約 5.2 米的飽滿半圓花台
-    new THREE.Vector3(pylonX - 1.30, 0, pylonZ + 14.00),  // 凸出半圓過渡段：沿復興路通學步道延伸
-    new THREE.Vector3(pylonX - 2.00, 0, pylonZ + 15.30),  // 凸出半圓收尾：平順過渡至通學步道內緣
-    new THREE.Vector3(pylonX - 3.20, 0, pylonZ + 16.60),  // 沿通學步道南向平順圓弧過渡
-    new THREE.Vector3(pylonX - 5.00, 0, Z(326))           // 接續東南轉角 (建興南路42巷轉角)
+  // ============================================================================
+  // 【大門左側綠籬矮牆：S型雙弧、U型花台半島、方型意象石台與使君子10株】
+  // ============================================================================
+  // A. 原設計圖 16 個高精度幾何控制點
+  const southWallPoints = [
+    new THREE.Vector3(71.27, 0, 12.12),  // P00: 東棟西南角花台銜接點
+    new THREE.Vector3(82.92, 0, 8.63),   // P01: 草坪內凹圓弧谷底
+    new THREE.Vector3(91.88, 0, 11.35),  // P02: 轉向半島頸部
+    new THREE.Vector3(94.57, 0, 15.23),  // P03: 半島外側肩膀
+    new THREE.Vector3(101.74, 0, 16.78), // P04: U型半島南緣直線
+    new THREE.Vector3(109.80, 0, 16.78), // P05: 半島接近大馬路人行道
+    new THREE.Vector3(115.18, 0, 14.06), // P06: U型半島頂端【凸出之半圓圓形矮牆】(直徑 5.4m，頂至復興路)
+    new THREE.Vector3(109.80, 0, 11.35), // P07: 半島北緣回折直線
+    new THREE.Vector3(101.74, 0, 11.35), // P08: 半島北緣折入方型石台側
+    new THREE.Vector3(96.81, 0, 9.40),   // P09: 環抱方型石台之凹弧南側
+    new THREE.Vector3(95.47, 0, 7.46),   // P10: 方型石台上方【凹入之半圓圓形矮牆】頂峰
+    new THREE.Vector3(96.81, 0, 5.13),   // P11: 環抱方型石台之凹弧北側
+    new THREE.Vector3(102.63, 0, 0.09),  // P12: 斜向校門入口段
+    new THREE.Vector3(110.25, 0, -5.74), // P13: 校門入口意象開口起點
+    new THREE.Vector3(113.84, 0, -7.29), // P14: 入口喇叭口八字牆折角
+    new THREE.Vector3(115.18, 0, -8.85)  // P15: 臨路端柱
   ];
 
-  const waveSpline = new THREE.CatmullRomCurve3(waveCtrlPoints, false, 'catmullrom', 0.45);
-  const nCurveSteps = 72; // 高解析度平滑微段
-  const curvePts = waveSpline.getPoints(nCurveSteps);
+  // 構建約 50 公分高（0.50m）之洗石子矮牆、壓頂石、花台沃土與綠籬
+  const southWallSpline = new THREE.CatmullRomCurve3(southWallPoints, false, 'catmullrom', 0.45);
+  const nSouthSteps = 96;
+  const sPts = southWallSpline.getPoints(nSouthSteps);
 
-  // A. 連貫建構約 50 公分高之洗石子矮牆壁身、基座出腳、米白色石材倒角壓頂石與內側深黑沃土層
-  for (let c = 0; c < curvePts.length - 1; c++) {
-    const p1 = curvePts[c], p2 = curvePts[c + 1];
+  for (let c = 0; c < sPts.length - 1; c++) {
+    const p1 = sPts[c], p2 = sPts[c + 1];
     const segDx = p2.x - p1.x, segDz = p2.z - p1.z;
     const segLen = Math.hypot(segDx, segDz);
     if (segLen < 0.01) continue;
     const segAng = -Math.atan2(segDz, segDx);
     const segCx = (p1.x + p2.x) / 2, segCz = (p1.z + p2.z) / 2;
-
-    // 法向量：指向西側（校園花園內側）
     const inNx = -segDz / segLen, inNz = segDx / segLen;
 
     const segGrp = new THREE.Group();
     segGrp.position.set(segCx, 0, segCz);
     segGrp.rotation.y = segAng;
 
-    // 貼地基座出腳 (高度 0.08m，寬度 0.44m)
+    // 貼地基座出腳 (高 0.08m，寬 0.44m)
     addBox(segGrp, segLen + 0.05, 0.08, 0.44, washStoneWallMat, 0, 0.04, 0);
-
-    // 深灰小碎石洗石子/抿石子矮牆壁身 (高度 0.34m，寬度 0.38m，Y: 0.08 ~ 0.42m)
+    // 深灰小碎石洗石子矮牆壁身 (高 0.34m，寬 0.38m)
     addBox(segGrp, segLen + 0.05, 0.34, 0.38, washStoneWallMat, 0, 0.25, 0);
-
-    // 米白色石材倒角壓頂石 (厚度 0.08m，寬度 0.46m，Y: 0.42 ~ 0.50m，總高恰好 50 公分，兩側出挑倒角，Photo 1~3 實景)
+    // 米白色石材倒角壓頂石 (厚 0.08m，寬 0.46m，總高恰為 0.50m / 50公分)
     addBox(segGrp, segLen + 0.08, 0.08, 0.46, stoneCapMat, 0, 0.46, 0);
-
     mg.add(segGrp);
 
-    // 花台內部深黑沃土層 (緊貼矮牆內側，高 0.32m)
-    const soilW = 1.45;
+    // 花台內部深黑沃土層
+    const soilW = 1.35;
     const soilCx = segCx + inNx * (soilW / 2 + 0.15);
     const soilCz = segCz + inNz * (soilW / 2 + 0.15);
     const soilGrp = new THREE.Group();
@@ -11892,53 +11921,44 @@ function makeMainGateWelcomeBannerTexture() {
     mg.add(soilGrp);
   }
 
-  // 矮牆兩端方形洗石子端柱 (Terminal Curb Pillars — 高度 0.50m，與矮牆齊平)
-  [curvePts[0], curvePts[curvePts.length - 1]].forEach(tp => {
+  // 矮牆兩端方形洗石子端柱 (高 0.50m)
+  [sPts[0], sPts[sPts.length - 1]].forEach(tp => {
     addBox(mg, 0.48, 0.42, 0.48, washStoneWallMat, tp.x, 0.21, tp.z);
     addBox(mg, 0.54, 0.08, 0.54, stoneCapMat, tp.x, 0.46, tp.z);
   });
 
-  // 迎賓廣場單獨小灌木 (Photo 2、3 實景：在凹入半圓矮牆端柱外側之廣場地磚面上獨立生長的小綠植)
-  const solitaryBush = addMesh(mg, new THREE.SphereGeometry(0.38, 10, 8), fenggangMat, pylonX - 7.50, 0.42, pylonZ + 5.90);
-  solitaryBush.scale.set(1.15, 0.95, 1.10);
-
-  // B. 依據《2023_0604 綠籬植栽平面圖》標示【區域二】精準栽植：楓港柿 (Diospyros vaccinioides) 與 桂花樹 (Osmanthus fragrans)
-  // 緊密沿著凹入與凸出之波浪形矮牆內側排列修剪整齊圓潤之常綠綠籬
-  const nHedgePlants = 36;
-  for (let k = 0; k < nHedgePlants; k++) {
-    const ptIdx = Math.min(curvePts.length - 1, Math.floor((k / (nHedgePlants - 1)) * (curvePts.length - 1)));
-    const pt = curvePts[ptIdx];
-    const prevPt = curvePts[Math.max(0, ptIdx - 1)];
-    const nextPt = curvePts[Math.min(curvePts.length - 1, ptIdx + 1)];
+  // B. 全線密集栽植屏東原生常綠楓港柿與芬芳金桂花樹修剪綠籬 (原設計圖連續圓圈標示)
+  const nHedgeShrubs = 48;
+  for (let k = 0; k < nHedgeShrubs; k++) {
+    const ptIdx = Math.min(sPts.length - 1, Math.floor((k / (nHedgeShrubs - 1)) * (sPts.length - 1)));
+    const pt = sPts[ptIdx];
+    const prevPt = sPts[Math.max(0, ptIdx - 1)];
+    const nextPt = sPts[Math.min(sPts.length - 1, ptIdx + 1)];
     const tdx = nextPt.x - prevPt.x, tdz = nextPt.z - prevPt.z;
     const tlen = Math.hypot(tdx, tdz) || 1.0;
-    const inNx = -tdz / tlen, inNz = tdx / tlen; // 內向法向量
+    const inNx = -tdz / tlen, inNz = tdx / tlen;
 
-    const hx = pt.x + inNx * 0.58;
-    const hz = pt.z + inNz * 0.58;
+    const hx = pt.x + inNx * 0.55;
+    const hz = pt.z + inNz * 0.55;
+    const isOsmanthus = (k % 2 === 1);
 
-    const isOsmanthus = (k % 2 === 1); // 楓港柿與桂花樹交替相襯
-    const matToUse = isOsmanthus ? osmanthusLeafMat : fenggangMat;
-    const hRadius = isOsmanthus ? 0.52 : 0.46;
-
-    // 綠籬主體灌木 (修剪圓球形/饅頭形常綠綠籬，頂高約 0.75m)
-    const sh = addMesh(mg, new THREE.SphereGeometry(hRadius, 10, 8), matToUse, hx, 0.58, hz);
+    const sh = addMesh(mg, new THREE.SphereGeometry(isOsmanthus ? 0.48 : 0.44, 10, 8), isOsmanthus ? osmanthusLeafMat : fenggangMat, hx, 0.56, hz);
     sh.scale.set(1.15, 0.95, 1.05);
 
-    // 桂花樹綴飾盛開之金黃芬芳花簇 (四瓣金桂花細緻微粒)
     if (isOsmanthus) {
-      const fl1 = addMesh(mg, new THREE.SphereGeometry(0.14, 6, 6), osmanthusFlowerMat, hx + inNx * 0.1, 0.76, hz + 0.12);
-      fl1.scale.set(1.2, 0.85, 1.1);
-      const fl2 = addMesh(mg, new THREE.SphereGeometry(0.11, 6, 6), osmanthusFlowerMat, hx - inNx * 0.1, 0.70, hz - 0.15);
-      fl2.scale.set(1.1, 0.9, 1.2);
+      const fl = addMesh(mg, new THREE.SphereGeometry(0.12, 6, 6), osmanthusFlowerMat, hx + inNx * 0.1, 0.74, hz + 0.1);
+      fl.scale.set(1.2, 0.85, 1.1);
     }
   }
 
-  // 6) 【凸出之半圓圓形矮牆花台核心景觀：挺拔多幹楓港柿小喬木、圓形草坪土丘與金黃露花】(Photo 1 實景核心特色)
-  const crest1BushX = pylonX - 2.60, crest1BushZ = pylonZ + 12.60;
-  // 圓形草坪土丘基座 (直徑約 3.6m，恰好座落於凸出半圓花台中心)
+  // C. 【方型意象石台】(原設計圖凹弧內嵌之正方形景觀基座，X: 103.71, Z: 6.53)
+  const sqX = 103.71, sqZ = 6.53;
+  addBox(mg, 1.45, 0.42, 1.45, washStoneWallMat, sqX, 0.21, sqZ);
+  addBox(mg, 1.55, 0.08, 1.55, stoneCapMat, sqX, 0.46, sqZ);
+
+  // D. 【U型花台半島核心景觀】(凸出半圓中央土丘、多幹造型小喬木與金黃開花灌木)
+  const crest1BushX = 111.5, crest1BushZ = 14.06;
   addMesh(mg, new THREE.CylinderGeometry(1.6, 1.85, 0.16, 18), lawnGrassMat, crest1BushX, 0.08, crest1BushZ);
-  // 多幹造型景觀小喬木 (Photo 1 實景：大門左側大馬路旁圓形花台中央挺拔主喬木)
   [-0.14, 0.12, 0.0].forEach((ox, idx) => {
     addMesh(mg, new THREE.CylinderGeometry(0.07, 0.11, 2.3, 8), mats.slab, crest1BushX + ox, 1.15, crest1BushZ + (idx - 1) * 0.25);
   });
@@ -11946,7 +11966,6 @@ function makeMainGateWelcomeBannerTexture() {
   crest1Crown1.scale.set(1.30, 0.92, 1.25);
   const crest1Crown2 = addMesh(mg, new THREE.SphereGeometry(1.05, 10, 8), new THREE.MeshStandardMaterial({ color: 0x276b2c, roughness: 0.84 }), crest1BushX + 0.55, 2.15, crest1BushZ - 0.45);
   crest1Crown2.scale.set(1.15, 0.88, 1.15);
-  // 圓形土丘週邊點綴金黃露花 / 矮生開花灌木
   for (let b = 0; b < 7; b++) {
     const bAng = b * (Math.PI * 2 / 7) + 0.2;
     const bx = crest1BushX + Math.cos(bAng) * 1.25;
@@ -11955,110 +11974,174 @@ function makeMainGateWelcomeBannerTexture() {
     goldBush.scale.set(1.2, 0.8, 1.1);
   }
 
-  // 7) 【花台後方景觀：兩棵高聳大王椰子樹 (Royal Palms) 與前庭草坪】(Photo 2~3 實景特色)
-  const palmTrunkColorMat = new THREE.MeshStandardMaterial({ color: 0x8c897e, roughness: 0.86 }); // 灰白環狀樹幹
-  const palmCrownSheathMat = new THREE.MeshStandardMaterial({ color: 0x2d632f, roughness: 0.65 }); // 頂端深綠光滑冠頸
-  const palmLeavesMat = new THREE.MeshStandardMaterial({ color: 0x265a29, roughness: 0.75 });      // 翠綠羽狀大樹冠
+  // E. 【校門入口意象：高牆左側使君子10株】(原設計圖文字標示：十株使君子攀緣藤本白、粉、紅三色漸變盛開)
+  const vineLeafMat    = new THREE.MeshStandardMaterial({ color: 0x245826, roughness: 0.65 });
+  const flowerWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 });
+  const flowerPinkMat  = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.45 });
+  const flowerRedMat   = new THREE.MeshStandardMaterial({ color: 0xbe123c, roughness: 0.45 });
 
-  const palmCoords = [
-    { x: pylonX - 7.20, z: pylonZ + 9.50,  h: 10.5 },
-    { x: pylonX - 8.80, z: pylonZ + 13.50, h: 11.2 }
+  for (let v = 0; v < 10; v++) {
+    const vt = (v + 0.5) / 10.0;
+    const vx = 104.0 + vt * (110.0 - 104.0);
+    const vz = 1.0 + vt * (-5.0 - 1.0);
+    // 攀緣藤莖
+    addMesh(mg, new THREE.CylinderGeometry(0.02, 0.035, 1.45, 6), mats.slab, vx, 0.75, vz);
+    // 翠綠藤蔓葉團
+    for (let c = 0; c < 3; c++) {
+      const cy = 0.52 + c * 0.40;
+      const vCluster = addMesh(mg, new THREE.SphereGeometry(0.22, 8, 6), vineLeafMat, vx + (Math.sin(v + c) * 0.1), cy, vz + (Math.cos(v + c) * 0.1));
+      vCluster.scale.set(1.2, 0.85, 1.1);
+
+      // 三段漸變開花簇 (白、粉、胭脂紅)
+      const fMat = (c === 0) ? flowerRedMat : (c === 1 ? flowerPinkMat : flowerWhiteMat);
+      for (let fl = 0; fl < 3; fl++) {
+        const flAng = fl * (Math.PI * 2 / 3);
+        const fx = vx + Math.cos(flAng) * 0.16;
+        const fz = vz + Math.sin(flAng) * 0.16;
+        const fMesh = addMesh(mg, new THREE.SphereGeometry(0.065, 6, 5), fMat, fx, cy - 0.08, fz);
+        fMesh.scale.set(1.0, 1.35, 1.0);
+      }
+    }
+  }
+
+  // F. 【步道欄杆(可拆式)】(原設計圖於校門入口開口處設置之活動可拆式安全欄杆)
+  const railMat = mats.darkMetal;
+  const railZ1 = -5.74, railZ2 = -8.25;
+  const railLen = Math.abs(railZ2 - railZ1);
+  const railX = 111.5;
+  addBox(mg, 0.04, 0.04, railLen, railMat, railX, 1.15, (railZ1 + railZ2) / 2);
+  addBox(mg, 0.035, 0.035, railLen, railMat, railX, 0.60, (railZ1 + railZ2) / 2);
+  addBox(mg, 0.04, 0.04, railLen, railMat, railX, 0.10, (railZ1 + railZ2) / 2);
+  const nRailPick = Math.floor(railLen / 0.18);
+  for (let rp = 1; rp < nRailPick; rp++) {
+    const rpz = railZ1 - (rp / nRailPick) * railLen;
+    addBox(mg, 0.025, 1.02, 0.025, railMat, railX, 0.62, rpz, false);
+  }
+  // 欄杆兩端插拔套筒與端柱
+  addBox(mg, 0.18, 1.30, 0.18, railMat, railX, 0.65, railZ1);
+  addBox(mg, 0.18, 1.30, 0.18, railMat, railX, 0.65, railZ2);
+
+  // G. 門口橘色警示交通錐與路燈
+  const coneGrp = new THREE.Group();
+  coneGrp.position.set(railX + 0.65, 0, (railZ1 + railZ2) / 2);
+  addBox(coneGrp, 0.38, 0.035, 0.38, mats.darkMetal, 0, 0.018, 0);
+  addMesh(coneGrp, new THREE.CylinderGeometry(0.04, 0.16, 0.70, 10), mats.orange || new THREE.MeshStandardMaterial({ color: 0xf25a24, roughness: 0.45 }), 0, 0.37, 0);
+  addMesh(coneGrp, new THREE.CylinderGeometry(0.085, 0.115, 0.18, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }), 0, 0.42, 0);
+  mg.add(coneGrp);
+
+  // 白色歐式雙燈頭高桿路燈
+  {
+    const lampX = pylonX - 0.28, lampZ = pylonZ + 4.20;
+    const lampGrp = new THREE.Group();
+    lampGrp.position.set(lampX, 0, lampZ);
+    addMesh(lampGrp, new THREE.CylinderGeometry(0.14, 0.18, 0.45, 8), whiteLampMat, 0, 0.225, 0);
+    addMesh(lampGrp, new THREE.CylinderGeometry(0.048, 0.048, 4.20, 12), whiteLampMat, 0, 2.10, 0);
+    addMesh(lampGrp, new THREE.SphereGeometry(0.08, 10, 8), whiteLampMat, 0, 4.30, 0);
+    for (const dir of [-1, 1]) {
+      const armArmZ = dir * 0.42;
+      addBox(lampGrp, 0.035, 0.035, 0.45, whiteLampMat, 0, 4.10, dir * 0.22);
+      addBox(lampGrp, 0.035, 0.18, 0.035, whiteLampMat, 0, 4.02, armArmZ);
+      addMesh(lampGrp, new THREE.ConeGeometry(0.18, 0.26, 12), lampGlowMat, 0, 3.82, armArmZ);
+      addMesh(lampGrp, new THREE.SphereGeometry(0.09, 8, 8), lampGlowMat, 0, 3.70, armArmZ);
+    }
+    mg.add(lampGrp);
+  }
+
+  // ============================================================================
+  // 【北側入口矮牆、凸弧圍牆與四季果香（檸檬、香蕉、芭樂、芒果）意象立柱】
+  // ============================================================================
+  // A. 北側校門矮牆入口與凸出弧形矮牆
+  const northWallPoints = [
+    new THREE.Vector3(113.39, 0, -15.83), // 入口喇叭口八字牆
+    new THREE.Vector3(110.80, 0, -21.50), // 順勢向北延伸
+    new THREE.Vector3(107.12, 0, -28.65), // 凸出圓弧頂峰 (包覆北側草坪大樹)
+    new THREE.Vector3(109.50, 0, -32.80), // 順平圓弧過渡
+    new THREE.Vector3(113.84, 0, -36.03)  // 銜接車輛出入口端柱
   ];
-  palmCoords.forEach(pc => {
-    // 粗壯樹幹 (高聳圓柱)
+  const northWallSpline = new THREE.CatmullRomCurve3(northWallPoints, false, 'catmullrom', 0.45);
+  const nNorthSteps = 48;
+  const nPts = northWallSpline.getPoints(nNorthSteps);
+
+  for (let c = 0; c < nPts.length - 1; c++) {
+    const p1 = nPts[c], p2 = nPts[c + 1];
+    const segDx = p2.x - p1.x, segDz = p2.z - p1.z;
+    const segLen = Math.hypot(segDx, segDz);
+    if (segLen < 0.01) continue;
+    const segAng = -Math.atan2(segDz, segDx);
+    const segCx = (p1.x + p2.x) / 2, segCz = (p1.z + p2.z) / 2;
+
+    const segGrp = new THREE.Group();
+    segGrp.position.set(segCx, 0, segCz);
+    segGrp.rotation.y = segAng;
+    addBox(segGrp, segLen + 0.05, 0.08, 0.44, washStoneWallMat, 0, 0.04, 0);
+    addBox(segGrp, segLen + 0.05, 0.34, 0.38, washStoneWallMat, 0, 0.25, 0);
+    addBox(segGrp, segLen + 0.08, 0.08, 0.46, stoneCapMat, 0, 0.46, 0);
+    mg.add(segGrp);
+  }
+  [nPts[0], nPts[nPts.length - 1]].forEach(tp => {
+    addBox(mg, 0.48, 0.42, 0.48, washStoneWallMat, tp.x, 0.21, tp.z);
+    addBox(mg, 0.54, 0.08, 0.54, stoneCapMat, tp.x, 0.46, tp.z);
+  });
+
+  // 北側入口可拆式步道欄杆
+  const nRailZ1 = -10.79, nRailZ2 = -15.83;
+  const nRailLen = Math.abs(nRailZ2 - nRailZ1);
+  const nRailX = 112.5;
+  addBox(mg, 0.04, 0.04, nRailLen, railMat, nRailX, 1.15, (nRailZ1 + nRailZ2) / 2);
+  addBox(mg, 0.035, 0.035, nRailLen, railMat, nRailX, 0.60, (nRailZ1 + nRailZ2) / 2);
+  addBox(mg, 0.04, 0.04, nRailLen, railMat, nRailX, 0.10, (nRailZ1 + nRailZ2) / 2);
+  const nNRailPick = Math.floor(nRailLen / 0.18);
+  for (let rp = 1; rp < nNRailPick; rp++) {
+    const rpz = nRailZ1 - (rp / nNRailPick) * nRailLen;
+    addBox(mg, 0.025, 1.02, 0.025, railMat, nRailX, 0.62, rpz, false);
+  }
+  addBox(mg, 0.18, 1.30, 0.18, railMat, nRailX, 0.65, nRailZ1);
+  addBox(mg, 0.18, 1.30, 0.18, railMat, nRailX, 0.65, nRailZ2);
+
+  // B. 【四季果香意象立柱】(原設計圖右側立柱：四季 檸檬、香蕉、芭樂、芒果 特色壁畫立面)
+  const fpX = 104.5, fpZ = -37.0;
+  const fpW = 5.8, fpH = 3.4, fpD = 0.52;
+  addBox(mg, fpW + 0.4, 0.28, fpD + 0.2, washStoneWallMat, fpX, 0.14, fpZ);
+  addBox(mg, fpW, fpH, fpD, washStoneWallMat, fpX, 0.28 + fpH / 2, fpZ);
+  addBox(mg, fpW + 0.3, 0.14, fpD + 0.25, stoneCapMat, fpX, 0.28 + fpH + 0.07, fpZ);
+
+  const fruitTex = makeFourSeasonFruitTexture();
+  const fruitMat = new THREE.MeshStandardMaterial({ map: fruitTex, roughness: 0.45 });
+  const fruitMesh = addMesh(mg, new THREE.PlaneGeometry(fpW - 0.4, fpH - 0.45), fruitMat, fpX, 0.28 + fpH / 2, fpZ + fpD / 2 + 0.02, false);
+  fruitMesh.rotation.y = 0; // 面向迎賓前庭
+
+  // C. 【通學步道 (Commuter Walkway)】(沿復興路人行道，環繞U型半島並延伸至建興南路42巷)
+  const walkOuterX = 117.2, walkInnerX = 113.8;
+  const walkLen = Math.abs(Z(326) - -15.0);
+  addBox(mg, 2.8, 0.12, walkLen, walkwayBrickMat, (walkOuterX + walkInnerX) / 2, 0.06, (Z(326) + -15.0) / 2, false);
+  addBox(mg, 0.28, 0.035, walkLen, purpleCurbStripeMat, walkOuterX + 0.14, 0.18, (Z(326) + -15.0) / 2, false);
+
+  // D. 保留後方兩棵高聳大王椰子樹 (Royal Palms)
+  const palmTrunkColorMat = new THREE.MeshStandardMaterial({ color: 0x8c897e, roughness: 0.86 });
+  const palmCrownSheathMat = new THREE.MeshStandardMaterial({ color: 0x2d632f, roughness: 0.65 });
+  const palmLeavesMat = new THREE.MeshStandardMaterial({ color: 0x265a29, roughness: 0.75 });
+  [{ x: 98.5, z: 12.5, h: 10.5 }, { x: 92.0, z: 7.5, h: 11.2 }].forEach(pc => {
     addMesh(mg, new THREE.CylinderGeometry(0.24, 0.32, pc.h, 12), palmTrunkColorMat, pc.x, pc.h / 2, pc.z);
-    // 樹幹水平節痕
     for (let r = 1; r < 9; r++) {
       addMesh(mg, new THREE.TorusGeometry(0.27, 0.02, 8, 16).rotateX(Math.PI / 2), mats.darkMetal, pc.x, r * 1.1, pc.z);
     }
-    // 頂部深綠色光滑冠頸 (Crownshaft)
     addMesh(mg, new THREE.CylinderGeometry(0.22, 0.24, 1.6, 10), palmCrownSheathMat, pc.x, pc.h + 0.8, pc.z);
-    // 舒展羽狀複葉大樹冠 (直徑 4.8m)
     const pCrown = addMesh(mg, new THREE.SphereGeometry(2.4, 14, 10), palmLeavesMat, pc.x, pc.h + 1.8, pc.z);
     pCrown.scale.set(1.45, 0.75, 1.45);
   });
 
-  // 8) 【前庭花園內部景觀：草坪、蜿蜒園道與照片樹蔭地景】
-  // A. 前庭庭園草坪地基
-  const lawnW = 14.0, lawnD = 20.0;
-  const lawnCx = pylonX - 11.5, lawnCz = pylonZ + 14.5;
-  addBox(mg, lawnW, 0.08, lawnD, lawnGrassMat, lawnCx, 0.04, lawnCz, false);
-
-  // B. 《2023_0604 綠籬植栽平面圖》標示之前庭花園內部蜿蜒園道 (Curvilinear Garden Loop Path)
-  const gardenPathNodes = [
-    { x: pylonX - 7.5,  z: pylonZ + 8.5 },
-    { x: pylonX - 10.8, z: pylonZ + 11.5 },
-    { x: pylonX - 12.5, z: pylonZ + 15.0 },
-    { x: pylonX - 10.8, z: pylonZ + 18.5 },
-    { x: pylonX - 7.5,  z: pylonZ + 20.5 }
-  ];
-  for (let gp = 0; gp < gardenPathNodes.length - 1; gp++) {
-    const p1 = gardenPathNodes[gp], p2 = gardenPathNodes[gp + 1];
-    const pDx = p2.x - p1.x, pDz = p2.z - p1.z;
-    const pLen = Math.hypot(pDx, pDz);
-    const pAng = -Math.atan2(pDz, pDx);
-    const pCx = (p1.x + p2.x) / 2, pCz = (p1.z + p2.z) / 2;
-    const pGrp = new THREE.Group();
-    pGrp.position.set(pCx, 0.07, pCz);
-    pGrp.rotation.y = pAng;
-    addBox(pGrp, pLen + 0.12, 0.04, 1.5, walkwayBrickMat, 0, 0, 0, false);
-    mg.add(pGrp);
-  }
-
-  // C. 【半圓凹入波谷樹蔭花園：休閒圓形石桌椅組】(依據 Photo 1~3 實景樹下 1:1 精確還原)
-  const tableMat = new THREE.MeshStandardMaterial({ color: 0xd2d0c8, roughness: 0.78 }); // 灰色水磨石/洗石子
-  const stoolMat = new THREE.MeshStandardMaterial({ color: 0xb8b6ae, roughness: 0.82 });
-  const tableX = pylonX - 8.2;
-  const tableZ = pylonZ + 11.5;
-
-  // 休憩區地坪連鎖磚基座
-  addBox(mg, 4.2, 0.08, 4.2, walkwayBrickMat, tableX, 0.04, tableZ, false);
-  // 中央圓形石桌 (直徑 1.2m，高 0.74m)
-  addMesh(mg, new THREE.CylinderGeometry(0.60, 0.60, 0.08, 18), tableMat, tableX, 0.70, tableZ);
-  addMesh(mg, new THREE.CylinderGeometry(0.16, 0.20, 0.66, 12), tableMat, tableX, 0.33, tableZ);
-  addMesh(mg, new THREE.CylinderGeometry(0.38, 0.42, 0.08, 14), tableMat, tableX, 0.04, tableZ);
-
-  // 四張圓形石凳 (環繞石桌排列，直徑 0.38m，高 0.44m)
-  const stoolRadius = 0.98;
-  for (let sIdx = 0; sIdx < 4; sIdx++) {
-    const sAng = sIdx * (Math.PI / 2) + Math.PI / 4;
-    const sx = tableX + Math.cos(sAng) * stoolRadius;
-    const sz = tableZ + Math.sin(sAng) * stoolRadius;
-    addMesh(mg, new THREE.CylinderGeometry(0.19, 0.19, 0.06, 14), stoolMat, sx, 0.41, sz);
-    addMesh(mg, new THREE.CylinderGeometry(0.10, 0.13, 0.38, 10), stoolMat, sx, 0.19, sz);
-  }
-
-  // 休憩區旁成蔭大樟樹 (Cinnamomum camphora，提供繁茂濃蔭)
-  const shadeTreeX = tableX - 1.8, shadeTreeZ = tableZ + 2.0;
-  addMesh(mg, new THREE.CylinderGeometry(0.28, 0.38, 4.8, 8), mats.slab, shadeTreeX, 2.4, shadeTreeZ);
-  const shadeCrown = addMesh(mg, new THREE.SphereGeometry(2.7, 12, 10), new THREE.MeshStandardMaterial({ color: 0x224c20, roughness: 0.82 }), shadeTreeX, 5.2, shadeTreeZ);
-  shadeCrown.scale.set(1.4, 0.95, 1.3);
-
-  // 休憩區旁熱帶蒲葵 (Livistona chinensis，濃郁南台灣校園風情)
-  const palmTreeX = tableX + 1.2, palmTreeZ = tableZ - 2.8;
-  addMesh(mg, new THREE.CylinderGeometry(0.15, 0.20, 3.8, 8), mats.slab, palmTreeX, 1.9, palmTreeZ);
-  const palmFronds = addMesh(mg, new THREE.SphereGeometry(1.6, 10, 8), new THREE.MeshStandardMaterial({ color: 0x26682b, roughness: 0.8 }), palmTreeX, 4.0, palmTreeZ);
-  palmFronds.scale.set(1.4, 0.55, 1.4);
-
-  // 6) 東側臨復興路通學步道淡紫色標線緣石 (Photo 1~3 實景紫色路緣石塗裝，一路延伸至東南角)
-  const curbLen = Math.abs(Z(326) - (pylonZ + 1.5)) + 1.0;
-  const curbZ0 = pylonZ + 1.5;
-  addBox(mg, 0.28, 0.035, curbLen, purpleCurbStripeMat, pylonX + 0.12, 0.18, curbZ0 + curbLen / 2, false);
-
-  // 2) 中央主進出迎賓車道 (寬 9.5m) 與天藍色電動伸縮門
-  addBox(mg, 6.8, 0.12, 11.5, walkwayBrickMat, pylonX - 0.5, 0.06, Z(235), false);
-  // 天藍色折疊電動伸縮門 (半開啟迎賓狀態)
+  // E. 車輛出入口 (車道與天藍色電動伸縮門)
+  addBox(mg, 6.8, 0.12, 10.5, walkwayBrickMat, pylonX - 0.5, 0.06, -42.0, false);
   const blueGateMat = new THREE.MeshStandardMaterial({ color: 0x1d78c2, roughness: 0.32, metalness: 0.55 });
-  const gateLatticeCount = 12;
-  for (let gIdx = 0; gIdx < gateLatticeCount; gIdx++) {
-    const gz = Z(243) + gIdx * 0.92;
+  for (let gIdx = 0; gIdx < 10; gIdx++) {
+    const gz = -46.0 + gIdx * 0.90;
     addBox(mg, 0.22, 1.45, 0.12, blueGateMat, pylonX, 0.72, gz);
-    addBox(mg, 0.26, 0.12, 0.08, mats.darkMetal, pylonX, 0.06, gz); // 滾輪
+    addBox(mg, 0.26, 0.12, 0.08, mats.darkMetal, pylonX, 0.06, gz);
     const sc1 = addBox(mg, 0.05, 1.25, 0.05, blueGateMat, pylonX + 0.03, 0.72, gz);
     sc1.rotation.x = 0.55;
     const sc2 = addBox(mg, 0.05, 1.25, 0.05, blueGateMat, pylonX - 0.03, 0.72, gz);
     sc2.rotation.x = -0.55;
-    addBox(mg, 0.08, 0.08, 0.08, mats.red, pylonX, 1.48, gz); // 警示燈
+    addBox(mg, 0.08, 0.08, 0.08, mats.red, pylonX, 1.48, gz);
   }
 
   // 3) 北側迎賓波浪抿石子矮牆與立體「FU-SHING」彩色校名雕塑標誌 (依據 20231216_124721.jpg 實景 100% 幾何與向量精確重建，無照片截圖)
