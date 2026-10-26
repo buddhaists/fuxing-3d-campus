@@ -2275,7 +2275,7 @@ const LANDMARKS = [
 ・半地下室層（B1）：居禮廳（防空避難室）(30)。
 
 【北向中庭立面與景觀細節】
-・半地下室基座層（GL 0.0m～1FL 1.15m）：⑤–⑬ 軸設半地下室採光通風排窗與寶藍色水平水切雨遮；①–④ 軸設擋土牆、綠籬樹列與雙折無障礙坡道（附雙層不鏽鋼扶手與無障礙標誌牌）。
+・半地下室基座層（GL 0.0m～1FL 1.15m）：⑤–⑬ 軸設半地下室採光通風排窗與寶藍色水平水切雨遮；①–④ 軸設擋土牆、常綠修剪綠籬樹列與景觀草皮帶；全校無障礙坡道動線統整由東棟大樓背面南北走向折返坡道銜接。
 ・三層走廊白磁磚女兒牆與菱形飾塊：1F 寶藍色菱形、2F 鮮紅色菱形、3F 藍綠/灰綠色菱形，頂部均設不鏽鋼安全欄杆。
 ・走廊內牆全面塗刷溫潤「芥末土黃色」，搭配四扇鋁合金推拉窗與翠綠遮陽窗簾。
 ・中庭前庭鋪設回字形紅灰白幾何連鎖地磚，配置兩處微地形翠綠草坡、大喬木與生動的「綠色長頸恐龍與小恐龍雕塑」。
@@ -7726,64 +7726,44 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   }
 
   // ============================================================================
-  // 東棟大樓後面 1F 無障礙樓梯與坡道系統 (依照片 media_1793002887451_10566a0d.jpg 1:1 精確還原)
-  // 特徵重點：
-  // 1. 厚實水泥/洗石子混凝土擋土基座，轉折平臺面向中庭設有厚實矮牆與「國際無障礙藍色標誌牌」
-  // 2. 清通透亮之「水平多管式不銹鋼欄杆系統」（頂層主扶手、中層次扶手、中間2道防護橫管、底層踢腳橫管，絕非密集垂直鐵柵！）
-  // 3. 雙段折返爬升走道，平順串聯中庭地坪與穿堂 1F 出入口
+  // 東棟大樓後面 1F 無障礙樓梯與坡道系統 (依據指示與現場照片 1:1 精確還原)
+  // 動線特徵：南北走向，由北向南上坡，至南端轉折平臺迴旋 180°，再由南向北上坡直通穿堂 1F 出入口
+  // 欄杆特徵：清通明亮之水平多管式不銹鋼圓管安全護欄（頂層主扶手、次扶手、防護橫管、踢腳橫管與弧形端部）
   // ============================================================================
   {
-    const rampNorthZ = stairZ_Max + 0.10; // 北端轉折平臺交界
-    const rampSouthZ = cz(AXIS_CM[4]);    // 南端地面起點，全長約 9.2m
-    const rampLength = rampSouthZ - rampNorthZ;
-    const rampCenterZ = (rampNorthZ + rampSouthZ) / 2;
+    const rampNorthZ = stairZ_Max + 0.10; // 北端起點與穿堂交界 (約 -2.25m)
+    const rampSouthZ = cz(AXIS_CM[4]);    // 南端平臺底緣 (約 +6.80m)
+    const landingLenZ = 2.45;             // 南端 180° 迴旋轉折平臺長度
+    const landingSouthZ = rampSouthZ;
+    const landingNorthZ = rampSouthZ - landingLenZ;
+    const landingZ = (landingSouthZ + landingNorthZ) / 2;
+
+    const slopeRunZ = landingNorthZ - rampNorthZ; // 斜坡段長度 ~6.60m
+    const slopeCenterZ = (rampNorthZ + landingNorthZ) / 2;
 
     const runW = 1.35;        // 每一單向走道淨寬 1.35m
     const divW = 0.18;        // 雙走道中央欄杆隔離帶 0.18m
     const curbW = 0.24;       // 外側混凝土擋土側牆厚 0.24m
 
     const xOuterWall = xW0 - (runW * 2 + divW + curbW / 2); // ~49.70m
-    const xRun1 = xOuterWall + curbW / 2 + runW / 2;        // ~50.49m (外側坡道，自南向北爬升)
-    const xDiv = xRun1 + runW / 2 + divW / 2;               // ~51.25m (中央分隔扶手)
-    const xRun2 = xDiv + divW / 2 + runW / 2;               // ~52.01m (內側坡道，自中間平臺升至穿堂)
+    const xRun1 = xOuterWall + curbW / 2 + runW / 2;        // ~50.49m (外側走道：由北向南上坡)
+    const xDiv = xRun1 + runW / 2 + divW / 2;               // ~51.25m (中央雙向分隔護欄)
+    const xRun2 = xDiv + divW / 2 + runW / 2;               // ~52.01m (內側走道：由南向北上坡)
 
-    const yLanding = yCourtGround + stairRiseTotal * 0.50;  // 中間平臺標高 0.76m
-    const landingLenZ = 2.45;                              // 轉折平臺長度 2.45m
-    const landingZ = rampNorthZ + landingLenZ / 2;          // 北端平臺中心
-
-    const slopeRunZ = rampLength - landingLenZ;             // 斜坡段長度 ~6.75m
-    const slopeCenterZ = rampNorthZ + landingLenZ + slopeRunZ / 2;
-
-    const concMat = new THREE.MeshStandardMaterial({ color: 0xd8d5cd, roughness: 0.82 });      // 洗石子混凝土
-    const rampFloorMat = new THREE.MeshStandardMaterial({ color: 0xbebab0, roughness: 0.65 }); // 坡道地坪
-    const stainlessMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, roughness: 0.18, metalness: 0.90 }); // 明亮拉絲不鏽鋼
-
-    // (1) 北端轉折中間平臺 (Intermediate Landing at y = 0.76m)
+    const yLanding = yCourtGround + stairRiseTotal * 0.50;  // 南端中間平臺標高 0.76m
     const landingW = runW * 2 + divW;
     const landingX = (xRun1 + xRun2) / 2;
 
-    // 平臺實體底座與磨石子面層
-    addBox(g, landingW + curbW, yLanding - yCourtGround, landingLenZ, concMat, landingX - curbW / 2, yCourtGround + (yLanding - yCourtGround) / 2, landingZ);
-    addBox(g, landingW, 0.12, landingLenZ, rampFloorMat, landingX, yLanding + 0.06, landingZ, false);
+    const concMat = new THREE.MeshStandardMaterial({ color: 0xd8d5cd, roughness: 0.82 });      // 洗石子混凝土
+    const rampFloorMat = new THREE.MeshStandardMaterial({ color: 0xbebab0, roughness: 0.65 }); // 坡道防滑地坪
+    const stainlessMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, roughness: 0.18, metalness: 0.90 }); // 明亮拉絲不鏽鋼
 
-    // 平臺北端防護混凝土矮牆 (兼作穿堂階梯南側分隔牆)
-    const pNorthWallH = 0.85;
-    addBox(g, landingW + curbW, pNorthWallH, 0.28, wallMat, landingX - curbW / 2, yLanding + pNorthWallH / 2, rampNorthZ + 0.14);
-
-    // 平臺西側白色/灰白洗石子防護矮牆 (高出平臺 0.40m，總高約 1.16m，實景顯著地標)
-    addBox(g, curbW, 0.78, landingLenZ, concMat, xOuterWall, yLanding + 0.39, landingZ);
-
-    // 平臺西側立面醒目之「國際無障礙藍底白字輪椅標誌牌」 (依照片 media_1793002887451_10566a0d.jpg 正中特寫)
-    const wcSignMat = new THREE.MeshBasicMaterial({ map: makeWheelchairSignTexture() });
-    const wcSign = addMesh(g, new THREE.PlaneGeometry(0.55, 0.42), wcSignMat, xOuterWall - curbW / 2 - 0.015, yLanding + 0.38, landingZ, false);
-    wcSign.rotation.y = -Math.PI / 2; // 面向中庭西面
-
-    // (2) 外側下坡道 Run 1 (自南端地面 0.16m 爬升至北端平臺 0.76m)
-    const run1Angle = Math.atan2(yLanding - yCourtGround, slopeRunZ);
+    // (1) 外側第一段坡道 Run 1 (由北向南上坡：自北端中庭 0.16m 爬升至南端平臺 0.76m)
+    const run1Angle = -Math.atan2(yLanding - yCourtGround, slopeRunZ);
     const run1Mesh = addBox(g, runW, 0.12, Math.hypot(slopeRunZ, yLanding - yCourtGround), rampFloorMat, xRun1, (yCourtGround + yLanding) / 2, slopeCenterZ, false);
     run1Mesh.rotation.x = run1Angle;
 
-    // 外側實體混凝土擋土側牆 (以斜向多邊形精確還原自地面升至平臺之漸變側壁)
+    // 外側實體混凝土擋土側牆 (自北向南隨坡道平順斜升)
     {
       const wallShape = new THREE.Shape();
       wallShape.moveTo(0, yCourtGround);
@@ -7793,20 +7773,33 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
       wallShape.closePath();
       const extrudeSettings = { depth: curbW, bevelEnabled: false };
       const outerWallGeo = new THREE.ExtrudeGeometry(wallShape, extrudeSettings);
-      const outerWallMesh = addMesh(g, outerWallGeo, concMat, xOuterWall - curbW / 2, 0, rampNorthZ + landingLenZ);
+      const outerWallMesh = addMesh(g, outerWallGeo, concMat, xOuterWall - curbW / 2, 0, rampNorthZ);
       outerWallMesh.rotation.y = Math.PI / 2;
     }
 
-    // (3) 內側上坡道 Run 2 (自中間平臺 0.76m 轉折爬升至南端穿堂/走廊 1.36m)
-    const run2Angle = -Math.atan2(yBreezeFloor - yLanding, slopeRunZ);
+    // (2) 南端 180° 迴旋轉折中間平臺 (Landing at y = 0.76m)
+    addBox(g, landingW + curbW, yLanding - yCourtGround, landingLenZ, concMat, landingX - curbW / 2, yCourtGround + (yLanding - yCourtGround) / 2, landingZ);
+    addBox(g, landingW, 0.12, landingLenZ, rampFloorMat, landingX, yLanding + 0.06, landingZ, false);
+
+    // 平臺南端與西側防護水泥矮牆
+    addBox(g, landingW + curbW, 0.85, 0.26, wallMat, landingX - curbW / 2, yLanding + 0.425, landingSouthZ - 0.13);
+    addBox(g, curbW, 0.78, landingLenZ, concMat, xOuterWall, yLanding + 0.39, landingZ);
+
+    // (3) 內側第二段坡道 Run 2 (再由南向北上坡：自南端平臺 0.76m 爬升至北端穿堂出入口 1.36m)
+    const run2Angle = Math.atan2(yBreezeFloor - yLanding, slopeRunZ);
     const run2Mesh = addBox(g, runW, 0.12, Math.hypot(slopeRunZ, yBreezeFloor - yLanding), rampFloorMat, xRun2, (yLanding + yBreezeFloor) / 2, slopeCenterZ, false);
     run2Mesh.rotation.x = run2Angle;
 
     // 內側 1F 穿堂銜接延伸平臺 (串聯穿堂出口與東棟 1F 走廊)
-    addBox(g, runW, 0.20, rampLength + 1.2, concMat, xRun2, yBreezeFloor - 0.10, rampCenterZ, false);
+    addBox(g, runW, 0.20, slopeRunZ + 1.2, concMat, xRun2, yBreezeFloor - 0.10, slopeCenterZ, false);
 
-    // (4) 不銹鋼水平多管式無障礙欄杆系統 (依照片 media_1793002887451_10566a0d.jpg 1:1 還原)
-    // 依實景：絕非密集垂直鐵柵！為通透整齊之 5 道水平不銹鋼圓管＋間隔 1.15m 垂直支撐立柱＋端部弧形收頭
+    // (4) 北端起點引導區與國際無障礙藍色標誌牌 (緊鄰中央階梯南側)
+    addBox(g, curbW, 0.65, 0.45, concMat, xOuterWall, yCourtGround + 0.325, rampNorthZ + 0.22);
+    const wcSignMat = new THREE.MeshBasicMaterial({ map: makeWheelchairSignTexture() });
+    const wcSign = addMesh(g, new THREE.PlaneGeometry(0.55, 0.42), wcSignMat, xOuterWall - curbW / 2 - 0.015, yCourtGround + 0.45, rampNorthZ + 0.22, false);
+    wcSign.rotation.y = -Math.PI / 2; // 正對中庭西向
+
+    // (5) 不銹鋼水平多管式無障礙安全欄杆系統 (5道水平管＋垂直立柱＋弧形下彎收頭)
     const addHorizontalRampRail = (railX, startY, endY, startZ, endZ, hasEndDrop = true) => {
       const railLen = Math.hypot(endZ - startZ, endY - startY);
       const railAngle = Math.atan2(endY - startY, endZ - startZ);
@@ -7842,44 +7835,41 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
         addBox(g, 0.048, 0.88, 0.048, stainlessMat, railX, py + 0.44, pz, false);
       }
 
-      // 7. 起迄端部向下圓弧彎折收頭 (防止勾扯並符合無障礙規範)
+      // 7. 起迄端部向下圓弧彎折收頭
       if (hasEndDrop) {
         addBox(g, 0.045, 0.22, 0.045, stainlessMat, railX, startY + 0.74, startZ, false);
         addBox(g, 0.045, 0.22, 0.045, stainlessMat, railX, endY + 0.74, endZ, false);
       }
     };
 
-    // A. 外走道西側護欄 (Outer rail: 自轉折平臺南延至中庭起點)
-    addHorizontalRampRail(xRun1 - runW / 2 + 0.04, yLanding, yCourtGround, rampNorthZ + landingLenZ, rampSouthZ);
+    // A. 外走道西側護欄 (由北端起點向南爬升至南端平臺)
+    addHorizontalRampRail(xRun1 - runW / 2 + 0.04, yCourtGround, yLanding, rampNorthZ, landingNorthZ);
 
-    // B. 中間平臺西側護欄 (平臺矮牆頂部水平護欄)
-    addHorizontalRampRail(xRun1 - runW / 2 + 0.04, yLanding, yLanding, rampNorthZ, rampNorthZ + landingLenZ, false);
-
-    // C. 中間平臺北側護欄 (平臺北端護欄)
+    // B. 南端迴旋平臺西側與南側護欄 (平臺水平防護)
+    addHorizontalRampRail(xRun1 - runW / 2 + 0.04, yLanding, yLanding, landingNorthZ, landingSouthZ, false);
     {
-      const topN = addBox(g, landingW, 0.05, 0.05, stainlessMat, landingX, yLanding + 0.85, rampNorthZ + 0.06, false);
-      const midN = addBox(g, landingW, 0.038, 0.038, stainlessMat, landingX, yLanding + 0.65, rampNorthZ + 0.06, false);
-      const g1N = addBox(g, landingW, 0.028, 0.028, stainlessMat, landingX, yLanding + 0.46, rampNorthZ + 0.06, false);
-      const g2N = addBox(g, landingW, 0.028, 0.028, stainlessMat, landingX, yLanding + 0.28, rampNorthZ + 0.06, false);
-      const botN = addBox(g, landingW, 0.025, 0.025, stainlessMat, landingX, yLanding + 0.10, rampNorthZ + 0.06, false);
+      const topS = addBox(g, landingW, 0.05, 0.05, stainlessMat, landingX, yLanding + 0.85, landingSouthZ - 0.06, false);
+      const midS = addBox(g, landingW, 0.038, 0.038, stainlessMat, landingX, yLanding + 0.65, landingSouthZ - 0.06, false);
+      const g1S = addBox(g, landingW, 0.028, 0.028, stainlessMat, landingX, yLanding + 0.46, landingSouthZ - 0.06, false);
+      const g2S = addBox(g, landingW, 0.028, 0.028, stainlessMat, landingX, yLanding + 0.28, landingSouthZ - 0.06, false);
+      const botS = addBox(g, landingW, 0.025, 0.025, stainlessMat, landingX, yLanding + 0.10, landingSouthZ - 0.06, false);
       for (let p = -1; p <= 1; p++) {
-        addBox(g, 0.048, 0.88, 0.048, stainlessMat, landingX + p * (landingW / 2 - 0.08), yLanding + 0.44, rampNorthZ + 0.06, false);
+        addBox(g, 0.048, 0.88, 0.048, stainlessMat, landingX + p * (landingW / 2 - 0.08), yLanding + 0.44, landingSouthZ - 0.06, false);
       }
     }
 
-    // D. 中央雙走道分隔護欄 (Divider rail between Run 1 and Run 2)
-    addHorizontalRampRail(xDiv, yLanding, (yCourtGround + yBreezeFloor) / 2, rampNorthZ + landingLenZ, rampSouthZ);
+    // C. 中央雙走道分隔護欄 (介於 Run 1 與 Run 2 之間，由北端向南爬升)
+    addHorizontalRampRail(xDiv, yCourtGround, yLanding, rampNorthZ, landingNorthZ);
 
-    // E. 內走道東側護欄 (沿走廊外緣)
-    addHorizontalRampRail(xRun2 + runW / 2 - 0.04, yLanding, yBreezeFloor, rampNorthZ + landingLenZ, rampSouthZ);
+    // D. 內走道東側護欄 (由南端平臺向北爬升至穿堂出口)
+    addHorizontalRampRail(xRun2 + runW / 2 - 0.04, yLanding, yBreezeFloor, landingNorthZ, rampNorthZ);
 
-    // (5) 南端地面起點喇叭形引導不銹鋼扶手與圓角端柱 (依實景照片入口引導欄杆)
+    // E. 北端地面起點引導扶手 (靠近中央階梯處)
     {
-      const entryZ = rampSouthZ + 0.60;
-      // 入口兩側引導扶手
-      addBox(g, 0.05, 0.05, 0.60, stainlessMat, xRun1 - runW / 2 - 0.15, yCourtGround + 0.85, rampSouthZ + 0.30, false);
+      const entryZ = rampNorthZ - 0.40;
+      addBox(g, 0.05, 0.05, 0.40, stainlessMat, xRun1 - runW / 2 - 0.15, yCourtGround + 0.85, rampNorthZ - 0.20, false);
       addBox(g, 0.048, 0.85, 0.048, stainlessMat, xRun1 - runW / 2 - 0.15, yCourtGround + 0.425, entryZ, false);
-      addBox(g, 0.05, 0.05, 0.60, stainlessMat, xDiv + 0.15, yCourtGround + 0.85, rampSouthZ + 0.30, false);
+      addBox(g, 0.05, 0.05, 0.40, stainlessMat, xDiv + 0.15, yCourtGround + 0.85, rampNorthZ - 0.20, false);
       addBox(g, 0.048, 0.85, 0.048, stainlessMat, xDiv + 0.15, yCourtGround + 0.425, entryZ, false);
     }
   }
@@ -9140,8 +9130,7 @@ function makeCourtyardConcentricBrickTexture() {
       if (b === 4) continue;
       // ⑬–⑭ 為右側樓梯間：1F 開放直接銜接通往中庭之大階梯！2F 與 3F 則有標準女兒牆與菱形飾塊 (依照片 04)
       if (b === 13 && fl === 0) continue;
-      // ①–④ 的 1F 前方為無障礙坡道與擋土牆綠籬，不設標準懸挑菱形女兒牆
-      if (fl === 0 && b <= 3) continue;
+      // ①–③ 軸 1F 設有標準女兒牆與寶藍菱形飾塊
       // ⑥–⑦ (天藍色圓窗塔牆) 與 ⑩–⑪ (草綠色圓窗塔牆) 另行處理其局部女兒牆
       if (b === 6 || b === 10) continue;
 
@@ -9331,51 +9320,19 @@ function makeCourtyardConcentricBrickTexture() {
   }
 
   // ============================================================================
-  // 12. 軸線 ①–④ 北側前景：雙折無障礙坡道 (Switchback Wheelchair Ramp) 與擋土牆綠籬樹列
-  //     依據照片 `南棟大樓01.jpg` 與 `(全景)南棟大樓_正面立圖影像.jpg` (位於正面最左側 ①–④ 軸前)
+  // 12. 軸線 ①–④ 北側前景：基座擋土牆、修剪灌木樹列與景觀草皮帶（南棟北側無坡道，視野開闊）
   // ============================================================================
-  const rampXR = ax(3) + 0.20;
-  const rampXL = ax(1) - 0.15;
-  const rampLenX = Math.abs(rampXL - rampXR); // ~8.65 m
-  const rampCx = (rampXL + rampXR) / 2;
-  const rampW = 1.35;
-  const rampZBack = zNorth - 0.80;
-  const rampZFront = zNorth - 2.25;
-  const halfSlopeAngle = Math.atan2(y0 / 2, rampLenX);
-
-  addBox(g, rampLenX, y0 * 0.72, rampW, southBaseBeamMat, rampCx, y0 * 0.36, rampZBack);
-  const backRampTop = addBox(g, rampLenX, 0.12, rampW, southTerrazzoMat, rampCx, y0 * 0.75, rampZBack);
-  backRampTop.rotation.z = -halfSlopeAngle;
-
-  addBox(g, rampLenX, y0 * 0.32, rampW, southBaseBeamMat, rampCx, y0 * 0.16, rampZFront);
-  const frontRampTop = addBox(g, rampLenX, 0.12, rampW, southTerrazzoMat, rampCx, y0 * 0.28, rampZFront);
-  frontRampTop.rotation.z = halfSlopeAngle;
-
-  for (let rZ of [rampZBack - rampW / 2 + 0.05, rampZFront - rampW / 2 + 0.05, rampZFront + rampW / 2 - 0.05]) {
-    const isBack = Math.abs(rZ - (rampZBack - rampW / 2 + 0.05)) < 0.1;
-    const baseH = isBack ? y0 * 0.75 : y0 * 0.28;
-    const rotZ = isBack ? -halfSlopeAngle : halfSlopeAngle;
-    const topR = addBox(g, rampLenX, 0.04, 0.04, southStainlessRailMat, rampCx, baseH + 0.85, rZ);
-    topR.rotation.z = rotZ;
-    const midR = addBox(g, rampLenX, 0.035, 0.035, southStainlessRailMat, rampCx, baseH + 0.62, rZ);
-    midR.rotation.z = rotZ;
-    for (let p = 0; p <= 6; p++) {
-      const px = rampXR + (p / 6) * rampLenX;
-      const py = isBack ? ((y0 / 2) + (p / 6) * (y0 / 2)) : ((p / 6) * (y0 / 2));
-      addBox(g, 0.04, 0.88, 0.04, southStainlessRailMat, px, py + 0.44, rZ);
-    }
-  }
-  const rampSignMat = new THREE.MeshBasicMaterial({ map: makeWheelchairSignTexture() });
-  const rampSignMesh = addMesh(g, new THREE.PlaneGeometry(0.58, 0.44), rampSignMat, rampXL - 1.85, 0.88, rampZFront - rampW / 2 - 0.04, false);
-  rampSignMesh.rotation.y = Math.PI;
-
-  // 軸線 ②–④ 擋土牆前方整齊修剪之 6 棵深綠灌木樹列与草皮帶 (對應照片 01)
-  const hedgeRowXL = ax(2) - 0.6, hedgeRowXR = ax(4) + 0.35;
-  addBox(g, Math.abs(hedgeRowXL - hedgeRowXR) + 0.8, 0.06, 2.20, grassMoundMat, (hedgeRowXL + hedgeRowXR) / 2, 0.03, zNorth - 1.25, false);
-  for (let t = 0; t < 6; t++) {
-    const tx = hedgeRowXR + (t / 5) * (hedgeRowXL - hedgeRowXR);
-    addMesh(g, new THREE.CylinderGeometry(0.05, 0.07, 1.15, 8), southDoorWoodMat, tx, 0.58, zNorth - 0.55);
-    const crown = addMesh(g, new THREE.SphereGeometry(0.68, 12, 10), hedgeDarkGreenMat, tx, 1.38, zNorth - 0.58);
+  const hedgeRowXL = ax(1) - 0.2, hedgeRowXR = ax(4) + 0.35;
+  const hedgeSpanW = Math.abs(hedgeRowXL - hedgeRowXR);
+  // ①–④ 軸基座擋土矮牆
+  addBox(g, hedgeSpanW + 0.4, y0, 0.45, southBaseBeamMat, (hedgeRowXL + hedgeRowXR) / 2, y0 / 2, zNorth - 0.25);
+  // 前方草皮帶
+  addBox(g, hedgeSpanW + 0.8, 0.06, 2.40, grassMoundMat, (hedgeRowXL + hedgeRowXR) / 2, 0.03, zNorth - 1.35, false);
+  // 整齊修剪之常綠灌木樹列
+  for (let t = 0; t < 7; t++) {
+    const tx = hedgeRowXR + (t / 6) * (hedgeRowXL - hedgeRowXR);
+    addMesh(g, new THREE.CylinderGeometry(0.05, 0.07, 1.15, 8), southDoorWoodMat, tx, 0.58, zNorth - 0.65);
+    const crown = addMesh(g, new THREE.SphereGeometry(0.68, 12, 10), hedgeDarkGreenMat, tx, 1.38, zNorth - 0.68);
     crown.scale.set(1.15, 0.85, 0.75);
   }
 
