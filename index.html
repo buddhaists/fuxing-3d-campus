@@ -4282,10 +4282,14 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     const washStoneMat = new THREE.MeshStandardMaterial({ map: makeTileTexture('#cfcac2', '#9c9890'), roughness: 0.88 });
     const capStoneMat  = new THREE.MeshStandardMaterial({ color: 0xdcd8d0, roughness: 0.72 });
     const darkIronMat  = new THREE.MeshStandardMaterial({ color: 0x1e2024, roughness: 0.42, metalness: 0.65 });
-    const hedgeMat     = mats.hedge || new THREE.MeshStandardMaterial({ color: 0x2e6528, roughness: 0.85 });
+    const hedgeMat     = mats.greenAccent || new THREE.MeshStandardMaterial({ color: 0x2e6528, roughness: 0.85 });
     const flowerRed    = new THREE.MeshStandardMaterial({ color: 0xd32f2f, roughness: 0.6 });
     const shutterTeal  = new THREE.MeshStandardMaterial({ color: 0x2d5f56, roughness: 0.52, metalness: 0.35 });
     const gateTileMat  = new THREE.MeshStandardMaterial({ color: 0xf5f4ef, roughness: 0.58 });
+    const beamMat      = new THREE.MeshStandardMaterial({ color: 0xc8c5bc, roughness: 0.78 });
+    const railMat      = new THREE.MeshStandardMaterial({ color: 0xe2e6ea, roughness: 0.25, metalness: 0.85 });
+    const boardWoodMat = new THREE.MeshStandardMaterial({ color: 0x8d5b34, roughness: 0.7 });
+    const soilMat      = new THREE.MeshStandardMaterial({ color: 0x5a4d41, roughness: 0.95 });
 
     // 1) 門前通學步道 (紅灰雙色透水磚) 與紫白相間緣石 (沿建興南路42巷鋪設)
     addBox(osg, 9.2, 0.14, 3.4, walkwayBrickMat, 0, 0.07, 1.7, false);
@@ -4311,12 +4315,12 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     addBox(osg, 0.24, 3.20, 3.50, gateTileMat, -(gateClearW / 2 + 0.12), 1.60, -1.75);
     addBox(osg, 0.26, 1.05, 3.50, washStoneMat, -(gateClearW / 2 + 0.12), 0.525, -1.75);
     // 左側壁校園公佈欄
-    addBox(osg, 0.04, 0.90, 1.60, mats.wood || southDoorWoodMat, -(gateClearW / 2 - 0.02), 1.85, -1.80, false);
+    addBox(osg, 0.04, 0.90, 1.60, boardWoodMat, -(gateClearW / 2 - 0.02), 1.85, -1.80, false);
     // 左側壁金屬配電管箱
     addBox(osg, 0.10, 0.65, 0.45, mats.darkMetal, -(gateClearW / 2 - 0.04), 2.15, -0.55);
 
     // 通道天花板板底 (高度 3.20m) 與頂部捲起的深綠色鐵捲門箱
-    addBox(osg, gateClearW + 0.2, 0.18, 3.50, southBaseBeamMat, 0, 3.25, -1.75);
+    addBox(osg, gateClearW + 0.2, 0.18, 3.50, beamMat, 0, 3.25, -1.75);
     addBox(osg, gateClearW - 0.08, 0.45, 0.36, shutterTeal, 0, 3.00, -0.20);
     // 鐵捲門下露出約 0.25m 壓紋板面
     addBox(osg, gateClearW - 0.10, 0.25, 0.10, shutterTeal, 0, 2.68, -0.20);
@@ -4347,7 +4351,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     const leftPlD = 2.20;
     addBox(osg, planterW, planterH, leftPlD, washStoneMat, leftPlX, planterH / 2, 1.10);
     addBox(osg, planterW + 0.08, 0.08, leftPlD + 0.08, capStoneMat, leftPlX, planterH + 0.04, 1.10);
-    addBox(osg, planterW - 0.12, 0.10, leftPlD - 0.12, mats.soil, leftPlX, planterH, 1.10, false);
+    addBox(osg, planterW - 0.12, 0.10, leftPlD - 0.12, soilMat, leftPlX, planterH, 1.10, false);
     for (let s = -2; s <= 2; s++) {
       const sz = 1.10 + s * 0.42;
       const bMesh = addMesh(osg, new THREE.SphereGeometry(0.38, 8, 8), hedgeMat, leftPlX, planterH + 0.30, sz);
@@ -4366,7 +4370,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     const rightPlD = 2.00;
     addBox(osg, planterW, planterH, rightPlD, washStoneMat, rightPlX, planterH / 2, 1.00);
     addBox(osg, planterW + 0.08, 0.08, rightPlD + 0.08, capStoneMat, rightPlX, planterH + 0.04, 1.00);
-    addBox(osg, planterW - 0.12, 0.10, rightPlD - 0.12, mats.soil, rightPlX, planterH, 1.00, false);
+    addBox(osg, planterW - 0.12, 0.10, rightPlD - 0.12, soilMat, rightPlX, planterH, 1.00, false);
     for (let s = -2; s <= 2; s++) {
       const sz = 1.00 + s * 0.40;
       const bMesh = addMesh(osg, new THREE.SphereGeometry(0.38, 8, 8), hedgeMat, rightPlX, planterH + 0.30, sz);
@@ -4415,8 +4419,8 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     // 7) 右側東向銜接無障礙坡道與不鏽鋼扶手矮牆 (依照片右側)
     const rampEastW = 2.20;
     addBox(osg, rampEastW, 0.45, 1.60, washStoneMat, rightPlX + planterW / 2 + rampEastW / 2, 0.225, 0.75);
-    addBox(osg, rampEastW, 0.04, 0.04, southStainlessRailMat, rightPlX + planterW / 2 + rampEastW / 2, 0.85, 1.45);
-    addBox(osg, rampEastW, 0.04, 0.04, southStainlessRailMat, rightPlX + planterW / 2 + rampEastW / 2, 0.60, 1.45);
+    addBox(osg, rampEastW, 0.04, 0.04, railMat, rightPlX + planterW / 2 + rampEastW / 2, 0.85, 1.45);
+    addBox(osg, rampEastW, 0.04, 0.04, railMat, rightPlX + planterW / 2 + rampEastW / 2, 0.60, 1.45);
 
     osg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'old-south-gate'; });
     layerGroups.boundary.add(osg);
