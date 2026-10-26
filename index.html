@@ -2772,23 +2772,23 @@ const LANDMARKS = [
     name: '學校舊南側門（興安街）',
     enName: 'Old South Gate · Xingan St',
     category: '校園校門',
-    floors: '校園南側主要歷史出入口（南棟興學樓西端後方 · 建興南路42巷）',
+    floors: '校園南側出入口（南棟大樓東側 1F 興學樓大字下通道後面 · 建興南路42巷）',
     height: '建築穿堂挑高 3.5 公尺・格柵門高 1.15 公尺',
-    basis: '學校平面圖＋現場實景照片（南棟大樓後面的通學步道與學校舊南側門.jpg）',
-    pxBounds: [485, 312, 508, 326],
-    center: [X(496), 2.5, Z(318)],
-    summary: '座落於南棟興學樓西端後方（⑬–⑭軸樓梯間下方穿堂）、直接面臨建興南路42巷與興安街（建興南路34巷39弄）交會處的學校舊南側門。依現場實景照片 1:1 精確還原：建築基座切入式出入穿堂（內部設半開綠色鐵捲門與通往中庭階梯），門口兩側設洗石子混凝土修剪綠籬花台（栽植茂密矮仙丹灌木），中央配置黑色雙開直柵金屬矮門；左側緊鄰南棟興學樓無障礙坡道（附雙層不銹鋼扶手、七彩格柵欄杆與「選擇復興 家長安心」大型招生橫額），門前緊鄰透水磚通學步道、紫白緣石與興安街路名指示牌。',
+    basis: '學校平面圖＋現場實景照片（南棟大樓1F東側後面的學校舊南側門）',
+    pxBounds: [645, 310, 670, 326],
+    center: [X(657), 2.5, Z(318)],
+    summary: '座落於南棟大樓東側 1F「興學樓」大字下穿堂通道後方、直接面臨建興南路42巷與興安街（建興南路34巷39弄）T字路口的學校舊南側門。依現場實景照片 1:1 精確還原：建築基座切入式出入穿堂，右側白色磁磚牆貼掛圓角「興學樓」門牌與禁菸警示標誌，上方配置深綠色鐵捲門導軌箱，穿堂中央配置黑色金屬直柵折疊矮門；門口兩側設置圓角洗石子斜向花台（栽植修剪整齊之茂密矮仙丹與紅花綠植），花台前端各配置一座粉紅色/紅色安全活動拒馬；門前設有透水連鎖磚通學步道、紫白緣石與「興安街」金屬路名指示牌。',
     photos: [
-      { src: './tex/south_old_gate.jpg', title: '南棟大樓後面的通學步道與學校舊南側門（興安街 T 字路口）' },
+      { src: './tex/south_old_gate.jpg', title: '南棟大樓1F東側後面的學校舊南側門（建興南路42巷 · 興安街路口）' },
       { src: './tex/school_site_plan.jpg', title: '學校平面圖（衛星空拍）：標註學校新南側門與舊南側門之精確位置' }
     ],
     rooms: {},
     views: {
-      oblique: { p: [3.5, 4.2, 29.5], t: [-4.2, 2.2, 20.3] },
-      top: { p: [-4.2, 32.0, 20.3], t: [-4.2, 0.0, 20.3] },
-      front: { p: [-4.2, 2.5, 29.5], t: [-4.2, 2.2, 20.3] },
-      back: { p: [-4.2, 5.0, 10.0], t: [-4.2, 2.2, 20.3] },
-      entrance: { p: [-4.2, 1.8, 28.0], t: [-4.2, 2.0, 10.0] }
+      oblique: { p: [45.5, 4.2, 29.5], t: [37.8, 2.2, 20.3] },
+      top: { p: [37.8, 32.0, 20.3], t: [37.8, 0.0, 20.3] },
+      front: { p: [37.8, 2.5, 29.5], t: [37.8, 2.2, 20.3] },
+      back: { p: [37.8, 5.0, 10.0], t: [37.8, 2.2, 20.3] },
+      entrance: { p: [37.8, 1.8, 28.0], t: [37.8, 2.0, 10.0] }
     }
   },
   {
@@ -3738,7 +3738,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [X(955), Z(235), 9.5], // 復興路正門
     [X(955), Z(74),  5.0], // 東側門
     [X(772), Z(320), 4.5], // 學校新南側門 (東棟大樓右側)
-    [X(496), Z(318), 4.5], // 學校舊南側門 (南棟興學樓西端)
+    [X(657), Z(318), 4.8], // 學校舊南側門 (南棟大樓東側 1F 興學樓大字下通道後面)
     [X(429), Z(374), 4.5], // 幼兒園大門 (新棟大樓南側大門)
     [X(56),  Z(90),  5.0], // 西側後門
     [X(56),  Z(256), 4.2]  // 司令台後小門
@@ -4180,101 +4180,243 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     landmarkGroupMap.set('new-south-gate', nsg);
   }
 
+// ============================================================================
+  // 16 學校舊南側門 (建興南路42巷 · 南棟大樓東側 1F 興學樓大字下通道後面，依現場實景照片 1:1 準確建模)
   // ============================================================================
-  // 16 學校舊南側門 (興安街 / 建興南路34巷 · 南棟興學樓西端後方，依據實景照片 1:1 準確建模)
-  // ============================================================================
+  function makeSouthXingxueDoorplateTex() {
+    const c = document.createElement('canvas');
+    c.width = 320; c.height = 160;
+    const ctx = c.getContext('2d');
+    // 淺天藍色圓角招牌底板 (依照片：南棟大樓1F東側後面的學校舊南側門.jpg 右側牆面)
+    ctx.fillStyle = '#c5e2f7';
+    ctx.beginPath();
+    ctx.roundRect(10, 10, 300, 140, 22);
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#2b78b8';
+    ctx.stroke();
+
+    // 內襯亮藍邊框
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#5ba2d7';
+    ctx.beginPath();
+    ctx.roundRect(18, 18, 284, 124, 16);
+    ctx.stroke();
+
+    // 左側復興國小校徽圖示
+    ctx.fillStyle = '#e65100';
+    ctx.beginPath();
+    ctx.arc(52, 80, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('復興', 52, 80);
+
+    // 楷書大字「興 學 樓」
+    ctx.font = '900 60px "DFKai-SB", "BiauKai", "Noto Serif TC", serif';
+    ctx.fillStyle = '#0a3d68';
+    ctx.textAlign = 'center';
+    ctx.fillText('興學樓', 178, 84);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  function makeNoSmokingSignTex() {
+    const c = document.createElement('canvas');
+    c.width = 160; c.height = 160;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(80, 80, 74, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = '#d32f2f';
+    ctx.stroke();
+    // 斜線
+    ctx.beginPath();
+    ctx.moveTo(28, 28);
+    ctx.lineTo(132, 132);
+    ctx.stroke();
+    // 香菸造型
+    ctx.fillStyle = '#424242';
+    ctx.fillRect(45, 74, 50, 12);
+    ctx.fillStyle = '#ff9800';
+    ctx.fillRect(95, 74, 20, 12);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  function makeSouthAdBannerTex() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 128;
+    const ctx = c.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 512, 0);
+    grad.addColorStop(0, '#f97316');
+    grad.addColorStop(0.5, '#3b82f6');
+    grad.addColorStop(1, '#10b981');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('選擇復興 · 家長安心', 256, 48);
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText('五育均衡 雙語科技 適性展能', 256, 92);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
   function buildOldSouthGate(gx, gz) {
     const osg = new THREE.Group();
     osg.position.set(gx, 0, gz);
     osg.userData = { landmarkId: 'old-south-gate' };
 
     const washStoneMat = new THREE.MeshStandardMaterial({ map: makeTileTexture('#cfcac2', '#9c9890'), roughness: 0.88 });
-    const capStoneMat  = new THREE.MeshStandardMaterial({ color: 0xd4d2ca, roughness: 0.72 });
+    const capStoneMat  = new THREE.MeshStandardMaterial({ color: 0xdcd8d0, roughness: 0.72 });
     const darkIronMat  = new THREE.MeshStandardMaterial({ color: 0x1e2024, roughness: 0.42, metalness: 0.65 });
     const hedgeMat     = mats.hedge || new THREE.MeshStandardMaterial({ color: 0x2e6528, roughness: 0.85 });
     const flowerRed    = new THREE.MeshStandardMaterial({ color: 0xd32f2f, roughness: 0.6 });
-    const shutterTeal  = new THREE.MeshStandardMaterial({ color: 0x3d7068, roughness: 0.52, metalness: 0.35 });
+    const shutterTeal  = new THREE.MeshStandardMaterial({ color: 0x2d5f56, roughness: 0.52, metalness: 0.35 });
+    const gateTileMat  = new THREE.MeshStandardMaterial({ color: 0xf5f4ef, roughness: 0.58 });
 
-    // 1) 門前通學步道 (透水紅灰連鎖磚) 與緣石
-    addBox(osg, 8.5, 0.14, 3.0, walkwayBrickMat, 0, 0.07, 1.2, false);
-    addBox(osg, 8.5, 0.22, 0.30, curbStoneMat, 0, 0.11, 2.65, false);
+    // 1) 門前通學步道 (紅灰雙色透水磚) 與紫白相間緣石 (沿建興南路42巷鋪設)
+    addBox(osg, 9.2, 0.14, 3.4, walkwayBrickMat, 0, 0.07, 1.7, false);
+    addBox(osg, 9.2, 0.22, 0.30, curbStoneMat, 0, 0.11, 3.25, false);
 
-    // 2) 建築基座切入式出入穿堂 (內部深 2.4m，挑高 3.2m，配半開綠色鐵捲門與階梯)
-    addBox(osg, 2.80, 3.20, 2.40, mats.wallTile || mats.slab, 0, 1.60, -1.20, false);
-    // 綠色鐵捲門 (捲收於上方，下露約 1.2m 門面)
-    addBox(osg, 2.70, 1.35, 0.12, shutterTeal, 0, 2.45, -0.45);
-    // 鐵捲門水平壓紋線
-    for (let r = 0; r < 8; r++) {
-      addBox(osg, 2.68, 0.03, 0.14, mats.darkMetal, 0, 1.85 + r * 0.16, -0.45, false);
+    // 2) 建築基座切入式通道穿堂 (寬 3.2m，挑高 3.2m，貫穿深度 3.5m 至南棟教室北走廊)
+    const gateClearW = 3.20;
+    // 內部平整磨石子地坪
+    addBox(osg, gateClearW, 0.14, 3.50, mats.corridorTerrazzo, 0, 0.07, -1.75, false);
+
+    // 東側壁 (右側白磁磚內牆)：掛圓角「興學樓」門牌與禁菸標誌，設深綠色鐵捲門垂直滑軌
+    addBox(osg, 0.24, 3.20, 3.50, gateTileMat, gateClearW / 2 + 0.12, 1.60, -1.75);
+    // 右側「興學樓」門牌招牌 (面向通道西向)
+    const plateMesh = addMesh(osg, new THREE.PlaneGeometry(0.85, 0.42), new THREE.MeshBasicMaterial({ map: makeSouthXingxueDoorplateTex() }), gateClearW / 2 - 0.01, 1.95, -0.65, false);
+    plateMesh.rotation.y = -Math.PI / 2;
+    // 右側「全面禁菸」圓形告示牌
+    const smokeMesh = addMesh(osg, new THREE.PlaneGeometry(0.34, 0.34), new THREE.MeshBasicMaterial({ map: makeNoSmokingSignTex() }), gateClearW / 2 - 0.01, 1.45, -0.65, false);
+    smokeMesh.rotation.y = -Math.PI / 2;
+    // 右側深綠色鐵捲門垂直導軌
+    addBox(osg, 0.12, 3.20, 0.14, shutterTeal, gateClearW / 2 - 0.05, 1.60, -0.15);
+
+    // 西側壁 (左側內牆)：白色磁磚 + 灰色抿石子牆裙 + 配電箱與公佈欄
+    addBox(osg, 0.24, 3.20, 3.50, gateTileMat, -(gateClearW / 2 + 0.12), 1.60, -1.75);
+    addBox(osg, 0.26, 1.05, 3.50, washStoneMat, -(gateClearW / 2 + 0.12), 0.525, -1.75);
+    // 左側壁校園公佈欄
+    addBox(osg, 0.04, 0.90, 1.60, mats.wood || southDoorWoodMat, -(gateClearW / 2 - 0.02), 1.85, -1.80, false);
+    // 左側壁金屬配電管箱
+    addBox(osg, 0.10, 0.65, 0.45, mats.darkMetal, -(gateClearW / 2 - 0.04), 2.15, -0.55);
+
+    // 通道天花板板底 (高度 3.20m) 與頂部捲起的深綠色鐵捲門箱
+    addBox(osg, gateClearW + 0.2, 0.18, 3.50, southBaseBeamMat, 0, 3.25, -1.75);
+    addBox(osg, gateClearW - 0.08, 0.45, 0.36, shutterTeal, 0, 3.00, -0.20);
+    // 鐵捲門下露出約 0.25m 壓紋板面
+    addBox(osg, gateClearW - 0.10, 0.25, 0.10, shutterTeal, 0, 2.68, -0.20);
+    for (let r = 0; r < 3; r++) {
+      addBox(osg, gateClearW - 0.12, 0.03, 0.12, mats.darkMetal, 0, 2.60 + r * 0.08, -0.20, false);
     }
-    // 內部通往中庭階梯
-    for (let st = 0; st < 4; st++) {
-      addBox(osg, 2.5, 0.18, 0.35, mats.corridorTerrazzo, 0, 0.09 + st * 0.18, -1.1 - st * 0.32, false);
+
+    // 3) 門口左右兩側洗石子斜向花台 (Planters — 依照片 1:1 還原外凸圓角矮牆與矮仙丹)
+    const planterW = 0.85, planterH = 0.68;
+    const gateOpenW = 2.45; // 左右花台之間的出入通道淨寬
+
+    // 建立移動式紅色警示拒馬 (Mobile Safety Barrier)
+    function createMobileRedBarrier(title) {
+      const barTex = makeSignTexture(title, '復興國小通學步道 · 保持順暢', '#d32f2f', '#ffffff', 320, 130);
+      const bGrp = new THREE.Group();
+      addBox(bGrp, 1.20, 0.045, 0.045, mats.red, 0, 0.68, 0);
+      addBox(bGrp, 1.20, 0.045, 0.045, mats.red, 0, 0.22, 0);
+      for (const sx of [-0.52, 0.52]) {
+        addMesh(bGrp, new THREE.CylinderGeometry(0.022, 0.022, 0.72, 8), mats.red, sx, 0.36, 0);
+        addBox(bGrp, 0.05, 0.05, 0.38, mats.darkMetal, sx, 0.025, 0);
+      }
+      addMesh(bGrp, new THREE.PlaneGeometry(0.92, 0.35), new THREE.MeshBasicMaterial({ map: barTex }), 0, 0.45, 0.03, false);
+      return bGrp;
     }
 
-    // 3) 門口兩側修剪綠籬花台 (突出 1.8m，高 0.68m，洗石子飾面配圓倒角緣石)
-    const gateClearW = 2.40;
-    const planterW = 0.68, planterD = 1.85, planterH = 0.68;
-    for (const side of [-1, 1]) {
-      const plx = side * (gateClearW / 2 + planterW / 2);
-      const plz = 0.55;
-      // 洗石子花台外壁
-      addBox(osg, planterW, planterH, planterD, washStoneMat, plx, planterH / 2, plz);
-      // 花台壓頂石
-      addBox(osg, planterW + 0.08, 0.10, planterD + 0.08, capStoneMat, plx, planterH + 0.05, plz);
-      // 沃土與矮仙丹修剪綠籬灌木
-      addBox(osg, planterW - 0.12, 0.12, planterD - 0.12, mats.soil, plx, planterH, plz, false);
-      for (let sh = -2; sh <= 2; sh++) {
-        const sz = plz + sh * 0.35;
-        const bMesh = addMesh(osg, new THREE.SphereGeometry(0.38, 8, 8), hedgeMat, plx, planterH + 0.32, sz);
-        bMesh.scale.set(0.9, 1.15, 0.9);
-        if (Math.abs(sh) === 1) {
-          addMesh(osg, new THREE.SphereGeometry(0.08, 6, 6), flowerRed, plx + side * 0.12, planterH + 0.45, sz);
-        }
+    // 3A. 左側 (西側) 洗石子斜向花台 (長度 2.2m，沿斜坡延伸)
+    const leftPlX = -(gateOpenW / 2 + planterW / 2);
+    const leftPlD = 2.20;
+    addBox(osg, planterW, planterH, leftPlD, washStoneMat, leftPlX, planterH / 2, 1.10);
+    addBox(osg, planterW + 0.08, 0.08, leftPlD + 0.08, capStoneMat, leftPlX, planterH + 0.04, 1.10);
+    addBox(osg, planterW - 0.12, 0.10, leftPlD - 0.12, mats.soil, leftPlX, planterH, 1.10, false);
+    for (let s = -2; s <= 2; s++) {
+      const sz = 1.10 + s * 0.42;
+      const bMesh = addMesh(osg, new THREE.SphereGeometry(0.38, 8, 8), hedgeMat, leftPlX, planterH + 0.30, sz);
+      bMesh.scale.set(1.0, 0.92, 0.95);
+      if (Math.abs(s) === 1 || s === 0) {
+        addMesh(osg, new THREE.SphereGeometry(0.08, 6, 6), flowerRed, leftPlX + (s % 2 === 0 ? 0.10 : -0.10), planterH + 0.42, sz);
       }
     }
+    // 左側花台南端前方紅色活動拒馬
+    const barL = createMobileRedBarrier('請勿停車');
+    barL.position.set(leftPlX, 0, 2.45);
+    osg.add(barL);
 
-    // 4) 黑色雙開金屬直柵矮門 (門高 1.15m，黑鐵烤漆直柵)
-    const leafW = gateClearW / 2 - 0.04;
+    // 3B. 右側 (東側) 洗石子花台 (長度 2.0m)
+    const rightPlX = +(gateOpenW / 2 + planterW / 2);
+    const rightPlD = 2.00;
+    addBox(osg, planterW, planterH, rightPlD, washStoneMat, rightPlX, planterH / 2, 1.00);
+    addBox(osg, planterW + 0.08, 0.08, rightPlD + 0.08, capStoneMat, rightPlX, planterH + 0.04, 1.00);
+    addBox(osg, planterW - 0.12, 0.10, rightPlD - 0.12, mats.soil, rightPlX, planterH, 1.00, false);
+    for (let s = -2; s <= 2; s++) {
+      const sz = 1.00 + s * 0.40;
+      const bMesh = addMesh(osg, new THREE.SphereGeometry(0.38, 8, 8), hedgeMat, rightPlX, planterH + 0.30, sz);
+      bMesh.scale.set(1.0, 0.92, 0.95);
+      if (Math.abs(s) === 1 || s === 0) {
+        addMesh(osg, new THREE.SphereGeometry(0.08, 6, 6), flowerRed, rightPlX + (s % 2 === 0 ? 0.10 : -0.10), planterH + 0.42, sz);
+      }
+    }
+    // 右側花台南端前方紅色活動拒馬
+    const barR = createMobileRedBarrier('通學步道');
+    barR.position.set(rightPlX, 0, 2.25);
+    osg.add(barR);
+
+    // 4) 黑色金屬直柵矮折疊門 (門高 1.15m，黑鐵烤漆，左右微折疊敞開迎賓)
+    const leafW = gateOpenW / 2 - 0.05;
     for (const side of [-1, 1]) {
       const leaf = new THREE.Group();
-      leaf.position.set(side * (gateClearW / 2), 0, -0.32);
-      leaf.rotation.y = side * 0.22; // 略微開啟狀態
+      leaf.position.set(side * (gateOpenW / 2), 0, -0.15);
+      leaf.rotation.y = side * 0.32; // 往通道內折疊開啟
       const dir = -side;
       // 外框與上下橫桿
-      addBox(leaf, leafW, 0.05, 0.05, darkIronMat, dir * leafW / 2, 0.18, 0);
-      addBox(leaf, leafW, 0.05, 0.05, darkIronMat, dir * leafW / 2, 1.10, 0);
-      addBox(leaf, 0.05, 0.95, 0.05, darkIronMat, dir * leafW, 0.64, 0);
-      // 密集垂直金屬格柵
+      addBox(leaf, leafW, 0.045, 0.045, darkIronMat, dir * leafW / 2, 0.15, 0);
+      addBox(leaf, leafW, 0.045, 0.045, darkIronMat, dir * leafW / 2, 1.10, 0);
+      addBox(leaf, 0.045, 0.95, 0.045, darkIronMat, dir * leafW, 0.62, 0);
+      // 垂直細金屬格柵
       const nBars = 8;
       for (let b = 1; b < nBars; b++) {
         const bx = dir * (b / nBars) * leafW;
-        addBox(leaf, 0.024, 0.90, 0.024, darkIronMat, bx, 0.64, 0, false);
+        addBox(leaf, 0.022, 0.90, 0.022, darkIronMat, bx, 0.62, 0, false);
       }
       osg.add(leaf);
     }
 
-    // 5) 門前紅色移動警示拒馬 (「注意安全」)
-    const barrierTex = makeSignTexture('請勿停車', '復興國小通學步道 · 保持暢通', '#d32f2f', '#ffffff', 320, 140);
-    const redBar = new THREE.Group();
-    redBar.position.set(0.35, 0, 1.45);
-    addBox(redBar, 1.25, 0.05, 0.05, mats.red, 0, 0.68, 0);
-    addBox(redBar, 1.25, 0.05, 0.05, mats.red, 0, 0.22, 0);
-    for (const sx of [-0.55, 0.55]) {
-      addMesh(redBar, new THREE.CylinderGeometry(0.025, 0.025, 0.72, 8), mats.red, sx, 0.36, 0);
-      addBox(redBar, 0.05, 0.05, 0.38, mats.darkMetal, sx, 0.025, 0);
-    }
-    addMesh(redBar, new THREE.PlaneGeometry(0.92, 0.36), new THREE.MeshBasicMaterial({ map: barrierTex }), 0, 0.45, 0.03, false);
-    osg.add(redBar);
+    // 5) 左側通學步道彩色宣傳大型橫額布條 (依照片掛於左側七彩護欄)
+    const adBannerMesh = addMesh(osg, new THREE.PlaneGeometry(2.40, 0.65), new THREE.MeshBasicMaterial({ map: makeSouthAdBannerTex() }), leftPlX - 1.55, 0.85, 2.50, false);
 
-    // 6) 興安街路名牌 (金屬立柱，面臨建興南路34巷39弄)
+    // 6) 興安街路名指示牌 (深綠色金屬路牌，立於興安街 T 字路口正對面步道旁)
     const signPole = new THREE.Group();
-    signPole.position.set(-gateClearW / 2 - planterW - 0.45, 0, 2.2);
+    signPole.position.set(leftPlX - 1.85, 0, 2.60);
     addMesh(signPole, new THREE.CylinderGeometry(0.04, 0.04, 3.2, 8), mats.darkMetal, 0, 1.6, 0);
     const streetTex = makeSignTexture('興安街', '建興南路34巷39弄', '#1b5e20', '#ffffff', 320, 120);
     const streetSignMesh = addMesh(signPole, new THREE.PlaneGeometry(0.72, 0.28), new THREE.MeshBasicMaterial({ map: streetTex }), 0, 2.85, 0.03, false);
     streetSignMesh.rotation.y = Math.PI / 2;
     osg.add(signPole);
+
+    // 7) 右側東向銜接無障礙坡道與不鏽鋼扶手矮牆 (依照片右側)
+    const rampEastW = 2.20;
+    addBox(osg, rampEastW, 0.45, 1.60, washStoneMat, rightPlX + planterW / 2 + rampEastW / 2, 0.225, 0.75);
+    addBox(osg, rampEastW, 0.04, 0.04, southStainlessRailMat, rightPlX + planterW / 2 + rampEastW / 2, 0.85, 1.45);
+    addBox(osg, rampEastW, 0.04, 0.04, southStainlessRailMat, rightPlX + planterW / 2 + rampEastW / 2, 0.60, 1.45);
 
     osg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'old-south-gate'; });
     layerGroups.boundary.add(osg);
@@ -4856,7 +4998,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   }
 
   // 學校舊南側門 (興安街 / 建興南路34巷 · 南棟興學樓西端後方穿堂，依照片精準重建)
-  buildOldSouthGate(X(496), Z(318));
+  buildOldSouthGate(X(657), Z(318));
 }
 
 // Context Neighbor Buildings (`context` layer - Pingtung Townhouses positioned cleanly outside the Buffered Roads)
@@ -9088,6 +9230,11 @@ function makeCourtyardConcentricBrickTexture() {
   }
   for (let fl = 0; fl < 3; fl++) {
     const fy = yF[fl];
+    if (fl === 0) {
+      // 1F 為貫通中庭至舊南側門之穿堂走道：右半側為通敞出入通道，左半側為樓梯梯下側壁
+      addBox(g, (entW - 0.44) / 2, FH - 0.36, 0.18, southWallMat, leftStairXL - 0.25 - (entW - 0.44) / 4, fy + (FH - 0.36) / 2, zCoreSouth);
+      continue;
+    }
     addBox(g, entW - 0.44, 1.10, 0.18, southWallMat, entCx, fy + 0.55, zCoreSouth);
     addBox(g, 1.80, 1.80, 0.12, southGlassMat, entCx, fy + 2.00, zCoreSouth);
     for (let h = 0; h < 3; h++) {
@@ -9367,6 +9514,8 @@ function makeCourtyardConcentricBrickTexture() {
   }
 
   for (let b = 1; b <= 12; b++) {
+    // 軸線 ④–⑤ (b = 4) 為「興學樓」通道穿堂（直通舊南側門），不設教室封閉外牆與窗戶！
+    if (b === 4) continue;
     const bx = (ax(b) + ax(b + 1)) / 2;
     const bw = Math.abs(ax(b + 1) - ax(b)) - 0.48;
     const fy = yF[0];
@@ -9400,16 +9549,27 @@ function makeCourtyardConcentricBrickTexture() {
   const fenceH = 1.15;
   const splitX = ax(10);
   const fenceColors = [0xef4444, 0xf97316, 0xf59e0b, 0x10b981, 0x06b6d4, 0x3b82f6, 0x8b5cf6];
-  const fenceW = Math.abs(xEast - splitX);
-  addBox(g, fenceW, 0.38, 0.32, southBaseBeamMat, (xEast + splitX) / 2, 0.19, fenceZ);
-  const numPickets = Math.floor(fenceW / 0.30);
-  for (let p = 0; p < numPickets; p++) {
-    const px = splitX + p * 0.30 + 0.15;
-    const pickMat = new THREE.MeshStandardMaterial({ color: fenceColors[p % fenceColors.length], roughness: 0.4 });
-    addBox(g, 0.045, fenceH, 0.045, pickMat, px, 0.38 + fenceH / 2, fenceZ);
+  // 舊南側門通道開口處 [entCx - 2.2m, entCx + 2.2m] 保持暢通無阻，分為東段與西段護欄
+  const gateOpenXL = entCx - 2.2;
+  const gateOpenXR = entCx + 2.2;
+
+  function buildFenceRun(xStart, xEnd) {
+    const len = Math.abs(xStart - xEnd);
+    if (len < 0.6) return;
+    const minX = Math.min(xStart, xEnd), maxX = Math.max(xStart, xEnd);
+    const midX = (minX + maxX) / 2;
+    addBox(g, len, 0.38, 0.32, southBaseBeamMat, midX, 0.19, fenceZ);
+    const numP = Math.floor(len / 0.30);
+    for (let p = 0; p < numP; p++) {
+      const px = minX + p * 0.30 + 0.15;
+      const pickMat = new THREE.MeshStandardMaterial({ color: fenceColors[p % fenceColors.length], roughness: 0.4 });
+      addBox(g, 0.045, fenceH, 0.045, pickMat, px, 0.38 + fenceH / 2, fenceZ);
+    }
+    addBox(g, len, 0.04, 0.04, southStainlessRailMat, midX, 0.38 + fenceH * 0.25, fenceZ);
+    addBox(g, len, 0.04, 0.04, southStainlessRailMat, midX, 0.38 + fenceH * 0.85, fenceZ);
   }
-  addBox(g, fenceW, 0.04, 0.04, southStainlessRailMat, (xEast + splitX) / 2, 0.38 + fenceH * 0.25, fenceZ);
-  addBox(g, fenceW, 0.04, 0.04, southStainlessRailMat, (xEast + splitX) / 2, 0.38 + fenceH * 0.85, fenceZ);
+  buildFenceRun(xEast, gateOpenXR); // 東段七彩護欄
+  buildFenceRun(gateOpenXL, splitX); // 西段七彩護欄
 
   const westHedgeW = Math.abs(splitX - xWest);
   addBox(g, westHedgeW, 0.35, 0.75, southBaseBeamMat, (splitX + xWest) / 2, 0.175, fenceZ - 0.20);
@@ -13626,7 +13786,7 @@ const ROUTE_NODES = {
   'courtyard-west':  [455, 215],
   'west-building':   [425, 225],
   'new-building':    [445, 305],
-  'old-south-gate':  [496, 318],
+  'old-south-gate':  [657, 318],
   'new-south-gate':  [772, 320],
   'track-east':      [382, 235],
   'sports-track':    [294, 255],
