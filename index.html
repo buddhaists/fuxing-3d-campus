@@ -11710,18 +11710,25 @@ function makeMainGateWelcomeBannerTexture() {
   const pylonSignMesh = addMesh(mg, new THREE.PlaneGeometry(0.70, 4.25), pylonSignMat, pylonX + 0.94, 2.32, pylonZ, false);
   pylonSignMesh.rotation.y = Math.PI / 2;
 
-  // --------------------------------------------------------------------------
+// --------------------------------------------------------------------------
   // 面對學校大門左側（南側）：依據《2023_0604_綠籬植栽平面圖》標示【區域二：新南側門至學校大門，全長 62.2M，配置楓港柿、桂花樹】
-  // 與現場實景寫真 1~3 (Photo 1~3) 1:1 精確還原前庭綠籬圍牆與通學步道景觀
+  // 與現場最新實景寫真 1~3 (Photo 1~3) 1:1 精確還原前庭綠籬圍牆與通學步道景觀
+  // 特徵重點：
+  // 1. 深灰色小碎石洗石子矮牆壁身 (高 0.40m，寬 0.36m) 搭配米白色石材倒角壓頂石 (寬 0.44m，兩邊微懸挑)
+  // 2. 迎向大門廣場呈優美「內凹圓弧」，向南順勢彎出「半圓形突出花台島」，再沿復興路人行道向南連貫延伸
+  // 3. 通學步道外側邊緣聳立標誌性「白色歐式雙燈頭高桿路燈」(Photo 1~3 實景特色地標)
+  // 4. 花台內部依圖精植常綠修剪綠籬、突出島挺拔多幹楓港柿小喬木、金黃桂花簇、與後方兩棵高聳大王椰子樹
   // --------------------------------------------------------------------------
-  const darkGraniteCapMat   = new THREE.MeshStandardMaterial({ color: 0x36393d, roughness: 0.52 }); // 實景深灰黑色倒角花崗石壓頂石
-  const washStoneWallMat    = new THREE.MeshStandardMaterial({ map: makeTileTexture('#b8b4ab', '#848076'), roughness: 0.86 }); // 洗石子/抿石子矮牆壁身
-  const purpleCurbStripeMat = new THREE.MeshStandardMaterial({ color: 0x9e81b8, roughness: 0.68 }); // 實景淡紫色油漆道路緣石標線
-  const fenggangMat         = new THREE.MeshStandardMaterial({ color: 0x214f24, roughness: 0.65 }); // 屏東原生常綠楓港柿 (Diospyros vaccinioides) 光澤墨綠
-  const osmanthusLeafMat    = new THREE.MeshStandardMaterial({ color: 0x1b441f, roughness: 0.74 }); // 芬芳桂花樹 (Osmanthus fragrans) 革質深綠葉
-  const osmanthusFlowerMat  = new THREE.MeshStandardMaterial({ color: 0xfff6ad, roughness: 0.55 }); // 桂花盛開芬芳金黃小花簇
-  const lawnGrassMat        = new THREE.MeshStandardMaterial({ color: 0x3c7336, roughness: 0.88 }); // 前庭自然草坪
-  const gardenSoilMat       = new THREE.MeshStandardMaterial({ color: 0x42382e, roughness: 0.90 }); // 花台深黑肥沃土壤
+  const stoneCapMat         = new THREE.MeshStandardMaterial({ color: 0xe6e4dc, roughness: 0.65 }); // 實景米白/灰白石材倒角壓頂石 (鮮明黑白對比)
+  const washStoneWallMat    = new THREE.MeshStandardMaterial({ map: makeTileTexture('#7d7870', '#4a4640'), roughness: 0.88 }); // 深灰小碎石洗石子矮牆壁身
+  const purpleCurbStripeMat = new THREE.MeshStandardMaterial({ color: 0x9b7eb5, roughness: 0.70 }); // 實景淡紫色油漆道路緣石標線
+  const fenggangMat         = new THREE.MeshStandardMaterial({ color: 0x1d5422, roughness: 0.65 }); // 屏東原生常綠楓港柿 (Diospyros vaccinioides) 光澤墨綠
+  const osmanthusLeafMat    = new THREE.MeshStandardMaterial({ color: 0x18421c, roughness: 0.72 }); // 芬芳桂花樹 (Osmanthus fragrans) 革質深綠葉
+  const osmanthusFlowerMat  = new THREE.MeshStandardMaterial({ color: 0xffea78, roughness: 0.50 }); // 桂花盛開芬芳金黃小花簇
+  const lawnGrassMat        = new THREE.MeshStandardMaterial({ color: 0x417d3b, roughness: 0.86 }); // 前庭自然草坪
+  const gardenSoilMat       = new THREE.MeshStandardMaterial({ color: 0x3d332a, roughness: 0.92 }); // 花台深黑肥沃土壤
+  const whiteLampMat        = new THREE.MeshStandardMaterial({ color: 0xf5f7fa, roughness: 0.25, metalness: 0.45 }); // 白色歐式路燈烤漆
+  const lampGlowMat         = new THREE.MeshStandardMaterial({ color: 0xfffae8, roughness: 0.30, emissive: 0xfffae8, emissiveIntensity: 0.35 }); // 吊鐘燈罩發光體
 
   // 1) 主門柱旁之副門柱與不銹鋼活動柵欄門 (Photo 1 實景)
   const subPillarZ = pylonZ + 0.85;
@@ -11745,70 +11752,82 @@ function makeMainGateWelcomeBannerTexture() {
   addMesh(coneGrp, new THREE.CylinderGeometry(0.085, 0.115, 0.18, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }), 0, 0.42, 0); // 反光白環
   mg.add(coneGrp);
 
-  // --------------------------------------------------------------------------
-  // 【依據《2023_0604_綠籬植栽平面圖》標示【區域二】與實景照片 1~3 1:1 精確還原】
-  // 學校大門旁邊綠籬矮圍牆：呈現波浪形狀，一凸一凹，半圓突出，半圓凹入，圓潤流暢
-  // 包含：
-  // 1. 大門南側黑色金屬安全欄杆與大型招生宣傳橫額（「選擇復興 家長安心」）
-  // 2. 高解析度平滑波浪形抿石子矮圍牆（高 0.38m，寬 0.38m）與深灰花崗石倒角壓頂石（寬 0.46m）
-  //    - 第一波峰（凸）：半圓突出花台，凸向迎賓廣場（X = pylonX - 1.20, Z = pylonZ + 5.50）
-  //    - 波谷（凹）：半圓凹入花園，凹向樹蔭休憩區（X = pylonX - 5.80, Z = pylonZ + 9.60）
-  //    - 第二波峰（凸）：半圓突出花台，凸向復興路通學步道（X = pylonX - 0.70, Z = pylonZ + 13.30）
-  //    - 東南轉角弧線：圓順銜接建興南路 42 巷南向綠籬界面（Z = Z(326)）
-  // 3. 區域二植栽精緻化：球形修剪墨綠楓港柿與芬芳金桂花樹交替茂密排列，綴飾四瓣金桂花簇
-  // 4. 第一半圓突出波峰核心：景觀小喬木主灌木叢、草坪土丘與金黃露花矮灌木
-  // 5. 半圓凹入波谷花園核心：濃蔭大樟樹、南台灣蒲葵、洗石子休閒石桌與四張石凳、蜿蜒園道
-  // 6. 前庭連鎖地磚迎賓廣場、步道外側淡紫色路緣石標線（一路連貫延伸 62.2M 至新南側門）
-  // --------------------------------------------------------------------------
-
-  // 1) 前庭迎賓連鎖磚地坪廣場 (依實景照片 1~3：大門左側開敞迎賓腹地)
-  const plazaW = 16.5, plazaD = 24.0;
-  const plazaCx = pylonX - 6.2, plazaCz = pylonZ + 11.5;
+  // 2) 前庭迎賓連鎖磚地坪廣場 (依實景照片 1~3：大門左側開敞迎賓腹地)
+  const plazaW = 18.0, plazaD = 25.0;
+  const plazaCx = pylonX - 6.5, plazaCz = pylonZ + 12.0;
   addBox(mg, plazaW, 0.12, plazaD, walkwayBrickMat, plazaCx, 0.06, plazaCz, false);
 
-  // 2) 大門南側黑色金屬直柵安全圍欄與「選擇復興 家長安心」大型招生宣傳橫額 (Photo 1~3 實景)
-  const fenceZ1 = subPillarZ + 1.25, fenceZ2 = pylonZ + 2.80;
+  // 3) 標誌性「白色歐式雙燈頭高桿路燈」(Photo 1~3 實景特色地標：立於大門與花台前之步道邊緣)
+  {
+    const lampX = pylonX - 0.28, lampZ = pylonZ + 4.20;
+    const lampGrp = new THREE.Group();
+    lampGrp.position.set(lampX, 0, lampZ);
+    // 八角形錐形法蘭基座
+    addMesh(lampGrp, new THREE.CylinderGeometry(0.14, 0.18, 0.45, 8), whiteLampMat, 0, 0.225, 0);
+    // 主立柱 (白色圓管)
+    addMesh(lampGrp, new THREE.CylinderGeometry(0.048, 0.048, 4.20, 12), whiteLampMat, 0, 2.10, 0);
+    // 頂部裝飾圓球收頭
+    addMesh(lampGrp, new THREE.SphereGeometry(0.08, 10, 8), whiteLampMat, 0, 4.30, 0);
+
+    // 雙向對稱弧形懸挑金屬彎臂
+    for (const dir of [-1, 1]) {
+      const armArmX = 0;
+      const armArmZ = dir * 0.42;
+      // 橫挑小臂
+      addBox(lampGrp, 0.035, 0.035, 0.45, whiteLampMat, 0, 4.10, dir * 0.22);
+      addBox(lampGrp, 0.035, 0.18, 0.035, whiteLampMat, 0, 4.02, armArmZ);
+      // 乳白色歐式錐形吊鐘燈罩
+      addMesh(lampGrp, new THREE.ConeGeometry(0.18, 0.26, 12), lampGlowMat, 0, 3.82, armArmZ);
+      addMesh(lampGrp, new THREE.SphereGeometry(0.09, 8, 8), lampGlowMat, 0, 3.70, armArmZ);
+    }
+    mg.add(lampGrp);
+  }
+
+  // 4) 大門南側黑色金屬直柵安全圍欄與「選擇復興 家長安心」大型招生宣傳橫額 (Photo 1~3 實景)
+  const fenceZ1 = subPillarZ + 1.25, fenceZ2 = pylonZ + 4.20;
   const fenceLen = fenceZ2 - fenceZ1;
-  const fenceX = pylonX - 4.40;
+  const fenceX = pylonX - 3.80;
+  // 圍欄基座 (洗石子矮基座)
+  addBox(mg, 0.32, 0.25, fenceLen, washStoneWallMat, fenceX, 0.125, (fenceZ1 + fenceZ2) / 2);
   // 圍欄立柱 (黑色方柱)
-  addBox(mg, 0.28, 2.05, 0.28, mats.darkMetal, fenceX, 1.025, fenceZ1);
-  addBox(mg, 0.28, 2.05, 0.28, mats.darkMetal, fenceX, 1.025, fenceZ2);
+  addBox(mg, 0.25, 2.05, 0.25, mats.darkMetal, fenceX, 1.025, fenceZ1);
+  addBox(mg, 0.25, 2.05, 0.25, mats.darkMetal, fenceX, 1.025, fenceZ2);
   // 黑色垂直金屬格柵
   addBox(mg, 0.04, 0.04, fenceLen, mats.darkMetal, fenceX, 1.88, (fenceZ1 + fenceZ2) / 2);
-  addBox(mg, 0.04, 0.04, fenceLen, mats.darkMetal, fenceX, 0.25, (fenceZ1 + fenceZ2) / 2);
+  addBox(mg, 0.04, 0.04, fenceLen, mats.darkMetal, fenceX, 0.35, (fenceZ1 + fenceZ2) / 2);
   const nPickets = Math.floor(fenceLen / 0.18);
   for (let pk = 1; pk < nPickets; pk++) {
     const pkz = fenceZ1 + (pk / nPickets) * fenceLen;
-    addBox(mg, 0.025, 1.62, 0.025, mats.darkMetal, fenceX, 1.06, pkz, false);
+    addBox(mg, 0.025, 1.50, 0.025, mats.darkMetal, fenceX, 1.12, pkz, false);
   }
   // 實景大型宣傳橫額 ("選擇復興 家長安心 復興國小・幼兒園 招生中")
   const bannerMat = new THREE.MeshStandardMaterial({ map: makeMainGateWelcomeBannerTexture(), roughness: 0.55 });
   const bMesh = addMesh(mg, new THREE.PlaneGeometry(fenceLen - 0.2, 0.78), bannerMat, fenceX + 0.06, 1.25, (fenceZ1 + fenceZ2) / 2, false);
   bMesh.rotation.y = Math.PI / 2;
 
-  // 3) 【波浪形洗石子綠籬矮圍牆 (Wave-Shaped Curved Hedge Wall)】
-  // 依據《2023_0604 綠籬植栽平面圖》標示【區域二】真實測繪軌跡與現場照片 1~3 精確還原：
-  // 呈現波浪形狀，一凸一凹，半圓突出，半圓凹入，圓潤流暢
+  // 5) 【依據《2023_0604 綠籬植栽平面圖》標示【區域二】真實測繪軌跡與現場照片 1~3 精確還原】
+  // 學校大門旁邊綠籬矮圍牆：呈現優美流暢之 S 型雙弧輪廓（大門廣場內凹圓弧 ➔ 半圓突出花台島 ➔ 復興路人行道直線延展 ➔ 東南轉角弧線）
+  // 精緻造型：深灰色洗石子壁身＋米白色石材倒角壓頂石＋基座出腳＋端頭方形立柱
   const waveCtrlPoints = [
-    new THREE.Vector3(pylonX - 4.50, 0, pylonZ + 2.80), // 起點：黑鐵安全圍欄交界
-    new THREE.Vector3(pylonX - 2.80, 0, pylonZ + 4.00), // 順勢向東南外展
-    new THREE.Vector3(pylonX - 1.20, 0, pylonZ + 5.50), // 第一圓弧波峰（半圓突出 · 凸向大門迎賓廣場，形成圓弧花台）
-    new THREE.Vector3(pylonX - 2.30, 0, pylonZ + 7.30), // 圓弧迴轉
-    new THREE.Vector3(pylonX - 4.30, 0, pylonZ + 8.50), // 轉向校園內部
-    new THREE.Vector3(pylonX - 5.80, 0, pylonZ + 9.60), // 內凹波谷最深處（半圓凹入 · 凹向樹蔭花園，形成休憩廣場）
-    new THREE.Vector3(pylonX - 4.60, 0, pylonZ + 11.20), // 自凹谷向東南翻轉迴展
-    new THREE.Vector3(pylonX - 2.50, 0, pylonZ + 12.30), // 大幅外展迎向復興路
-    new THREE.Vector3(pylonX - 0.70, 0, pylonZ + 13.30), // 第二圓弧波峰（半圓突出 · 凸向復興路通學步道外側）
-    new THREE.Vector3(pylonX - 1.60, 0, pylonZ + 14.80), // 圓潤轉向東南角
-    new THREE.Vector3(pylonX - 3.60, 0, pylonZ + 16.30), // 轉入南向建興南路 42 巷界線
+    new THREE.Vector3(pylonX - 3.80, 0, pylonZ + 4.20), // 起點：黑鐵安全圍欄交界 (方形端柱)
+    new THREE.Vector3(pylonX - 4.30, 0, pylonZ + 5.20), // 順勢向校園內部內凹，形成開闊迎賓廣場
+    new THREE.Vector3(pylonX - 4.10, 0, pylonZ + 6.60), // 內凹弧線谷底
+    new THREE.Vector3(pylonX - 3.10, 0, pylonZ + 7.80), // 翻轉弧線向東南外展
+    new THREE.Vector3(pylonX - 1.50, 0, pylonZ + 8.80), // 第一圓弧波峰（半圓突出 · 凸向迎賓廣場與通學步道，Photo 1 實景圓形花台）
+    new THREE.Vector3(pylonX - 1.10, 0, pylonZ + 10.20),// 突出島東緣，朝向復興路人行道
+    new THREE.Vector3(pylonX - 1.35, 0, pylonZ + 12.00),// 平順過渡至復興路通學步道內緣
+    new THREE.Vector3(pylonX - 1.35, 0, pylonZ + 15.00),// 沿復興路通學步道向南筆直延伸
+    new THREE.Vector3(pylonX - 1.50, 0, pylonZ + 18.00),// 沿通學步道延展 (區域二 62.2M 連續綠籬)
+    new THREE.Vector3(pylonX - 2.40, 0, pylonZ + 21.00),// 接近東南轉角，開始向西南平順圓弧過渡
+    new THREE.Vector3(pylonX - 4.20, 0, pylonZ + 22.20),// 東南轉角處 (建興南路 42 巷轉角)
     new THREE.Vector3(pylonX - 7.50, 0, Z(326))          // 順暢連貫向西延伸接續新南側門
   ];
 
   const waveSpline = new THREE.CatmullRomCurve3(waveCtrlPoints, false, 'catmullrom', 0.45);
-  const nCurveSteps = 64; // 高解析度平滑微段
+  const nCurveSteps = 72; // 高解析度平滑微段
   const curvePts = waveSpline.getPoints(nCurveSteps);
 
-  // A. 連貫建構高解析度波浪抿石子矮牆身、深灰花崗石倒角壓頂石與內側深黑肥沃土壤層
+  // A. 連貫建構高解析度洗石子矮牆壁身、基座出腳、米白色石材倒角壓頂石與內側深黑沃土層
   for (let c = 0; c < curvePts.length - 1; c++) {
     const p1 = curvePts[c], p2 = curvePts[c + 1];
     const segDx = p2.x - p1.x, segDz = p2.z - p1.z;
@@ -11824,16 +11843,19 @@ function makeMainGateWelcomeBannerTexture() {
     segGrp.position.set(segCx, 0, segCz);
     segGrp.rotation.y = segAng;
 
-    // 抿石子/洗石子矮牆壁身 (高度 0.38m，寬度 0.38m，微段緊密拼接形成圓滑波浪)
-    addBox(segGrp, segLen + 0.05, 0.38, 0.38, washStoneWallMat, 0, 0.19, 0);
+    // 貼地基座出腳 (高度 0.08m，微寬 0.40m)
+    addBox(segGrp, segLen + 0.05, 0.08, 0.40, washStoneWallMat, 0, 0.04, 0);
 
-    // 深灰花崗石倒角壓頂石 (厚度 0.07m，寬度 0.46m，內外均有微懸挑與倒角線腳，Photo 1~3 實景特色)
-    addBox(segGrp, segLen + 0.08, 0.07, 0.46, darkGraniteCapMat, 0, 0.415, 0);
+    // 深灰小碎石洗石子/抿石子矮牆壁身 (高度 0.40m，寬度 0.36m)
+    addBox(segGrp, segLen + 0.05, 0.32, 0.36, washStoneWallMat, 0, 0.24, 0);
+
+    // 米白色石材倒角壓頂石 (厚度 0.075m，寬度 0.44m，內外均有均勻懸挑與倒角線腳，Photo 1~3 實景特色)
+    addBox(segGrp, segLen + 0.08, 0.075, 0.44, stoneCapMat, 0, 0.4375, 0);
 
     mg.add(segGrp);
 
     // 花台內部深黑沃土層 (緊貼矮牆內側，高 0.28m)
-    const soilW = 1.35;
+    const soilW = 1.45;
     const soilCx = segCx + inNx * (soilW / 2 + 0.15);
     const soilCz = segCz + inNz * (soilW / 2 + 0.15);
     const soilGrp = new THREE.Group();
@@ -11843,9 +11865,15 @@ function makeMainGateWelcomeBannerTexture() {
     mg.add(soilGrp);
   }
 
+  // 矮牆兩端方形洗石子端柱 (Terminal Curb Pillars — 起點與轉角處)
+  [curvePts[0], curvePts[curvePts.length - 1]].forEach(tp => {
+    addBox(mg, 0.46, 0.40, 0.46, washStoneWallMat, tp.x, 0.20, tp.z);
+    addBox(mg, 0.52, 0.08, 0.52, stoneCapMat, tp.x, 0.44, tp.z);
+  });
+
   // B. 依據《2023_0604 綠籬植栽平面圖》標示【區域二】精準栽植：楓港柿 (Diospyros vaccinioides) 與 桂花樹 (Osmanthus fragrans)
   // 緊密沿著波浪形矮牆內側排列修剪整齊圓潤之常綠綠籬
-  const nHedgePlants = 32;
+  const nHedgePlants = 36;
   for (let k = 0; k < nHedgePlants; k++) {
     const ptIdx = Math.min(curvePts.length - 1, Math.floor((k / (nHedgePlants - 1)) * (curvePts.length - 1)));
     const pt = curvePts[ptIdx];
@@ -11855,48 +11883,71 @@ function makeMainGateWelcomeBannerTexture() {
     const tlen = Math.hypot(tdx, tdz) || 1.0;
     const inNx = -tdz / tlen, inNz = tdx / tlen; // 內向法向量
 
-    const hx = pt.x + inNx * 0.55;
-    const hz = pt.z + inNz * 0.55;
+    const hx = pt.x + inNx * 0.58;
+    const hz = pt.z + inNz * 0.58;
 
     const isOsmanthus = (k % 2 === 1); // 楓港柿與桂花樹交替相襯
     const matToUse = isOsmanthus ? osmanthusLeafMat : fenggangMat;
-    const hRadius = isOsmanthus ? 0.54 : 0.48;
+    const hRadius = isOsmanthus ? 0.52 : 0.46;
 
     // 綠籬主體灌木 (修剪圓球形/饅頭形常綠綠籬)
-    const sh = addMesh(mg, new THREE.SphereGeometry(hRadius, 10, 8), matToUse, hx, 0.54, hz);
+    const sh = addMesh(mg, new THREE.SphereGeometry(hRadius, 10, 8), matToUse, hx, 0.56, hz);
     sh.scale.set(1.15, 0.95, 1.05);
 
     // 桂花樹綴飾盛開之金黃芬芳花簇 (四瓣金桂花細緻微粒)
     if (isOsmanthus) {
-      const fl1 = addMesh(mg, new THREE.SphereGeometry(0.15, 6, 6), osmanthusFlowerMat, hx + inNx * 0.1, 0.74, hz + 0.12);
+      const fl1 = addMesh(mg, new THREE.SphereGeometry(0.14, 6, 6), osmanthusFlowerMat, hx + inNx * 0.1, 0.74, hz + 0.12);
       fl1.scale.set(1.2, 0.85, 1.1);
-      const fl2 = addMesh(mg, new THREE.SphereGeometry(0.12, 6, 6), osmanthusFlowerMat, hx - inNx * 0.1, 0.68, hz - 0.15);
+      const fl2 = addMesh(mg, new THREE.SphereGeometry(0.11, 6, 6), osmanthusFlowerMat, hx - inNx * 0.1, 0.68, hz - 0.15);
       fl2.scale.set(1.1, 0.9, 1.2);
     }
   }
 
-  // 4) 【第一波峰（半圓突出）核心景觀：景觀小喬木、圓形土丘與金黃露花】(Photo 1~3 實景特色)
-  const crest1BushX = pylonX - 2.80, crest1BushZ = pylonZ + 5.50;
+  // 6) 【第一波峰（半圓突出花台島）核心景觀：挺拔多幹楓港柿小喬木、圓形土丘與金黃露花】(Photo 1 實景核心特色)
+  const crest1BushX = pylonX - 2.50, crest1BushZ = pylonZ + 8.80;
   // 圓形土丘基座
-  addMesh(mg, new THREE.CylinderGeometry(1.4, 1.6, 0.14, 16), lawnGrassMat, crest1BushX, 0.07, crest1BushZ);
-  // 多幹造型景觀小喬木 (Photo 1~3 實景：大門左側圓形花台中央挺拔主灌木)
-  [-0.12, 0.10].forEach(ox => {
-    addMesh(mg, new THREE.CylinderGeometry(0.08, 0.12, 2.1, 8), mats.slab, crest1BushX + ox, 1.05, crest1BushZ + ox * 0.6);
+  addMesh(mg, new THREE.CylinderGeometry(1.6, 1.9, 0.14, 18), lawnGrassMat, crest1BushX, 0.07, crest1BushZ);
+  // 多幹造型景觀小喬木 (Photo 1 實景：大門左側圓形花台中央挺拔主灌木)
+  [-0.14, 0.12, 0.0].forEach((ox, idx) => {
+    addMesh(mg, new THREE.CylinderGeometry(0.07, 0.11, 2.3, 8), mats.slab, crest1BushX + ox, 1.15, crest1BushZ + (idx - 1) * 0.25);
   });
-  const crest1Crown1 = addMesh(mg, new THREE.SphereGeometry(1.35, 12, 10), new THREE.MeshStandardMaterial({ color: 0x1d5c23, roughness: 0.82 }), crest1BushX, 2.3, crest1BushZ);
-  crest1Crown1.scale.set(1.25, 0.9, 1.2);
-  const crest1Crown2 = addMesh(mg, new THREE.SphereGeometry(0.95, 10, 8), new THREE.MeshStandardMaterial({ color: 0x276b2c, roughness: 0.84 }), crest1BushX + 0.5, 2.0, crest1BushZ - 0.4);
-  crest1Crown2.scale.set(1.1, 0.85, 1.1);
+  const crest1Crown1 = addMesh(mg, new THREE.SphereGeometry(1.45, 12, 10), new THREE.MeshStandardMaterial({ color: 0x1d5c23, roughness: 0.82 }), crest1BushX, 2.45, crest1BushZ);
+  crest1Crown1.scale.set(1.30, 0.92, 1.25);
+  const crest1Crown2 = addMesh(mg, new THREE.SphereGeometry(1.05, 10, 8), new THREE.MeshStandardMaterial({ color: 0x276b2c, roughness: 0.84 }), crest1BushX + 0.55, 2.15, crest1BushZ - 0.45);
+  crest1Crown2.scale.set(1.15, 0.88, 1.15);
   // 圓形土丘週邊點綴金黃露花 / 矮生開花灌木
-  for (let b = 0; b < 6; b++) {
-    const bAng = b * (Math.PI / 3) + 0.2;
-    const bx = crest1BushX + Math.cos(bAng) * 1.05;
-    const bz = crest1BushZ + Math.sin(bAng) * 1.05;
-    const goldBush = addMesh(mg, new THREE.SphereGeometry(0.28, 8, 6), new THREE.MeshStandardMaterial({ color: 0x88c432, roughness: 0.78 }), bx, 0.34, bz);
+  for (let b = 0; b < 7; b++) {
+    const bAng = b * (Math.PI * 2 / 7) + 0.2;
+    const bx = crest1BushX + Math.cos(bAng) * 1.25;
+    const bz = crest1BushZ + Math.sin(bAng) * 1.25;
+    const goldBush = addMesh(mg, new THREE.SphereGeometry(0.30, 8, 6), new THREE.MeshStandardMaterial({ color: 0x88c432, roughness: 0.78 }), bx, 0.36, bz);
     goldBush.scale.set(1.2, 0.8, 1.1);
   }
 
-  // 5) 【前庭花園內部景觀：依 2023_0604 平面圖繪製之草坪、蜿蜒園道與照片樹蔭地景】
+  // 7) 【花台後方景觀：兩棵高聳大王椰子樹 (Royal Palms) 與前庭草坪】(Photo 2~3 實景特色)
+  const palmTrunkColorMat = new THREE.MeshStandardMaterial({ color: 0x8c897e, roughness: 0.86 }); // 灰白環狀樹幹
+  const palmCrownSheathMat = new THREE.MeshStandardMaterial({ color: 0x2d632f, roughness: 0.65 }); // 頂端深綠光滑冠頸
+  const palmLeavesMat = new THREE.MeshStandardMaterial({ color: 0x265a29, roughness: 0.75 });      // 翠綠羽狀大樹冠
+
+  const palmCoords = [
+    { x: pylonX - 7.50, z: pylonZ + 7.20,  h: 10.5 },
+    { x: pylonX - 9.20, z: pylonZ + 11.80, h: 11.2 }
+  ];
+  palmCoords.forEach(pc => {
+    // 粗壯樹幹 (高聳圓柱)
+    addMesh(mg, new THREE.CylinderGeometry(0.24, 0.32, pc.h, 12), palmTrunkColorMat, pc.x, pc.h / 2, pc.z);
+    // 樹幹水平節痕
+    for (let r = 1; r < 9; r++) {
+      addMesh(mg, new THREE.TorusGeometry(0.27, 0.02, 8, 16).rotateX(Math.PI / 2), mats.darkMetal, pc.x, r * 1.1, pc.z);
+    }
+    // 頂部深綠色光滑冠頸 (Crownshaft)
+    addMesh(mg, new THREE.CylinderGeometry(0.22, 0.24, 1.6, 10), palmCrownSheathMat, pc.x, pc.h + 0.8, pc.z);
+    // 舒展羽狀複葉大樹冠 (直徑 4.8m)
+    const pCrown = addMesh(mg, new THREE.SphereGeometry(2.4, 14, 10), palmLeavesMat, pc.x, pc.h + 1.8, pc.z);
+    pCrown.scale.set(1.45, 0.75, 1.45);
+  });
+
+  // 8) 【前庭花園內部景觀：草坪、蜿蜒園道與照片樹蔭地景】
   // A. 前庭庭園草坪地基
   const lawnW = 14.0, lawnD = 20.0;
   const lawnCx = pylonX - 11.5, lawnCz = pylonZ + 14.5;
