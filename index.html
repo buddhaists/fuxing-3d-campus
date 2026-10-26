@@ -1715,11 +1715,14 @@ window.addEventListener('unhandledrejection', e => {
 
     <div class="filters" id="category-filters" role="tablist" aria-label="空間分類">
       <button type="button" class="chip is-active" data-filter="featured">精選</button>
-      <button type="button" class="chip" data-filter="教學建築">教學</button>
-      <button type="button" class="chip" data-filter="行政與中樞">行政</button>
-      <button type="button" class="chip" data-filter="運動與遊憩">運動</button>
-      <button type="button" class="chip" data-filter="校門與交通設施">校門</button>
-      <button type="button" class="chip" data-filter="rooms">處室教室</button>
+      <button type="button" class="chip" data-filter="班級">班級</button>
+      <button type="button" class="chip" data-filter="專科">專科</button>
+      <button type="button" class="chip" data-filter="行政">行政</button>
+      <button type="button" class="chip" data-filter="公共">公共</button>
+      <button type="button" class="chip" data-filter="幼兒園">幼兒園</button>
+      <button type="button" class="chip" data-filter="其他">其他</button>
+      <button type="button" class="chip" data-filter="運動">運動</button>
+      <button type="button" class="chip" data-filter="出入口">出入口</button>
       <button type="button" class="chip" data-filter="all">全部</button>
     </div>
 
@@ -1759,7 +1762,7 @@ window.addEventListener('unhandledrejection', e => {
     </div>
 
     <footer class="catalog-footer">
-      <span id="coverage-count">已收錄 13 處精選地標 · 52 間處室教室</span>
+      <span id="coverage-count">已收錄 21 處校園設施 · 66 間空間處室</span>
       <button id="openAboutModalBtn" class="text-action" type="button">建模依據 ↗</button>
     </footer>
   </aside>
@@ -2786,6 +2789,116 @@ const LANDMARKS = [
       front: { p: [-4.2, 2.5, 29.5], t: [-4.2, 2.2, 20.3] },
       back: { p: [-4.2, 5.0, 10.0], t: [-4.2, 2.2, 20.3] },
       entrance: { p: [-4.2, 1.8, 28.0], t: [-4.2, 2.0, 10.0] }
+    }
+  },
+  {
+    id: 'east-gate',
+    index: '17',
+    name: '東側門（復興路376巷）',
+    enName: 'East Side Gate · Fuxing Rd Alley 376',
+    category: '出入口',
+    floors: '校園東北側出入口（車棚汽機車出入側門）',
+    height: '雙開格柵鐵門高 2.2 公尺・寬 5.0 公尺',
+    basis: '115學年度校園平面圖＋現場實景照片',
+    pxBounds: [948, 65, 962, 85],
+    center: [X(955), 2.5, Z(74)],
+    summary: '位於校園東側圍牆北段（復興路376巷旁）、北側大車棚東端出口處的東側門。寬度 5.0 米，設雙開金屬矮柵門，為全校教職員汽機車進出北側車棚停車場之專屬通學通道。',
+    photos: [],
+    rooms: {},
+    views: {
+      oblique: { p: [126.0, 5.2, -18.0], t: [106.0, 2.5, -23.0] },
+      top: { p: [106.0, 32.0, -23.0], t: [106.0, 0.0, -23.0] },
+      front: { p: [126.0, 3.2, -23.0], t: [105.0, 2.2, -23.0] },
+      back: { p: [88.0, 4.5, -23.0], t: [106.0, 2.2, -23.0] },
+      entrance: { p: [116.0, 2.2, -23.0], t: [96.0, 2.2, -23.0] }
+    }
+  },
+  {
+    id: 'stage-back-gate',
+    index: '18',
+    name: '司令台後小門（建興南路42巷）',
+    enName: 'Stage Rear Gate · Jianxing S. Rd',
+    category: '出入口',
+    floors: '操場西南側通學小門（司令台西側後方）',
+    height: '雙開金屬矮門高 2.0 公尺・寬 3.6 公尺',
+    basis: '115學年度校園平面圖＋操場西側圍牆實測',
+    pxBounds: [48, 248, 64, 264],
+    center: [X(56), 2.2, Z(256)],
+    summary: '座落於運動場司令台後方、建興南路42巷與50巷轉角圍牆邊的司令台後小門。設有3.6米寬雙開金屬直柵矮門，緊鄰西側排球場與跑道起點，為運動場後方的重要通學出入通道。',
+    photos: [],
+    rooms: {},
+    views: {
+      oblique: { p: [-72.0, 5.2, 28.0], t: [-82.5, 2.2, 18.0] },
+      top: { p: [-82.5, 32.0, 18.0], t: [-82.5, 0.0, 18.0] },
+      front: { p: [-82.5, 3.2, 28.0], t: [-82.5, 2.2, 17.5] },
+      back: { p: [-82.5, 4.5, 8.0], t: [-82.5, 2.2, 18.0] },
+      entrance: { p: [-82.5, 2.0, 24.0], t: [-82.5, 2.0, 10.0] }
+    }
+  },
+  {
+    id: 'carport',
+    index: '19',
+    name: '北側大車棚與停車區',
+    enName: 'North Carport & Parking Area',
+    category: '其他',
+    floors: '長度 55 米單層鋼構大車棚',
+    height: '鋼構棚架挑高 3.6 公尺',
+    basis: '115學年度校園平面圖＋北側圍牆鋼構車棚實景',
+    pxBounds: [430, 20, 705, 55],
+    center: [X(567), 2.5, Z(42)],
+    summary: '座落於校園北側實體圍牆下方、長達 55 米的專屬遮陽防雨鋼構車棚。配置有混凝土立體地坪、二十道雙排圓柱結構、教職員專用汽車停泊位與自行車機車整齊停泊區，東端直通復興路東側門。',
+    photos: [],
+    rooms: {},
+    views: {
+      oblique: { p: [25.0, 9.0, -22.0], t: [14.0, 2.5, -30.0] },
+      top: { p: [14.0, 42.0, -30.0], t: [14.0, 0.0, -30.0] },
+      front: { p: [14.0, 4.5, -18.0], t: [14.0, 2.5, -30.0] },
+      back: { p: [14.0, 6.0, -42.0], t: [14.0, 2.5, -30.0] },
+      entrance: { p: [35.0, 2.8, -25.0], t: [14.0, 2.2, -30.0] }
+    }
+  },
+  {
+    id: 'organic-farm',
+    index: '20',
+    name: '有機農場與綠化種植區',
+    enName: 'Organic Educational Farm',
+    category: '其他',
+    floors: '食農教育戶外體驗農場',
+    height: '戶外生態基地',
+    basis: '115學年度校園平面圖有機農場標示',
+    pxBounds: [720, 20, 850, 55],
+    center: [X(785), 2.0, Z(42)],
+    summary: '位於北側車棚東側、北棟大樓東北方的學校有機農場，作為學生食農教育、生態觀察與自然科學實作的戶外學習綠色基地。',
+    photos: [],
+    rooms: {},
+    views: {
+      oblique: { p: [68.0, 8.0, -18.0], t: [60.0, 2.2, -30.0] },
+      top: { p: [60.0, 36.0, -30.0], t: [60.0, 0.0, -30.0] },
+      front: { p: [60.0, 4.5, -18.0], t: [60.0, 2.2, -30.0] },
+      back: { p: [60.0, 6.0, -42.0], t: [60.0, 2.2, -30.0] },
+      entrance: { p: [60.0, 2.5, -24.0], t: [60.0, 2.0, -30.0] }
+    }
+  },
+  {
+    id: 'recycling-depot',
+    index: '21',
+    name: '環保場與資源回收區',
+    enName: 'Recycling Station & Environmental Area',
+    category: '其他',
+    floors: '全校環境衛生與資源回收中心',
+    height: '戶外遮棚挑高 3.0 公尺',
+    basis: '115學年度校園平面圖東北角環保場/垃圾場標示',
+    pxBounds: [890, 20, 955, 55],
+    center: [X(922), 2.0, Z(42)],
+    summary: '座落於校園東北角落、東側門北側的環保場與垃圾集中分類區，設有完備的垃圾分類桶與資源回收設施，落實綠色校園與環境教育。',
+    photos: [],
+    rooms: {},
+    views: {
+      oblique: { p: [112.0, 7.5, -18.0], t: [100.0, 2.2, -30.0] },
+      top: { p: [100.0, 36.0, -30.0], t: [100.0, 0.0, -30.0] },
+      front: { p: [100.0, 4.5, -18.0], t: [100.0, 2.2, -30.0] },
+      back: { p: [100.0, 6.0, -42.0], t: [100.0, 2.2, -30.0] },
+      entrance: { p: [100.0, 2.5, -24.0], t: [100.0, 2.0, -30.0] }
     }
   }
 ];
@@ -12333,7 +12446,7 @@ let toastTimer = null;
 const FEATURED_IDS = [
   'north-building', 'east-building', 'south-building', 'west-building',
   'new-building', 'courtyard-plaza', 'breezeway-hub', 'playground-zone',
-  'sports-track', 'main-gate', 'east-south-mosaic'
+  'sports-track', 'ball-courts', 'command-stage', 'main-gate', 'east-south-mosaic'
 ];
 
 // PKU-3D Precinct Presets (`片區快速定位`)
@@ -12598,59 +12711,243 @@ const placesListEl = document.getElementById('placesList');
 const searchInputEl = document.getElementById('searchInput');
 const detailEl = document.getElementById('detail');
 
+// ============================================================================
+// 115學年度 校園空間分類對應邏輯（依據 2026_0801 校園平面圖圖例設定）
+// 空間分類：班級、專科、行政、公共、幼兒園、其他、運動、出入口*6、精選、全部
+// ============================================================================
+function getRoomCategory(rm, lm) {
+  const code = rm.code || '';
+  const name = rm.name || '';
+  const lmId = lm?.id || '';
+
+  // 1. 幼兒園（深紅框）：新棟復興非營利幼兒園全棟及南棟非營幼辦公室
+  if (lmId === 'new-building' || code.startsWith('K') || code === 'S1-KOFF' || /幼兒園/.test(name)) {
+    return '幼兒園';
+  }
+
+  // 2. 班級（綠框）：101~103, 201~204, 301~303, 401~404, 501~504, 601~604
+  if (/[一二三四五六]年級|(10[1-3]|20[1-4]|30[1-3]|40[1-4]|50[1-4]|60[1-4])/.test(name)) {
+    return '班級';
+  }
+
+  // 3. 行政（橙框）：校長室(11)、教務處(12)、學務處(13)、總務處(14)、人事室(21)、輔導室(71)
+  if (['11', '21', '12', '13', '14', '71'].includes(code) || /校長室|人事室|教務處|學務處|總務處|輔導室/.test(name)) {
+    return '行政';
+  }
+
+  // 4. 其他（紫框）：儲藏室 (74)
+  if (code === '74' || /儲藏室/.test(name)) {
+    return '其他';
+  }
+
+  // 5. 公共（黃框）：健康中心/保健室(20)、圖書室(32)、視聽教室(36)、展演廳(30)、會議室(40)、課照3(72)、課照4(73)、幼兒活動室/閱讀室(S2-KACT, S3-KACT)、國際柑仔店(42)、防空避難室(45, B1-W)
+  if (['20', '32', '36', '30', '40', '72', '73', 'S2-KACT', 'S3-KACT', '42', '45', 'B1-W'].includes(code) ||
+      /健康中心|保健室|圖書室|共讀站|視聽教室|展演廳|會議室|課照[34]|閱讀室|活動室|柑仔店|防空避難室/.test(name)) {
+    return '公共';
+  }
+
+  // 6. 專科（藍框）：自然一~四、英語一~二、社會一~三、美術、音樂、電腦、數位學習、巡輔資源班一~二、多功能、體育室、體適能
+  if (['41', '43', '46', '47', '44', '48', '49', '45-M', '65', '63', '62', '70', '64', '35', '33', '38', '37', '76'].includes(code) ||
+      /自然|英語|社會|美術|音樂|電腦|數位學習|巡輔|資源班|多功能|體育室|體適能/.test(name)) {
+    return '專科';
+  }
+
+  return '公共';
+}
+
+function getLandmarkCategories(lm) {
+  const cats = [];
+  const id = lm.id;
+
+  if (FEATURED_IDS.includes(id)) cats.push('featured');
+  cats.push('all');
+
+  if (['north-building', 'south-building'].includes(id)) {
+    cats.push('班級');
+  }
+  if (['west-building'].includes(id)) {
+    cats.push('專科');
+  }
+  if (['east-building'].includes(id)) {
+    cats.push('行政');
+  }
+  if (['courtyard-plaza', 'breezeway-hub', 'playground-zone', 'east-south-mosaic'].includes(id)) {
+    cats.push('公共');
+  }
+  if (['new-building'].includes(id)) {
+    cats.push('幼兒園');
+  }
+  if (['command-stage', 'carport', 'organic-farm', 'recycling-depot'].includes(id)) {
+    cats.push('其他');
+  }
+  if (['sports-track', 'ball-courts', 'command-stage'].includes(id)) {
+    cats.push('運動');
+  }
+  if (['main-gate', 'east-gate', 'west-back-gate', 'stage-back-gate', 'new-south-gate', 'old-south-gate'].includes(id)) {
+    cats.push('出入口');
+  }
+
+  return cats;
+}
+
 function renderPlacesList() {
   const q = searchInputEl.value.trim().toLowerCase();
   placesListEl.innerHTML = '';
 
-  // Special mode: when filter === 'rooms' or user is searching, show matching classrooms too
-  if (activeFilter === 'rooms' && !q) {
-    let totalRooms = 0;
+  // 1. NON-SEARCH MODE: When query is empty, filter by activeFilter
+  if (!q) {
+    if (activeFilter === 'featured') {
+      const featLms = LANDMARKS.filter(lm => FEATURED_IDS.includes(lm.id));
+      featLms.forEach(lm => {
+        const btn = document.createElement('button');
+        btn.className = 'place-item' + (selectedId === lm.id ? ' is-selected' : '');
+        btn.dataset.id = lm.id;
+        btn.innerHTML = `
+          <span class="place-number">${lm.index}</span>
+          <span>
+            <strong class="place-title">${lm.name}</strong>
+            <small class="place-sub">${lm.enName}</small>
+          </span>
+          <span class="place-tag">精選</span>
+        `;
+        btn.addEventListener('click', () => {
+          selectLandmark(lm.id, 'manual');
+          if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+            setCatalogOpen(false);
+            detailEl.hidden = true;
+          }
+        });
+        btn.addEventListener('pointerenter', () => setHovered(lm.id));
+        btn.addEventListener('pointerleave', () => setHovered(null));
+        placesListEl.appendChild(btn);
+      });
+      document.getElementById('result-count').textContent = `${featLms.length} 處精選地標`;
+      return;
+    }
+
+    if (activeFilter === 'all') {
+      LANDMARKS.forEach(lm => {
+        const roomCount = Object.values(lm.rooms || {}).flat().length;
+        const btn = document.createElement('button');
+        btn.className = 'place-item' + (selectedId === lm.id ? ' is-selected' : '');
+        btn.dataset.id = lm.id;
+        btn.innerHTML = `
+          <span class="place-number">${lm.index}</span>
+          <span>
+            <strong class="place-title">${lm.name}</strong>
+            <small class="place-sub">${lm.enName}${roomCount ? ` · ${roomCount} 間空間處室` : ''}</small>
+          </span>
+          <span class="place-tag">${lm.category ? lm.category.slice(0, 3) : '校園'}</span>
+        `;
+        btn.addEventListener('click', () => {
+          selectLandmark(lm.id, 'manual');
+          if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+            setCatalogOpen(false);
+            detailEl.hidden = true;
+          }
+        });
+        btn.addEventListener('pointerenter', () => setHovered(lm.id));
+        btn.addEventListener('pointerleave', () => setHovered(null));
+        placesListEl.appendChild(btn);
+      });
+      document.getElementById('result-count').textContent = `全校 ${LANDMARKS.length} 處地標與設施`;
+      return;
+    }
+
+    // SPATIAL CATEGORIES FROM UPLOADED MAP:
+    // ['班級', '專科', '行政', '公共', '幼兒園', '其他', '運動', '出入口']
+    const matchingLms = LANDMARKS.filter(lm => getLandmarkCategories(lm).includes(activeFilter));
+    const matchingRooms = [];
+
     LANDMARKS.forEach(lm => {
       Object.entries(lm.rooms || {}).forEach(([fl, arr]) => {
         arr.forEach(rm => {
-          totalRooms++;
-          const btn = document.createElement('button');
-          btn.className = 'place-item';
-          btn.innerHTML = `
-            <span class="place-number">${fl}</span>
-            <span>
-              <strong class="place-title">${rm.name}</strong>
-              <small class="place-sub">${lm.name}</small>
-            </span>
-            <span class="place-tag">定位 ›</span>
-          `;
-          btn.addEventListener('click', () => {
-            selectLandmark(lm.id, 'manual', fl, rm.code);
-            if (window.innerWidth <= 820 || window.innerHeight <= 640) {
-              setCatalogOpen(false);
-              detailEl.hidden = true;
-            }
-          });
-          placesListEl.appendChild(btn);
+          const cat = getRoomCategory(rm, lm);
+          if (cat === activeFilter || (activeFilter === '運動' && ['41', '44'].includes(rm.code))) {
+            matchingRooms.push({ lm, fl, rm });
+          }
         });
       });
     });
-    document.getElementById('result-count').textContent = `${totalRooms} 間處室與教室`;
+
+    // Special sort for '班級': grade order (101~103, 201~204, 301~303, 401~404, 501~504, 601~604)
+    if (activeFilter === '班級') {
+      matchingRooms.sort((a, b) => {
+        const getNum = str => {
+          const m = str.match(/\b([1-6]0[1-4])\b/);
+          return m ? parseInt(m[1]) : 999;
+        };
+        return getNum(a.rm.name) - getNum(b.rm.name);
+      });
+    }
+
+    // Render matching landmarks first
+    matchingLms.forEach(lm => {
+      const roomCount = Object.values(lm.rooms || {}).flat().length;
+      const btn = document.createElement('button');
+      btn.className = 'place-item' + (selectedId === lm.id ? ' is-selected' : '');
+      btn.dataset.id = lm.id;
+      btn.innerHTML = `
+        <span class="place-number">${lm.index}</span>
+        <span>
+          <strong class="place-title">${lm.name}</strong>
+          <small class="place-sub">${lm.enName}${roomCount ? ` · ${roomCount} 間空間處室` : ''}</small>
+        </span>
+        <span class="place-tag">${activeFilter}</span>
+      `;
+      btn.addEventListener('click', () => {
+        selectLandmark(lm.id, 'manual');
+        if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+          setCatalogOpen(false);
+          detailEl.hidden = true;
+        }
+      });
+      btn.addEventListener('pointerenter', () => setHovered(lm.id));
+      btn.addEventListener('pointerleave', () => setHovered(null));
+      placesListEl.appendChild(btn);
+    });
+
+    // Render matching rooms
+    matchingRooms.forEach(({ lm, fl, rm }) => {
+      const btn = document.createElement('button');
+      btn.className = 'place-item';
+      btn.innerHTML = `
+        <span class="place-number" style="color:var(--seal);font-weight:700">${fl}</span>
+        <span>
+          <strong class="place-title">${rm.name}</strong>
+          <small class="place-sub">${lm.name} · ${fl}空間</small>
+        </span>
+        <span class="place-tag">定位 ›</span>
+      `;
+      btn.addEventListener('click', () => {
+        selectLandmark(lm.id, 'manual', fl, rm.code);
+        if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+          setCatalogOpen(false);
+          detailEl.hidden = true;
+        }
+      });
+      placesListEl.appendChild(btn);
+    });
+
+    // Summary count text
+    if (matchingLms.length && matchingRooms.length) {
+      document.getElementById('result-count').textContent = `${matchingRooms.length} 間空間 · ${matchingLms.length} 棟主體`;
+    } else if (matchingRooms.length) {
+      document.getElementById('result-count').textContent = `${matchingRooms.length} 間${activeFilter}教室`;
+    } else {
+      document.getElementById('result-count').textContent = `${matchingLms.length} 處${activeFilter}設施`;
+    }
     return;
   }
 
-  const filtered = LANDMARKS.filter(lm => {
-    if (!q) {
-      if (activeFilter === 'featured') return FEATURED_IDS.includes(lm.id);
-      if (activeFilter === 'all') return true;
-      return lm.category === activeFilter;
-    }
-    const roomMatch = Object.values(lm.rooms || {}).flat().some(r =>
-      r.name.toLowerCase().includes(q) || r.code.toLowerCase().includes(q)
-    );
-    return lm.name.toLowerCase().includes(q) ||
-           lm.enName.toLowerCase().includes(q) ||
-           lm.summary.toLowerCase().includes(q) ||
-           roomMatch;
-  });
+  // 2. SEARCH MODE: When query is entered
+  const matchedLms = LANDMARKS.filter(lm =>
+    lm.name.toLowerCase().includes(q) ||
+    lm.enName.toLowerCase().includes(q) ||
+    lm.summary.toLowerCase().includes(q)
+  );
 
-  filtered.forEach(lm => {
-    const roomCount = Object.values(lm.rooms || {}).flat().length;
+  matchedLms.forEach(lm => {
     const btn = document.createElement('button');
     btn.className = 'place-item' + (selectedId === lm.id ? ' is-selected' : '');
     btn.dataset.id = lm.id;
@@ -12658,9 +12955,9 @@ function renderPlacesList() {
       <span class="place-number">${lm.index}</span>
       <span>
         <strong class="place-title">${lm.name}</strong>
-        <small class="place-sub">${lm.enName}${roomCount ? ` · ${roomCount} 間教室處室` : ''}</small>
+        <small class="place-sub">${lm.enName}</small>
       </span>
-      <span class="place-tag">${lm.category.slice(0, 2)}</span>
+      <span class="place-tag">建築地標</span>
     `;
     btn.addEventListener('click', () => {
       selectLandmark(lm.id, 'manual');
@@ -12674,42 +12971,37 @@ function renderPlacesList() {
     placesListEl.appendChild(btn);
   });
 
-  // Append direct classroom matches when query is entered
   let matchedRoomCount = 0;
-  if (q) {
-    LANDMARKS.forEach(lm => {
-      Object.entries(lm.rooms || {}).forEach(([fl, arr]) => {
-        arr.forEach(rm => {
-          if (rm.name.toLowerCase().includes(q) || rm.code.toLowerCase().includes(q)) {
-            matchedRoomCount++;
-            const btn = document.createElement('button');
-            btn.className = 'place-item';
-            btn.innerHTML = `
-              <span class="place-number" style="color:var(--accent)">${fl}</span>
-              <span>
-                <strong class="place-title">${rm.name}</strong>
-                <small class="place-sub">${lm.name} · 115學年度空間定位</small>
-              </span>
-              <span class="place-tag">教室 ⌖</span>
-            `;
-            btn.addEventListener('click', () => {
-              selectLandmark(lm.id, 'manual', fl, rm.code);
-              if (window.innerWidth <= 820 || window.innerHeight <= 640) {
-                setCatalogOpen(false);
-                detailEl.hidden = true;
-              }
-            });
-            placesListEl.appendChild(btn);
-          }
-        });
+  LANDMARKS.forEach(lm => {
+    Object.entries(lm.rooms || {}).forEach(([fl, arr]) => {
+      arr.forEach(rm => {
+        if (rm.name.toLowerCase().includes(q) || rm.code.toLowerCase().includes(q)) {
+          matchedRoomCount++;
+          const btn = document.createElement('button');
+          btn.className = 'place-item';
+          btn.innerHTML = `
+            <span class="place-number" style="color:var(--accent);font-weight:700">${fl}</span>
+            <span>
+              <strong class="place-title">${rm.name}</strong>
+              <small class="place-sub">${lm.name} · 115學年度空間定位</small>
+            </span>
+            <span class="place-tag">空間 ⌖</span>
+          `;
+          btn.addEventListener('click', () => {
+            selectLandmark(lm.id, 'manual', fl, rm.code);
+            if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+              setCatalogOpen(false);
+              detailEl.hidden = true;
+            }
+          });
+          placesListEl.appendChild(btn);
+        }
       });
     });
-  }
+  });
 
-  const totalCount = filtered.length + matchedRoomCount;
-  document.getElementById('result-count').textContent = q
-    ? `搜尋結果 ${totalCount} 項`
-    : `${filtered.length} 處校園地標`;
+  const totalCount = matchedLms.length + matchedRoomCount;
+  document.getElementById('result-count').textContent = `搜尋結果 ${totalCount} 項`;
 
   if (totalCount === 0) {
     placesListEl.innerHTML = `
