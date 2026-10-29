@@ -9674,9 +9674,40 @@ function makeCourtyardConcentricBrickTexture() {
   buildFenceRun(xEast, gateOpenXR); // 東段七彩護欄
   buildFenceRun(gateOpenXL, splitX); // 西段七彩護欄
 
-  const westHedgeW = Math.abs(splitX - xWest);
-  addBox(g, westHedgeW, 0.35, 0.75, southBaseBeamMat, (splitX + xWest) / 2, 0.175, fenceZ - 0.20);
-  addBox(g, westHedgeW, 1.05, 0.85, hedgeDarkGreenMat, (splitX + xWest) / 2, 0.85, fenceZ - 0.20, false);
+  // 銜接通道東側至南棟西段 (x = xWest ~ xWest + 10.0m)：依街景照片改為「灰褐水泥矮牆 + 藍色直立欄杆 + 長橫額」
+  const railX1 = xWest, railX2 = xWest + 10.0;
+  const railLen = railX2 - railX1, railCx = (railX1 + railX2) / 2;
+  const railZ = fenceZ - 0.20;
+  const railBaseMat = new THREE.MeshStandardMaterial({ color: 0xb7ab94, roughness: 0.85 });
+  const railBlueMat = new THREE.MeshStandardMaterial({ color: 0x2e6fb8, roughness: 0.38, metalness: 0.3 });
+  addBox(g, railLen, 0.55, 0.30, railBaseMat, railCx, 0.275, railZ);
+  addBox(g, railLen, 0.05, 0.36, southBaseBeamMat, railCx, 0.575, railZ, false);   // 水泥壓頂
+  const nRailPk = Math.floor(railLen / 0.11);
+  for (let p = 0; p <= nRailPk; p++) {
+    addBox(g, 0.025, 0.92, 0.025, railBlueMat, railX1 + 0.08 + p * ((railLen - 0.16) / nRailPk), 0.60 + 0.46, railZ, false);
+  }
+  addBox(g, railLen, 0.04, 0.05, railBlueMat, railCx, 1.54, railZ, false);          // 上橫桿
+  addBox(g, railLen, 0.04, 0.05, railBlueMat, railCx, 0.80, railZ, false);          // 下橫桿
+  // 招生/賀喜長橫額 (繫於欄杆前側)
+  addBox(g, 5.10, 0.70, 0.02, new THREE.MeshStandardMaterial({ color: 0xf6f3ea, roughness: 0.8 }), railCx - 1.4, 1.12, railZ + 0.19, false);
+  addMesh(g, new THREE.PlaneGeometry(5.00, 0.62), new THREE.MeshBasicMaterial({ map: makeSouthFenceBannerTexture() }), railCx - 1.4, 1.12, railZ + 0.205, false);
+
+  // 寶藍色三角遮陽帆布：兩角固定於南棟 1F 前走廊樑下，第三角吊掛於藍色鋼管立柱 (街景照片右側藍色大帆布)
+  const sailPoleX = xWest + 7.20, sailPoleZ = railZ - 0.15;
+  addMesh(g, new THREE.CylinderGeometry(0.05, 0.05, 3.30, 10), railBlueMat, sailPoleX, 1.65, sailPoleZ);
+  const sailBlueExt = new THREE.BufferGeometry();
+  const sA = [xWest - 0.20, 3.95, zSouth + 0.30], sB = [xWest + 3.60, 3.95, zSouth + 0.30], sC = [sailPoleX, 3.20, sailPoleZ];
+  sailBlueExt.setAttribute('position', new THREE.Float32BufferAttribute([...sA, ...sB, ...sC], 3));
+  sailBlueExt.setIndex([0, 1, 2]);
+  sailBlueExt.computeVertexNormals();
+  g.add(new THREE.Mesh(sailBlueExt, new THREE.MeshStandardMaterial({ color: 0x2b76c4, roughness: 0.6, side: THREE.DoubleSide })));
+  for (const sp of [sA, sB, sC]) addBox(g, 0.06, 0.06, 0.06, southStainlessRailMat, sp[0], sp[1], sp[2], false);
+
+  // 其餘東段維持原綠籬
+  const westHedgeW = Math.abs(splitX - railX2);
+  const westHedgeCx = (splitX + railX2) / 2;
+  addBox(g, westHedgeW, 0.35, 0.75, southBaseBeamMat, westHedgeCx, 0.175, fenceZ - 0.20);
+  addBox(g, westHedgeW, 1.05, 0.85, hedgeDarkGreenMat, westHedgeCx, 0.85, fenceZ - 0.20, false);
 
   // ============================================================================
   // 16. 屋頂層女兒牆、紅棕色金屬屋簷收邊與太陽能光電棚架系統 (ROOFTOP & SOLAR PV)
@@ -10599,6 +10630,104 @@ function makeFenceBannerTexture() {
   return tex;
 }
 
+function makeDarkGreyTileTexture() {
+  // 南棟西端牆面深灰色二丁掛磁磚 (街景照片：銜接走廊通道東側整面深灰磚牆)
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#4a4e52';
+  ctx.fillRect(0, 0, 128, 128);
+  const tw = 64, th = 16;
+  for (let r = 0; r < 8; r++) {
+    const off = (r % 2) * (tw / 2);
+    for (let col = -1; col < 3; col++) {
+      const x = col * tw + off, y = r * th;
+      const v = 88 + ((r * 7 + col * 13) % 5) * 4;
+      ctx.fillStyle = `rgb(${v},${v + 3},${v + 6})`;
+      ctx.fillRect(x + 1.5, y + 1.5, tw - 3, th - 3);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function makeRedBrickTexture() {
+  // 通道南口磚柱 (街景照片：欄杆小門東側褐紅色磚砌方柱)
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#b9ae9d';
+  ctx.fillRect(0, 0, 128, 128);
+  const bw = 32, bh = 16;
+  for (let r = 0; r < 8; r++) {
+    const off = (r % 2) * (bw / 2);
+    for (let col = -1; col < 5; col++) {
+      const x = col * bw + off, y = r * bh;
+      const k = (r * 5 + col * 3 + 40) % 4;
+      ctx.fillStyle = ['#8e5a46', '#9a6249', '#84523f', '#a06b52'][k];
+      ctx.fillRect(x + 1.5, y + 1.5, bw - 3, bh - 3);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function makeGatePosterTexture() {
+  // 欄杆小門旁彩色公告欄 (街景照片：磚柱右側黃底綠框告示板)
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 160;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#e9d27a';
+  ctx.fillRect(0, 0, 128, 160);
+  ctx.fillStyle = '#3f8f4c';
+  ctx.fillRect(0, 0, 128, 26);
+  ctx.strokeStyle = '#2f6f3a';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(3, 3, 122, 154);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 16px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('公 告', 64, 20);
+  const cols = ['#d8483c', '#ffffff', '#4d7fc4', '#ffffff', '#f4f0e0'];
+  for (let i = 0; i < 6; i++) {
+    ctx.fillStyle = cols[i % cols.length];
+    ctx.fillRect(14, 40 + i * 19, 100 - (i % 3) * 14, 11);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function makeSouthFenceBannerTexture() {
+  // 南棟前欄杆懸掛橫額 (街景照片：白底紅藍字長橫額，繫於藍色欄杆基座前)
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 144;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f6f3ea';
+  ctx.fillRect(0, 0, 1024, 144);
+  ctx.strokeStyle = '#c9362e';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(4, 4, 1016, 136);
+  ctx.fillStyle = '#c9362e';
+  ctx.fillRect(4, 4, 1016, 10);
+  ctx.fillStyle = '#1e5aa8';
+  ctx.fillRect(4, 130, 1016, 10);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#c9362e';
+  ctx.font = 'bold 50px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+  ctx.fillText('屏東縣屏東復興非營利幼兒園', 512, 66);
+  ctx.fillStyle = '#1e5aa8';
+  ctx.font = 'bold 34px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+  ctx.fillText('文教基金會　敬賀', 512, 112);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function makeTerracottaTilePatternTexture() {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 256;
@@ -11355,11 +11484,7 @@ function makeTerracottaTilePatternTexture() {
     sail1.rotation.set(Math.PI / 2.15, 0.12, -0.18);
     g.add(sail1);
 
-    // 寶藍色次三角遮陽帆布 (交疊懸掛於下方，z = 16.6m ~ 19.6m)
-    const sail2 = new THREE.Mesh(new THREE.PlaneGeometry(2.20, 2.70), sailBlueMat);
-    sail2.position.set(pocketCx + 0.15, 3.40, 18.15);
-    sail2.rotation.set(Math.PI / 2.10, -0.15, 0.16);
-    g.add(sail2);
+    // 寶藍色三角遮陽帆布：依最新街景照片位於「南棟前方、通道東側」(已移至南棟南向立面區段 15 建置)
 
     // 遮陽帆布四角鋼索張拉五金與轉角扣環固定於兩側RC結構柱牆
     const cableMat = new THREE.MeshStandardMaterial({ color: 0x8a9096, metalness: 0.8, roughness: 0.3 });
@@ -11369,20 +11494,100 @@ function makeTerracottaTilePatternTexture() {
       addBox(g, pocketX2 - pocketX1, 0.02, 0.02, cableMat, pocketCx, 3.75, cz, false);
     }
 
-    // 白色垂直鐵欄側門 (`白色垂直鐵欄側門`，位於圍牆境界線 zMeet = 20.28m 處，銜接新棟與南棟)
-    const gate10W = pocketX2 - pocketX1; // 2.50m
-    const gate10H = 2.15;
-    const gateZ = 20.28;
-    addBox(g, 0.20, gate10H, 0.20, whiteMetalMat, pocketX1 + 0.10, gate10H / 2, gateZ);
-    addBox(g, 0.20, gate10H, 0.20, whiteMetalMat, pocketX2 - 0.10, gate10H / 2, gateZ);
-    addBox(g, gate10W - 0.40, 0.05, 0.05, whiteMetalMat, pocketCx, gate10H - 0.05, gateZ);
-    addBox(g, gate10W - 0.40, 0.05, 0.05, whiteMetalMat, pocketCx, 0.25, gateZ);
-    addBox(g, gate10W - 0.40, 0.05, 0.05, whiteMetalMat, pocketCx, 1.15, gateZ);
-    const nSideBars = 12;
-    for (let sb = 1; sb < nSideBars; sb++) {
-      const sx = pocketX1 + 0.20 + (sb / nSideBars) * (gate10W - 0.40);
-      addBox(g, 0.03, gate10H - 0.30, 0.03, whiteMetalMat, sx, gate10H / 2 + 0.05, gateZ, false);
+    // ----------------------------------------------------------------------
+    // 4.6 銜接走廊通道南口精緻化 (依街景照片「12 建興南路42巷」逐項對位)
+    //   由左至右：新棟 ⑨–⑩ 白牆(白框窗) → 通道口 → 白色垂直欄杆小門 → 褐紅磚柱 + 彩色公告欄 → 南棟前藍色欄杆 + 橫額
+    //   通道東側整面為南棟西端深灰磁磚牆；2F 樓板高度處有橘色挑簷；牆腳人行道有橘色三角錐與凸面反射鏡桿
+    // ----------------------------------------------------------------------
+    const gate10W = pocketX2 - pocketX1; // 通道口寬 2.50m
+    const gateZ = 22.58;                 // 與南棟前欄杆線 (fenceZ - 0.20) 對齊，欄杆小門位於通道南口
+    const gateH = 1.80;
+    const gatePostMat = whiteMetalMat;
+    const gateDarkMat = new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.45, metalness: 0.6 });
+
+    // (1) 南棟西端深灰色二丁掛磁磚牆 (通道東側，z = 10.78 ~ 20.28，三層通高)
+    const greyTileTex = makeDarkGreyTileTexture();
+    greyTileTex.repeat.set(9.5 / 0.48, 12.0 / 0.30);
+    const greyTileMat = new THREE.MeshStandardMaterial({ map: greyTileTex, roughness: 0.62 });
+    addBox(g, 0.14, 12.0, 9.50, greyTileMat, pocketX2 - 0.07 - 0.02, 6.0, (10.78 + 20.28) / 2);
+    // 每層樓板高度處之白色水平收邊帶 (照片中深灰牆面可見的橫向分層線)
+    for (let f = 1; f <= 3; f++) {
+      addBox(g, 0.18, 0.12, 9.54, whiteTileMat, pocketX2 - 0.09 - 0.02, f * FH + 0.02, (10.78 + 20.28) / 2, false);
     }
+
+    // (2) 橘色挑簷 (通道口 2F 樓板下緣，照片橘色橫梁 + 向南微傾雨遮)
+    const awningMat = new THREE.MeshStandardMaterial({ color: 0xd9692a, roughness: 0.55 });
+    addBox(g, gate10W, 0.34, 0.24, awningMat, pocketCx, FH - 0.20, 20.38);
+    const awning = addBox(g, gate10W, 0.05, 1.50, awningMat, pocketCx, FH - 0.04, 21.05);
+    awning.rotation.x = Math.atan2(0.26, 1.50);
+    for (const ax_ of [pocketX1 + 0.05, pocketX2 - 0.05]) {
+      addBox(g, 0.04, 0.04, 1.45, awningMat, ax_, FH - 0.20, 21.05, false);
+    }
+
+    // (3) 白色垂直欄杆小門 (雙扇：左側固定扇 + 右側開啟扇，含鉸鏈、門閂與門檻)
+    const gx1 = pocketX1 + 0.10;                 // 西側門柱中心
+    const gx2 = pocketX2 - 0.52;                 // 東側 (緊鄰磚柱) 門柱中心
+    const gMidX = gx1 + (gx2 - gx1) * 0.46;      // 中柱 (固定扇 / 開啟扇分界)
+    addBox(g, gx2 - gx1 + 0.30, 0.10, 0.34, mats.concrete, (gx1 + gx2) / 2, 0.05, gateZ);   // 門檻水泥基座
+    for (const px of [gx1, gMidX, gx2]) {
+      addBox(g, 0.10, gateH + 0.12, 0.10, gatePostMat, px, (gateH + 0.12) / 2 + 0.10, gateZ);
+      addBox(g, 0.13, 0.05, 0.13, gatePostMat, px, gateH + 0.20, gateZ, false);       // 門柱帽
+    }
+    const gatePanels = [[gx1 + 0.05, gMidX - 0.05, false], [gMidX + 0.05, gx2 - 0.05, true]];
+    for (const [pxa, pxb, isLeaf] of gatePanels) {
+      const pw = pxb - pxa, pcx = (pxa + pxb) / 2;
+      // 上 / 中 / 下 三道橫桿 (下橫桿為加寬踢腳板條)
+      addBox(g, pw, 0.05, 0.05, whiteMetalMat, pcx, gateH + 0.05, gateZ);
+      addBox(g, pw, 0.045, 0.045, whiteMetalMat, pcx, 0.98, gateZ);
+      addBox(g, pw, 0.16, 0.04, whiteMetalMat, pcx, 0.32, gateZ);
+      // 垂直細欄杆 (間距約 9cm)
+      const nB = Math.max(4, Math.round(pw / 0.09));
+      for (let b = 0; b <= nB; b++) {
+        const bx = pxa + (b / nB) * pw;
+        addBox(g, 0.022, gateH - 0.20, 0.022, whiteMetalMat, bx, 0.20 + (gateH - 0.20) / 2 + 0.05, gateZ - 0.005, false);
+      }
+      if (isLeaf) {
+        // 開啟扇斜向加強桿、鉸鏈與門閂
+        const diag = addBox(g, Math.hypot(pw, gateH - 0.75), 0.03, 0.03, whiteMetalMat, pcx, 0.62 + (gateH - 0.75) / 2, gateZ + 0.015, false);
+        diag.rotation.z = Math.atan2(gateH - 0.75, pw);
+        addBox(g, 0.10, 0.16, 0.07, gateDarkMat, pxa + 0.07, 1.05, gateZ + 0.05, false);    // 門閂盒
+        addBox(g, 0.02, 0.02, 0.12, gateDarkMat, pxa + 0.07, 1.05, gateZ + 0.11, false);    // 門把
+        for (const hy of [0.45, 1.55]) {
+          addMesh(g, new THREE.CylinderGeometry(0.022, 0.022, 0.09, 8), gateDarkMat, pxb, hy, gateZ + 0.04, false);
+        }
+      }
+    }
+
+    // (4) 磚柱 (通道南口東側，褐紅色面磚 + 水泥壓頂) 與彩色公告欄
+    const brickTex = makeRedBrickTexture();
+    brickTex.repeat.set(2, 6);
+    const brickMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.82 });
+    const brickCx = pocketX2 - 0.20;
+    addBox(g, 0.52, 2.10, 0.52, brickMat, brickCx, 1.05, gateZ);
+    addBox(g, 0.62, 0.08, 0.62, mats.concrete, brickCx, 2.14, gateZ);
+    addBox(g, 0.86, 1.10, 0.04, whiteMetalMat, pocketX2 + 0.62, 1.12, gateZ + 0.30, false);   // 公告欄背板
+    addMesh(g, new THREE.PlaneGeometry(0.78, 1.00), new THREE.MeshBasicMaterial({ map: makeGatePosterTexture() }), pocketX2 + 0.62, 1.12, gateZ + 0.325, false);
+
+    // (5) 人行道牆腳設施：橘色三角錐、「注意」凸面反射鏡桿 (照片中央黑黃斜紋桿 + 圓形反射鏡)
+    const coneX = ax(10) - 0.75, coneZ = zB + 0.85;
+    addBox(g, 0.40, 0.03, 0.40, coneOrangeMat, coneX, 0.015, coneZ, false);
+    addMesh(g, new THREE.ConeGeometry(0.15, 0.68, 14), coneOrangeMat, coneX, 0.37, coneZ);
+    addMesh(g, new THREE.CylinderGeometry(0.095, 0.115, 0.10, 14), whiteMetalMat, coneX, 0.40, coneZ, false);
+
+    const mirrorX = pocketX2 + 0.55, mirrorZ = zB + 1.45;
+    addMesh(g, new THREE.CylinderGeometry(0.045, 0.045, 3.10, 10), new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.4, metalness: 0.7 }), mirrorX, 1.55, mirrorZ);
+    for (let sgm = 0; sgm < 6; sgm++) {
+      addMesh(g, new THREE.CylinderGeometry(0.052, 0.052, 0.14, 10), sgm % 2 ? gateDarkMat : new THREE.MeshStandardMaterial({ color: 0xf2c418, roughness: 0.5 }), mirrorX, 0.55 + sgm * 0.14, mirrorZ, false);
+    }
+    addBox(g, 0.26, 0.26, 0.03, new THREE.MeshStandardMaterial({ color: 0xf6e04a, roughness: 0.5 }), mirrorX, 1.55, mirrorZ + 0.06, false);   // 「注意」黃色警示牌
+    const mirrorGrp = new THREE.Group();
+    mirrorGrp.position.set(mirrorX, 2.72, mirrorZ + 0.07);
+    mirrorGrp.rotation.y = -0.55;
+    mirrorGrp.add(new THREE.Mesh(new THREE.CircleGeometry(0.38, 28), new THREE.MeshStandardMaterial({ color: 0xcfd8e0, roughness: 0.06, metalness: 0.95 })));
+    const mirrorRim = new THREE.Mesh(new THREE.TorusGeometry(0.385, 0.04, 8, 28), new THREE.MeshStandardMaterial({ color: 0xe8541a, roughness: 0.45 }));
+    mirrorRim.position.z = -0.005;
+    mirrorGrp.add(mirrorRim);
+    g.add(mirrorGrp);
   }
 
   // ==========================================================================
@@ -11510,6 +11715,8 @@ function makeTerracottaTilePatternTexture() {
     const wallAng = -Math.atan2(zMeet - zWall, eastWallX2 - eastWallX1);
 
     for (let i = 0; i < nEastBays; i++) {
+      // 依街景照片：圍牆止於新棟東南轉角，通道南口 (欄杆小門) 直接面向人行道，不再有斜牆橫亙其前
+      if (i === nEastBays - 1) continue;
       const bx1 = eastWallX1 + i * eastBayW;
       const bx2 = bx1 + eastBayW;
       const bcx = (bx1 + bx2) / 2;
