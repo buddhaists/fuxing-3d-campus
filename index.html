@@ -13421,6 +13421,36 @@ function makeRedNoticeTexture() {
   // ---------------- 材質 ----------------
   const washStoneWallMat = new THREE.MeshStandardMaterial({ map: makeTileTexture('#7d7870', '#4a4640'), roughness: 0.88 });
   const stoneCapMat      = new THREE.MeshStandardMaterial({ color: 0xe6e4dc, roughness: 0.65 });
+
+  // 細膩粗粒深色洗石子/抿石子材質 (黑、灰、白相間顆粒)
+  function makePebbleTerrazzoTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 512;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#58534b';
+    ctx.fillRect(0, 0, 512, 512);
+    const colors = ['#ffffff', '#e8e5dc', '#2d2b27', '#1a1917', '#948f83', '#48443d'];
+    let s = 12345;
+    const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 5200; i++) {
+      const x = rnd() * 512, y = rnd() * 512, r = 0.9 + rnd() * 3.3;
+      ctx.fillStyle = colors[Math.floor(rnd() * colors.length)];
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(3, 2);
+    return t;
+  }
+
+  const pebbleMat = new THREE.MeshStandardMaterial({
+    map: makePebbleTerrazzoTexture(),
+    roughness: 0.90,
+    metalness: 0.05
+  });
   const darkSteelMat     = new THREE.MeshStandardMaterial({ color: 0x22252a, roughness: 0.45, metalness: 0.75 });
   const darkMat          = new THREE.MeshStandardMaterial({ color: 0x22252a, roughness: 0.55, metalness: 0.75 });
   const stainlessMat     = new THREE.MeshStandardMaterial({ color: 0xd0d4dc, roughness: 0.28, metalness: 0.85 });
@@ -14166,35 +14196,7 @@ function makeRedNoticeTexture() {
   //    方向：左側平緩圓台（附運動場開放時間公告牌）、中央圓弧下凹托架（FU-SHING 立體字與金色校徽）、右側山脊順坡平滑接地。
   const wallRightX = pylonX - 0.50, wallRightZ = -9.025;
 
-  // A. 細膩粗粒深色抿石子無縫貼圖 (黑、灰、白相間顆粒)
-  function makePebbleTerrazzoTexture() {
-    const c = document.createElement('canvas');
-    c.width = 512; c.height = 512;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = '#58534b';
-    ctx.fillRect(0, 0, 512, 512);
-    const colors = ['#ffffff', '#e8e5dc', '#2d2b27', '#1a1917', '#948f83', '#48443d'];
-    let s = 12345;
-    const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-    for (let i = 0; i < 5200; i++) {
-      const x = rnd() * 512, y = rnd() * 512, r = 0.9 + rnd() * 3.3;
-      ctx.fillStyle = colors[Math.floor(rnd() * colors.length)];
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    const t = new THREE.CanvasTexture(c);
-    t.wrapS = THREE.RepeatWrapping;
-    t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(3, 2);
-    return t;
-  }
-
-  const pebbleMat = new THREE.MeshStandardMaterial({
-    map: makePebbleTerrazzoTexture(),
-    roughness: 0.90,
-    metalness: 0.05
-  });
+  // (pebbleMat 已於校門區頂部全域定義，供全區一致共用)
 
   // B. 波浪洗石子矮牆立體輪廓 (照片 1:1 精確還原：左圓台高約0.88m、中圓弧凹槽底高約0.42m、右峰脊高1.20m並以長斜坡接地)
   // 當 rotation.y = Math.PI/2 時，局部 -X 映射到世界 +Z (南/左)，局部 +X 映射到世界 -Z (北/右)
