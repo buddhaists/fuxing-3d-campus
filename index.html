@@ -2732,15 +2732,15 @@ const LANDMARKS = [
   {
     id: 'breezeway-hub',
     index: '07',
-    name: '東棟穿堂與行政中廊',
-    enName: 'East Breezeway & Administrative Hub',
-    category: '行政與中樞',
-    floors: '1F 穿堂層',
+    name: '東棟 1F 穿堂閱讀角（復興德馬號與 READ 書架）',
+    enName: 'East Breezeway · Sugar Train & READ Bookshelf Foyer',
+    category: '行政與文化',
+    floors: '1F 挑高穿堂',
     height: '3.6 公尺',
-    basis: '東棟大樓正面圖＋實景照片',
+    basis: '東棟大樓正面圖＋現場實拍照片（復興德馬號五分車、READ書架、台糖歷史彩繪牆）',
     pxBounds: [715, 199, 762, 233],
-    center: [X(740), 5.0, Z(216)],
-    summary: '位於東棟鮮黃色太陽與雙長頸鹿門樓下方的挑高穿堂（中廊），連接東側復興路迎賓廣場與校內幾何花磚中庭；門樓左柱繪有黃色斑點小長頸鹿、右柱為三層樓高藍雲紋彩虹鬃毛長頸鹿，穿堂西側上方懸掛「愛上閱讀・快樂學習」與「多元展能・迎向未來」校園願景橫幅。',
+    center: [X(740), 3.0, Z(216)],
+    summary: '東棟大樓 1F 挑高文化穿堂，貫通東側前庭迎賓大道與西側幾何花磚中庭。穿堂兩側擁有極具特色的沉浸式閱讀景觀：北側為立體亮黃「復興德馬號」五分車火車頭與雙層書架車廂，背倚台糖阿緱糖廠至復興國小歷史彩繪牆與書法名句；南側為消光黑底牆鑲嵌之「R・E・A・D」大型立體原木造型書架與校務歷史四聯式公佈欄；天花板等距橫跨溫潤橡木格柵橫樑，地坪鋪設水磨石子，是復興國小最具人文涵養與童趣的閱讀角落。',
     photos: [
       { src: './tex/east_elevation.jpg', title: '東棟正面圖中央偏南之太陽、雙長頸鹿與 1F 穿堂門樓' },
       { src: './tex/east_mural.jpg', title: '黃色門樓下方的穿堂入口與禮義廉恥碑' },
@@ -2750,9 +2750,11 @@ const LANDMARKS = [
     views: {
       oblique: { p: [96, 12, 6], t: [60, 4.5, -6] },
       top: { p: [60, 60, -6], t: [60, 0, -6] },
-      front: { p: [90, 4.5, -6], t: [55, 4.5, -6] },
-      back: { p: [34, 4.5, -6], t: [60, 4.5, -6] },
-      entrance: { p: [80, 3.4, -6], t: [55, 3.4, -6] }
+      front: { p: [80, 2.8, -6.3], t: [58, 2.5, -6.3] },
+      back: { p: [45, 2.8, -6.3], t: [58, 2.5, -6.3] },
+      entrance: { p: [72, 2.2, -6.3], t: [58, 2.2, -6.3] },
+      train: { p: [56.2, 2.2, -4.5], t: [60.0, 2.3, -10.6] },
+      read: { p: [60.5, 2.2, -8.0], t: [56.8, 2.3, -1.9] }
     }
   },
   {
@@ -7984,11 +7986,611 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
     }
   }
 
-  // ---------- 6) 1F 穿堂內部：READ 立體字展示牆、公佈欄 ----------
-  addBox(g, 0.55, 1.0, breezeW * 0.5, mats.stainlessSteel, bodyCx + 0.6, y0 + 0.5, cz(AXIS_CM[8]) + 0.5 * 0 + 0.35);
-  const readSignMat = new THREE.MeshBasicMaterial({ map: makeSignTexture('READ', '閱讀角 · 走進書香', '#1d5a7d', '#ffffff', 256, 128) });
-  const rsMesh = addMesh(g, new THREE.PlaneGeometry(3.2, 1.3), readSignMat, bodyCx + 0.6, y0 + 1.7, cz(AXIS_CM[8]) + 0.04, false);
-  addBox(g, 0.1, 1.3, 2.4, mats.glassDark, bodyCx - 1.4, y0 + 1.4, cz(AXIS_CM[7]) - 0.1);   // 玻璃展示櫃
+  // ============================================================================
+  // 6) 1F 穿堂文化核心：「復興德馬號」五分車閱讀站 ＆ 「READ」原木造型書架
+  // 依據現場實拍照片 media_1793514956908～1793514957415 1:1 沉浸式精準建模
+  // ============================================================================
+  const yBreezeFloor = 1.36; // 穿堂 1F 水磨石地坪標高
+  const yCeiling = yF[1] - 0.25; // 天花板底面標高 (約 4.15m)
+  const zNorthWall = cz(AXIS_CM[8]); // 北側牆面 (約 -10.65m，面向 +Z)
+  const zSouthWall = cz(AXIS_CM[7]); // 南側牆面 (約 -1.93m，面向 -Z)
+  const hallLenX = xA - xB; // 穿堂東西淨長 (約 7.33m)
+
+  // (A) 空間氛圍：天花板等距溫暖橡木色橫樑格柵 (Wooden Ceiling Timber Beams) & 水磨石地坪
+  const warmOakMat = new THREE.MeshStandardMaterial({ color: 0xb88850, roughness: 0.62 });
+  const darkWalnutMat = new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.68 });
+  const chalkBoardMat = new THREE.MeshStandardMaterial({ color: 0x1f2326, roughness: 0.88 });
+  const letterOakMat = new THREE.MeshStandardMaterial({ color: 0xd9a566, roughness: 0.58 });
+  const locoYellowMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.42 });
+  const locoRedMat = new THREE.MeshStandardMaterial({ color: 0xbe123c, roughness: 0.48 });
+  const locoBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.45 });
+  const locoGrilleMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.78 });
+  const carriageDarkMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.62 });
+  const carriageYellowMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.52 });
+  const trainWheelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.38, metalness: 0.55 });
+  const ceilingLightMat = new THREE.MeshBasicMaterial({ color: 0xfffaea });
+
+  // 天花板純白底板
+  addBox(g, hallLenX + 0.1, 0.02, breezeW, new THREE.MeshStandardMaterial({ color: 0xf8f8f8, roughness: 0.9 }), bodyCx, yCeiling - 0.01, breezeZ, false);
+
+  // 天花板等距木格柵樑 (11 根東西向延伸木樑)
+  const numBeams = 11;
+  const beamSpacingZ = (zSouthWall - zNorthWall - 0.8) / (numBeams - 1);
+  for (let b = 0; b < numBeams; b++) {
+    const bz = (zNorthWall + 0.4) + b * beamSpacingZ;
+    addBox(g, hallLenX, 0.20, 0.11, warmOakMat, bodyCx, yCeiling - 0.10, bz, false);
+    // 兩側嵌入式吸頂圓形筒燈
+    if (b % 2 === 1) {
+      addMesh(g, new THREE.CylinderGeometry(0.09, 0.09, 0.025, 12), ceilingLightMat, bodyCx - 1.8, yCeiling - 0.015, bz + beamSpacingZ * 0.5);
+      addMesh(g, new THREE.CylinderGeometry(0.09, 0.09, 0.025, 12), ceilingLightMat, bodyCx + 1.8, yCeiling - 0.015, bz + beamSpacingZ * 0.5);
+    }
+  }
+
+  // 彩色圖書陣列產生器 (通用於車廂書架與 READ 書架)
+  const bookPalette = [0xef4444, 0x2563eb, 0x10b981, 0xf59e0b, 0x8b5cf6, 0xec4899, 0xf97316, 0x06b6d4, 0xffffff, 0xd97706];
+  const makeBooksRow = (startX, endX, yBase, zPos, numBooks, depth = 0.22, tilt = false) => {
+    const stepX = (endX - startX) / numBooks;
+    for (let b = 0; b < numBooks; b++) {
+      const bx = startX + (b + 0.5) * stepX;
+      const bH = 0.18 + (b % 4) * 0.035;
+      const bThick = 0.022 + (b % 3) * 0.012;
+      const col = bookPalette[(b * 3 + b % 5) % bookPalette.length];
+      const bMat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.6 });
+      const book = addBox(g, bThick, bH, depth, bMat, bx, yBase + bH / 2, zPos, false);
+      if (tilt && b === numBooks - 1) {
+        book.rotation.z = -0.22;
+      }
+    }
+  };
+
+  // (B) 北側牆面：五分車閱讀站（台糖歷史彩繪壁畫 ＋ 復興德馬號 ＋ 三節書架車廂）
+  // 1. 台糖阿緱糖廠至復興國小歷史彩繪壁畫 Canvas (2048 x 1024)
+  function makeSugarTrainHistoryMuralTexture() {
+    const c = document.createElement('canvas');
+    c.width = 2048; c.height = 1024;
+    const ctx = c.getContext('2d');
+    const W = 2048, H = 1024;
+
+    // 復古宣紙色調底色
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, '#f9f6f0');
+    bgGrad.addColorStop(0.35, '#f4ece1');
+    bgGrad.addColorStop(1, '#eae0d2');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // 屏東平原與大武山水墨棕褐山巒
+    ctx.fillStyle = '#bda488';
+    ctx.beginPath();
+    ctx.moveTo(0, H * 0.72);
+    ctx.bezierCurveTo(W * 0.12, H * 0.45, W * 0.28, H * 0.52, W * 0.45, H * 0.40);
+    ctx.bezierCurveTo(W * 0.60, H * 0.32, W * 0.75, H * 0.48, W, H * 0.42);
+    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#8b6848';
+    ctx.beginPath();
+    ctx.moveTo(0, H * 0.85);
+    ctx.bezierCurveTo(W * 0.15, H * 0.58, W * 0.35, H * 0.65, W * 0.55, H * 0.52);
+    ctx.bezierCurveTo(W * 0.70, H * 0.46, W * 0.85, H * 0.62, W, H * 0.55);
+    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#593e29';
+    ctx.beginPath();
+    ctx.moveTo(0, H * 0.92);
+    ctx.bezierCurveTo(W * 0.20, H * 0.75, W * 0.40, H * 0.82, W * 0.65, H * 0.68);
+    ctx.bezierCurveTo(W * 0.80, H * 0.62, W * 0.90, H * 0.70, W, H * 0.66);
+    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+    ctx.fill();
+
+    // 阿緱糖廠煙囪與白煙剪影
+    ctx.fillStyle = '#3a2719';
+    ctx.fillRect(160, H * 0.28, 42, H * 0.45);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.arc(181, H * 0.24, 28, 0, Math.PI * 2);
+    ctx.arc(205, H * 0.18, 38, 0, Math.PI * 2);
+    ctx.arc(235, H * 0.12, 48, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 橘色時間軌道弧線
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = '#e67e22';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    const pts = [
+      [140, 840], [280, 780], [420, 730], [560, 680],
+      [710, 620], [860, 560], [1020, 480], [1180, 420],
+      [1330, 360], [1480, 310], [1620, 260], [1760, 220]
+    ];
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) {
+      const xc = (pts[i-1][0] + pts[i][0]) / 2;
+      const yc = (pts[i-1][1] + pts[i][1]) / 2;
+      ctx.quadraticCurveTo(pts[i-1][0], pts[i-1][1], xc, yc);
+    }
+    ctx.stroke();
+
+    // 軌道枕木裝飾
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#f39c12';
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p1 = pts[i], p2 = pts[i+1];
+      for (let s = 1; s <= 3; s++) {
+        const tx = p1[0] + (p2[0] - p1[0]) * (s / 4);
+        const ty = p1[1] + (p2[1] - p1[1]) * (s / 4);
+        ctx.beginPath();
+        ctx.moveTo(tx - 12, ty - 8);
+        ctx.lineTo(tx + 12, ty + 8);
+        ctx.stroke();
+      }
+    }
+
+    // 時間軸 12 個重要節點
+    const milestones = [
+      { yr: '1907', text: '設立阿緱製糖工場', x: 140, y: 840, dy: -55 },
+      { yr: '1947', text: '設立台糖第二區子弟小學', x: 280, y: 780, dy: 55 },
+      { yr: '1950', text: '改稱台糖屏東總廠', x: 420, y: 730, dy: -55 },
+      { yr: '1968', text: '改制復興國民小學', x: 560, y: 680, dy: 55 },
+      { yr: '1971', text: '校址遷至現址', x: 710, y: 620, dy: -55 },
+      { yr: '1972', text: '成立復興少棒隊', x: 860, y: 560, dy: 55 },
+      { yr: '1994', text: '鐵路停工', x: 1020, y: 480, dy: -55 },
+      { yr: '1997', text: '糖廠停工', x: 1180, y: 420, dy: 55 },
+      { yr: '2005', text: '改為屏東廠', x: 1330, y: 360, dy: -55 },
+      { yr: '2011', text: '設立幼兒園', x: 1480, y: 310, dy: 55 },
+      { yr: '2021', text: '糖廠園區啟用', x: 1620, y: 260, dy: -55 },
+      { yr: '2022', text: '設五分車閱讀站', x: 1760, y: 220, dy: 55 }
+    ];
+
+    milestones.forEach(m => {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#e67e22';
+      ctx.stroke();
+      ctx.fillStyle = '#d35400';
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 11, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#2b1c10';
+      ctx.lineWidth = 4;
+      ctx.font = 'bold 30px "Noto Sans TC","Microsoft JhengHei",sans-serif';
+      ctx.textAlign = 'center';
+      const tyYear = m.y + (m.dy > 0 ? 45 : -40);
+      ctx.strokeText(m.yr, m.x, tyYear);
+      ctx.fillText(m.yr, m.x, tyYear);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#1a1008';
+      ctx.lineWidth = 3;
+      ctx.font = 'bold 20px "Noto Sans TC","Microsoft JhengHei",sans-serif';
+      const tyDesc = m.y + (m.dy > 0 ? 72 : -18);
+      ctx.strokeText(m.text, m.x, tyDesc);
+      ctx.fillText(m.text, m.x, tyDesc);
+    });
+
+    // 右側書法名句直書
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 54px "DFKai-SB","BiauKai","Noto Serif TC",serif';
+    ctx.fillStyle = '#1c1917';
+    ctx.strokeStyle = '#fef3c7';
+    ctx.lineWidth = 3;
+
+    const poemLines = [
+      { chars: ['閱','讀','五','分','車','，'], x: 1830 },
+      { chars: ['行','經','萬','年','縣','。'], x: 1895 },
+      { chars: ['與','糖','越','讀','者','，'], x: 1955 },
+      { chars: ['復','興','展','新','頁','。'], x: 2005 }
+    ];
+
+    poemLines.forEach(col => {
+      let cy = 320;
+      col.chars.forEach(ch => {
+        ctx.strokeText(ch, col.x, cy);
+        ctx.fillText(ch, col.x, cy);
+        cy += 72;
+      });
+    });
+
+    ctx.font = 'bold 26px "DFKai-SB","BiauKai","Noto Serif TC",serif';
+    ctx.fillStyle = '#44403c';
+    let sy = 760;
+    ['（','五','分','車','閱','讀','站','）'].forEach(ch => {
+      ctx.fillText(ch, 1955, sy);
+      sy += 32;
+    });
+
+    // 左端牆柱：復古掛鐘與校長室金色銘牌
+    const clockX = 80, clockY = 220, clockR = 60;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(clockX, clockY, clockR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#475569';
+    ctx.stroke();
+    ctx.fillStyle = '#0f172a';
+    for (let a = 0; a < 12; a++) {
+      const ang = (a * Math.PI) / 6;
+      const hx = clockX + Math.sin(ang) * (clockR - 12);
+      const hy = clockY - Math.cos(ang) * (clockR - 12);
+      ctx.beginPath();
+      ctx.arc(hx, hy, a % 3 === 0 ? 4 : 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.moveTo(clockX, clockY);
+    ctx.lineTo(clockX - 22, clockY - 32);
+    ctx.stroke();
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(clockX, clockY);
+    ctx.lineTo(clockX + 26, clockY - 38);
+    ctx.stroke();
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath();
+    ctx.arc(clockX, clockY, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 校長室銘牌
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(clockX - 55, clockY + 80, 110, 42);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#fef08a';
+    ctx.strokeRect(clockX - 52, clockY + 83, 104, 36);
+    ctx.font = 'bold 22px "Noto Serif TC",serif';
+    ctx.fillStyle = '#fef08a';
+    ctx.textAlign = 'center';
+    ctx.fillText('校長室', clockX, clockY + 108);
+
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+  }
+
+  // 壁畫幾何板
+  const sugarTrainMuralW = hallLenX - 0.2;
+  const sugarTrainMuralH = 2.45;
+  const sugarTrainMuralY = yBreezeFloor + sugarTrainMuralH / 2 + 0.05;
+  const sugarTrainMuralTex = makeSugarTrainHistoryMuralTexture();
+  const sugarTrainMuralMat = new THREE.MeshStandardMaterial({ map: sugarTrainMuralTex, roughness: 0.55 });
+  addMesh(g, new THREE.PlaneGeometry(sugarTrainMuralW, sugarTrainMuralH), sugarTrainMuralMat, bodyCx, sugarTrainMuralY, zNorthWall + 0.04, false);
+  // 壁畫頂部木飾收邊橫楣
+  addBox(g, sugarTrainMuralW + 0.2, 0.16, 0.14, warmOakMat, bodyCx, sugarTrainMuralY + sugarTrainMuralH / 2 + 0.08, zNorthWall + 0.07);
+
+  // 2. 「復興德馬號」黃色五分車機車頭 (Diema Locomotive)
+  // 位於北側牆面前方東段 (朝向大門前庭)
+  const xLoco = xA - 1.45; // 車身中心 X
+  const zLoco = zNorthWall + 0.62; // 進深中心 Z (貼齊牆面並向穿堂延伸)
+  const locoLen = 2.05, locoWid = 1.05, locoH = 1.72;
+
+  // (1) 大紅底盤排障器 (Red Cowcatcher Base)
+  addBox(g, locoLen, 0.14, locoWid, locoRedMat, xLoco, yBreezeFloor + 0.12, zLoco);
+  // 前端傾斜排障器 (Cowcatcher wedge at East front)
+  addBox(g, 0.18, 0.22, locoWid * 0.95, locoRedMat, xLoco + locoLen / 2 + 0.06, yBreezeFloor + 0.11, zLoco);
+  // 牽引勾 (Coupler)
+  addBox(g, 0.15, 0.08, 0.10, darkMat, xLoco + locoLen / 2 + 0.18, yBreezeFloor + 0.10, zLoco, false);
+  // 4 顆黑色鋼質圓輪 (Black Train Wheels)
+  [-0.65, 0.65].forEach(dx => {
+    const wx = xLoco + dx;
+    const w1 = addMesh(g, new THREE.CylinderGeometry(0.11, 0.11, 0.06, 16), trainWheelMat, wx, yBreezeFloor + 0.08, zLoco + locoWid / 2 - 0.05, false);
+    w1.rotation.x = Math.PI / 2;
+    const w2 = addMesh(g, new THREE.CylinderGeometry(0.11, 0.11, 0.06, 16), trainWheelMat, wx, yBreezeFloor + 0.08, zLoco - locoWid / 2 + 0.05, false);
+    w2.rotation.x = Math.PI / 2;
+  });
+
+  // (2) 引擎機罩 (Engine Bonnet / Hood) - 東半段
+  const hoodLen = 1.05, hoodWid = locoWid * 0.92, hoodH = 0.72;
+  const xHood = xLoco + (locoLen - hoodLen) / 2;
+  addBox(g, hoodLen, hoodH, hoodWid, locoYellowMat, xHood, yBreezeFloor + 0.19 + hoodH / 2, zLoco);
+  // 前端微傾斜頂飾
+  addBox(g, hoodLen * 0.85, 0.06, hoodWid * 0.96, locoYellowMat, xHood - 0.05, yBreezeFloor + 0.19 + hoodH + 0.03, zLoco);
+  // 黑色散熱百葉進氣柵 (Radiator Grille on East face)
+  addBox(g, 0.04, 0.48, 0.52, locoGrilleMat, xHood + hoodLen / 2 + 0.02, yBreezeFloor + 0.19 + hoodH / 2 - 0.05, zLoco, false);
+  // 百葉窗灰色導流片紋理
+  for (let l = 0; l < 6; l++) {
+    addBox(g, 0.02, 0.02, 0.44, columnMat, xHood + hoodLen / 2 + 0.04, yBreezeFloor + 0.32 + l * 0.07, zLoco, false);
+  }
+  // 圓形紅色大車燈 (Red Headlights with warm core)
+  [-0.32, 0.32].forEach(dz => {
+    const lampX = xHood + hoodLen / 2 + 0.03;
+    const lampY = yBreezeFloor + 0.35;
+    const lRim = addMesh(g, new THREE.CylinderGeometry(0.07, 0.07, 0.04, 14), locoRedMat, lampX, lampY, zLoco + dz, false);
+    lRim.rotation.z = Math.PI / 2;
+    const lBulb = addMesh(g, new THREE.SphereGeometry(0.045, 10, 8), ceilingLightMat, lampX + 0.02, lampY, zLoco + dz, false);
+  });
+  // 引擎蓋頂部深藍色多邊形頂燈裝飾
+  addBox(g, 0.32, 0.10, 0.18, locoBlueMat, xHood + 0.15, yBreezeFloor + 0.19 + hoodH + 0.08, zLoco);
+
+  // (3) 駕駛室 (Driver's Cab) - 西半段 (通透留空，學童可入內)
+  const cabLen = 0.95, cabWid = locoWid, cabH = 1.38;
+  const xCab = xLoco - (locoLen - cabLen) / 2;
+  const cabTopY = yBreezeFloor + 0.19 + cabH;
+  // 駕駛室立體薄壁結構 (外黃內飾)
+  // 西側背牆 (附窗洞隔板)
+  addBox(g, 0.08, cabH, cabWid, locoYellowMat, xCab - cabLen / 2 + 0.04, yBreezeFloor + 0.19 + cabH / 2, zLoco);
+  // 北側靠牆板
+  addBox(g, cabLen, cabH, 0.08, locoYellowMat, xCab, yBreezeFloor + 0.19 + cabH / 2, zLoco - cabWid / 2 + 0.04);
+  // 南側穿堂面 (留有寬闊開放門戶，東段為黃色門柱與白框大側窗)
+  addBox(g, 0.35, cabH, 0.08, locoYellowMat, xCab + cabLen / 2 - 0.175, yBreezeFloor + 0.19 + cabH / 2, zLoco + cabWid / 2 - 0.04);
+  // 駕駛室車頂 (微斜飛簷)
+  addBox(g, cabLen + 0.12, 0.08, cabWid + 0.12, locoYellowMat, xCab, cabTopY + 0.04, zLoco);
+  // 東面雙前車窗 (White Double Front Windows)
+  const frontWinMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+  addBox(g, 0.06, 0.56, 0.36, frontWinMat, xCab + cabLen / 2 - 0.03, yBreezeFloor + 0.95, zLoco - 0.22, false);
+  addBox(g, 0.06, 0.56, 0.36, frontWinMat, xCab + cabLen / 2 - 0.03, yBreezeFloor + 0.95, zLoco + 0.22, false);
+  // 窗戶深色玻璃
+  addBox(g, 0.02, 0.48, 0.28, darkMat, xCab + cabLen / 2 + 0.01, yBreezeFloor + 0.95, zLoco - 0.22, false);
+  addBox(g, 0.02, 0.48, 0.28, darkMat, xCab + cabLen / 2 + 0.01, yBreezeFloor + 0.95, zLoco + 0.22, false);
+  // 駕駛室內部地板與小操控儀表台
+  addBox(g, cabLen - 0.15, 0.05, cabWid - 0.15, slabMat, xCab, yBreezeFloor + 0.22, zLoco);
+  addBox(g, 0.22, 0.45, 0.35, carriageDarkMat, xCab + cabLen / 2 - 0.20, yBreezeFloor + 0.45, zLoco);
+  // 登車小踏板與黑色金屬扶手
+  addBox(g, 0.22, 0.04, 0.32, locoRedMat, xCab - 0.15, yBreezeFloor + 0.10, zLoco + cabWid / 2 + 0.12);
+  addBox(g, 0.03, 0.95, 0.03, darkMat, xCab + 0.02, yBreezeFloor + 0.65, zLoco + cabWid / 2 + 0.02, false);
+
+  // 3. 三節雙層書架車廂與閱覽桌 (Carriage Bookshelves & Reading Desk)
+  const carStartX = xCab - cabLen / 2; // 接在駕駛室後端
+  const carTotalLen = 4.25;
+  const numCars = 3;
+  const carLen = carTotalLen / numCars; // 每節約 1.41m
+  const carWid = 0.52, carH = 1.25;
+  const zCar = zNorthWall + carWid / 2 + 0.05;
+
+  for (let c = 0; c < numCars; c++) {
+    const cx = carStartX - (c + 0.5) * carLen;
+
+    // 車廂深鐵灰外框主體
+    addBox(g, carLen - 0.08, carH, carWid, carriageDarkMat, cx, yBreezeFloor + carH / 2, zCar);
+    // 底盤黑色大樑與車輪
+    addBox(g, carLen - 0.04, 0.08, carWid * 0.9, darkMat, cx, yBreezeFloor + 0.06, zCar, false);
+    // 兩組火車車輪
+    [-0.38, 0.38].forEach(dwx => {
+      const cw = addMesh(g, new THREE.CylinderGeometry(0.10, 0.10, 0.045, 14), trainWheelMat, cx + dwx, yBreezeFloor + 0.06, zCar + carWid / 2 + 0.02, false);
+      cw.rotation.x = Math.PI / 2;
+    });
+
+    // 雙層展示空間 (上層斜面繪本槽、下層直立書架)
+    // 上層暖木色傾斜背板
+    addBox(g, carLen - 0.14, 0.42, 0.04, warmOakMat, cx, yBreezeFloor + 0.90, zCar + 0.08, false);
+    // 下層直立書架格 (滿載彩色繪本圖書)
+    makeBooksRow(cx - carLen / 2 + 0.12, cx + carLen / 2 - 0.12, yBreezeFloor + 0.14, zCar + 0.12, 14, 0.22);
+    // 上層傾斜擺放展示繪本
+    makeBooksRow(cx - carLen / 2 + 0.16, cx + carLen / 2 - 0.16, yBreezeFloor + 0.70, zCar + 0.16, 7, 0.16, true);
+
+    // 車廂間向外延伸的亮黃色圓角閱讀座台小桌 (在第 1、2 節車廂間與第 2、3 節車廂間)
+    if (c < numCars - 1) {
+      const deskX = cx - carLen / 2;
+      // 亮黃色桌面
+      addBox(g, 0.48, 0.04, 0.58, carriageYellowMat, deskX, yBreezeFloor + 0.46, zCar + 0.22);
+      // 支撐立柱
+      addBox(g, 0.08, 0.44, 0.08, darkMat, deskX, yBreezeFloor + 0.22, zCar + 0.45, false);
+      // 桌上放置借閱的繪本
+      addBox(g, 0.22, 0.02, 0.16, bookPalette[c + 2], deskX, yBreezeFloor + 0.49, zCar + 0.26, false);
+    }
+  }
+
+  // (C) 南側牆面：消光黑底牆 ＆ READ 立體原木造型書架 ＆ 校務公佈欄
+  // 1. 下半部消光黑底牆 (Chalkboard Wall)
+  const blackWallH = 1.48;
+  const blackWallW = hallLenX - 0.3;
+  addBox(g, blackWallW, blackWallH, 0.04, chalkBoardMat, bodyCx, yBreezeFloor + blackWallH / 2, zSouthWall - 0.02);
+
+  // 2. 四字母立體原木書架 (R · E · A · D)
+  const zShelf = zSouthWall - 0.16;
+  const yShelfBase = yBreezeFloor;
+
+  // --- 「R」造型書架 ---
+  const xR = xB + 1.25;
+  // 左垂直立柱
+  addBox(g, 0.10, 1.20, 0.26, letterOakMat, xR - 0.32, yShelfBase + 0.60, zShelf);
+  // 上部圓框橫板
+  addBox(g, 0.40, 0.08, 0.26, letterOakMat, xR - 0.12, yShelfBase + 1.16, zShelf);
+  addBox(g, 0.40, 0.08, 0.26, letterOakMat, xR - 0.12, yShelfBase + 0.64, zShelf);
+  addBox(g, 0.08, 0.46, 0.26, letterOakMat, xR + 0.10, yShelfBase + 0.90, zShelf);
+  // 框內書籍
+  makeBooksRow(xR - 0.24, xR + 0.04, yShelfBase + 0.68, zShelf, 6, 0.20, true);
+  // 下部斜撐腿 (角度約 28°)
+  const rLeg = addBox(g, 0.08, 0.68, 0.26, letterOakMat, xR + 0.02, yShelfBase + 0.32, zShelf);
+  rLeg.rotation.z = -0.48;
+  // 底部承托層板與書籍
+  addBox(g, 0.46, 0.08, 0.26, letterOakMat, xR - 0.10, yShelfBase + 0.04, zShelf);
+  makeBooksRow(xR - 0.25, xR + 0.12, yShelfBase + 0.08, zShelf, 8, 0.20);
+
+  // --- 「E」造型書架 ---
+  const xE_shelf = xB + 2.35;
+  // 左垂直背樑
+  addBox(g, 0.10, 1.20, 0.26, letterOakMat, xE_shelf - 0.30, yShelfBase + 0.60, zShelf);
+  // 頂、中、底三道水平厚原木層板
+  addBox(g, 0.55, 0.08, 0.26, letterOakMat, xE_shelf + 0.02, yShelfBase + 1.16, zShelf);
+  addBox(g, 0.48, 0.08, 0.26, letterOakMat, xE_shelf - 0.02, yShelfBase + 0.60, zShelf);
+  addBox(g, 0.55, 0.08, 0.26, letterOakMat, xE_shelf + 0.02, yShelfBase + 0.04, zShelf);
+  // 中層與底層陳列書籍
+  makeBooksRow(xE_shelf - 0.22, xE_shelf + 0.20, yShelfBase + 0.64, zShelf, 8, 0.20);
+  makeBooksRow(xE_shelf - 0.22, xE_shelf + 0.26, yShelfBase + 0.08, zShelf, 9, 0.20, true);
+
+  // --- 「A」造型書架 ---
+  const xA_shelf = xB + 3.45;
+  // 人字形雙斜向支撐木柱
+  const aLeft = addBox(g, 0.09, 1.26, 0.26, letterOakMat, xA_shelf - 0.20, yShelfBase + 0.60, zShelf);
+  aLeft.rotation.z = 0.22;
+  const aRight = addBox(g, 0.09, 1.26, 0.26, letterOakMat, xA_shelf + 0.20, yShelfBase + 0.60, zShelf);
+  aRight.rotation.z = -0.22;
+  // 頂部封帽與中部橫檔
+  addBox(g, 0.22, 0.08, 0.26, letterOakMat, xA_shelf, yShelfBase + 1.20, zShelf);
+  addBox(g, 0.46, 0.08, 0.26, letterOakMat, xA_shelf, yShelfBase + 0.52, zShelf);
+  // 上下層展示書籍
+  makeBooksRow(xA_shelf - 0.18, xA_shelf + 0.18, yShelfBase + 0.56, zShelf, 7, 0.20, true);
+  makeBooksRow(xA_shelf - 0.26, xA_shelf + 0.26, yShelfBase + 0.02, zShelf, 10, 0.20);
+
+  // --- 「D」造型書架 ---
+  const xD_shelf = xB + 4.55;
+  // 左垂直木立柱
+  addBox(g, 0.10, 1.20, 0.26, letterOakMat, xD_shelf - 0.32, yShelfBase + 0.60, zShelf);
+  // 頂橫板與底橫板
+  addBox(g, 0.42, 0.08, 0.26, letterOakMat, xD_shelf - 0.10, yShelfBase + 1.16, zShelf);
+  addBox(g, 0.42, 0.08, 0.26, letterOakMat, xD_shelf - 0.10, yShelfBase + 0.04, zShelf);
+  // 右側大半圓外框
+  const dTopCurve = addBox(g, 0.08, 0.44, 0.26, letterOakMat, xD_shelf + 0.22, yShelfBase + 0.98, zShelf);
+  dTopCurve.rotation.z = -0.52;
+  addBox(g, 0.08, 0.48, 0.26, letterOakMat, xD_shelf + 0.32, yShelfBase + 0.60, zShelf);
+  const dBotCurve = addBox(g, 0.08, 0.44, 0.26, letterOakMat, xD_shelf + 0.22, yShelfBase + 0.22, zShelf);
+  dBotCurve.rotation.z = 0.52;
+  // 內部十字原木格板
+  addBox(g, 0.52, 0.06, 0.26, letterOakMat, xD_shelf - 0.04, yShelfBase + 0.60, zShelf);
+  addBox(g, 0.06, 1.04, 0.26, letterOakMat, xD_shelf - 0.06, yShelfBase + 0.60, zShelf);
+  // 四個分格滿滿擺放書籍繪本
+  makeBooksRow(xD_shelf - 0.26, xD_shelf - 0.08, yShelfBase + 0.63, zShelf, 5, 0.20);
+  makeBooksRow(xD_shelf - 0.02, xD_shelf + 0.20, yShelfBase + 0.63, zShelf, 5, 0.20, true);
+  makeBooksRow(xD_shelf - 0.26, xD_shelf - 0.08, yShelfBase + 0.07, zShelf, 5, 0.20);
+  makeBooksRow(xD_shelf - 0.02, xD_shelf + 0.22, yShelfBase + 0.07, zShelf, 5, 0.20);
+
+  // 3. 上方四聯式木框玻璃校務歷史公佈欄 (Glass Showcase Bulletin Board)
+  function makeEastHallwayBulletinBoardTexture() {
+    const c = document.createElement('canvas');
+    c.width = 2048; c.height = 512;
+    const ctx = c.getContext('2d');
+    const W = 2048, H = 512;
+
+    ctx.fillStyle = '#f7eedb';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = 'rgba(168, 126, 75, 0.12)';
+    for (let i = 0; i < 4000; i++) {
+      ctx.fillRect(Math.random() * W, Math.random() * H, 2.5, 2.5);
+    }
+
+    const panelW = W / 4;
+    ctx.fillStyle = '#5c3d28';
+    for (let p = 0; p <= 4; p++) {
+      ctx.fillRect(p * panelW - (p === 0 ? 0 : (p === 4 ? 16 : 8)), 0, 16, H);
+    }
+
+    // 第 1 聯
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('校史沿革與糖廠記憶', panelW * 0.5, 60);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillRect(panelW * 0.1, 80, panelW * 0.8, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(panelW * 0.12, 105, panelW * 0.76, 210);
+    ctx.fillStyle = '#64748b';
+    ctx.fillRect(panelW * 0.16, 120, panelW * 0.68, 140);
+    ctx.fillStyle = '#475569';
+    ctx.font = '22px "Noto Sans TC",sans-serif';
+    ctx.fillText('1947 年創校老校舍與製糖工場五分車老照片', panelW * 0.5, 290);
+    ctx.fillStyle = '#334155';
+    ctx.font = '20px "Noto Sans TC",sans-serif';
+    ctx.fillText('傳承台糖子弟小學文脈，深耕萬年溪畔一甲子', panelW * 0.5, 360);
+    ctx.fillText('開拓書香永續校園，培育卓越復興學子', panelW * 0.5, 410);
+
+    // 第 2 聯
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
+    ctx.fillText('復興少棒隊光榮歷史', panelW * 1.5, 60);
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(panelW * 1.1, 80, panelW * 0.8, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(panelW * 1.12, 105, panelW * 0.76, 210);
+    ctx.fillStyle = '#0284c7';
+    ctx.fillRect(panelW * 1.16, 120, panelW * 0.68, 140);
+    ctx.fillStyle = '#ca8a04';
+    ctx.font = 'bold 24px "Noto Sans TC",sans-serif';
+    ctx.fillText('★ 全國少棒選拔賽冠軍・威廉波特代表隊 ★', panelW * 1.5, 290);
+    ctx.fillStyle = '#334155';
+    ctx.font = '20px "Noto Sans TC",sans-serif';
+    ctx.fillText('1972 年成軍揚威國際・復興棒球薪火相傳', panelW * 1.5, 360);
+    ctx.fillText('熱血拚搏・團隊合作・強健體魄・追求卓越', panelW * 1.5, 410);
+
+    // 第 3 聯
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
+    ctx.fillText('適性樂學 · 幸福復興', panelW * 2.5, 60);
+    ctx.fillStyle = '#10b981';
+    ctx.fillRect(panelW * 2.1, 80, panelW * 0.8, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(panelW * 2.12, 105, panelW * 0.76, 210);
+    ctx.fillStyle = '#059669';
+    ctx.fillRect(panelW * 2.16, 120, panelW * 0.68, 140);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 32px "Noto Sans TC",sans-serif';
+    ctx.fillText('愛上閱讀 · 快樂學習', panelW * 2.5, 180);
+    ctx.font = 'bold 26px "Noto Sans TC",sans-serif';
+    ctx.fillText('多元展能 · 迎向未來', panelW * 2.5, 225);
+    ctx.fillStyle = '#334155';
+    ctx.font = '20px "Noto Sans TC",sans-serif';
+    ctx.fillText('推動晨讀時光・班級讀書會・五分車故事媽媽', panelW * 2.5, 360);
+    ctx.fillText('雙語教育・數位科技・美感藝術全人發展', panelW * 2.5, 410);
+
+    // 第 4 聯
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
+    ctx.fillText('學生藝文成果展與校園快訊', panelW * 3.5, 60);
+    ctx.fillStyle = '#ec4899';
+    ctx.fillRect(panelW * 3.1, 80, panelW * 0.8, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(panelW * 3.12, 105, panelW * 0.36, 180);
+    ctx.fillRect(panelW * 3.52, 105, panelW * 0.36, 180);
+    ctx.fillStyle = '#f43f5e';
+    ctx.fillRect(panelW * 3.15, 115, panelW * 0.30, 125);
+    ctx.fillStyle = '#8b5cf6';
+    ctx.fillRect(panelW * 3.55, 115, panelW * 0.30, 125);
+    ctx.fillStyle = '#475569';
+    ctx.font = '18px "Noto Sans TC",sans-serif';
+    ctx.fillText('屏東縣學生美展特優', panelW * 3.30, 265);
+    ctx.fillText('語文競賽特優榮譽榜', panelW * 3.70, 265);
+    ctx.fillStyle = '#334155';
+    ctx.font = '20px "Noto Sans TC",sans-serif';
+    ctx.fillText('【最新快訊】全校閱讀列車集點摸彩開跑！', panelW * 3.5, 340);
+    ctx.fillText('歡迎小朋友課後到 1F 穿堂閱讀五分車借書！', panelW * 3.5, 385);
+    ctx.fillText('借閱一本蓋一枚五分車章，兌換榮譽徽章！', panelW * 3.5, 430);
+
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+  }
+
+  const bbW = 5.8, bbH = 1.05;
+  const bbY = yBreezeFloor + 1.55 + bbH / 2;
+  const bbTex = makeEastHallwayBulletinBoardTexture();
+  const bbMat = new THREE.MeshStandardMaterial({ map: bbTex, roughness: 0.65 });
+  addMesh(g, new THREE.PlaneGeometry(bbW, bbH), bbMat, bodyCx, bbY, zSouthWall - 0.04, false);
+  // 深胡桃木外框
+  addBox(g, bbW + 0.18, 0.09, 0.08, darkWalnutMat, bodyCx, bbY + bbH / 2 + 0.045, zSouthWall - 0.04);
+  addBox(g, bbW + 0.18, 0.09, 0.08, darkWalnutMat, bodyCx, bbY - bbH / 2 - 0.045, zSouthWall - 0.04);
+  addBox(g, 0.09, bbH, 0.08, darkWalnutMat, bodyCx - bbW / 2 - 0.045, bbY, zSouthWall - 0.04);
+  addBox(g, 0.09, bbH, 0.08, darkWalnutMat, bodyCx + bbW / 2 + 0.045, bbY, zSouthWall - 0.04);
+  // 微透明玻璃拉門
+  addBox(g, bbW, bbH, 0.02, mats.glassDark, bodyCx, bbY, zSouthWall - 0.07, false);
+
+  // 4. 右側復古木質閱覽小矮桌與置物推車
+  const xDesk = xA - 0.70, zDesk = zSouthWall - 0.45;
+  addBox(g, 0.85, 0.04, 0.52, warmOakMat, xDesk, yBreezeFloor + 0.48, zDesk);
+  [-0.38, 0.38].forEach(dx => [-0.22, 0.22].forEach(dz => {
+    addBox(g, 0.035, 0.46, 0.035, darkMat, xDesk + dx, yBreezeFloor + 0.23, zDesk + dz, false);
+  }));
+  // 桌上借閱書籍
+  addBox(g, 0.24, 0.025, 0.18, bookPalette[0], xDesk - 0.15, yBreezeFloor + 0.51, zDesk - 0.05, false);
+  addBox(g, 0.22, 0.020, 0.16, bookPalette[1], xDesk + 0.12, yBreezeFloor + 0.51, zDesk + 0.04, false);
+
+  // 置物推車
+  const xCart = xA - 1.35, zCart = zSouthWall - 0.45;
+  addBox(g, 0.42, 0.03, 0.36, warmOakMat, xCart, yBreezeFloor + 0.16, zCart, false);
+  addBox(g, 0.42, 0.03, 0.36, warmOakMat, xCart, yBreezeFloor + 0.52, zCart, false);
+  addBox(g, 0.03, 0.65, 0.03, darkMat, xCart + 0.21, yBreezeFloor + 0.35, zCart + 0.15, false);
+  addBox(g, 0.03, 0.65, 0.03, darkMat, xCart + 0.21, yBreezeFloor + 0.35, zCart - 0.15, false);
+  addBox(g, 0.03, 0.03, 0.32, darkMat, xCart + 0.21, yBreezeFloor + 0.68, zCart, false);
 
   // ---------- 7) 後(西)走廊與中庭面 (依 (全景圖)東棟大樓之西正面.jpg 與西向立面圖) ----------
   for (let k = 1; k <= 3; k++) {
@@ -8024,7 +8626,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   // 依據最新實景照片 media_1793002887451_10566a0d.jpg 1:1 精確還原
   // ============================================================================
   const yCourtGround = 0.16;
-  const yBreezeFloor = 1.36; // 穿堂 1F 地坪標高（較中庭地坪高出 1.20m）
+  // yBreezeFloor (1.36m) 已於穿堂文化核心區塊宣告
   const stairRiseTotal = yBreezeFloor - yCourtGround; // 1.20m
   const nBreezeSteps = 8;    // 8 級平緩寬台階
   const stepRiserH = stairRiseTotal / nBreezeSteps; // 0.15m
