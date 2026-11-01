@@ -14165,48 +14165,7 @@ function makeMainGateWelcomeBannerTexture() {
   });
 
   // ================================================================
-  // ================================================================
-  // 前庭迎賓大道軸線景觀：東棟 1F 穿堂前「圓形石砌老樹盆景台」與「草坪自然景觀巨石」
-  // (依 2024 最新街景正面照片 media_1793529722729_ebc24530.jpg 精準 1:1 還原)
-  // ================================================================
-  {
-    const islandX = 66.8, islandZ = -6.29; // 正對穿堂入口中軸
-    const islandMat = new THREE.MeshStandardMaterial({ color: 0xd6d3cb, roughness: 0.82 });
-    const soilMat = new THREE.MeshStandardMaterial({ color: 0x3d2c1e, roughness: 0.95 });
-
-    // 圓形石砌外框矮花台 (外徑 2.2m，高 0.42m)
-    addMesh(mg, new THREE.CylinderGeometry(1.15, 1.20, 0.42, 24), islandMat, islandX, 0.21, islandZ);
-    addMesh(mg, new THREE.CylinderGeometry(1.22, 1.22, 0.06, 24), stoneCapMat, islandX, 0.42, islandZ);
-    // 花台內肥沃黑褐土壤
-    addMesh(mg, new THREE.CylinderGeometry(1.05, 1.05, 0.04, 20), soilMat, islandX, 0.41, islandZ);
-
-    // 景觀老樹盆景 (虯曲蒼勁深褐樹幹 ＋ 平展雲狀樹冠)
-    const bonsaiTrunk = addMesh(mg, new THREE.CylinderGeometry(0.12, 0.22, 1.45, 10), trunkBrownMat, islandX, 0.42 + 0.725, islandZ);
-    bonsaiTrunk.rotation.z = -0.15;
-    bonsaiTrunk.rotation.x = 0.12;
-
-    const bonsaiFoliageMat = new THREE.MeshStandardMaterial({ color: 0x1d4a23, roughness: 0.84 });
-    const cloudPads = [
-      [0, 1.45, 0, 1.35, 0.42, 1.35],
-      [0.65, 1.25, 0.35, 1.05, 0.38, 1.05],
-      [-0.55, 1.10, -0.45, 1.15, 0.36, 1.15],
-      [-0.35, 1.65, 0.40, 0.85, 0.32, 0.85],
-      [0.45, 1.70, -0.30, 0.90, 0.32, 0.90]
-    ];
-    cloudPads.forEach(([ox, oy, oz, sx, sy, sz]) => {
-      const pad = addMesh(mg, new THREE.SphereGeometry(1.0, 10, 8), bonsaiFoliageMat, islandX + ox, 0.42 + oy, islandZ + oz);
-      pad.scale.set(sx, sy, sz);
-    });
-
-    // 盆景台右側前庭草坪天然「大地景觀巨石」
-    const boulderMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.92 });
-    const bldX = 67.8, bldZ = -3.8;
-    const bld = addMesh(mg, new THREE.DodecahedronGeometry(0.72, 1), boulderMat, bldX, 0.42, bldZ);
-    bld.scale.set(1.4, 0.85, 1.15);
-    bld.rotation.y = 0.35;
-    bld.rotation.z = 0.08;
-  }
-
+  // (依指示移除穿堂前盆景台與巨石，保持前庭迎賓大道通透視野)
   // 6) 前庭中央連鎖磚大廣場、南北白線停車位、機車、藍色「訪客停車位」鐵牌架與 6 柱頭復古磚造九重葛花台
   //    (依據 forecourt_central_plaza.jpg 1:1 精確建模)
   // ================================================================
@@ -15958,7 +15917,7 @@ commuterWalkwayTrees.forEach(([px, py, sc, sp]) => addTree(X(px), Z(py), sc, sp)
 // Campus & Commuter Walkway Night Streetlights (Warm glowing orbs & poles along pathways & exterior commuter walkway)
 const streetLightBulbs = [];
 const streetLightCoords = [
-  [X(860), Z(205)], [X(860), Z(260)], [X(795), Z(205)], [X(795), Z(260)],
+  // (依指示移除前庭迎賓大道兩側突兀立柱路燈，保持車道開闊視野)
   [X(690), Z(155)], [X(575), Z(155)], [X(465), Z(155)],
   [X(690), Z(268)], [X(575), Z(268)], [X(465), Z(268)],
   [X(382), Z(200)], [X(382), Z(295)], [X(208), Z(200)], [X(208), Z(295)],
