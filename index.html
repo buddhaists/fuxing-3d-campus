@@ -13134,38 +13134,281 @@ function makeBasketballRulesSignTexture() {
   landmarkGroupMap.set('command-stage', sg);
 }
 
-// Helper: Create authentic recruitment/welcome banner texture for Main Gate ("選擇復興 家長安心")
-function makeMainGateWelcomeBannerTexture() {
+// ================================================================
+// 實景 1:1 紋理產生器：校門左側布條、門牌告示、海報、避難牌與受口標記
+// ================================================================
+
+// 1. 「選擇復興 家長安心」全彩招生宣傳布條 (依實拍特寫 1:1 精確構建)
+function makeFuxingGateBannerTexture() {
   const c = document.createElement('canvas');
-  c.width = 1024; c.height = 200;
+  c.width = 1024; c.height = 340;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, 1024, 200);
-  // Red side bar
-  ctx.fillStyle = '#c82828';
-  ctx.fillRect(0, 0, 310, 200);
-  // Blue side bar
-  ctx.fillStyle = '#1a569c';
-  ctx.fillRect(714, 0, 310, 200);
-  // Gold inner border
-  ctx.strokeStyle = '#d4a222';
-  ctx.lineWidth = 6;
-  ctx.strokeRect(6, 6, 1012, 188);
 
+  // 純白布質底色
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 1024, 340);
+
+  // 外圍淡灰邊框與四角金屬穿孔 (Grommets)
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(6, 6, 1012, 328);
+  [[24, 24], [1000, 24], [24, 316], [1000, 316], [512, 24], [512, 316]].forEach(([gx, gy]) => {
+    ctx.fillStyle = '#64748b';
+    ctx.beginPath(); ctx.arc(gx, gy, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath(); ctx.arc(gx, gy, 4, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // 左上角全彩膠囊標籤：「112學年度」
+  ctx.fillStyle = '#e11d48';
+  if (ctx.roundRect) ctx.roundRect(40, 30, 135, 38, 19);
+  else ctx.fillRect(40, 30, 135, 38);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 22px "Noto Sans TC", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 54px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
-  ctx.fillText('選 擇 復 興', 155, 120);
-  ctx.fillStyle = '#c82828';
-  ctx.font = 'bold 44px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
-  ctx.fillText('復興國小・幼兒園 招生中', 512, 118);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 54px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
-  ctx.fillText('家 長 安 心', 869, 120);
+  ctx.textBaseline = 'middle';
+  ctx.fillText('112學年度', 107, 49);
 
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  // 正面核心深色特大醒目標題：「選擇復興  家長安心」
+  ctx.font = '900 68px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+  ctx.fillStyle = '#0f172a';
+  ctx.textAlign = 'left';
+  ctx.fillText('選 擇 復 興', 40, 126);
+  ctx.fillText('家 長 安 心', 400, 126);
+
+  // 副標題欄位：五大核心特色（主動 | 自信 | 雙語 | 科技 | 多元潛力）
+  ctx.font = 'bold 26px "Noto Sans TC", sans-serif';
+  ctx.fillStyle = '#475569';
+  ctx.fillText('主動  |  自信  |  雙語  |  科技  |  多元潛力', 44, 188);
+
+  // 底部諮詢電話資訊塊
+  ctx.fillStyle = '#f1f5f9';
+  if (ctx.roundRect) ctx.roundRect(40, 225, 680, 78, 12);
+  else ctx.fillRect(40, 225, 680, 78);
+  ctx.fill();
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1.5;
+  if (ctx.roundRect) ctx.roundRect(40, 225, 680, 78, 12);
+  ctx.stroke();
+
+  ctx.fillStyle = '#dc2626';
+  ctx.font = '900 24px "Noto Sans TC", sans-serif';
+  ctx.fillText('諮詢電話：', 56, 258);
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 24px "Noto Sans TC", sans-serif';
+  ctx.fillText('08-7520402 轉 12', 170, 258);
+  ctx.fillStyle = '#64748b';
+  ctx.font = 'bold 20px "Noto Sans TC", sans-serif';
+  ctx.fillText('歡迎來電洽詢 · 業務專戶口公幼辦理新生報到', 56, 286);
+
+  // 右側粉紅立體書本插畫與閱讀標語：「歡迎 閱來 越愛讀！」
+  const bookX = 765, bookY = 48, bookW = 195, bookH = 240;
+  ctx.save();
+  ctx.translate(bookX, bookY);
+  ctx.rotate(0.06);
+
+  // 書本微投影
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  if (ctx.roundRect) ctx.roundRect(8, 8, bookW, bookH, 16);
+  else ctx.fillRect(8, 8, bookW, bookH);
+  ctx.fill();
+
+  // 書本漸層封面
+  const bgGrad = ctx.createLinearGradient(0, 0, bookW, bookH);
+  bgGrad.addColorStop(0, '#fb7185');
+  bgGrad.addColorStop(1, '#e11d48');
+  ctx.fillStyle = bgGrad;
+  if (ctx.roundRect) ctx.roundRect(0, 0, bookW, bookH, 16);
+  else ctx.fillRect(0, 0, bookW, bookH);
+  ctx.fill();
+
+  // 書頁邊緣白邊
+  ctx.fillStyle = '#fff1f2';
+  ctx.fillRect(8, 6, 14, bookH - 12);
+
+  // 書名標語
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 26px "Noto Sans TC", sans-serif';
+  ctx.fillText('歡 迎', bookW / 2 + 8, 48);
+  ctx.font = '900 34px "Noto Sans TC", sans-serif';
+  ctx.fillText('閱 來', bookW / 2 + 8, 96);
+  ctx.fillText('越愛讀！', bookW / 2 + 8, 145);
+
+  // 底部 QR Code 框
+  ctx.fillStyle = '#ffffff';
+  if (ctx.roundRect) ctx.roundRect(bookW / 2 - 32, 172, 75, 54, 8);
+  else ctx.fillRect(bookW / 2 - 32, 172, 75, 54);
+  ctx.fill();
+  ctx.fillStyle = '#0284c7';
+  ctx.fillRect(bookW / 2 - 24, 178, 20, 20);
+  ctx.fillRect(bookW / 2 + 12, 178, 20, 20);
+  ctx.fillRect(bookW / 2 - 24, 202, 20, 20);
+  ctx.restore();
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// 2. 人行通道矮牆正面彩色活動宣傳海報
+function makeCampusEventPosterTexture() {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 720;
+  const ctx = c.getContext('2d');
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 512, 720);
+  ctx.strokeStyle = '#dc2626';
+  ctx.lineWidth = 14;
+  ctx.strokeRect(7, 7, 498, 706);
+
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(14, 14, 484, 85);
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 36px "Noto Sans TC", sans-serif';
+  ctx.fillText('屏東市復興國小', 256, 52);
+  ctx.font = '22px "Noto Sans TC", sans-serif';
+  ctx.fillText('多元展能 · 活力校園活動紀要', 256, 82);
+
+  const items = [
+    { title: '雙語探索與閱讀深耕', color: '#0284c7', desc: '英語繪本導讀 · 晨間共讀認證' },
+    { title: '科技積木與創客發明', color: '#16a34a', desc: '程式機器人初階 · 科展培訓競賽' },
+    { title: '陽光健體棒球與獨輪車', color: '#ea580c', desc: '少棒榮譽代表隊 · 體適能自主挑戰' }
+  ];
+  items.forEach((it, i) => {
+    const y = 120 + i * 155;
+    ctx.fillStyle = it.color;
+    if (ctx.roundRect) ctx.roundRect(28, y, 456, 135, 12);
+    else ctx.fillRect(28, y, 456, 135);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 28px "Noto Sans TC", sans-serif';
+    ctx.fillText(it.title, 48, y + 45);
+    ctx.font = '22px "Noto Sans TC", sans-serif';
+    ctx.fillText(it.desc, 48, y + 90);
+  });
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(14, 600, 484, 106);
+  ctx.fillStyle = '#334155';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 24px "Noto Sans TC", sans-serif';
+  ctx.fillText('熱情活力 · 卓越復興', 256, 642);
+  ctx.font = '20px "Noto Sans TC", sans-serif';
+  ctx.fillText('屏東縣屏東市復興國民小學 歡迎您', 256, 678);
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// 3. 國立屏東大學專業發展合作學校銘牌
+function makeUniversityPartnerPlateTexture() {
+  const c = document.createElement('canvas');
+  c.width = 300; c.height = 420;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0284c7';
+  ctx.fillRect(0, 0, 300, 420);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(6, 6, 288, 408);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 28px "Noto Sans TC", sans-serif';
+  ctx.fillText('國立屏東大學', 150, 60);
+
+  ctx.strokeStyle = '#fef08a';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(150, 140, 45, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = '#fef08a';
+  ctx.font = '900 30px "Noto Sans TC", sans-serif';
+  ctx.fillText('屏大', 150, 150);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 34px "Noto Sans TC", sans-serif';
+  ctx.fillText('專業發展', 150, 240);
+  ctx.fillText('合作學校', 150, 290);
+  ctx.font = 'bold 24px "Noto Sans TC", sans-serif';
+  ctx.fillText('112-115學年度', 150, 360);
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// 4. 綠色避難收容處所告示牌
+function makeEvacuationShelterTexture() {
+  const c = document.createElement('canvas');
+  c.width = 400; c.height = 360;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(0, 0, 400, 360);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(6, 6, 388, 348);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 44px "Noto Sans TC", sans-serif';
+  ctx.fillText('避難收容處所', 200, 75);
+  ctx.font = '22px sans-serif';
+  ctx.fillText('Evacuation Shelter', 200, 115);
+
+  ctx.fillRect(160, 145, 80, 80);
+  ctx.fillStyle = '#16a34a';
+  ctx.font = '900 60px "Noto Sans TC", sans-serif';
+  ctx.fillText('處', 200, 205);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 28px "Noto Sans TC", sans-serif';
+  ctx.fillText('屏東市公所 · 設', 200, 295);
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// 5. 紅色防空避難與反詐騙告示標牌
+function makeRedNoticeTexture() {
+  const c = document.createElement('canvas');
+  c.width = 400; c.height = 500;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(0, 0, 400, 500);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 10;
+  ctx.strokeRect(10, 10, 380, 480);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '900 48px "Noto Sans TC", sans-serif';
+  ctx.fillText('防空疏散', 200, 85);
+  ctx.fillText('避難指引', 200, 145);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(40, 195); ctx.lineTo(360, 195); ctx.stroke();
+
+  ctx.font = 'bold 36px "Noto Sans TC", sans-serif';
+  ctx.fillText('全民反詐騙', 200, 255);
+  ctx.font = '900 58px "Arial Black", sans-serif';
+  ctx.fillStyle = '#fef08a';
+  ctx.fillText('165', 200, 325);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 24px "Noto Sans TC", sans-serif';
+  ctx.fillText('內政部警政署 宣導', 200, 405);
+  ctx.fillText('屏東縣警察局屏東分局', 200, 442);
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 // ---- 12 復興路正門與車棚區 (`main-gate` — 依《東棟前庭平面圖》與 Google 街景 1~3 實景精確建模) ----
@@ -13403,92 +13646,186 @@ function makeMainGateWelcomeBannerTexture() {
   );
   pylonInscription.rotation.y = Math.PI / 2;
 
-  // 5. 基座前排布 4 盞黑色金屬夜間投射燈 (朝向校名大字仰角照射)
-  [-0.55, -0.20, 0.18, 0.55].forEach(dz => {
-    const sX = pylonX + 0.85, sY = 0.36, sZ = pylonZ + dz;
-    // 燈座金屬底盤
-    addBox(mg, 0.16, 0.06, 0.16, spotHousingMat, sX, sY, sZ, false);
+  // 5. 基座前排布 3 盞洗石子底座金屬夜間投射燈 (依實況照片照亮「復興國民小學」金字)
+  [-0.45, 0, 0.45].forEach(dz => {
+    const sX = pylonX + 0.82, sY = 0.36, sZ = pylonZ + dz;
+    // 洗石子墊塊基座
+    addBox(mg, 0.22, 0.08, 0.22, pebbleMat, sX, sY, sZ, false);
+    // 燈座金屬外殼
+    addBox(mg, 0.14, 0.06, 0.14, spotHousingMat, sX, sY + 0.07, sZ, false);
     // 仰角燈筒 (向西向上照)
-    const can = addMesh(mg, new THREE.CylinderGeometry(0.065, 0.075, 0.16, 12), spotHousingMat, sX - 0.03, sY + 0.10, sZ, false);
+    const can = addMesh(mg, new THREE.CylinderGeometry(0.065, 0.075, 0.16, 12), spotHousingMat, sX - 0.03, sY + 0.14, sZ, false);
     can.rotation.z = Math.PI / 4;
     // 發光玻璃鏡片
-    const lens = addMesh(mg, new THREE.CircleGeometry(0.06, 12), spotGlowMat, sX - 0.08, sY + 0.15, sZ, false);
+    const lens = addMesh(mg, new THREE.CircleGeometry(0.06, 12), spotGlowMat, sX - 0.08, sY + 0.19, sZ, false);
     lens.rotation.y = Math.PI / 2;
     lens.rotation.x = -Math.PI / 4;
   });
 
-  // 6. 柱身側面深藍色「復興路 376 號」門牌 (北側面面向大門通道)
+  // 6. 主立碑南側（左側）洗石子矮門牆與「選擇復興 家長安心」全彩招生布條 (依現場實拍特寫 1:1 構建)
   {
-    const addrMesh = addMesh(mg,
-      new THREE.PlaneGeometry(0.42, 0.30),
-      new THREE.MeshStandardMaterial({ map: makeAddressPlateTexture(), roughness: 0.35 }),
-      pylonX + 0.02, 1.65, pylonZ - 0.85, false
+    const pinkGraniteMat = new THREE.MeshStandardMaterial({ color: 0xb59085, roughness: 0.65 });
+    const bannerStartX = pylonX - 0.02;
+    const bannerZ0 = pylonZ + 0.84; // 6.04 (緊貼主碑南側基座)
+    const bannerZ1 = 8.10;          // 南端柱北側接點
+    const bannerLen = bannerZ1 - bannerZ0; // 2.06m
+    const bannerCenterZ = (bannerZ0 + bannerZ1) / 2; // 7.07
+
+    // (1) 下層深灰洗石子基座 (高 0.28m，厚 0.38m)
+    addBox(mg, 0.38, 0.28, bannerLen, pebbleMat, bannerStartX, 0.14, bannerCenterZ);
+    // (2) 上層粉紅色花崗石壓頂/踏階 (高 0.08m，厚 0.44m)
+    addBox(mg, 0.44, 0.08, bannerLen + 0.04, pinkGraniteMat, bannerStartX, 0.32, bannerCenterZ);
+
+    // (3) 深黑褐色垂直金屬方管柵欄 (高度 0.80m，上下橫向方管樑，頂端高 1.16m)
+    addBox(mg, 0.04, 0.04, bannerLen - 0.06, darkSteelMat, bannerStartX, 0.42, bannerCenterZ);
+    addBox(mg, 0.04, 0.04, bannerLen - 0.06, darkSteelMat, bannerStartX, 1.12, bannerCenterZ);
+    const nSouthPickets = 7;
+    for (let i = 1; i <= nSouthPickets; i++) {
+      const pz = bannerZ0 + (bannerLen * i) / (nSouthPickets + 1);
+      addBox(mg, 0.025, 0.70, 0.025, darkSteelMat, bannerStartX, 0.77, pz);
+    }
+
+    // (4) 南側洗石子獨立端柱 (斷面 0.48m × 0.48m，高 1.25m，附雙層線腳斜倒角平蓋)
+    const endPillarZ = 8.35;
+    addBox(mg, 0.48, 1.25, 0.48, pebbleMat, bannerStartX, 0.625, endPillarZ);
+    addBox(mg, 0.56, 0.09, 0.56, stoneCapMat, bannerStartX, 1.295, endPillarZ);
+
+    // (5) 「選擇復興 家長安心」全彩招生布條 (兩支黑金屬方管立桿固定)
+    addBox(mg, 0.03, 1.15, 0.03, darkSteelMat, bannerStartX + 0.10, 0.85, bannerZ0 + 0.18, false);
+    addBox(mg, 0.03, 1.15, 0.03, darkSteelMat, bannerStartX + 0.10, 0.85, bannerZ1 - 0.18, false);
+
+    const bannerMat = new THREE.MeshStandardMaterial({
+      map: makeFuxingGateBannerTexture(),
+      roughness: 0.35,
+      side: THREE.DoubleSide
+    });
+    const bannerMesh = addMesh(mg,
+      new THREE.PlaneGeometry(bannerLen - 0.08, 0.68),
+      bannerMat,
+      bannerStartX + 0.16, 1.05, bannerCenterZ, false
     );
-    addrMesh.rotation.y = Math.PI; // 面向 -Z
+    bannerMesh.rotation.y = Math.PI / 2; // 面向東側復興路人行道 (+X)
+
+    // (6) 南端柱外緣轉角處橘白反光安全交通錐 (實拍街景特寫)
+    const coneX = bannerStartX + 0.55, coneZ = 8.70;
+    addBox(mg, 0.36, 0.035, 0.36, new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 }), coneX, 0.02, coneZ, false);
+    addMesh(mg, new THREE.ConeGeometry(0.14, 0.70, 16), new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.45 }), coneX, 0.37, coneZ, false);
+    addMesh(mg, new THREE.CylinderGeometry(0.088, 0.112, 0.14, 16), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 }), coneX, 0.40, coneZ, false);
   }
 
-  // 7. 大門通道南側小立柱與長方形不銹鋼資訊告示箱
+  // 7. 主立碑北側人行通道門牆、門牌 376 號柱與伸縮門收納機座 (依照片 1:1 精確構建)
   {
-    const pZ = pylonZ - 1.45;
-    // 洗石子矮柱 (高 1.35m，寬 0.52m)
-    addBox(mg, 0.52, 1.35, 0.52, washStoneWallMat, pylonX - 0.05, 0.675, pZ);
-    addBox(mg, 0.60, 0.10, 0.60, stoneCapMat, pylonX - 0.05, 1.40, pZ);
-    // 東側面不銹鋼資訊告示箱
-    addBox(mg, 0.06, 0.68, 0.44, stainlessMat, pylonX + 0.24, 0.85, pZ, false);
+    const pinkGraniteMat = new THREE.MeshStandardMaterial({ color: 0xb59085, roughness: 0.65 });
+    const pedStartX = pylonX - 0.02;
+
+    // (1) 緊鄰主碑北側面之洗石子側柱 (斷面 0.50m × 0.50m，高 1.45m)
+    const pierZ = 4.16;
+    addBox(mg, 0.50, 1.45, 0.40, pebbleMat, pedStartX, 0.725, pierZ);
+    addBox(mg, 0.56, 0.08, 0.46, stoneCapMat, pedStartX, 1.49, pierZ);
+    // 柱身正面垂直裝飾凹槽
+    addBox(mg, 0.02, 0.85, 0.06, darkSteelMat, pedStartX + 0.255, 0.85, pierZ, false);
+
+    // 銘牌配置：
+    // A. 國立屏東大學專業發展合作學校銘牌 (面向東)
+    const partnerMesh = addMesh(mg,
+      new THREE.PlaneGeometry(0.32, 0.45),
+      new THREE.MeshStandardMaterial({ map: makeUniversityPartnerPlateTexture(), roughness: 0.35 }),
+      pedStartX + 0.255, 1.95, pylonZ - 0.75, false
+    );
+    partnerMesh.rotation.y = Math.PI / 2;
+
+    // B. 「屏東市 復興路 376 號」大門牌
+    const addrMesh = addMesh(mg,
+      new THREE.PlaneGeometry(0.30, 0.22),
+      new THREE.MeshStandardMaterial({ map: makeAddressPlateTexture(), roughness: 0.35 }),
+      pedStartX + 0.255, 1.18, pierZ, false
+    );
+    addrMesh.rotation.y = Math.PI / 2;
+
+    // C. 「屏東縣 巡邏箱」深藍標誌
+    const patrolMesh = addMesh(mg,
+      new THREE.PlaneGeometry(0.24, 0.14),
+      new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.45 }),
+      pedStartX + 0.255, 0.95, pierZ, false
+    );
+    patrolMesh.rotation.y = Math.PI / 2;
+
+    // D. 「避難收容處所」綠色告示牌 (側柱北側面)
+    const shelterMesh = addMesh(mg,
+      new THREE.PlaneGeometry(0.28, 0.25),
+      new THREE.MeshStandardMaterial({ map: makeEvacuationShelterTexture(), roughness: 0.35 }),
+      pedStartX, 1.15, pierZ - 0.205, false
+    );
+    shelterMesh.rotation.y = Math.PI; // 面向北側人行穿道
+
+    // (2) 人行穿道門牆 (Z: 3.96 至 3.26，長 0.70m)
+    const pedWallZ = 3.61, pedWallLen = 0.70;
+    // 地面粉紅色花崗岩踏台 (Y: 0.08m ~ 0.16m)
+    addBox(mg, 0.95, 0.08, pedWallLen + 0.40, pinkGraniteMat, pedStartX - 0.15, 0.08, pedWallZ, false);
+    // 洗石子矮牆基座與粉紅壓頂
+    addBox(mg, 0.38, 0.28, pedWallLen, pebbleMat, pedStartX, 0.14, pedWallZ);
+    addBox(mg, 0.44, 0.08, pedWallLen + 0.02, pinkGraniteMat, pedStartX, 0.32, pedWallZ);
+    // 垂直黑色鐵柵欄
+    addBox(mg, 0.035, 0.035, pedWallLen - 0.04, darkSteelMat, pedStartX, 0.42, pedWallZ);
+    addBox(mg, 0.035, 0.035, pedWallLen - 0.04, darkSteelMat, pedStartX, 1.08, pedWallZ);
+    for (let k = 1; k <= 4; k++) {
+      const pz = 3.96 - (pedWallLen * k) / 5;
+      addBox(mg, 0.022, 0.68, 0.022, darkSteelMat, pedStartX, 0.75, pz);
+    }
+    // 東側面懸掛彩色活動海報 (紅邊框全彩活動海報)
     const posterMesh = addMesh(mg,
-      new THREE.PlaneGeometry(0.40, 0.64),
-      new THREE.MeshStandardMaterial({ map: makeNoticeBoxPosterTexture(), roughness: 0.4 }),
-      pylonX + 0.275, 0.85, pZ, false
+      new THREE.PlaneGeometry(0.48, 0.68),
+      new THREE.MeshStandardMaterial({ map: makeCampusEventPosterTexture(), roughness: 0.38 }),
+      pedStartX + 0.22, 0.75, pedWallZ, false
     );
     posterMesh.rotation.y = Math.PI / 2;
-    // 小門柱與大門碑之間的黑鐵行人小門
-    const wicketGateW = 0.48;
-    addBox(mg, 0.04, 1.20, wicketGateW, darkSteelMat, pylonX - 0.05, 0.60, pylonZ - 1.15, false);
+
+    // (3) 伸縮門收納端座 / 矮機座 (Z: 3.26 至 2.76，長 0.50m，高 1.15m)
+    const housingZ = 3.01;
+    addBox(mg, 0.52, 1.15, 0.50, pebbleMat, pedStartX, 0.575, housingZ);
+    addBox(mg, 0.60, 0.08, 0.58, stoneCapMat, pedStartX, 1.19, housingZ);
+    // 正面紅色警語標示牌 (防空疏散 / 反詐騙)
+    const redSignMesh = addMesh(mg,
+      new THREE.PlaneGeometry(0.36, 0.45),
+      new THREE.MeshStandardMaterial({ map: makeRedNoticeTexture(), roughness: 0.40 }),
+      pedStartX + 0.265, 0.85, housingZ, false
+    );
+    redSignMesh.rotation.y = Math.PI / 2;
   }
 
-  // 8. 南側側翼矮牆轉角處安全交通錐 (Orange Traffic Cone)
-  {
-    const coneX = pylonX + 0.25, coneZ = pylonZ + 1.65;
-    // 黑色方底盤
-    addBox(mg, 0.36, 0.035, 0.36, new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 }), coneX, 0.02, coneZ, false);
-    // 橘色錐體
-    addMesh(mg, new THREE.ConeGeometry(0.13, 0.68, 14), new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.45 }), coneX, 0.36, coneZ, false);
-    // 白色反光警示環帶
-    addMesh(mg, new THREE.CylinderGeometry(0.082, 0.102, 0.12, 14), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 }), coneX, 0.38, coneZ, false);
-  }
-
-  // 9. 中央主出入口大門：鮮亮天藍色遙控電動伸縮門（由右向左移動收合開啟，停駐於左側矮門柱旁）
+  // 8. 中央主出入口大門：鮮亮天藍色遙控電動伸縮門（由右向左移動收合開啟，停駐於左側矮門柱旁）
   {
     const gateVividBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.32, metalness: 0.55 });
     const motorHousingMat = new THREE.MeshStandardMaterial({ color: 0x0f4c81, roughness: 0.35, metalness: 0.65 });
     const gx = pylonX - 0.10;
-    const trackZ0 = pylonZ - 1.70, trackZ1 = -7.80; // 貫穿通道全寬 (南端 pylonZ-1.70 至 北端 trackZ1)
+    const trackZ0 = 2.76, trackZ1 = -7.80; // 地軌貫穿通道全寬 (長 10.56m)
 
-    // (1) 地坪不銹鋼伸縮導軌凹槽 (貫穿全寬 11.3m)
+    // (1) 地坪不銹鋼伸縮導軌凹槽
     addBox(mg, 0.08, 0.015, Math.abs(trackZ0 - trackZ1), stainlessMat, gx, 0.125, (trackZ0 + trackZ1) / 2);
 
-    // (2) 遙控電動伸縮門：由右邊向左邊移動開啟，完全收合停駐於左側（南側矮門柱旁）
-    // 依據使用者明確指示與現場實景照片 media_1793538168512_febb1d7b.jpg 1:1 還原：
-    // 門庫端緊靠南側矮門柱 (Z = trackZ0 = 3.50m)，向北收攏折疊約 2.3m 至 Z = 1.20m，
-    // 中央到北側（寬達 9 公尺）車道完全敞開通透！
-    const gateZ_Base = trackZ0;              // 左側（南側）門庫端
-    const gateLen = 2.30;                    // 收合疊合狀態長度約 2.3m
-    const gateZ_Head = gateZ_Base - gateLen; // 伸縮門前端機頭位置 (約 Z = 1.20m)
+    // (2) 遙控電動伸縮門：由右向左收合停駐於左側機座旁 (Z: 2.76 至 0.56，長 2.20m)
+    const gateZ_Base = trackZ0;              // 南端基座靠齊機箱
+    const gateLen = 2.20;                    // 收攏折疊長度 2.2m
+    const gateZ_Head = gateZ_Base - gateLen; // 前端機頭位置 Z = 0.56m
     const gateCenterZ = (gateZ_Base + gateZ_Head) / 2;
 
-    // 頂部導向橫樑與底部滑軌樑
+    // 上下滑軌水平主樑
     addBox(mg, 0.05, 0.04, gateLen, gateVividBlueMat, gx, 0.22, gateCenterZ);
     addBox(mg, 0.05, 0.04, gateLen, gateVividBlueMat, gx, 1.28, gateCenterZ);
 
-    // 折疊緊密垂直圓管立柱與黑色橡膠滾輪
+    // 折疊立管與黑橡膠滾輪
     const nPosts = 16;
     for (let i = 0; i <= nPosts; i++) {
       const pz = gateZ_Base + (gateZ_Head - gateZ_Base) * (i / nPosts);
+      // 拱頂垂直圓管
       addMesh(mg, new THREE.CylinderGeometry(0.018, 0.018, 1.15, 8), gateVividBlueMat, gx, 0.75, pz);
-      // 底部黑色滾輪
+      // 拱形圓頂
+      const arch = addMesh(mg, new THREE.TorusGeometry(0.06, 0.018, 6, 8, Math.PI), gateVividBlueMat, gx, 1.28, pz);
+      arch.rotation.y = Math.PI / 2;
+      // 底部滾輪
       addMesh(mg, new THREE.CylinderGeometry(0.035, 0.035, 0.03, 10), spotHousingMat, gx, 0.14, pz, false);
 
-      // 折疊緊密 X 剪刀叉連桿
+      // 折疊 X 剪刀連桿
       if (i < nPosts) {
         const pzn = gateZ_Base + (gateZ_Head - gateZ_Base) * ((i + 1) / nPosts);
         const L = Math.hypot(0.48, pzn - pz);
@@ -13499,16 +13836,16 @@ function makeMainGateWelcomeBannerTexture() {
       }
     }
 
-    // (3) 伸縮門前端電動機頭驅動箱 (位於 gateZ_Head 端，照片實況清晰可見)
+    // (3) 前端電動機頭 (面向右側車道)
     const motorH = 1.20, motorW = 0.24, motorD = 0.44;
     addBox(mg, motorW, motorH, motorD, motorHousingMat, gx, motorH / 2 + 0.14, gateZ_Head - motorD / 2);
-    // 機頭頂部不銹鋼斜面防雨蓋
+    // 機頭不銹鋼頂蓋
     addBox(mg, motorW + 0.04, 0.06, motorD + 0.04, stainlessMat, gx, motorH + 0.16, gateZ_Head - motorD / 2);
-    // 機頭正面黃色警示反光標記與手動把手
+    // 反光標誌與不銹鋼拉桿
     addBox(mg, 0.02, 0.18, 0.26, new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 }), gx + 0.13, 0.88, gateZ_Head - motorD / 2);
     addBox(mg, 0.03, 0.35, 0.04, stainlessMat, gx + 0.14, 0.82, gateZ_Head - motorD / 2);
 
-    // (4) 門身中央懸掛「復興國小 減速慢行」警告反光牌
+    // (4) 門面懸掛「光電感應 嚴禁攀越」警告標誌牌
     const signMeshFront = addMesh(mg,
       new THREE.PlaneGeometry(0.68, 0.38),
       new THREE.MeshStandardMaterial({ map: makeGateWarningSignTexture(), roughness: 0.35 }),
@@ -13521,6 +13858,19 @@ function makeMainGateWelcomeBannerTexture() {
       gx - 0.04, 0.82, gateCenterZ, false
     );
     signMeshBack.rotation.y = -Math.PI / 2;
+  }
+
+  // 9. 大門右側（北側）門柱：洗石子防撞限位受口座 (依 2024 街景全景實況，於地軌終點 Z = -7.80 處順接 FU-SHING 波浪矮牆)
+  {
+    const stopX = pylonX - 0.10, stopZ = -7.80;
+    // 洗石子限位基座 (厚 0.42m，高 0.48m，深 0.45m)
+    addBox(mg, 0.42, 0.48, 0.45, pebbleMat, stopX, 0.24, stopZ);
+    // 頂部洗石子倒角平蓋
+    addBox(mg, 0.48, 0.08, 0.50, stoneCapMat, stopX, 0.52, stopZ);
+    // 伸縮門鎖扣受口 (不銹鋼 U 型槽)
+    addBox(mg, 0.06, 0.25, 0.08, stainlessMat, stopX, 0.30, stopZ + 0.18, false);
+    // 正面黃黑防撞反光斜紋貼條
+    addBox(mg, 0.02, 0.12, 0.32, new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 }), stopX + 0.215, 0.32, stopZ, false);
   }
 
   // 綠白相間斑馬行人穿越道 (延伸)
@@ -13596,47 +13946,10 @@ function makeMainGateWelcomeBannerTexture() {
     mg.add(g);
   }
 
-  // --- S1：黑色直柵欄杆矮牆(紅框3) + 橫額布條「選擇復興 家長安心」(依2024最新街景懸掛於欄杆正面) ---
+  // --- 南側校園邊界圍牆曲線 (銜接自南端柱，向西南順延) ---
   const sGate0 = 4.4, sGate1 = 6.6;
-  fenceRun(0.05, sGate0 - 0.23);
-  {
-    const pc = wAt(2.25), t = wTan(2.25);
-    const bg = new THREE.Group();
-    bg.position.set(pc.x, 0, pc.z);
-    orientTo(bg, t.x, t.z);
-    // 布條掛於黑色欄杆正面 (y = 1.02m，寬 3.65m，高 0.72m)
-    const bn = addMesh(bg, new THREE.PlaneGeometry(3.65, 0.72), admissionBannerMat, 0, 1.02, -0.08, false);
-    bn.rotation.y = Math.PI;
-    mg.add(bg);
-  }
-  pier(sGate0);
-
-  // --- 小門(黃框1)：銀色不銹鋼雙扇直柵門，南側門扇貼白色告示紙 ---
-  {
-    const p = wAt((sGate0 + sGate1) / 2), t = wTan((sGate0 + sGate1) / 2);
-    const g = new THREE.Group();
-    g.position.set(p.x, 0, p.z);
-    orientTo(g, t.x, t.z);
-    const leafW = 0.86;
-    for (const side of [-1, 1]) {
-      const cx = side * (leafW / 2 + 0.01);
-      addBox(g, leafW, 0.04, 0.04, stainlessMat, cx, 0.16, 0);
-      addBox(g, leafW, 0.04, 0.04, stainlessMat, cx, 1.18, 0);
-      addBox(g, 0.04, 1.04, 0.04, stainlessMat, cx - leafW / 2 + 0.02, 0.67, 0);
-      addBox(g, 0.04, 1.04, 0.04, stainlessMat, cx + leafW / 2 - 0.02, 0.67, 0);
-      for (let b = 1; b < 8; b++) {
-        addMesh(g, new THREE.CylinderGeometry(0.011, 0.011, 1.0, 5), stainlessMat, cx - leafW / 2 + (b / 8) * leafW, 0.67, 0);
-      }
-    }
-    const paper = addMesh(g, new THREE.PlaneGeometry(0.42, 0.30), new THREE.MeshBasicMaterial({ map: makeSmallGateNoticeTexture() }), leafW / 2 + 0.01, 0.78, -0.035, false);
-    paper.rotation.y = Math.PI;
-    mg.add(g);
-  }
-  pier(sGate1);
-
-  // --- S3：矮牆 + 欄杆 / S4：純矮牆(紅框2) / S5：短欄杆接花台 ---
   const sS3 = 9.4, sS4 = 12.2;
-  fenceRun(sGate1 + 0.23, sS3);
+  fenceRun(0.05, sS3);
   pier(sS3, 1.15);
   wallRun(sS3 + 0.23, sS4 - 0.23, 0.48);
   pier(sS4, 1.15);
@@ -14500,200 +14813,9 @@ function makeMainGateWelcomeBannerTexture() {
     });
 
     // ----------------------------------------------------------------
-    // C. 通學步道起點地景特色實景還原 (融合 CAD 平面圖「可拆式欄杆」與 2024 街景設施)
+    // C. 通學步道起點地景 (依 2024 街景全景照實況，徹底移除多餘之黑白斑馬紋號誌桿、斗笠路燈柱與台電綠箱，維持迎賓通透視野)
     // ----------------------------------------------------------------
 
-    // 1. 矮牆銜接交界處「可拆式不銹鋼警示矮立柱」(依 CAD 藍圖《步道欄杆(可拆式)》與實景融合)
-    {
-      const bollardGrp = new THREE.Group();
-      bollardGrp.position.set(114.55, 0, -10.15);
-
-      // 地面圓形金屬固定法蘭底座
-      addMesh(bollardGrp, new THREE.CylinderGeometry(0.09, 0.10, 0.03, 16), mats.darkMetal, 0, 0.015, 0);
-      // 不銹鋼立柱主體 (直徑 0.10m，高度 0.82m)
-      addMesh(bollardGrp, new THREE.CylinderGeometry(0.05, 0.05, 0.82, 16), mats.stainlessSteel, 0, 0.425, 0);
-      // 頂部圓滑倒角封蓋
-      addMesh(bollardGrp, new THREE.SphereGeometry(0.05, 12, 12), mats.stainlessSteel, 0, 0.835, 0);
-      // 兩道黃黑高反光安全警示環 (Yellow/Black Reflective Bands)
-      addMesh(bollardGrp, new THREE.CylinderGeometry(0.052, 0.052, 0.08, 16), mats.yellow, 0, 0.68, 0);
-      addMesh(bollardGrp, new THREE.CylinderGeometry(0.052, 0.052, 0.08, 16), mats.darkMetal, 0, 0.52, 0);
-      mg.add(bollardGrp);
-    }
-
-    // 2. 墨綠色台電配電箱（附「停 看 聽」白色大字與高壓電黃色閃電標誌，照片 1 & 3）
-    {
-      const boxGrp = new THREE.Group();
-      boxGrp.position.set(114.05, 0, -12.0);
-
-      // 混凝土抬高基座
-      addBox(boxGrp, 0.88, 0.24, 0.65, curbMat, 0, 0.12, 0);
-
-      // 墨綠色金屬箱體
-      const boxMat = new THREE.MeshStandardMaterial({ color: 0x1b4332, roughness: 0.42, metalness: 0.22 });
-      addBox(boxGrp, 0.80, 1.15, 0.56, boxMat, 0, 0.815, 0);
-      // 箱頂微斜防雨頂蓋
-      const roof = addBox(boxGrp, 0.84, 0.06, 0.60, boxMat, 0, 1.415, 0);
-      roof.rotation.x = 0.04;
-
-      // 正面（面向東側通學步道與道路）高解析 Canvas 貼圖
-      function makeTaipowerBoxTexture() {
-        const c = document.createElement('canvas');
-        c.width = 512; c.height = 640;
-        const ctx = c.getContext('2d');
-        const W = 512, H = 640;
-
-        // 墨綠色底漆
-        ctx.fillStyle = '#1b4332';
-        ctx.fillRect(0, 0, W, H);
-
-        // 雙開門框與中縫線
-        ctx.strokeStyle = '#10281e';
-        ctx.lineWidth = 6;
-        ctx.strokeRect(12, 12, W - 24, H - 24);
-        ctx.beginPath();
-        ctx.moveTo(W / 2, 14);
-        ctx.lineTo(W / 2, H - 14);
-        ctx.stroke();
-
-        // 門鉸鏈
-        ctx.fillStyle = '#2d6a4f';
-        [60, 260, 480].forEach(hy => {
-          ctx.fillRect(16, hy, 12, 28);
-          ctx.fillRect(W - 28, hy, 12, 28);
-        });
-
-        // 門把與鎖頭
-        ctx.fillStyle = '#d4af37';
-        ctx.fillRect(W / 2 - 28, 310, 18, 38);
-        ctx.fillRect(W / 2 + 10, 310, 18, 38);
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(W / 2 - 22, 324, 6, 12);
-        ctx.fillRect(W / 2 + 16, 324, 6, 12);
-
-        // 百葉散熱孔
-        ctx.fillStyle = '#0e241b';
-        for (let l = 0; l < 8; l++) {
-          ctx.fillRect(40, 140 + l * 14, 180, 6);
-          ctx.fillRect(W / 2 + 36, 140 + l * 14, 180, 6);
-        }
-
-        // 正面中央醒目「停 看 聽」白色大字 (照片 1、3 核心特徵)
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '900 66px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('停   看   聽', W / 2, 80);
-
-        // 黃色高壓危險三角警示牌
-        ctx.fillStyle = '#eab308';
-        ctx.beginPath();
-        ctx.moveTo(W / 2, 380);
-        ctx.lineTo(W / 2 - 45, 455);
-        ctx.lineTo(W / 2 + 45, 455);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 5;
-        ctx.stroke();
-
-        // 三角內紅色閃電標誌
-        ctx.fillStyle = '#dc2626';
-        ctx.beginPath();
-        ctx.moveTo(W / 2 + 2, 395);
-        ctx.lineTo(W / 2 - 14, 424);
-        ctx.lineTo(W / 2 - 2, 424);
-        ctx.lineTo(W / 2 - 8, 448);
-        ctx.lineTo(W / 2 + 14, 418);
-        ctx.lineTo(W / 2 + 2, 418);
-        ctx.closePath();
-        ctx.fill();
-
-        // 警語與電力公司資訊
-        ctx.fillStyle = '#f8fafc';
-        ctx.font = 'bold 26px "Noto Sans TC", sans-serif';
-        ctx.fillText('高壓危險 · 請勿接近', W / 2, 495);
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = 'bold 20px "Noto Sans TC", sans-serif';
-        ctx.fillText('台灣電力公司  變壓器 TR-548', W / 2, 540);
-        ctx.fillText('屏東區營業處 巡檢合格', W / 2, 570);
-
-        const t = new THREE.CanvasTexture(c);
-        t.colorSpace = THREE.SRGBColorSpace;
-        return t;
-      }
-
-      const boxFrontMat = new THREE.MeshStandardMaterial({
-        map: makeTaipowerBoxTexture(),
-        roughness: 0.42,
-        metalness: 0.15
-      });
-      const frontMesh = addMesh(boxGrp, new THREE.PlaneGeometry(0.78, 1.12), boxFrontMat, 0.405, 0.815, 0, false);
-      frontMesh.rotation.y = Math.PI / 2;
-
-      mg.add(boxGrp);
-    }
-
-    // 3. 黑白斑馬警示條紋號誌桿（照片 1 & 3：緊鄰配電箱旁立桿）
-    {
-      function makeZebraPoleTexture() {
-        const c = document.createElement('canvas');
-        c.width = 128; c.height = 512;
-        const ctx = c.getContext('2d');
-        const nBands = 10;
-        const bh = 512 / nBands;
-        for (let i = 0; i < nBands; i++) {
-          ctx.fillStyle = i % 2 === 0 ? '#18181b' : '#f8fafc';
-          ctx.fillRect(0, i * bh, 128, bh);
-        }
-        const t = new THREE.CanvasTexture(c);
-        t.wrapS = THREE.RepeatWrapping;
-        t.wrapT = THREE.RepeatWrapping;
-        t.repeat.set(1, 4);
-        t.colorSpace = THREE.SRGBColorSpace;
-        return t;
-      }
-
-      const zebraPoleMat = new THREE.MeshStandardMaterial({
-        map: makeZebraPoleTexture(),
-        roughness: 0.35,
-        metalness: 0.30
-      });
-      const poleGrp = new THREE.Group();
-      poleGrp.position.set(114.25, 0, -11.25);
-
-      // 基座金屬法蘭盤
-      addMesh(poleGrp, new THREE.CylinderGeometry(0.12, 0.14, 0.32, 12), mats.darkMetal, 0, 0.16, 0);
-      // 5.4m 黑白斑馬條紋主桿
-      addMesh(poleGrp, new THREE.CylinderGeometry(0.065, 0.075, 5.2, 12), zebraPoleMat, 0, 2.92, 0);
-      // 桿頂警示黃帽
-      addMesh(poleGrp, new THREE.CylinderGeometry(0.08, 0.065, 0.14, 12), mats.yellow, 0, 5.59, 0);
-
-      mg.add(poleGrp);
-    }
-
-    // 4. 白色錐帽復古路燈（照片 1 & 3：步道起點路燈，帶白鐵錐形頂帽與透光燈罩）
-    {
-      const slGrp = new THREE.Group();
-      slGrp.position.set(114.15, 0, -10.55);
-      const poleWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.32, metalness: 0.25 });
-      const lampGlowMat  = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.15, emissive: 0xfffaed, emissiveIntensity: 0.55 });
-
-      // 直立白鐵燈桿 (高 4.6m)
-      addMesh(slGrp, new THREE.CylinderGeometry(0.18, 0.22, 0.45, 12), poleWhiteMat, 0, 0.225, 0);
-      addMesh(slGrp, new THREE.CylinderGeometry(0.065, 0.085, 4.2, 12), poleWhiteMat, 0, 2.55, 0);
-      addMesh(slGrp, new THREE.CylinderGeometry(0.10, 0.10, 0.08, 12), poleWhiteMat, 0, 4.65, 0);
-
-      // 上方白色錐形燈帽 (Conical Hat)
-      addMesh(slGrp, new THREE.ConeGeometry(0.42, 0.26, 16), poleWhiteMat, 0, 4.95, 0);
-      addMesh(slGrp, new THREE.SphereGeometry(0.045, 8, 8), poleWhiteMat, 0, 5.12, 0);
-
-      // 下方圓形乳白透光燈球
-      addMesh(slGrp, new THREE.SphereGeometry(0.18, 12, 12), lampGlowMat, 0, 4.75, 0);
-
-      mg.add(slGrp);
-    }
-
-    // ----------------------------------------------------------------
     // D. 核心喬木群（通學步道百年大榕樹、草地中間核心景觀雞蛋花樹、西北大榕樹等）
     // ----------------------------------------------------------------
 
