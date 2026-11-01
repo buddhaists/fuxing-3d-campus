@@ -13211,6 +13211,7 @@ function makeMainGateWelcomeBannerTexture() {
   const washStoneWallMat = new THREE.MeshStandardMaterial({ map: makeTileTexture('#7d7870', '#4a4640'), roughness: 0.88 });
   const stoneCapMat      = new THREE.MeshStandardMaterial({ color: 0xe6e4dc, roughness: 0.65 });
   const darkSteelMat     = new THREE.MeshStandardMaterial({ color: 0x22252a, roughness: 0.45, metalness: 0.75 });
+  const darkMat          = new THREE.MeshStandardMaterial({ color: 0x22252a, roughness: 0.55, metalness: 0.75 });
   const stainlessMat     = new THREE.MeshStandardMaterial({ color: 0xd0d4dc, roughness: 0.28, metalness: 0.85 });
   const gateBlueMat      = new THREE.MeshStandardMaterial({ color: 0x1e78c8, roughness: 0.40, metalness: 0.50 });
   const gardenSoilMat    = new THREE.MeshStandardMaterial({ color: 0x4a3d30, roughness: 0.92 });
@@ -14102,8 +14103,8 @@ function makeMainGateWelcomeBannerTexture() {
   // 矮牆前方地坪黑色金屬投射燈 (朝向 FU-SHING 雕塑打光)
   [wallRightZ + 0.75, wallRightZ - 0.75].forEach(spotZ => {
     const sX = wallRightX + 0.42, sY = 0.08;
-    addBox(mg, 0.14, 0.05, 0.14, darkMat, sX, sY, spotZ, false);
-    const sp = addMesh(mg, new THREE.CylinderGeometry(0.055, 0.065, 0.14, 10), darkMat, sX - 0.02, sY + 0.09, spotZ, false);
+    addBox(mg, 0.14, 0.05, 0.14, spotHousingMat, sX, sY, spotZ, false);
+    const sp = addMesh(mg, new THREE.CylinderGeometry(0.055, 0.065, 0.14, 10), spotHousingMat, sX - 0.02, sY + 0.09, spotZ, false);
     sp.rotation.z = Math.PI / 4;
     const lz = addMesh(mg, new THREE.CircleGeometry(0.05, 10), new THREE.MeshBasicMaterial({ color: 0xfffaea }), sX - 0.07, sY + 0.14, spotZ, false);
     lz.rotation.y = Math.PI / 2;
