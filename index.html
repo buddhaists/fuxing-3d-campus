@@ -13846,8 +13846,12 @@ function makeMainGateWelcomeBannerTexture() {
   addBox(mg, 6.8, 0.12, 11.5, entrancePlazaBrickMat, pylonX - 0.5, 0.06, Z(235), false);
   // 天藍色折疊電動伸縮門 (依指示徹底移除右側紅圈遮擋迎賓視野之多餘伸縮剪刀門，保持動線通透)
 
-  // 3) 北側迎賓波浪抿石子矮牆與立體「FU-SHING」彩色校名雕塑標誌 (依據最新近距特寫照片 media_1793535338846_87f4b3b7.jpg 精確重建)
-  const wallRightX = pylonX - 0.5, wallRightZ = Z(210);
+  // 3) 北側迎賓波浪抿石子矮牆與立體「FU-SHING」彩色校名雕塑標誌
+  //    (依據 2024 年 2 月最新 Google 街景正面照片 media_1793538671472_0cf5ac81.jpg
+  //     與近景特寫照片 media_1793538710080_6d835225.jpg 1:1 極致精確重建)
+  //    位置：座落於迎賓車道右側外緣（Z: -7.80 至 -10.25），完全退讓出 9 米寬中央迎賓大道；
+  //    方向：左側平緩圓台（附運動場開放時間公告牌）、中央圓弧下凹托架（FU-SHING 立體字與金色校徽）、右側山脊順坡平滑接地。
+  const wallRightX = pylonX - 0.50, wallRightZ = -9.025;
 
   // A. 細膩粗粒深色抿石子無縫貼圖 (黑、灰、白相間顆粒)
   function makePebbleTerrazzoTexture() {
@@ -13879,41 +13883,34 @@ function makeMainGateWelcomeBannerTexture() {
     metalness: 0.05
   });
 
-  // B. 波浪洗石子矮牆立體輪廓 (照片特寫 1:1 精確還原：左圓台高約0.88m、中圓弧凹槽底高約0.42m、右峰脊高1.25m並以長斜坡接地)
+  // B. 波浪洗石子矮牆立體輪廓 (照片 1:1 精確還原：左圓台高約0.88m、中圓弧凹槽底高約0.42m、右峰脊高1.20m並以長斜坡接地)
+  // 當 rotation.y = Math.PI/2 時，局部 -X 映射到世界 +Z (南/左)，局部 +X 映射到世界 -Z (北/右)
   const waveShape = new THREE.Shape();
-  // 面向矮牆 (Z 軸向左為 +Z，向右為 -Z)
-  // 右端接地面 (Z = -2.60m, Y = 0)
-  waveShape.moveTo(-2.60, 0);
-  // 右側平滑長斜坡上升至山峰最高點 (Z = -0.75m, Y = 1.25m)
-  waveShape.lineTo(-0.75, 1.25);
-  // 山峰頂部微圓過渡
-  waveShape.bezierCurveTo(-0.65, 1.25, -0.55, 1.10, -0.45, 0.85);
-  // 向下切入中央承載立體字的圓弧凹槽 (最低點約 Z = 0.20m, Y = 0.42m)
-  waveShape.bezierCurveTo(-0.30, 0.48, -0.05, 0.42, 0.35, 0.42);
-  // 凹槽左側向上圓滑過渡至左側高台
-  waveShape.bezierCurveTo(0.70, 0.42, 0.90, 0.65, 1.05, 0.88);
-  // 左側高台平坦段 (Z = 1.05m 至 2.05m, Y = 0.88m)
-  waveShape.lineTo(2.05, 0.88);
-  // 左端圓角下落接地
-  waveShape.bezierCurveTo(2.15, 0.88, 2.22, 0.75, 2.25, 0.50);
-  waveShape.lineTo(2.25, 0);
+  waveShape.moveTo(1.225, 0); // 右端 (北端，Z = -10.25) 接地
+  waveShape.lineTo(0.35, 1.20); // 長斜坡上升至山脊最高點
+  waveShape.bezierCurveTo(0.25, 1.20, 0.15, 0.85, 0.05, 0.55);
+  waveShape.bezierCurveTo(-0.10, 0.42, -0.25, 0.42, -0.45, 0.42); // 中央圓弧承托凹槽 (底高 0.42m)
+  waveShape.bezierCurveTo(-0.60, 0.42, -0.70, 0.65, -0.80, 0.88); // 凹槽向左上升至左側圓台
+  waveShape.lineTo(-1.18, 0.88); // 左側平緩圓台頂部
+  waveShape.bezierCurveTo(-1.21, 0.88, -1.225, 0.75, -1.225, 0.50);
+  waveShape.lineTo(-1.225, 0); // 左端 (南端，Z = -7.80) 切齊車道路緣接地
   waveShape.closePath();
 
   const waveExtrudeSettings = {
-    depth: 0.50,
+    depth: 0.42,
     bevelEnabled: true,
     bevelSegments: 4,
     steps: 1,
-    bevelSize: 0.04,
-    bevelThickness: 0.04
+    bevelSize: 0.035,
+    bevelThickness: 0.035
   };
   const waveGeo = new THREE.ExtrudeGeometry(waveShape, waveExtrudeSettings);
-  waveGeo.translate(0, 0, -0.25);
+  waveGeo.translate(0, 0, -0.21);
 
   const waveWall = addMesh(mg, waveGeo, pebbleMat, wallRightX, 0, wallRightZ);
   waveWall.rotation.y = Math.PI / 2;
 
-  // C. 左側高台正面「公告」牌 (運動場開放時間說明，四角固定螺母)
+  // C. 左側圓台正面「公告」牌 (運動場開放時間說明，四角固定螺母，面向車道路口端)
   function makeNoticeBoardTexture() {
     const c = document.createElement('canvas');
     c.width = 512; c.height = 360;
@@ -13924,7 +13921,6 @@ function makeMainGateWelcomeBannerTexture() {
     ctx.lineWidth = 12;
     ctx.strokeRect(6, 6, 500, 348);
 
-    // 四角不銹鋼廣告固定螺母
     [[24, 24], [488, 24], [24, 336], [488, 336]].forEach(([nx, ny]) => {
       ctx.fillStyle = '#94a3b8';
       ctx.beginPath();
@@ -13958,9 +13954,9 @@ function makeMainGateWelcomeBannerTexture() {
   }
 
   const noticeMesh = addMesh(mg,
-    new THREE.PlaneGeometry(0.55, 0.38),
+    new THREE.PlaneGeometry(0.46, 0.32),
     new THREE.MeshStandardMaterial({ map: makeNoticeBoardTexture(), roughness: 0.35 }),
-    wallRightX + 0.28, 0.58, wallRightZ + 1.55, false
+    wallRightX + 0.24, 0.58, wallRightZ + 1.02, false
   );
   noticeMesh.rotation.y = Math.PI / 2;
 
@@ -14001,8 +13997,8 @@ function makeMainGateWelcomeBannerTexture() {
     metalness: 0.75,
     side: THREE.DoubleSide
   });
-  // 菱形網格板 (寬 2.30m，高 1.15m，坐落於圓弧凹槽上方)
-  const diamondBackMesh = addMesh(mg, new THREE.PlaneGeometry(2.30, 1.15), diamondMeshMat, wallRightX + 0.05, 1.05, wallRightZ + 0.05, false);
+  // 菱形網格板 (寬 1.35m，高 0.85m，坐落於圓弧凹槽上方)
+  const diamondBackMesh = addMesh(mg, new THREE.PlaneGeometry(1.35, 0.85), diamondMeshMat, wallRightX + 0.05, 0.85, wallRightZ + 0.15, false);
   diamondBackMesh.rotation.y = Math.PI / 2;
 
   // E. 雙色立體字「FU-SHING」與金色「復興」校徽徽章向量高解析紋理
@@ -14115,40 +14111,40 @@ function makeMainGateWelcomeBannerTexture() {
     side: THREE.DoubleSide
   });
 
-  const signW = 2.45, signH = 1.25;
-  const signMeshFront = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signMat, wallRightX + 0.12, 1.10, wallRightZ + 0.05, false);
+  const signW = 1.45, signH = 0.88;
+  const signMeshFront = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signMat, wallRightX + 0.12, 0.90, wallRightZ + 0.15, false);
   signMeshFront.rotation.y = Math.PI / 2;
 
-  const signMeshBack = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signMat, wallRightX + 0.06, 1.10, wallRightZ + 0.05, false);
+  const signMeshBack = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signMat, wallRightX + 0.06, 0.90, wallRightZ + 0.15, false);
   signMeshBack.rotation.y = -Math.PI / 2;
 
-  // F. 單一洗石子基座 ＋ 流線型銀灰斜背投射燈 (依據照片 media_1793535338846_87f4b3b7.jpg 1:1 精確還原)
-  const waveSpotBaseMat = new THREE.MeshStandardMaterial({ color: 0x58534b, roughness: 0.90 }); // 洗石子基座墊塊
-  const waveSpotHousingMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.32, metalness: 0.75 }); // 銀灰色金屬外殼
-  const waveSpotGlassMat = new THREE.MeshBasicMaterial({ color: 0xfffaea }); // 暖白投射光面
+  // F. 單一洗石子基座 ＋ 流線型銀灰斜背投射燈 (正對凹槽立體字中心打光)
+  const waveSpotBaseMat = new THREE.MeshStandardMaterial({ color: 0x58534b, roughness: 0.90 });
+  const waveSpotHousingMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.32, metalness: 0.75 });
+  const waveSpotGlassMat = new THREE.MeshBasicMaterial({ color: 0xfffaea });
 
-  const spotX = wallRightX + 0.45, spotZ = wallRightZ + 0.05;
-  // 洗石子基座墊塊 (厚 0.05m，寬 0.28m，深 0.22m)
-  addBox(mg, 0.22, 0.05, 0.28, waveSpotBaseMat, spotX, 0.025, spotZ, false);
+  const spotX = wallRightX + 0.42, spotZ = wallRightZ + 0.15;
+  // 洗石子基座墊塊
+  addBox(mg, 0.20, 0.04, 0.24, waveSpotBaseMat, spotX, 0.02, spotZ, false);
 
   // 流線型銀灰色斜背燈體 (前傾仰角約 35 度)
-  const spotBody = addBox(mg, 0.14, 0.08, 0.16, waveSpotHousingMat, spotX - 0.03, 0.09, spotZ, false);
+  const spotBody = addBox(mg, 0.12, 0.07, 0.14, waveSpotHousingMat, spotX - 0.03, 0.08, spotZ, false);
   spotBody.rotation.z = Math.PI / 5;
 
   // 斜切防眩光外罩
-  const hood = addMesh(mg, new THREE.CylinderGeometry(0.06, 0.075, 0.12, 12), waveSpotHousingMat, spotX - 0.06, 0.13, spotZ, false);
+  const hood = addMesh(mg, new THREE.CylinderGeometry(0.05, 0.065, 0.10, 12), waveSpotHousingMat, spotX - 0.055, 0.115, spotZ, false);
   hood.rotation.z = Math.PI / 3.5;
 
   // 高亮圓形發光燈面
-  const glowFace = addMesh(mg, new THREE.CircleGeometry(0.055, 12), waveSpotGlassMat, spotX - 0.10, 0.16, spotZ, false);
+  const glowFace = addMesh(mg, new THREE.CircleGeometry(0.045, 12), waveSpotGlassMat, spotX - 0.09, 0.14, spotZ, false);
   glowFace.rotation.y = Math.PI / 2;
   glowFace.rotation.x = -Math.PI / 3.5;
 
-  // G. 矮牆後方平整修剪厚實常綠綠籬 (Ficus Hedge)
+  // G. 矮牆後方平整修剪厚實常綠綠籬 (Ficus Hedge，貼合矮牆背部尺寸)
   {
     const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x1b4d24, roughness: 0.86 });
-    const hW = 6.2, hH = 1.35, hD = 0.80;
-    addBox(mg, hD, hH, hW, hedgeMat, wallRightX - 0.75, hH / 2, wallRightZ + 0.15, false);
+    const hW = 2.60, hH = 1.25, hD = 0.55;
+    addBox(mg, hD, hH, hW, hedgeMat, wallRightX - 0.55, hH / 2, wallRightZ, false);
   }
 
   // 朱槿/扶桑花灌木群 (深綠葉＋艷紅花朵探出波浪抿石子矮牆頂端，照片 9 特徵)
