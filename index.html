@@ -13457,45 +13457,58 @@ function makeMainGateWelcomeBannerTexture() {
     addMesh(mg, new THREE.CylinderGeometry(0.082, 0.102, 0.12, 14), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 }), coneX, 0.38, coneZ, false);
   }
 
-  // 9. 中央主出入口大門：鮮亮天藍色金屬剪刀折疊電動伸縮門（半開狀態）與地坪導軌
+  // 9. 中央主出入口大門：鮮亮天藍色遙控電動伸縮門（由右向左移動收合開啟，停駐於左側矮門柱旁）
   {
     const gateVividBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.32, metalness: 0.55 });
+    const motorHousingMat = new THREE.MeshStandardMaterial({ color: 0x0f4c81, roughness: 0.35, metalness: 0.65 });
     const gx = pylonX - 0.10;
-    const trackZ0 = pylonZ - 1.70, trackZ1 = -7.80; // 貫穿通道全寬
+    const trackZ0 = pylonZ - 1.70, trackZ1 = -7.80; // 貫穿通道全寬 (南端 pylonZ-1.70 至 北端 trackZ1)
 
-    // (1) 地坪不銹鋼伸縮導軌凹槽
+    // (1) 地坪不銹鋼伸縮導軌凹槽 (貫穿全寬 11.3m)
     addBox(mg, 0.08, 0.015, Math.abs(trackZ0 - trackZ1), stainlessMat, gx, 0.125, (trackZ0 + trackZ1) / 2);
 
-    // (2) 半開伸縮門身：南半段開敞通透（方便人車通行），北半段折疊展開
-    const gateZ_Open = pylonZ - 4.20; // 開啟位置
-    const gateZ_End = trackZ1 + 0.40;  // 靠北側波浪矮牆端頭
-    const gateLen = Math.abs(gateZ_Open - gateZ_End); // 約 4.5m 展開段
-    const gateCenterZ = (gateZ_Open + gateZ_End) / 2;
+    // (2) 遙控電動伸縮門：由右邊向左邊移動開啟，完全收合停駐於左側（南側矮門柱旁）
+    // 依據使用者明確指示與現場實景照片 media_1793538168512_febb1d7b.jpg 1:1 還原：
+    // 門庫端緊靠南側矮門柱 (Z = trackZ0 = 3.50m)，向北收攏折疊約 2.3m 至 Z = 1.20m，
+    // 中央到北側（寬達 9 公尺）車道完全敞開通透！
+    const gateZ_Base = trackZ0;              // 左側（南側）門庫端
+    const gateLen = 2.30;                    // 收合疊合狀態長度約 2.3m
+    const gateZ_Head = gateZ_Base - gateLen; // 伸縮門前端機頭位置 (約 Z = 1.20m)
+    const gateCenterZ = (gateZ_Base + gateZ_Head) / 2;
 
     // 頂部導向橫樑與底部滑軌樑
     addBox(mg, 0.05, 0.04, gateLen, gateVividBlueMat, gx, 0.22, gateCenterZ);
     addBox(mg, 0.05, 0.04, gateLen, gateVividBlueMat, gx, 1.28, gateCenterZ);
 
-    // 垂直圓管立柱與黑色橡膠滾輪
+    // 折疊緊密垂直圓管立柱與黑色橡膠滾輪
     const nPosts = 16;
     for (let i = 0; i <= nPosts; i++) {
-      const pz = gateZ_Open + (gateZ_End - gateZ_Open) * (i / nPosts);
+      const pz = gateZ_Base + (gateZ_Head - gateZ_Base) * (i / nPosts);
       addMesh(mg, new THREE.CylinderGeometry(0.018, 0.018, 1.15, 8), gateVividBlueMat, gx, 0.75, pz);
       // 底部黑色滾輪
       addMesh(mg, new THREE.CylinderGeometry(0.035, 0.035, 0.03, 10), spotHousingMat, gx, 0.14, pz, false);
 
-      // 菱形交叉剪刀連桿 (X-bracing scissors mechanism)
+      // 折疊緊密 X 剪刀叉連桿
       if (i < nPosts) {
-        const pzn = gateZ_Open + (gateZ_End - gateZ_Open) * ((i + 1) / nPosts);
+        const pzn = gateZ_Base + (gateZ_Head - gateZ_Base) * ((i + 1) / nPosts);
         const L = Math.hypot(0.48, pzn - pz);
         for (const sgn of [1, -1]) {
           const bar = addBox(mg, 0.022, 0.016, L, gateVividBlueMat, gx, 0.75, (pz + pzn) / 2);
-          bar.rotation.x = sgn * 0.46;
+          bar.rotation.x = sgn * 0.75;
         }
       }
     }
 
-    // (3) 門身中央懸掛「復興國小 減速慢行」警告反光牌
+    // (3) 伸縮門前端電動機頭驅動箱 (位於 gateZ_Head 端，照片實況清晰可見)
+    const motorH = 1.20, motorW = 0.24, motorD = 0.44;
+    addBox(mg, motorW, motorH, motorD, motorHousingMat, gx, motorH / 2 + 0.14, gateZ_Head - motorD / 2);
+    // 機頭頂部不銹鋼斜面防雨蓋
+    addBox(mg, motorW + 0.04, 0.06, motorD + 0.04, stainlessMat, gx, motorH + 0.16, gateZ_Head - motorD / 2);
+    // 機頭正面黃色警示反光標記與手動把手
+    addBox(mg, 0.02, 0.18, 0.26, new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 }), gx + 0.13, 0.88, gateZ_Head - motorD / 2);
+    addBox(mg, 0.03, 0.35, 0.04, stainlessMat, gx + 0.14, 0.82, gateZ_Head - motorD / 2);
+
+    // (4) 門身中央懸掛「復興國小 減速慢行」警告反光牌
     const signMeshFront = addMesh(mg,
       new THREE.PlaneGeometry(0.68, 0.38),
       new THREE.MeshStandardMaterial({ map: makeGateWarningSignTexture(), roughness: 0.35 }),
