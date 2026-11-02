@@ -5669,6 +5669,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   const mopRackRedMat = new THREE.MeshStandardMaterial({ color: 0xc82b2b, roughness: 0.45 }); // Rear 2F red mop rack bars
   const railAzureMat = new THREE.MeshStandardMaterial({ color: 0x1870c9, roughness: 0.38, metalness: 0.2 }); // 1F Rear outdoor deck blue railing
   const outdoorConcreteMat = new THREE.MeshStandardMaterial({ color: 0xa4a29a, roughness: 0.95 }); // 1F Rear outdoor concrete stair & wing wall
+  const pipePvcMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f6, roughness: 0.35 }); // 白色 PVC 落水管 (全北棟共用)
 
   // Poly Haven CC0 PBR maps (embedded as data-URIs in tex/pbr_data.js so WebGL never hits file:// CORS limits)
   function applyPBR(mat, base, rx, ry) {
@@ -5949,7 +5950,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
     const toiletYellowMat  = new THREE.MeshStandardMaterial({ color: 0xf5c914, roughness: 0.50 });
     const toiletRedMat     = new THREE.MeshStandardMaterial({ color: 0xd81c42, roughness: 0.50 });
     const stTreadMat       = new THREE.MeshStandardMaterial({ color: 0xb5b3ad, roughness: 0.85 });
-    const pipePvcMat       = new THREE.MeshStandardMaterial({ color: 0xf8f8f6, roughness: 0.35 });
+    // pipePvcMat is declared at North Building root scope
     const alcoveWhiteMat   = new THREE.MeshStandardMaterial({ color: 0xf7f7f5, roughness: 0.55 });
     const alarmOrangeMat   = new THREE.MeshStandardMaterial({ color: 0xe65100, roughness: 0.40 });
 
@@ -7897,7 +7898,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
     const darkGreenFenceMat = new THREE.MeshStandardMaterial({ color: 0x1b5e20, roughness: 0.42, metalness: 0.25 });
     const acCasingMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f2, roughness: 0.35, metalness: 0.1 });
     const acGrilleMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.5, metalness: 0.3 });
-    const pipePvcMat  = new THREE.MeshStandardMaterial({ color: 0xf8f8f6, roughness: 0.35 });
+    // pipePvcMat is declared at North Building root scope
 
     // 1) 結構柱 (Structural Columns at Bay Grid Lines)
     const structColAxes = [3, 5, 7, 9, 11, 12, 14, 16, 18];
