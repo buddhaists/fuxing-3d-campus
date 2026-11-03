@@ -2455,10 +2455,10 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [16, 25, 36], t: [16, 6, -26] },
-      top: { p: [16, 95, -25], t: [16, 0, -26] },
-      front: { p: [16.4, 7.6, 28], t: [16.4, 6.2, -26] },
-      back: { p: [16, 12, -70], t: [16, 5, -26] },
+      oblique: { p: [-12, 58, 16.5], t: [10, 5.5, -31.5] },
+      top: { p: [10, 95, -30.5], t: [10, 0, -31.5] },
+      front: { p: [14.5, 11.5, 6], t: [14.5, 5.8, -28] },
+      back: { p: [12, 24, -72], t: [12, 5.5, -32] },
       west_toilet: { p: [-28.8, 3.8, -46.5], t: [-28.8, 5.8, -34.5] },
       west_stair_side: { p: [-16.0, 3.6, -35.2], t: [-29.5, 5.5, -35.2] },
       entrance: { p: [14.5, 4.8, 3], t: [14.5, 5.5, -26] }
@@ -18001,7 +18001,7 @@ const FEATURED_IDS = [
 const PRECINCT_PRESETS = {
   campus:    { p: [-55, 105, 215], t: [0, 2, 10],    plan: { x: -135, y: -70, w: 275, h: 165 }, label: '全校總覽' },
   east:      { p: [142, 34, 32],   t: [76, 5, -6],   plan: { x: 25,   y: -55, w: 125, h: 75 },  label: '正門與東棟行政區' },
-  north:     { p: [22, 24, 24],    t: [16, 5.5, -35],plan: { x: -35,  y: -62, w: 115, h: 69 },  label: '北棟愛悅樓與共融遊戲場' },
+  north:     { p: [-12, 58, 16.5], t: [10, 5.5, -31.5], plan: { x: -35,  y: -62, w: 115, h: 69 },  label: '北棟愛悅樓與共融遊戲場' },
   courtyard: { p: [8, 36, 62],     t: [20, 3.5, 2],  plan: { x: -30,  y: -38, w: 115, h: 69 },  label: '幾何花磚中庭與南棟興學樓' },
   west:      { p: [12, 30, 48],    t: [-22, 5, 12],  plan: { x: -65,  y: -35, w: 105, h: 63 },  label: '西棟專科與非營利幼兒園' },
   sports:    { p: [-115, 52, 85],  t: [-68, 2, 4],   plan: { x: -130, y: -50, w: 125, h: 75 },  label: 'PU環形運動場與球類區' }
@@ -18743,11 +18743,14 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
         flyTo(targetV.p, targetV.t, 900);
       }
     } else {
-      // 點取地點/建築/設施時：直接定位至該處的正前方位置 (views.front)
-      const targetV = (origin === 'tour' && lm.views.oblique)
+      // 點選北棟時直接定位至俯瞰北棟的 45 度斜角 (views.oblique)；其餘地點預設使用 views.front
+      const preferOblique = (origin === 'tour' || id === 'north-building');
+      const targetV = (preferOblique && lm.views && lm.views.oblique)
         ? lm.views.oblique
-        : (lm.views && (lm.views.front || lm.views.entrance || lm.views.oblique || Object.values(lm.views)[0])) || { p: [16, 25, 36], t: [16, 6, -26] };
-      activeViewMode = (origin === 'tour') ? 'oblique' : ((lm.views && lm.views.front) ? 'front' : ((lm.views && lm.views.entrance) ? 'entrance' : 'oblique'));
+        : (lm.views && (lm.views.front || lm.views.entrance || lm.views.oblique || Object.values(lm.views)[0])) || { p: [-12, 58, 16.5], t: [10, 5.5, -31.5] };
+      activeViewMode = (preferOblique && lm.views && lm.views.oblique)
+        ? 'oblique'
+        : ((lm.views && lm.views.front) ? 'front' : ((lm.views && lm.views.entrance) ? 'entrance' : 'oblique'));
       flyTo(targetV.p, targetV.t, 900);
       if (origin === 'manual' && !highlightRoomCode) {
         showToast(`已定位至地標：${lm.name}`);
