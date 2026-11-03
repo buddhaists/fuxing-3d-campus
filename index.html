@@ -6430,6 +6430,11 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
         roughness: 0.45,
         metalness: 0.60
       });
+      const darkMetalMat = new THREE.MeshStandardMaterial({
+        color: 0x24282c,
+        roughness: 0.55,
+        metalness: 0.60
+      });
 
       // -------------------------------------------------------------------------
       // 1) 操場電梯外召門廳遮雨棚 (West Track Entrance Canopy: x = canX1 ~ canX2)
