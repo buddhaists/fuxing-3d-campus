@@ -5614,6 +5614,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   const aiyueRedMat = new THREE.MeshStandardMaterial({ color: 0xd6184f, roughness: 0.45, metalness: 0.08 }); // 實景鮮明洋紅 Crimson-Magenta「愛悅樓」 // Bay ⑪–⑫ Crimson Red「愛悅樓」
   const ironGrilleMat = new THREE.MeshStandardMaterial({ color: 0x22262a, roughness: 0.42, metalness: 0.55 });
   const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x24282c, roughness: 0.55, metalness: 0.60 });
+  const steelPostMat = new THREE.MeshStandardMaterial({ color: 0x3d4047, roughness: 0.45, metalness: 0.65 });
   const basementRecessMat = new THREE.MeshStandardMaterial({ color: 0x888e94, roughness: 0.85 });
   const woodFrameMat = new THREE.MeshStandardMaterial({ color: 0x825b39, roughness: 0.62 });
   const doorWoodMat = new THREE.MeshStandardMaterial({ color: 0x6e492b, roughness: 0.58 });
@@ -8539,53 +8540,195 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
     });
 
     // =========================================================================
-    // C. 東棟大樓西北端銜接部實景特徵 (East Building NW Facade Features per Photo 1)
-    //    照片 1 左側（位於連廊北側 z < brNorthZ 之東棟西走廊北段）：
-    //    1) 2F 與 3F 挑出之鮮豔粉紅色端牆陽台盒 (Cantilevered Pink Balconies facing North -Z)
-    //    2) 東棟北端銀灰色彩色鋼板外牆、紅色水平條紋飾帶與藍色雨遮/窗框
-    //    3) 1F 紅磚壓頂斜向階梯護牆 (Sloped Stair Wall with Red Brick Coping)
+    // C. 東棟大樓北端銜接部與特色山牆實景特徵 (East Building North Facade Features per New Photos)
+    //    依據現場實拍照片 (media_1793717974907 ~ media_1793717975659 1:1 精確還原)：
+    //    1) 西側外挑走廊 (x ≈ ebWestX - 1.45m 至 ebWestX)：
+    //       - 1F：白色方格二丁掛實心圍牆 (帶紅色細條紋腰線)、圓拱頂門洞出入口 (黑色門套)、內部斜坡階梯
+    //       - 2F / 3F：白色方格二丁掛護牆 (高度 1.05m，上緣與下緣帶紅色裝飾細線條)、頂部金屬圓管安全護欄
+    //       - 西側外挑護板：各樓層西向轉角外包鮮豔粉紅色造型護板
+    //       - 屋頂層：頂部向北傾斜之瓦紅小斜屋頂雨遮 (帶金屬支撐與天藍色收邊)
+    //    2) 樓梯間 / 電梯井鍍鋅鋼構外掛籠架 (外包鋼絲網防護網罩，貫穿 1F～2F～3F，Photo 2 顯著特徵)
+    //    3) 東側北向主山牆面 (x ≈ ebWestX 至 xE，寬約 12.2m)：
+    //       - 銀灰色水平彩色鋼板外牆，貫穿全寬之水平鮮紅色寬飾帶
+    //       - 1F/2F 間、2F/3F 間具有深寶藍色金屬斜屋簷造型雨遮 (Blue Metal Sloped Canopies)
+    //       - 各層配置連續水平條狀黑色窗列 (Dark Ribbon Windows with Blue Frames)
+    //       - 3F 東北轉角彩繪：頂部外牆彩繪藍天白雲、白色菱形框幾何壁畫圖騰
+    //       - 西南側白色百葉小門與排水落水管
     // =========================================================================
     const ebWestX = e2R;                                        // 52.78m (東棟西走廊外緣 X(715))
-    // 1) 東棟西走廊北段 2F / 3F 挑出粉紅陽台盒 (自連廊北緣 brNorthZ 向北延伸至 z = -32.85m，端面朝北 -Z 呈鮮豔粉紅色)
-    const pinkBalNorthZ = -32.85;
-    const pinkBalSpanZ  = Math.abs(brNorthZ - pinkBalNorthZ);   // ~ 4.175m
-    const pinkBalCz     = (brNorthZ + pinkBalNorthZ) / 2;
-    const pinkBalW      = 1.45;
-    const pinkBalCx     = ebWestX - 0.15;
+    const ebEastX = ebWestX + 12.22;                            // ~65.00m (東棟東走廊外緣，全寬 12.22m)
+    const northWallZ = Z(88);                                   // -39.52m (東棟北外牆線 z1 = Z(88))
+    const corridorSpanZ = Math.abs(brNorthZ - northWallZ);      // ~10.84m (連廊北緣至東棟北外牆)
+    const corridorCz = (brNorthZ + northWallZ) / 2;             // -34.0975m
 
+    const blueTrimMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.38, metalness: 0.25 }); // 亮天藍色金屬收邊/窗框
+    const deepBlueRoofMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.35, metalness: 0.35 }); // 寶藍色金屬斜雨遮
+    const skyMuralBlueMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.65 }); // 藍天白雲彩繪底色
+    const cageMeshMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.45, metalness: 0.75, wireframe: false }); // 鍍鋅防護鐵絲網籠
+    const tileRedLineMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.5 }); // 白磁磚護牆上的紅色細條紋
+
+    // -------------------------------------------------------------------------
+    // C.1 西側外挑走廊 (1F～3F 西向與北向立面，對照 Photo 1、2、3)
+    // -------------------------------------------------------------------------
+    const balW = 1.65;
+    const balX = ebWestX - balW / 2;                            // ~51.955m
+    const balWestEdgeX = ebWestX - balW;                        // ~51.13m
+
+    // 1F 出入口外牆、圓拱門洞與洗石子地坪 (Photo 1 & 3 特寫)
+    const archH = 2.45, archW = 1.45;
+    addBox(g, balW + 0.10, 3.20, 0.28, whiteTileFine, balX, 1.60, northWallZ + 0.14);
+    // 1F 北向外牆紅色水平細腰線 (Photo 1)
+    addBox(g, balW + 0.12, 0.06, 0.30, tileRedLineMat, balX, 0.95, northWallZ + 0.14);
+    // 圓拱頂門洞出入口 (黑色金屬深框拱門，通往 1F 廊道，Photo 1)
+    const archDoorway = addBox(g, archW, archH, 0.34, darkMetalMat, balX, archH / 2, northWallZ + 0.14);
+    addBox(g, archW - 0.16, archH - 0.16, 0.38, corridorFloorMat, balX, (archH - 0.16) / 2, northWallZ + 0.14); // 穿透門洞內部
+    // 1F 西側轉角白磁磚擋土牆延伸至中庭
+    addBox(g, 0.24, 1.35, 3.80, whiteTileFine, balWestEdgeX + 0.12, 0.675, northWallZ + 1.90);
+    addBox(g, 0.26, 0.06, 3.84, tileRedLineMat, balWestEdgeX + 0.12, 0.95, northWallZ + 1.90);
+
+    // 2F 與 3F 西走廊樓板、白磁磚護牆與粉紅色造型轉角外包盒 (Photo 1, 2, 3)
     for (let fl = 1; fl <= 2; fl++) {
-      const py = eastTargetY[fl];                               // 東棟 2FL (4.41m) / 3FL (7.93m)
-      // 陽台底板
-      addBox(g, pinkBalW, 0.22, pinkBalSpanZ, corridorFloorMat, pinkBalCx, py - 0.11, pinkBalCz);
-      // 西向長邊白磁磚護牆 (面朝中庭 -X)
-      addBox(g, 0.20, 1.12, pinkBalSpanZ - 0.25, whiteTileFine, pinkBalCx - pinkBalW / 2 + 0.10, py + 0.56, pinkBalCz + 0.12);
-      // 北向端面鮮豔粉紅色造型陽台盒 (Photo 1 左側核心視覺亮點！)
-      addBox(g, pinkBalW, 1.15, 0.28, pinkBalconyMat, pinkBalCx, py + 0.575, pinkBalNorthZ + 0.14);
-      // 粉紅陽台頂部白色金屬圓管護欄
-      addBox(g, pinkBalW + 0.02, 0.04, 0.04, panelPureWhite, pinkBalCx, py + 1.22, pinkBalNorthZ + 0.14, false);
-      addBox(g, 0.04, 0.04, pinkBalSpanZ, panelPureWhite, pinkBalCx - pinkBalW / 2 + 0.10, py + 1.22, pinkBalCz, false);
-    }
-    // 頂樓屋簷天藍色封簷飾板 (Photo 1 左上角粉紅陽台上方之天藍色塊)
-    addBox(g, pinkBalW + 0.10, 0.65, 0.30, trimBlueMat, pinkBalCx, eastTargetY[3] + 0.32, pinkBalNorthZ + 0.15);
+      const flY = eastTargetY[fl];                              // 2FL=4.41m, 3FL=7.93m
+      const pWallH = 1.15;
 
-    // 2) 東棟最北端銀灰金屬浪板外牆、紅色水平飾帶與藍色收邊 (Photo 1 最左側立面)
-    const cladW = 3.60, cladCx = ebWestX + 1.05, cladZ = pinkBalNorthZ - 0.15;
-    addBox(g, cladW, H - 0.40, 0.32, silverCladMat, cladCx, (H - 0.40) / 2, cladZ);
-    for (let r = 0; r < 3; r++) {
-      addBox(g, cladW + 0.04, 0.42, 0.36, stripeRedMat, cladCx, 1.15 + r * 3.55, cladZ);
-    }
-    addBox(g, cladW + 0.10, 0.16, 0.42, trimBlueMat, cladCx, H - 0.32, cladZ);
-    // 1F 粉紅色轉角矮牆與白色百葉小門 (Photo 1 左下角)
-    addBox(g, 1.50, 1.35, 0.24, pinkBalconyMat, pinkBalCx, 0.675, pinkBalNorthZ + 0.12);
-    addBox(g, 0.72, 1.85, 0.06, panelPureWhite, ebWestX - 0.45, 0.98, pinkBalNorthZ - 0.02);
+      // 走廊樓板 (自連廊北緣延伸至北山牆)
+      addBox(g, balW + 0.20, 0.24, corridorSpanZ, corridorFloorMat, balX, flY - 0.12, corridorCz);
 
-    // 3) 1F 連廊北側斜向白磁磚階梯護牆與紅磚壓頂 (Sloped Stair Wall with Red Brick Cap per Photo 1)
-    const swLenZ = 2.65, swCz = brNorthZ - swLenZ / 2 - 0.10, swX = ebWestX - 0.95;
-    const swWall = addBox(g, 0.22, 0.85, swLenZ, whiteTileFine, swX, 0.62, swCz);
-    swWall.rotation.x = 0.26;
-    const swCap = addBox(g, 0.26, 0.09, swLenZ + 0.06, brickDadoMat, swX, 1.06, swCz);
-    swCap.rotation.x = 0.26;
-    addBox(g, 0.26, 0.62, 0.28, brickDadoMat, swX, 0.31, brNorthZ - swLenZ - 0.18);
+      // 北端面白色方格二丁掛實心護牆 (高 1.15m，帶紅色裝飾細線條與不銹鋼頂部扶手，Photo 1)
+      addBox(g, balW, pWallH, 0.24, whiteTileFine, balX, flY + pWallH / 2, northWallZ + 0.12);
+      addBox(g, balW + 0.04, 0.05, 0.26, tileRedLineMat, balX, flY + 0.88, northWallZ + 0.12); // 下方紅色細線
+      addBox(g, balW + 0.04, 0.05, 0.26, tileRedLineMat, balX, flY + pWallH - 0.05, northWallZ + 0.12); // 上方紅色細線
+      // 護牆頂部不銹鋼圓管安全護欄
+      addBox(g, balW + 0.02, 0.05, 0.05, stainlessRailMat, balX, flY + pWallH + 0.08, northWallZ + 0.12, false);
+      for (let st = 0; st <= 3; st++) {
+        const sx = (balWestEdgeX + 0.25) + st * ((balW - 0.50) / 3);
+        addBox(g, 0.04, 0.14, 0.04, stainlessRailMat, sx, flY + pWallH + 0.04, northWallZ + 0.12, false);
+      }
+
+      // 西向面走廊護牆 (北段長約 4.2m，外貼白色方格磁磚)
+      addBox(g, 0.22, pWallH, 4.20, whiteTileFine, balWestEdgeX + 0.11, flY + pWallH / 2, northWallZ + 2.10);
+      addBox(g, 0.24, 0.05, 4.20, tileRedLineMat, balWestEdgeX + 0.11, flY + 0.88, northWallZ + 2.10);
+      addBox(g, 0.05, 0.05, 4.20, stainlessRailMat, balWestEdgeX + 0.11, flY + pWallH + 0.08, northWallZ + 2.10, false);
+
+      // 西向轉角鮮豔粉紅色造型飾板 (Pink Balcony Accent Box per Photo 2 & 3)
+      addBox(g, 0.12, pWallH + 0.05, 2.40, pinkBalconyMat, balWestEdgeX - 0.06, flY + pWallH / 2, northWallZ + 1.30);
+    }
+
+    // 頂樓西側向北傾斜之瓦紅小斜屋頂雨遮 (帶天藍色收邊，Photo 1, 2, 3)
+    {
+      const rfY = eastTargetY[3] + 0.15;                        // ~11.60m
+      const hoodW = balW + 0.45, hoodD = 3.20;
+      const hoodMesh = addBox(g, hoodW, 0.10, hoodD, stripeRedMat, balX, rfY, northWallZ + hoodD / 2 - 0.20);
+      hoodMesh.rotation.x = -0.15;                              // 向北微傾斜排水
+      addBox(g, hoodW + 0.04, 0.14, 0.12, blueTrimMat, balX, rfY - 0.22, northWallZ - 0.12); // 北端藍色天溝封簷
+      // 支撐角鋼支架
+      addBox(g, 0.06, 0.85, 0.06, steelPostMat, balWestEdgeX + 0.10, rfY - 0.55, northWallZ + 0.25);
+      addBox(g, 0.06, 0.85, 0.06, steelPostMat, ebWestX - 0.10, rfY - 0.55, northWallZ + 0.25);
+    }
+
+    // -------------------------------------------------------------------------
+    // C.2 垂直鍍鋅鋼構外掛防護電梯/樓梯籠架 (Exterior Wire-Mesh Cage Enclosure per Photo 2)
+    // 坐落於西走廊與北山牆交界 (x ≈ ebWestX - 0.1m 至 ebWestX + 1.8m, 緊貼北外牆向北突出)
+    // -------------------------------------------------------------------------
+    const cageW = 1.95, cageD = 1.65, cageH = H - 0.80;
+    const cageX = ebWestX + cageW / 2 - 0.25;                   // ~53.50m
+    const cageZ = northWallZ - cageD / 2 + 0.10;                // 突出於北山牆外
+    // 四角鍍鋅鋼構主立柱
+    for (const cx of [cageX - cageW / 2 + 0.06, cageX + cageW / 2 - 0.06]) {
+      for (const cz of [cageZ - cageD / 2 + 0.06, cageZ + cageD / 2 - 0.06]) {
+        addBox(g, 0.11, cageH, 0.11, steelPostMat, cx, cageH / 2, cz);
+      }
+    }
+    // 水平鋼構圈樑 (各層樓板標高)
+    for (let k = 0; k <= 3; k++) {
+      const cy = eastTargetY[k];
+      addBox(g, cageW, 0.12, 0.12, steelPostMat, cageX, cy, cageZ - cageD / 2 + 0.06);
+      addBox(g, 0.12, 0.12, cageD, steelPostMat, cageX - cageW / 2 + 0.06, cy, cageZ);
+      addBox(g, 0.12, 0.12, cageD, steelPostMat, cageX + cageW / 2 - 0.06, cy, cageZ);
+    }
+    // 外圍金屬菱形防護網面 (Perforated Wire Mesh Screen per Photo 2)
+    addBox(g, cageW - 0.10, cageH, 0.04, cageMeshMat, cageX, cageH / 2, cageZ - cageD / 2 + 0.04);
+    addBox(g, 0.04, cageH, cageD - 0.10, cageMeshMat, cageX - cageW / 2 + 0.04, cageH / 2, cageZ);
+    addBox(g, 0.04, cageH, cageD - 0.10, cageMeshMat, cageX + cageW / 2 - 0.04, cageH / 2, cageZ);
+
+    // -------------------------------------------------------------------------
+    // C.3 東棟北向主山牆 (North Gable Facade, x = ebWestX to ebEastX, 寬約 12.2m)
+    // -------------------------------------------------------------------------
+    const mainWallW = ebEastX - ebWestX;                        // ~12.22m
+    const mainWallCx = (ebWestX + ebEastX) / 2;                 // ~58.89m
+    const mainWallH = H - 0.20;
+
+    // 1) 銀灰色水平浪板外牆底面 (Silver Corrugated Cladding Wall)
+    addBox(g, mainWallW, mainWallH, 0.32, silverCladMat, mainWallCx, mainWallH / 2, northWallZ);
+
+    // 2) 鮮紅色水平裝飾寬帶 (Three Bold Horizontal Red Bands across North Facade per Photo 2, 3, 4)
+    // 分佈於 1F 頂部、2F 窗下、3F 窗下全寬延伸
+    const redBandY = [2.25, 5.65, 9.15];
+    redBandY.forEach(ry => {
+      addBox(g, mainWallW + 0.06, 0.72, 0.36, stripeRedMat, mainWallCx, ry, northWallZ);
+    });
+
+    // 3) 深寶藍色雙坡向金屬雨遮簷 (Deep Blue Metal Canopies per Photo 2, 3, 4)
+    // 位於 1F/2F 之間 (y ≈ 4.15m) 與 2F/3F 之間 (y ≈ 7.65m)，帶左右不對稱高低階梯式錯落簷板
+    const canopY1 = 4.15, canopY2 = 7.65;
+    // 下層寶藍色雨遮 (高低兩段錯落)
+    const can1W_L = mainWallW * 0.48, can1W_R = mainWallW * 0.54;
+    const can1MeshL = addBox(g, can1W_L, 0.10, 0.85, deepBlueRoofMat, mainWallCx - mainWallW * 0.25, canopY1, northWallZ - 0.38);
+    can1MeshL.rotation.x = -0.18;
+    const can1MeshR = addBox(g, can1W_R, 0.10, 0.95, deepBlueRoofMat, mainWallCx + mainWallW * 0.24, canopY1 + 0.32, northWallZ - 0.42);
+    can1MeshR.rotation.x = -0.22;
+    addBox(g, can1W_L + 0.04, 0.12, 0.08, blueTrimMat, mainWallCx - mainWallW * 0.25, canopY1 - 0.06, northWallZ - 0.76);
+    addBox(g, can1W_R + 0.04, 0.12, 0.08, blueTrimMat, mainWallCx + mainWallW * 0.24, canopY1 + 0.24, northWallZ - 0.85);
+
+    // 上層寶藍色雨遮 (y ≈ 7.65m)
+    const can2Mesh = addBox(g, mainWallW * 0.72, 0.10, 0.85, deepBlueRoofMat, mainWallCx + mainWallW * 0.12, canopY2, northWallZ - 0.38);
+    can2Mesh.rotation.x = -0.20;
+    addBox(g, mainWallW * 0.72 + 0.04, 0.12, 0.08, blueTrimMat, mainWallCx + mainWallW * 0.12, canopY2 - 0.07, northWallZ - 0.76);
+
+    // 4) 水平連續黑色採光條窗與天藍色外框 (Black Ribbon Windows with Blue Frames per Photo 2, 3, 4)
+    // 1F、2F、3F 均配置水平長條黑色窗帶
+    const winConfig = [
+      { y: 1.45, w: mainWallW * 0.78, cx: mainWallCx + 0.40, h: 0.85 }, // 1F
+      { y: 4.85, w: mainWallW * 0.82, cx: mainWallCx + 0.20, h: 0.85 }, // 2F
+      { y: 8.35, w: mainWallW * 0.75, cx: mainWallCx + 0.10, h: 0.85 }  // 3F
+    ];
+    winConfig.forEach(wc => {
+      // 藍色外窗框
+      addBox(g, wc.w + 0.10, wc.h + 0.10, 0.08, blueTrimMat, wc.cx, wc.y, northWallZ - 0.16);
+      // 深色窗玻璃
+      addBox(g, wc.w, wc.h, 0.04, mats.glassDark, wc.cx, wc.y, northWallZ - 0.18);
+      // 黑色垂直窗櫺分隔桿
+      const nPanes = 7;
+      for (let p = 0; p <= nPanes; p++) {
+        const px = (wc.cx - wc.w / 2) + p * (wc.w / nPanes);
+        addBox(g, 0.04, wc.h, 0.06, darkMetalMat, px, wc.y, northWallZ - 0.19);
+      }
+    });
+
+    // 5) 3F 東北頂部彩繪壁畫特徵：藍天白雲與幾何白色菱形圖騰 (Sky Mural & Diamond Icon per Photo 2, 4)
+    // 位於 3F 最上方北立面 (y ≈ 10.5m 至 12.4m)，彩繪有天藍色藍天與白色菱形幾何方塊
+    const muralW = mainWallW * 0.38, muralH = 1.95;
+    const muralCx = ebEastX - muralW / 2 - 0.15, muralY = H - muralH / 2 - 0.10;
+    addBox(g, muralW, muralH, 0.04, skyMuralBlueMat, muralCx, muralY, northWallZ - 0.17);
+    // 白色幾何菱形框飾牌
+    const diaMesh = addMesh(g, new THREE.PlaneGeometry(0.85, 0.85), panelPureWhite, muralCx, muralY + 0.20, northWallZ - 0.20, false);
+    diaMesh.rotation.z = Math.PI / 4;                           // 45 度旋轉為菱形
+    addMesh(g, new THREE.PlaneGeometry(0.65, 0.65), skyMuralBlueMat, muralCx, muralY + 0.20, northWallZ - 0.21, false).rotation.z = Math.PI / 4;
+
+    // 6) 1F 西南轉角白色百葉小門與直通地面之白色 PVC 排水管 (Photo 1, 3, 4)
+    addBox(g, 0.82, 1.95, 0.08, panelPureWhite, ebWestX + 0.55, 1.05, northWallZ - 0.18);
+    addBox(g, 0.10, 0.04, 0.05, darkMetalMat, ebWestX + 0.85, 1.05, northWallZ - 0.22); // 門把
+    // 兩根垂直銀藍色落水管 (自 3F 屋簷筆直通至 1F 地面，Photo 2 & 4 顯著特徵)
+    addMesh(g, new THREE.CylinderGeometry(0.045, 0.045, mainWallH, 12), blueTrimMat, ebWestX + 1.65, mainWallH / 2, northWallZ - 0.20);
+    addMesh(g, new THREE.CylinderGeometry(0.045, 0.045, mainWallH, 12), blueTrimMat, ebEastX - 0.35, mainWallH / 2, northWallZ - 0.20);
+
+    // 7) 1F 斜向紅磚壓頂階梯擋土矮牆 (Retaining Wall with Red Brick Cap connecting to Courtyard, Photo 3)
+    const swLenZ = 2.85, swCz = northWallZ + 5.20, swX = ebWestX - 1.15;
+    const swWall = addBox(g, 0.24, 0.85, swLenZ, whiteTileFine, swX, 0.62, swCz);
+    swWall.rotation.x = -0.22;
+    const swCap = addBox(g, 0.28, 0.09, swLenZ + 0.06, brickDadoMat, swX, 1.06, swCz);
+    swCap.rotation.x = -0.22;
+    addBox(g, 0.28, 0.62, 0.28, brickDadoMat, swX, 0.31, swCz - swLenZ / 2 - 0.10);
 
     // =========================================================================
     // D. 北側中庭挺拔景觀大樹 (Courtyard Shade Tree on NORTH side of Bridge per Photo 1 & 3)
