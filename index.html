@@ -6409,41 +6409,62 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
       const canCz = (canZ1 + canZ2) / 2;                       // ~ -25.24m
       const canH  = 3.35;                                      // 頂棚鋼樑標高
 
-      // 1) 架高觀景平台混凝土地坪 (Floor Slab & Ramp)
+      
+      // =========================================================================
+      // C. 北棟西側遮雨棚體系：操場電梯外召門廳、電梯與廚房跨接遮雨棚、及西棟廚房增建與北棟間1F遮雨棚
+      //    （依據使用者上傳照片 1 [俯瞰青綠色圓拱採光罩長巷]、照片 2 [操場遠眺跨接遮雨棚]、照片 3 [立面透視1F穿堂] 1:1 極致建構）
+      // =========================================================================
+      const sageGreenCanopyMat = new THREE.MeshStandardMaterial({
+        color: 0x58846c,
+        roughness: 0.62,
+        metalness: 0.16,
+        side: THREE.DoubleSide
+      });
+      const ductStainlessMat = new THREE.MeshStandardMaterial({
+        color: 0xd2d6dc,
+        roughness: 0.24,
+        metalness: 0.85
+      });
+      const ductBandMat = new THREE.MeshStandardMaterial({
+        color: 0x484b50,
+        roughness: 0.45,
+        metalness: 0.60
+      });
+
+      // -------------------------------------------------------------------------
+      // 1) 操場電梯外召門廳遮雨棚 (West Track Entrance Canopy: x = canX1 ~ canX2)
+      // -------------------------------------------------------------------------
+      // 1.1 架高觀景平台混凝土地坪與踏步
       addBox(g, canW + 0.15, 0.18, canD + 0.15, stTreadMat, canCx, 0.09, canCz);
-      // 西側與南側銜接操場跑道之緩坡踏步 (Ramp down to track)
       addBox(g, canW + 0.25, 0.09, 0.65, stTreadMat, canCx, 0.045, canZ2 + 0.38);
 
-      // 2) 白磁磚圓柱 (Round Tiled Column · Photo 2 & 3 實景特徵，東南角關鍵結構圓柱)
+      // 1.2 白磁磚圓柱 (Round Tiled Column · Photo 2 & 3 實景特徵，東南角關鍵結構圓柱)
       const roundColX = canX2 - 0.45, roundColZ = canZ2 - 0.40;
       const roundColR = 0.26, roundColH = canH;
       addMesh(g, new THREE.CylinderGeometry(roundColR, roundColR, roundColH, 24), columnTileFine, roundColX, roundColH / 2, roundColZ);
       addBox(g, 0.64, 0.15, 0.64, columnTileFine, roundColX, roundColH + 0.075, roundColZ);
 
-      // 3) 地面水溝鍍鋅鋼格柵蓋 (Drainage Trench Grate · Photo 2 & 3 實景)
+      // 1.3 地面水溝鍍鋅鋼格柵蓋
       const grateW = 0.38, grateD = canD - 0.30;
       addBox(g, grateW, 0.04, grateD, ironGrilleMat, roundColX - 0.35, 0.185, canCz);
 
-      // 4) 鋼骨支撐系統：深灰方鋼立柱與主橫樑 (Dark Grey Steel Frame)
+      // 1.4 鋼骨立柱與主橫樑
       const colXCoords = [canX1 + 0.20, canCx, canX2 - 0.20];
       const colZCoords = [canZ1 + 0.20, canZ2 - 0.20];
       colXCoords.forEach(px => {
         colZCoords.forEach(pz => {
-          // 避開東南圓柱位置
           if (!(Math.abs(px - roundColX) < 0.4 && Math.abs(pz - roundColZ) < 0.4)) {
             addBox(g, 0.11, canH, 0.11, steelPostMat, px, canH / 2, pz);
           }
         });
       });
-      // 水平橫梁 (縱橫雙向連接柱頂)
       addBox(g, canW, 0.12, 0.12, steelPostMat, canCx, canH + 0.06, canZ1 + 0.20);
       addBox(g, canW, 0.12, 0.12, steelPostMat, canCx, canH + 0.06, canZ2 - 0.20);
       colXCoords.forEach(px => {
         addBox(g, 0.12, 0.12, canD, steelPostMat, px, canH + 0.06, canCz);
       });
 
-      // 5) 東西向圓弧下折簷透光採光罩頂 (Barrel-Vault Arched Canopy per Photo 2 & 3)
-      // 跨距沿南北向（canD = 3.775m）起拱，東西向（canW = 6.95m）順延筒狀延伸，南側（面向操場跑道）具標誌性圓弧下折滴水簷
+      // 1.5 操場門廳拱形採光罩頂 (Barrel-Vault Arched Canopy)
       {
         const halfD = canD / 2;
         const archRise = 0.52, lipDrop = 0.30, thick = 0.045;
@@ -6458,12 +6479,12 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
         hoodShape.closePath();
 
         const hoodGeo = new THREE.ExtrudeGeometry(hoodShape, { depth: canW + 0.30, bevelEnabled: false, curveSegments: 24 });
-        hoodGeo.rotateY(Math.PI / 2); // 旋轉為沿 X 軸拉伸
-        const hoodMesh = new THREE.Mesh(hoodGeo, canopyRoofMat);
+        hoodGeo.rotateY(Math.PI / 2);
+        const hoodMesh = new THREE.Mesh(hoodGeo, sageGreenCanopyMat);
         hoodMesh.position.set(canX1 - 0.15, canH + 0.12, canCz);
         g.add(hoodMesh);
 
-        // 弧形鋼構肋拱 (Curved Steel Ribs per Photo 3)
+        // 弧形鋼構肋拱
         const ribShape = new THREE.Shape();
         ribShape.moveTo(-halfD, 0);
         ribShape.quadraticCurveTo(0, archRise, halfD, 0);
@@ -6482,10 +6503,8 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
         }
       }
 
-      // 6) 不銹鋼防墜安全護欄 (Stainless Steel Guardrails per Photo 2 & 3)
-      // 沿南側（操場側）與西側配置三層式不銹鋼圓管水平護欄（留出 1.8m 出入口）
+      // 1.6 不銹鋼安全護欄
       const railH = 0.95;
-      // 西側邊緣整段護欄
       addBox(g, 0.045, 0.045, canD - 0.40, stainlessRailMat, canX1 + 0.10, railH, canCz, false);
       addBox(g, 0.035, 0.035, canD - 0.40, stainlessRailMat, canX1 + 0.10, railH * 0.65, canCz, false);
       addBox(g, 0.035, 0.035, canD - 0.40, stainlessRailMat, canX1 + 0.10, railH * 0.35, canCz, false);
@@ -6493,7 +6512,6 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
         const sz = canZ1 + 0.30 + s * ((canD - 0.60) / 3);
         addBox(g, 0.05, railH, 0.05, stainlessRailMat, canX1 + 0.10, railH / 2, sz, false);
       }
-      // 南側（操場跑道側）護欄（西段 4.5m，東側留出 1.8m 通道連接電梯門口與斜坡）
       const sRailW = canW - 2.10;
       const sRailCx = canX1 + sRailW / 2 + 0.10;
       addBox(g, sRailW, 0.045, 0.045, stainlessRailMat, sRailCx, railH, canZ2 - 0.10, false);
@@ -6504,24 +6522,228 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
         addBox(g, 0.05, railH, 0.05, stainlessRailMat, sx, railH / 2, canZ2 - 0.10, false);
       }
 
-      // 7) 遮雨棚下學生休憩長桌與座椅 (Wooden Bench & Desks under canopy per Photo 3)
+      // 1.7 休憩長桌椅
       const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a5832, roughness: 0.72 });
       const tableX = canCx - 0.40, tableZ = canCz + 0.20;
       addBox(g, 1.55, 0.72, 0.75, woodMat, tableX, 0.18 + 0.72 / 2, tableZ, false);
       addBox(g, 1.55, 0.42, 0.28, woodMat, tableX, 0.18 + 0.42 / 2, tableZ - 0.55, false);
       addBox(g, 1.55, 0.42, 0.28, woodMat, tableX, 0.18 + 0.42 / 2, tableZ + 0.55, false);
 
-      // 8) 照片 1、2、3 天井庭院中央特寫之圓形水泥集水井 (Circular Concrete Well / Cistern)
+      // -------------------------------------------------------------------------
+      // 2) 電梯南側與西棟廚房增建1F通道間跨接遮雨棚 (Inter-Building Canopy Bridging Elevator & Kitchen per Photo 2 & 3)
+      //    坐落於 x = elevWestX ~ elevEastX (-29.66m ~ -26.54m，寬 ~3.12m)
+      //    南北跨距：自電梯南牆 (elevSouthZ = -23.90m) 跨越至廚房增建北牆 (kNorthZ = -20.00m，深 3.90m)
+      //    完全封閉雨水空隙，將電梯門廳、操場與西棟廚房增建1F通廊無縫罩覆！
+      // -------------------------------------------------------------------------
+      {
+        const brX1 = elevWestX - 0.05;                          // ~ -29.71m (銜接門廳遮雨棚東緣)
+        const brX2 = elevEastX + 0.05;                          // ~ -26.49m
+        const brW  = brX2 - brX1;                              // ~ 3.22m
+        const brCx = (brX1 + brX2) / 2;
+        const brZ1 = elevSouthZ - 0.10;                         // -24.00m (貼緊電梯南外牆)
+        const brZ2 = -20.00;                                   // -20.00m (貼緊廚房增建北外牆)
+        const brD  = Math.abs(brZ2 - brZ1);                    // 4.00m
+        const brCz = (brZ1 + brZ2) / 2;                        // -22.00m
+
+        // 2.1 拱形青綠色採光罩頂 (Barrel-Vault Arched Canopy over Gap)
+        const brHalfD = brD / 2;
+        const brArchRise = 0.52, brLipDrop = 0.22, brThick = 0.04;
+        const brShape = new THREE.Shape();
+        brShape.moveTo(-brHalfD, 0);
+        brShape.quadraticCurveTo(0, brArchRise, brHalfD, 0);
+        brShape.lineTo(brHalfD, -brLipDrop);
+        brShape.lineTo(brHalfD - brThick, -brLipDrop);
+        brShape.lineTo(brHalfD - brThick, -0.02);
+        brShape.quadraticCurveTo(0, brArchRise - brThick, -brHalfD + brThick, -0.02);
+        brShape.lineTo(-brHalfD + brThick, 0);
+        brShape.closePath();
+
+        const brGeo = new THREE.ExtrudeGeometry(brShape, { depth: brW, bevelEnabled: false, curveSegments: 24 });
+        brGeo.rotateY(Math.PI / 2);
+        const brMesh = new THREE.Mesh(brGeo, sageGreenCanopyMat);
+        brMesh.position.set(brX1, canH + 0.12, brCz);
+        g.add(brMesh);
+
+        // 弧形鋼肋骨架
+        const brRibShape = new THREE.Shape();
+        brRibShape.moveTo(-brHalfD, 0);
+        brRibShape.quadraticCurveTo(0, brArchRise, brHalfD, 0);
+        brRibShape.lineTo(brHalfD, -brLipDrop * 0.7);
+        brRibShape.lineTo(brHalfD - 0.06, -brLipDrop * 0.7);
+        brRibShape.quadraticCurveTo(0, brArchRise - 0.06, -brHalfD + 0.06, 0);
+        brRibShape.closePath();
+        const brRibGeo = new THREE.ExtrudeGeometry(brRibShape, { depth: 0.06, bevelEnabled: false, curveSegments: 24 });
+        brRibGeo.rotateY(Math.PI / 2);
+
+        for (let r = 0; r <= 3; r++) {
+          const rx = brX1 + 0.10 + r * ((brW - 0.20) / 3);
+          const rMesh = new THREE.Mesh(brRibGeo, steelPostMat);
+          rMesh.position.set(rx - 0.03, canH + 0.12, brCz);
+          g.add(rMesh);
+        }
+
+        // 鋼樑與立柱 (沿西側留出通行開口，南側與廚房柱銜接)
+        addBox(g, brW, 0.12, 0.12, steelPostMat, brCx, canH + 0.06, brZ1 + 0.10);
+        addBox(g, brW, 0.12, 0.12, steelPostMat, brCx, canH + 0.06, brZ2 - 0.10);
+        addBox(g, 0.11, canH, 0.11, steelPostMat, brX1 + 0.12, canH / 2, brZ2 - 0.15); // 西南支柱
+        addBox(g, 0.11, canH, 0.11, steelPostMat, brX2 - 0.12, canH / 2, brZ2 - 0.15); // 東南支柱
+        addBox(g, 0.11, canH, 0.11, steelPostMat, brX2 - 0.12, canH / 2, brZ1 + 0.15); // 東北支柱 (電梯角)
+
+        // 1F 平整混凝土地坪 (通往廚房1F穿道與中庭)
+        addBox(g, brW + 0.20, 0.15, brD + 0.10, stTreadMat, brCx, 0.075, brCz);
+
+        // 防墜水平護欄 (東側封閉天井邊緣，留出西側通道直通跑道)
+        addBox(g, 0.04, 0.04, brD - 0.40, stainlessRailMat, brX2 - 0.10, railH, brCz, false);
+        addBox(g, 0.03, 0.03, brD - 0.40, stainlessRailMat, brX2 - 0.10, railH * 0.65, brCz, false);
+        addBox(g, 0.03, 0.03, brD - 0.40, stainlessRailMat, brX2 - 0.10, railH * 0.35, brCz, false);
+        for (let s = 0; s < 3; s++) {
+          const sz = brZ1 + 0.35 + s * ((brD - 0.70) / 2);
+          addBox(g, 0.045, railH, 0.045, stainlessRailMat, brX2 - 0.10, railH / 2, sz, false);
+        }
+      }
+
+      // -------------------------------------------------------------------------
+      // 3) 西棟廚房增建與北棟大樓之間的1F遮雨棚 (Full Alley Canopy per Photo 1 實景)
+      //    照片 1 俯瞰視角極致精細再現：
+      //    - 東西向延伸：自電梯東牆 (x = -26.54m) 向東貫穿整條通廊至中庭花園邊緣 (x = -23.60m，寬度 ~2.94m)
+      //    - 南北跨距：北側緊扣北棟前走廊外牆 (zf = -26.175m) 至南側西棟廚房增建北外牆 (kNorthZ = -20.00m，跨距深達 6.175m！)
+      //    - 頂棚：全覆蓋青綠色圓拱採光罩頂 (Sage Green Barrel Vault Roof)
+      //    - 特徵 A：左側沿北棟牆根鋪設全長鍍鋅鋼格柵排水溝 (Linear Trench Grating along North Building)
+      //    - 特徵 B：右側廚房增建遮雨棚上方配置不銹鋼方形排油煙風管彎頭與垂直排煙風管 (Kitchen Exhaust Duct & Elbow)
+      //    - 特徵 C：棚頂橫向肋拱與縱向接縫、對角斜跨電纜弱電線 (Overhead Utility Cable)
+      //    - 特徵 D：1F 鋪設貫通中庭與廚房穿道之平整地坪與天花吸頂照明
+      // -------------------------------------------------------------------------
+      {
+        const alX1 = elevEastX;                                // -26.54m (自電梯東外牆無縫向東延伸)
+        const alX2 = -23.55;                                   // -23.55m (延伸至中庭花園階梯與步道轉角)
+        const alW  = alX2 - alX1;                              // ~ 2.99m 長
+        const alCx = (alX1 + alX2) / 2;                        // ~ -25.045m
+        const alZ1 = zf - 0.12;                                // ~ -26.295m (緊扣北棟前走廊南外牆收邊)
+        const alZ2 = -20.00;                                   // ~ -20.00m (緊扣廚房增建北外牆)
+        const alD  = Math.abs(alZ2 - alZ1);                    // ~ 6.295m 深 (長巷全寬！)
+        const alCz = (alZ1 + alZ2) / 2;                        // ~ -23.147m
+
+        // 3.1 青綠色拱形長巷遮雨棚頂 (Continuous Sage Green Barrel Vault Roof per Photo 1)
+        const alHalfD = alD / 2;
+        const alArchRise = 0.58, alThick = 0.045;
+        const alShape = new THREE.Shape();
+        alShape.moveTo(-alHalfD, 0);
+        alShape.quadraticCurveTo(0, alArchRise, alHalfD, 0);
+        alShape.lineTo(alHalfD - 0.02, -0.06);
+        alShape.quadraticCurveTo(0, alArchRise - alThick, -alHalfD + 0.02, -0.06);
+        alShape.closePath();
+
+        const alGeo = new THREE.ExtrudeGeometry(alShape, { depth: alW + 0.10, bevelEnabled: false, curveSegments: 32 });
+        alGeo.rotateY(Math.PI / 2);
+        const alMesh = new THREE.Mesh(alGeo, sageGreenCanopyMat);
+        alMesh.position.set(alX1 - 0.05, canH + 0.12, alCz);
+        g.add(alMesh);
+
+        // 頂棚橫向肋拱骨架 (Transverse Steel Rafter Ribs per Photo 1)
+        const alRibShape = new THREE.Shape();
+        alRibShape.moveTo(-alHalfD, 0);
+        alRibShape.quadraticCurveTo(0, alArchRise, alHalfD, 0);
+        alRibShape.lineTo(alHalfD, -0.08);
+        alRibShape.lineTo(alHalfD - 0.06, -0.08);
+        alRibShape.quadraticCurveTo(0, alArchRise - 0.06, -alHalfD + 0.06, -0.08);
+        alRibShape.closePath();
+        const alRibGeo = new THREE.ExtrudeGeometry(alRibShape, { depth: 0.06, bevelEnabled: false, curveSegments: 32 });
+        alRibGeo.rotateY(Math.PI / 2);
+
+        const nAlRibs = 4;
+        for (let r = 0; r <= nAlRibs; r++) {
+          const rx = alX1 + 0.10 + r * ((alW - 0.20) / nAlRibs);
+          const rMesh = new THREE.Mesh(alRibGeo, steelPostMat);
+          rMesh.position.set(rx - 0.03, canH + 0.12, alCz);
+          g.add(rMesh);
+        }
+
+        // 頂棚縱向壓條接縫 (Longitudinal Seam Strips per Photo 1)
+        for (let j = -2; j <= 2; j++) {
+          const seamZ = alCz + j * (alHalfD * 0.42);
+          const seamRz = (seamZ - alCz) / alHalfD;
+          const seamY = canH + 0.12 + alArchRise * Math.max(0, 1 - seamRz * seamRz) + 0.015;
+          addBox(g, alW + 0.10, 0.02, 0.035, new THREE.MeshStandardMaterial({ color: 0x4a7258, roughness: 0.55 }), alCx, seamY, seamZ, false);
+        }
+
+        // 3.2 鋼構支撐骨架：樑架與沿牆立柱
+        addBox(g, alW, 0.12, 0.12, steelPostMat, alCx, canH + 0.06, alZ1 + 0.15); // 北側橫樑 (沿北棟牆)
+        addBox(g, alW, 0.12, 0.12, steelPostMat, alCx, canH + 0.06, alZ2 - 0.15); // 南側橫樑 (沿廚房牆)
+        // 沿北棟外牆立柱
+        addBox(g, 0.11, canH, 0.11, steelPostMat, alX1 + 0.20, canH / 2, alZ1 + 0.15);
+        addBox(g, 0.11, canH, 0.11, steelPostMat, alX2 - 0.20, canH / 2, alZ1 + 0.15);
+        // 沿廚房外牆立柱
+        addBox(g, 0.11, canH, 0.11, steelPostMat, alX1 + 0.20, canH / 2, alZ2 - 0.15);
+        addBox(g, 0.11, canH, 0.11, steelPostMat, alX2 - 0.20, canH / 2, alZ2 - 0.15);
+
+        // 3.3 特徵 A：照片 1 左側沿北棟牆根鋪設全長鍍鋅鋼格柵排水溝 (Linear Trench Grating along North Building Wall)
+        const drainZ = alZ1 + 0.28;
+        const drainW = alW + 0.20;
+        addBox(g, drainW, 0.035, 0.32, ironGrilleMat, alCx, 0.08 + 0.018, drainZ, false);
+        // 水溝水泥收邊條
+        addBox(g, drainW, 0.05, 0.06, outdoorConcreteMat, alCx, 0.08 + 0.025, drainZ - 0.18, false);
+        addBox(g, drainW, 0.05, 0.06, outdoorConcreteMat, alCx, 0.08 + 0.025, drainZ + 0.18, false);
+
+        // 3.4 特徵 B：照片 1 右側廚房增建遮雨棚頂上方不銹鋼方形排油煙風管彎頭與垂直風管 (Kitchen Exhaust Duct & Elbow)
+        const ductX = alX1 + 1.15;                             // ~ -25.39m (靠近廚房北側偏東)
+        const ductZ = alZ2 - 0.65;                             // ~ -20.65m (穿透遮雨棚南側斜拱處)
+        const ductW = 0.72, ductD = 0.72;
+        const ductBaseY = canH + 0.35;                         // 穿越棚面標高
+        const ductH = 1.35;                                    // 彎頭高度 ~1.35m
+
+        // 垂直方風管箱體 (Vertical Square Duct Riser)
+        addBox(g, ductW, ductH, ductD, ductStainlessMat, ductX, ductBaseY + ductH / 2, ductZ);
+        // 風管頂部 45 度排氣彎頭與防雨導流罩 (45-Degree Hood / Elbow Opening facing east toward courtyard)
+        const hoodGeo = new THREE.BoxGeometry(ductW + 0.06, 0.42, ductD + 0.06);
+        const hoodMesh = new THREE.Mesh(hoodGeo, ductStainlessMat);
+        hoodMesh.position.set(ductX + 0.15, ductBaseY + ductH + 0.10, ductZ);
+        hoodMesh.rotation.z = -0.38; // 向東傾斜導流
+        g.add(hoodMesh);
+        // 彎頭排氣金屬格柵網罩 (Exhaust Louver Screen)
+        addBox(g, 0.04, 0.38, ductD - 0.04, ironGrilleMat, ductX + 0.34, ductBaseY + ductH + 0.12, ductZ);
+        // 頂棚防水泛水收邊套管 (Flashing Collar on Canopy Roof)
+        addBox(g, ductW + 0.18, 0.16, ductD + 0.18, darkMetalMat, ductX, ductBaseY - 0.02, ductZ);
+
+        // 沿廚房增建北外牆高聳垂直風管立管 (Tall Square Exhaust Shaft climbing Kitchen Annex Facade to Roof)
+        const shaftH = 4.20;
+        const shaftZ = alZ2 - 0.28;
+        addBox(g, 0.58, shaftH, 0.45, ductStainlessMat, ductX, canH + shaftH / 2 + 0.60, shaftZ);
+        // 風管金屬固定抱箍角鋼支架 (Wall Mounting Bracket Bands per Photo 1)
+        for (let b = 0; b < 3; b++) {
+          const by = canH + 0.90 + b * 1.30;
+          addBox(g, 0.66, 0.06, 0.52, ductBandMat, ductX, by, shaftZ);
+        }
+
+        // 3.5 特徵 C：照片 1 實景對角懸垂弱電/電源管線 (Overhead Diagonal Cable across Canopy)
+        const cableGeo = new THREE.CylinderGeometry(0.012, 0.012, 3.8, 6);
+        const cableMesh = new THREE.Mesh(cableGeo, new THREE.MeshBasicMaterial({ color: 0x1f2224 }));
+        cableMesh.position.set(alCx, canH + alArchRise + 0.22, alCz);
+        cableMesh.rotation.y = 0.58;
+        cableMesh.rotation.z = Math.PI / 2;
+        g.add(cableMesh);
+
+        // 3.6 1F 貫通長巷混凝土地坪 (1F Walkway Pavement connecting Passage & Courtyard)
+        addBox(g, alW + 0.30, 0.15, alD + 0.15, stTreadMat, alCx, 0.075, alCz);
+
+        // 3.7 長巷天花板防潮雙管照明日光燈 (Passage Ceiling Light Fixtures)
+        for (let l = 0; l < 2; l++) {
+          const lx = alX1 + 0.85 + l * 1.30;
+          addBox(g, 0.16, 0.06, 1.20, new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfffdf0, emissiveIntensity: 0.6 }), lx, canH - 0.08, alCz);
+        }
+      }
+
+      // -------------------------------------------------------------------------
+      // 4) 照片 1、2、3 天井庭院圓形水泥集水井與洗石子地坪 (Circular Cistern & Surrounding Floor)
+      // -------------------------------------------------------------------------
       const wellR = 0.46, wellH = 0.72;
       const wellX = b2Cx - 0.45;                             // ~ -29.11m
       const wellZ = -21.95;                                  // 天井庭院開闊處中央
       addMesh(g, new THREE.CylinderGeometry(wellR, wellR + 0.03, wellH, 32), new THREE.MeshStandardMaterial({ color: 0x828079, roughness: 0.88 }), wellX, wellH / 2, wellZ);
       addMesh(g, new THREE.CylinderGeometry(wellR - 0.04, wellR - 0.04, 0.06, 32), new THREE.MeshStandardMaterial({ color: 0x3d3a36, roughness: 0.65, metalness: 0.45 }), wellX, wellH + 0.03, wellZ);
       addBox(g, 0.22, 0.04, 0.04, ironGrilleMat, wellX, wellH + 0.08, wellZ);
-      // 水井周圍深灰瀝青/混凝土地坪 (連接遮雨棚至廚房增建1F通道)
-      addBox(g, 5.20, 0.12, 3.80, new THREE.MeshStandardMaterial({ color: 0x545759, roughness: 0.94 }), wellX - 0.20, 0.06, wellZ);
       addBox(g, 0.06, 1.80, 0.06, panelPureWhite, b2R - 0.22, 0.90, wellZ - 1.20);
       addBox(g, 0.65, 0.45, 0.04, ironGrilleMat, b2R - 0.22, 0.35, wellZ + 0.80);
+
     }
 
     // (已依 1102001 截圖指示移除北棟西側外牆多餘之梯廳外露量體與樓地板)
