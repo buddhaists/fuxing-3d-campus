@@ -10089,10 +10089,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   addBox(g, 1.1, 0.7, 380 * K, mats.greenAccent, xW0 - 4.45, 0.35, cz(500));
 
   // (中庭遊戲器材已統一移至 playground-zone 1:1 準確還原)
-
-  // 北端鄰棟走廊銜接 (CAD 一～二層平面圖「鄰棟走廊」，軸線 ⑰～⑱ 後走廊側)
-  addBox(g, 4.8, 3.2, 3.6, mats.wallWarm, xB + 1.2, yF[1] + 1.6, z1 - 1.8);
-  addBox(g, 4.4, 1.4, 0.15, mats.glassDark, xB + 1.2, yF[1] + 1.8, z1 - 3.5);
+  // (北端鄰棟銜接走廊與假體已依現場照片精緻化並移除干擾方塊，不繪製任何車輛)
 
   // ---------- 8) 東棟前走廊外緣台階與紅灰雙色連鎖磚步道（含南段紅磚道白色橫紋標線，依實拍照片 4、5 精緻還原） ----------
   addBox(g, 0.50, 0.15, L, slabMat, xE + 0.25, 0.075, czm, false); // 1FL 較現況 GL 高 30cm：前緣台階
