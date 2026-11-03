@@ -12397,6 +12397,55 @@ function makeTerracottaTilePatternTexture() {
   // Core structural body
   addBox(g, coreW, yRF, coreD, creamWallMat, coreCx, yRF / 2, coreCz);
 
+  // ==========================================================================
+  // 2.1 【西棟與新棟 100% 緊鄰無縫銜接建築體】(`①–④`, `zE = 15.918m` 至 `zD = 19.053m`)
+  // 徹底消除兩棟交接處之 3.135m 綠地空隙！西棟大樓與新棟大樓完全緊密相連：
+  // - 1F: 設貫通操場跑道至中庭之挑高穿堂（底層淨空通透，上方設深灰結構梁與結構板）
+  // - 2F/3F: 教室與走廊實體結構樓板與外牆完全連貫，向北直抵西棟南端（zE = 15.918m）
+  // - RF: 屋頂層結構板與防水女兒牆無縫銜接西棟女兒牆，平屋頂防水層與收邊
+  // ==========================================================================
+  const juncW = ax(4) - ax(1); // 13.52m (完美銜接西棟總進深 13.80m)
+  const juncD = zD - zE;        // 3.135m (無縫填滿 zE=15.918 至 zD=19.053)
+  const juncCx = (ax(1) + ax(4)) / 2; // -31.07m
+  const juncCz = (zE + zD) / 2;        // 17.4855m
+
+  // 1F 地面混凝土結構地坪（貫通穿堂走道，徹底覆蓋綠地，無縫銜接西棟與新棟地坪）
+  addBox(g, juncW + 0.10, 0.25, juncD + 0.04, mats.concrete, juncCx, 0.125, juncCz);
+
+  // 2F 與 3F 實體建築主體（連通多功能活動室與 201/301 幼兒教室）：
+  // 2F (y2F=3.60m 至 y3F=7.20m) & 3F (y3F=7.20m 至 yRF=10.80m) 實體結構主體
+  addBox(g, juncW, yRF - y2F, juncD, creamWallMat, juncCx, y2F + (yRF - y2F) / 2, juncCz);
+
+  // 2F, 3F, RF 結構樓板層（自 zE = 15.918m 貫通至 zD = 19.053m）
+  [y2F, y3F, yRF].forEach(fy => {
+    addBox(g, juncW + 0.10, 0.30, juncD + 0.04, mats.slab, juncCx, fy + 0.15, juncCz);
+  });
+
+  // 1F 頂部結構梁（支撐 2F 樓板，梁下淨高 3.1m 為貫通穿堂與室內過渡階梯）
+  addBox(g, juncW, 0.50, 0.40, exposedConcreteBeamMat, juncCx, y2F - 0.25, zE + 0.20);
+  addBox(g, juncW, 0.50, 0.40, exposedConcreteBeamMat, juncCx, y2F - 0.25, zD - 0.20);
+
+  // 沿 ①–④ 跨距（②、③、④ 軸）之結構支撐方柱（貫通 1F～3F）
+  [1, 2, 3, 4].forEach(idx => {
+    addBox(g, 0.44, yRF, 0.44, whiteTileMat, ax(idx), yRF / 2, zE + 0.22);
+  });
+
+  // 2F & 3F 北向採光窗戶（面向中庭/穿堂上方）
+  for (let f = 1; f <= 2; f++) {
+    const fy = f * FH;
+    for (let bIdx = 2; bIdx <= 3; bIdx++) {
+      const bx1 = ax(bIdx), bx2 = ax(bIdx + 1);
+      const bw = bx2 - bx1, bcx = (bx1 + bx2) / 2;
+      const winMatN = makeWindowMaterial(`new-junc-n-${f}-${bIdx}`);
+      const wp = addMesh(g, new THREE.PlaneGeometry(bw - 0.85, 1.80), winMatN, bcx, fy + 1.85, zE + 0.05, false);
+      wp.rotation.y = Math.PI;
+    }
+  }
+
+  // 屋頂女兒牆與防水壓頂（封閉北緣與西棟交界處）
+  addBox(g, juncW, parapetH, 0.28, whiteTileMat, juncCx, yRF + parapetH / 2, zE + 0.14);
+  addBox(g, juncW + 0.06, 0.08, 0.34, darkCopingMat, juncCx, yRF + parapetH + 0.04, zE + 0.14);
+
   // Structural columns along Axes ①–⑩ at zD and zB
   for (let idx = 1; idx <= 10; idx++) {
     const colX = ax(idx);
@@ -13119,9 +13168,13 @@ function makeTerracottaTilePatternTexture() {
       const winP = addMesh(g, new THREE.PlaneGeometry(2.20, 1.45), makeWindowMaterial(`new-w3f-${w}`), wStX1 - 0.01, y3F + 2.05, wz, false);
       winP.rotation.y = -Math.PI / 2;
     }
-    // 屋頂女兒牆與防水壓頂
+    // 屋頂層結構樓板、女兒牆與防水壓頂（封閉西側樓梯間頂部）
+    addBox(g, wStW, 0.32, westD, mats.roof, wStCx, yRF + 0.16, westCz);
     addBox(g, 0.28, parapetH, westD, whiteTileMat, wStX1 + 0.14, yRF + parapetH / 2, westCz);
     addBox(g, 0.34, 0.08, westD, darkCopingMat, wStX1 + 0.14, yRF + parapetH + 0.04, westCz);
+    // 南向女兒牆封邊
+    addBox(g, wStW, parapetH, 0.28, whiteTileMat, wStCx, yRF + parapetH / 2, zA - 0.14);
+    addBox(g, wStW + 0.06, 0.08, 0.34, darkCopingMat, wStCx, yRF + parapetH + 0.04, zA - 0.14);
 
     // ------------------------------------------------------------------------
     // (G) 【操場轉角校園茂密大樹】（Tall Sprawling Campus Shade Tree, Image 1 & 2）
@@ -13292,6 +13345,8 @@ function makeTerracottaTilePatternTexture() {
     }
     // Roof ridge beam & gable end triangles
     addBox(g, roofW + 0.5, 0.28, 0.36, roofTileRedMat, roofCx, yRF + ridgeH + 0.22, roofCz);
+    // 西側屋頂山牆封板 (ax(2) 封閉紅瓦斜屋頂內部，免除中空透視)
+    addBox(g, 0.32, ridgeH * 0.95, roofD * 0.95, creamWallMat, ax(2), yRF + ridgeH / 2, roofCz);
 
     // --- 4.5 `⑩–⑪` South Recessed Pocket: Orange & Blue Triangular Shade Sails + White Side Gate (`新棟南向正面_右手邊45度側面001.jpg` & 街景照片 12 建興南路42巷) ---
     // 依據街景照片 media_1792913662097_0db1612f.jpg：遮陽帆布完全收納於 ⑩–⑪ 凹口穿堂內 (z = 16.8m ~ 19.8m)，位在白色側門與圍牆境界線 (zMeet = 20.28m) 內側，範圍完全在圍牆裡面！
