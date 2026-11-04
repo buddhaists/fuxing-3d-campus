@@ -5979,6 +5979,8 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
     const doorZ = wcCz - 0.85;
     const doorW_z = 1.62, doorH = 2.25, alcoveDepth = 0.82;
     const alcZ1 = doorZ - doorW_z / 2, alcZ2 = doorZ + doorW_z / 2;
+    const stWidthZ = doorW_z + 0.16; // 1.78m
+    const cheekZ = doorZ + stWidthZ / 2 + 0.06; // -41.205m (樓梯南側折階白護牆中心線)
     const lowerH = baseH + doorH; // 3.50m
     // 2F–3F 上半部完整量體
     addBox(g, wcW, towerWallH - lowerH, wcD, toiletStuccoMat, wcCx, lowerH + (towerWallH - lowerH) / 2, wcCz);
@@ -6090,7 +6092,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
       const topLandW = 0.42;
       const stCount = 7, stRise = baseH / stCount, stTreadW = 0.28;
       const stRun = stCount * stTreadW; // 1.96m
-      const stWidthZ = doorW_z + 0.16;  // 1.78m
+      // stWidthZ is defined at outer scope (1.78m)
       // 頂部緩衝平台
       addBox(g, topLandW, baseH, stWidthZ, stTreadMat, wcL - topLandW / 2, baseH / 2, doorZ);
       // 7 階踏步
@@ -6103,7 +6105,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
       }
 
       // 南側「白色階梯狀折階側護牆」(Stepped White Concrete Cheek Wall on South side, per `crop_toilet_stairs.jpg`)
-      const cheekZ = doorZ + stWidthZ / 2 + 0.06;
+      // cheekZ is defined at outer scope (-41.205m)
       const cheekThick = 0.12;
       // 平台段白牆
       addBox(g, topLandW + 0.15, baseH + 0.34, cheekThick, alcoveWhiteMat, wcL - (topLandW + 0.15) / 2, (baseH + 0.34) / 2, cheekZ);
@@ -6244,13 +6246,13 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
       addBox(g, 0.09, towerWallH, 0.09, pipePvcMat, pipeX, towerWallH / 2, zWcSouth + 0.06);
       addBox(g, 0.10, 0.10, 0.22, pipePvcMat, pipeX, 0.15, zWcSouth + 0.12);
 
-      // H. 依據截圖紅框指示：已完全移除廁所大樓東側通道誤置之樹木（紅框位置的樹已移除）。
-      //    依據截圖綠框與實景照片精準新增：在【北棟廁所大樓南側前方綠框處】設置造景綠地島、高大繁茂大樹、優雅雞蛋花樹與基座灌木叢！
+      // H. 依據使用者指示（紅框移除，綠框移動到箭頭處 · 廁所外樓梯右側靠近車棚的一邊，如實景照片樹木在廁所外的樓梯右側）：
+      //    在【北棟廁所大樓西側戶外樓梯南側 / 右側緊鄰處】設置石砌緣石造景綠地島、高大繁茂大樹、優雅雞蛋花樹與基座灌木叢！
       {
-        // 1) 綠框處造景綠地島 (Raised Landscape Garden Bed in Green Box per User Screenshot & Site Photo)
-        const bedW = 4.40, bedD = 4.20, bedH = 0.20;
-        const bedCx = wcCx + 0.10;                            // ~ -33.81m (正對廁所大樓黃色塊與南面中軸)
-        const bedCz = zWcSouth + bedD / 2 + 0.30;             // ~ -29.805m (位於綠框位置，西側留出寬敞車道)
+        // 1) 樓梯右側造景綠地島 (Raised Landscape Garden Bed to the Right of Outdoor Stairs, Adjacent to Stairs Cheek Wall & Toilet West Facade)
+        const bedW = 4.20, bedD = 4.00, bedH = 0.22;
+        const bedCx = wcL - bedW / 2;                         // ~ -39.01m (西側自廁所大樓西牆向外延伸至樓梯踏步外緣)
+        const bedCz = cheekZ + bedD / 2 + 0.10;               // ~ -39.105m (北側緊鄰樓梯折階南護牆，南側對齊大樓西南轉角)
 
         // 磚石收邊條圍護 (Stone Curb Edging)
         addBox(g, bedW, bedH, bedD, new THREE.MeshStandardMaterial({ color: 0x9e9a91, roughness: 0.85 }), bedCx, bedH / 2, bedCz);
@@ -6267,9 +6269,9 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
         const shrubMat1         = new THREE.MeshStandardMaterial({ color: 0x2f6b2f, roughness: 0.80 });
         const shrubMat2         = new THREE.MeshStandardMaterial({ color: 0x418a38, roughness: 0.76 });
 
-        // 2) 【高大繁茂遮蔭大樹】 (Tall Sprawling Shade Tree per Site Photo 中央高聳大樹 · 直達 3F 樓高)
-        const t1X = bedCx + 0.65;                             // ~ -33.16m
-        const t1Z = bedCz - 0.25;                             // ~ -30.05m
+        // 2) 【高大繁茂遮蔭大樹】 (Tall Sprawling Shade Tree per Site Photo 依現場照片 · 直達 3F 樓高 11.8m 遮蔭大樹)
+        const t1X = bedCx + 0.55;                             // ~ -38.46m (靠廁所大樓西牆與樓梯內側)
+        const t1Z = bedCz - 0.45;                             // ~ -39.55m
         const t1H = 4.25;                                     // 主幹分枝點標高
         // 樹幹基座與向上拔高的主幹
         addMesh(g, new THREE.CylinderGeometry(0.36, 0.50, t1H, 12), shadeTreeTrunkMat, t1X, t1H / 2 + bedH, t1Z);
@@ -6285,7 +6287,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
 
         // 大樹茂密樹冠群 (Multi-Cluster Lush Canopy · 覆蓋 6m ~ 12m 高空)
         const t1Canopy = [
-          // 頂層樹冠 (Y ~ 10.5m ~ 11.8m，遮覆廁所大樓 3F 色塊上空)
+          // 頂層樹冠 (Y ~ 10.5m ~ 11.8m，遮覆樓梯上方與廁所大樓色塊上空)
           { x: t1X + 0.15, y: 11.5, z: t1Z - 0.20, rx: 2.5, ry: 1.8, rz: 2.4, m: treeLeafMat2 },
           { x: t1X - 0.80, y: 10.8, z: t1Z + 0.45, rx: 2.2, ry: 1.6, rz: 2.1, m: treeLeafMat1 },
           { x: t1X + 0.90, y: 11.0, z: t1Z + 0.50, rx: 2.3, ry: 1.7, rz: 2.2, m: treeLeafMat2 },
@@ -6306,9 +6308,9 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
           s.scale.set(c.rx, c.ry, c.rz);
         });
 
-        // 3) 【優雅雞蛋花樹 / 緬梔】 (Sculptural Plumeria Tree per Site Photo 前景左側)
-        const t2X = bedCx - 1.10;                             // ~ -34.91m
-        const t2Z = bedCz - 0.30;                             // ~ -30.10m
+        // 3) 【優雅雞蛋花樹 / 緬梔】 (Sculptural Plumeria Tree per Site Photo 前景左側 · 近車道)
+        const t2X = bedCx - 0.75;                             // ~ -39.76m
+        const t2Z = bedCz + 0.40;                             // ~ -38.70m
         const pTrunkH = 1.60;
         // 扭曲開展之主幹
         const pTrunk = addMesh(g, new THREE.CylinderGeometry(0.15, 0.22, pTrunkH, 10), plumTrunkMat, t2X, pTrunkH / 2 + bedH, t2Z);
@@ -17917,8 +17919,8 @@ const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   { x: 80.5, z: 10.2, r: 3.2, species: 'broad' },      // 前庭南草坪附生鳥巢蕨小葉欖仁
   { x: 96.8, z: 13.8, r: 3.6, species: 'broad' },      // 前庭南草坪斜幹造型榕樹
   { x: 58.5, z: -50.2, r: 2.2, species: 'broad' },     // 有機農場西端果樹與甘蔗叢
-    { x: -33.2, z: -30.0, r: 4.2, species: 'broad' },     // 北棟廁所大樓南側前方綠框處高大遮蔭大樹 (實景照片)
-    { x: -34.9, z: -30.1, r: 2.4, species: 'flowering' }  // 北棟廁所大樓南側前方綠框處優雅雞蛋花樹 (實景照片)
+    { x: -38.5, z: -39.6, r: 4.2, species: 'broad' },     // 北棟廁所大樓西側樓梯右側高大遮蔭大樹 (實景照片)
+    { x: -39.8, z: -38.7, r: 2.4, species: 'flowering' }  // 北棟廁所大樓西側樓梯右側優雅雞蛋花樹 (實景照片)
 ].forEach(rec => campusTreeRecords.push(rec));
 addTree(X(56) + 1.85, Z(90) + 3.80, 1.15, 'broad');
 addTree(-20.8, -12.8, 1.18, 'broad');
@@ -17940,7 +17942,7 @@ treeZones.forEach(([x1, y1, x2, y2, count, defaultType]) => {
     // 依全景照片 media_1792763927173_74e0dc77.jpg 與西棟正面照：保持中庭幾何花磚廣場、西棟東向立面（「育樂樓」）與南棟全線立面視野通透無遮擋
     if (tx > -24.0 && tx < 54.0 && tz > -12.5 && tz < 12.0) continue;
     // 保持西棟大樓（育樂樓）、北翼廚房、北棟遮雨棚與廁所大樓全周及西側停車區/車道無隨機樹木 (依截圖紅框指示完全移除)
-    if (tx > -70.0 && tx < -18.5 && tz > -58.0 && tz < 16.5) continue;
+    if (tx > -85.0 && tx < -18.5 && tz > -58.0 && tz < 16.5) continue;
     // 【核心通視走廊保護】依 Google 街景實景圖：東棟大樓前庭迎賓廣場、挑高穿堂拱門與立面彩繪全線完全通透，禁止巨木遮蔽！
     if (tx > 66.0 && tx < 122.0 && tz > -14.0 && tz < 14.0) continue;
     addTree(tx, tz, 0.78 + rnd() * 0.48, sp);
