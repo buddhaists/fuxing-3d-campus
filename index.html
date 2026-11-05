@@ -15927,9 +15927,10 @@ function makeRedNoticeTexture() {
   addBox(mg, 0.50, 0.16, 0.95, graniteStepMat, pylonX + 0.52, 0.08, pylonZ - 0.55, false);   // 北側踏塊
 
   // 2. 三段式洗石子門碑（自南向北：南翼板 | 中央脊柱 | 北翼板），脊柱最高並向前凸出
-  const southSlab = addBox(mg, 0.46, 4.25, 0.70, pebbleMat, pylonX - 0.08, 2.125, pylonZ + 0.77);   // 前緣 X+0.15，頂高 4.25
-  const spineSlab = addBox(mg, 0.62, 4.65, 0.53, pebbleMat, pylonX,        2.325, pylonZ + 0.155);  // 前緣 X+0.31，頂高 4.65
-  const northSlab = addBox(mg, 0.54, 4.20, 0.72, pebbleMat, pylonX - 0.04, 2.100, pylonZ - 0.47);   // 前緣 X+0.23，頂高 4.20
+  const pylonConcreteMat = new THREE.MeshStandardMaterial({ color: 0xaeada6, roughness: 0.93 });
+  const southSlab = addBox(mg, 0.46, 4.25, 0.70, pylonConcreteMat, pylonX - 0.08, 2.125, pylonZ + 0.77);   // 前緣 X+0.15，頂高 4.25
+  const spineSlab = addBox(mg, 0.62, 4.65, 0.53, pylonConcreteMat, pylonX,        2.325, pylonZ + 0.155);  // 前緣 X+0.31，頂高 4.65
+  const northSlab = addBox(mg, 0.54, 4.20, 0.72, pylonConcreteMat, pylonX - 0.04, 2.100, pylonZ - 0.47);   // 前緣 X+0.23，頂高 4.20
   // 脊柱頂部斜切壓頂
   const spineCap = addBox(mg, 0.66, 0.10, 0.57, stoneCapMat, pylonX, 4.70, pylonZ + 0.155);
   spineCap.rotation.z = 0.04;
@@ -15977,7 +15978,7 @@ function makeRedNoticeTexture() {
     const pinkGraniteMat = new THREE.MeshStandardMaterial({ color: 0xb59085, roughness: 0.65 });
     const bannerStartX = pylonX - 0.02;
     const bannerZ0 = pylonZ + 1.14; // 緊貼主碑南翼板外緣
-    const bannerZ1 = 8.10;          // 南端柱北側接點
+    const bannerZ1 = pylonZ + 5.30; // 布條木欄杆全長約 4.16m (依街景/近照：碑至伸縮門之間)
     const bannerLen = bannerZ1 - bannerZ0; // 2.06m
     const bannerCenterZ = (bannerZ0 + bannerZ1) / 2; // 7.07
 
@@ -15997,9 +15998,35 @@ function makeRedNoticeTexture() {
     }
 
     // (4) 南側洗石子獨立端柱 (斷面 0.48m × 0.48m，高 1.25m，附雙層線腳斜倒角平蓋)
-    const endPillarZ = 8.35;
+    const endPillarZ = pylonZ + 5.55;
     addBox(mg, 0.48, 1.25, 0.48, pebbleMat, bannerStartX, 0.625, endPillarZ);
     addBox(mg, 0.56, 0.09, 0.56, stoneCapMat, bannerStartX, 1.295, endPillarZ);
+
+    // (4b) 欄杆中段洗石子分隔柱 (街景：約距碑 1/3 處)
+    const midPostZ = bannerZ0 + 1.25;
+    addBox(mg, 0.44, 1.20, 0.44, pebbleMat, bannerStartX, 0.60, midPostZ);
+    addBox(mg, 0.52, 0.08, 0.52, stoneCapMat, bannerStartX, 1.24, midPostZ);
+
+    // (4c) 銀色不銹鋼直條伸縮/推拉門 (街景：端柱外側 1.55m，高約 1.15m)
+    {
+      const gz0 = endPillarZ + 0.30, gz1 = pylonZ + 7.40;
+      const gLen = gz1 - gz0, gCz = (gz0 + gz1) / 2;
+      addBox(mg, 0.05, 0.05, gLen, stainlessMat, bannerStartX, 0.16, gCz, false);
+      addBox(mg, 0.05, 0.05, gLen, stainlessMat, bannerStartX, 1.14, gCz, false);
+      addBox(mg, 0.04, 1.00, 0.04, stainlessMat, bannerStartX, 0.65, gz0 + 0.02, false);
+      addBox(mg, 0.04, 1.00, 0.04, stainlessMat, bannerStartX, 0.65, gz1 - 0.02, false);
+      addBox(mg, 0.04, 1.00, 0.04, stainlessMat, bannerStartX, 0.65, gCz, false);
+      const nBars = 13;
+      for (let i = 1; i < nBars; i++) {
+        const bz = gz0 + (gLen * i) / nBars;
+        addMesh(mg, new THREE.CylinderGeometry(0.014, 0.014, 0.98, 6), stainlessMat, bannerStartX, 0.65, bz, false);
+      }
+      // 地面導軌
+      addBox(mg, 0.06, 0.02, gLen + 0.2, darkSteelMat, bannerStartX, 0.12, gCz, false);
+    }
+    // 伸縮門外側終端洗石子柱
+    addBox(mg, 0.48, 1.25, 0.48, pebbleMat, bannerStartX, 0.625, pylonZ + 7.65);
+    addBox(mg, 0.56, 0.09, 0.56, stoneCapMat, bannerStartX, 1.295, pylonZ + 7.65);
 
     // (5) 「選擇復興 家長安心」全彩招生布條 (兩支黑金屬方管立桿固定)
     addBox(mg, 0.04, 1.60, 0.04, darkSteelMat, bannerStartX + 0.10, 1.85, bannerZ0 + 0.18, false);
@@ -16018,7 +16045,7 @@ function makeRedNoticeTexture() {
     bannerMesh.rotation.y = Math.PI / 2; // 面向東側復興路人行道 (+X)
 
     // (6) 南端柱外緣轉角處橘白反光安全交通錐 (實拍街景特寫)
-    const coneX = bannerStartX + 0.55, coneZ = 8.70;
+    const coneX = bannerStartX + 0.55, coneZ = pylonZ + 7.95;
     addBox(mg, 0.36, 0.035, 0.36, new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 }), coneX, 0.02, coneZ, false);
     addMesh(mg, new THREE.ConeGeometry(0.14, 0.70, 16), new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.45 }), coneX, 0.37, coneZ, false);
     addMesh(mg, new THREE.CylinderGeometry(0.088, 0.112, 0.14, 16), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 }), coneX, 0.40, coneZ, false);
@@ -16225,8 +16252,10 @@ function makeRedNoticeTexture() {
   }
 
   // ================================================================
-  const wallPlan = [[355, 698], [322, 677], [290, 657], [258, 637], [226, 616], [196, 600], [178, 592]];
-  const wallCurve = new THREE.CatmullRomCurve3(wallPlan.map(([px, py]) => P2W(px, py)), false, 'centripetal');
+  const wallStart = new THREE.Vector3(pylonX - 0.02, 0, pylonZ + 7.65);
+  const wallEnd = P2W(178, 592);
+  const wallMid = new THREE.Vector3((wallStart.x + wallEnd.x) / 2, 0, (wallStart.z + wallEnd.z) / 2);
+  const wallCurve = new THREE.CatmullRomCurve3([wallStart, wallMid, wallEnd], false, 'centripetal');
   const wallLen = wallCurve.getLength();
   const wAt = s => wallCurve.getPointAt(Math.min(1, Math.max(0, s / wallLen)));
   const wTan = s => { const t = wallCurve.getTangentAt(Math.min(1, Math.max(0, s / wallLen))); t.y = 0; return t.normalize(); };
@@ -16287,14 +16316,12 @@ function makeRedNoticeTexture() {
   }
 
   // --- 南側校園邊界圍牆曲線 (銜接自南端柱，向西南順延) ---
-  const sGate0 = 4.4, sGate1 = 6.6;
-  const sS3 = 9.4, sS4 = 12.2;
-  fenceRun(0.05, sS3);
-  pier(sS3, 1.15);
-  wallRun(sS3 + 0.23, sS4 - 0.23, 0.48);
-  pier(sS4, 1.15);
-  fenceRun(sS4 + 0.23, wallLen);
-  pier(wallLen, 1.15);
+  const sGate0 = -5, sGate1 = -5;   // 伸縮門已移至南側直線段，斜牆無門洞
+  const sS3 = Math.min(9.4, wallLen), sS4 = wallLen;
+  wallRun(0.25, 1.95, 0.50);        // 街景：端柱後低矮洗石子實牆段
+  pier(2.2, 1.10);
+  fenceRun(2.45, wallLen - 0.25);   // 其後為木條欄杆
+  pier(wallLen, 1.10);
 
   // --- 通學步道欄杆(可拆式) 的橘色安全三角錐 (照片 2：小門南柱東側) ---
   {
@@ -16422,8 +16449,7 @@ function makeRedNoticeTexture() {
   // 退縮通學步道中央「獨立地景小喬木」
   // ----------------------------------------------------------------
   {
-    const tp = wAt(10.6), tn = wEast(10.6);
-    const tx = tp.x + tn.x * 2.2, tz = tp.z + tn.z * 2.2;
+    const tx = pylonX - 2.9, tz = pylonZ + 10.6;
     // 枯黃草皮小圓塊 (嵌於連鎖磚鋪面中)
     const dryLawnMat = new THREE.MeshStandardMaterial({ color: 0xaaa36c, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
     const lawn = addMesh(mg, new THREE.CylinderGeometry(1.7, 1.7, 0.02, 28), dryLawnMat, tx, 0.18, tz, false);
