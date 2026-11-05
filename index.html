@@ -15756,9 +15756,9 @@ function makeRedNoticeTexture() {
   // ================================================================
   function makePylonInscriptionTexture() {
     const c = document.createElement('canvas');
-    c.width = 1024; c.height = 2048;
+    c.width = 256; c.height = 2048;
     const ctx = c.getContext('2d');
-    ctx.clearRect(0, 0, 1024, 2048);
+    ctx.clearRect(0, 0, 256, 2048);
 
     function drawGoldText(text, x, y, font, shadowColor, borderColor, gradColors, strokeColor, bWidth = 10) {
       ctx.font = font;
@@ -15787,42 +15787,25 @@ function makeRedNoticeTexture() {
       ctx.strokeText(text, x - 1, y - 1);
     }
 
-    // 1. 左側直書立體金色題字：「屏東縣」「屏東市」（依照片 2 實景，兩列立體金色楷體）
-    const countyChars = ['屏', '東', '縣'];
-    countyChars.forEach((ch, i) => {
-      drawGoldText(
-        ch, 260, 270 + i * 115,
-        '900 88px "DFKai-SB", "BiauKai", "Noto Serif TC", "Noto Sans TC", serif',
-        '#3a1a05', '#b45309',
-        ['#fffbeb', '#fcd34d', '#f59e0b', '#78350f'],
-        '#ffffff', 9
-      );
+    // 貼圖 256x2048 對應脊柱正面 0.56m x 4.48m (世界 Y = 0.16 ~ 4.64m)
+    const yToPx = (wy) => (4.64 - wy) / 4.48 * 2048;
+    const kaiFont = (px) => '900 ' + px + 'px "DFKai-SB", "BiauKai", "Noto Serif TC", "Noto Sans TC", serif';
+    const goldSmall = ['#fffbeb', '#fcd34d', '#f59e0b', '#78350f'];
+
+    // 1. 脊柱上端「屏東縣」(橫式第一排)、「屏東市」(橫式第二排) — 依實景照片，由左至右橫書小字
+    ['屏', '東', '縣'].forEach((ch, i) => {
+      drawGoldText(ch, 56 + i * 72, yToPx(4.43), kaiFont(70), '#3a1a05', '#b45309', goldSmall, '#ffffff', 6);
+    });
+    ['屏', '東', '市'].forEach((ch, i) => {
+      drawGoldText(ch, 56 + i * 72, yToPx(4.15), kaiFont(70), '#3a1a05', '#b45309', goldSmall, '#ffffff', 6);
     });
 
-    const cityChars = ['屏', '東', '市'];
-    cityChars.forEach((ch, i) => {
-      drawGoldText(
-        ch, 260, 680 + i * 115,
-        '900 88px "DFKai-SB", "BiauKai", "Noto Serif TC", "Noto Sans TC", serif',
-        '#3a1a05', '#b45309',
-        ['#fffbeb', '#fcd34d', '#f59e0b', '#78350f'],
-        '#ffffff', 9
-      );
-    });
-
-    // 2. 正面正中立體六枚金色雕刻大字：「復興國民小學」（渾厚威嚴之學校金字招牌全名）
-    const goldChars = ['復', '興', '國', '民', '小', '學'];
-    const startY = 320, stepY = 270;
-    goldChars.forEach((ch, i) => {
-      const y = startY + i * stepY;
-      const gx = 660;
-      drawGoldText(
-        ch, gx, y,
-        '900 236px "DFKai-SB", "BiauKai", "Noto Serif TC", serif',
-        '#451a03', '#92400e',
-        ['#ffffff', '#fef08a', '#f59e0b', '#78350f'],
-        '#fffbeb', 16
-      );
+    // 2. 脊柱中段「復興國民小學」(直式一排，六枚金色雕刻楷書大字，由上而下)
+    ['復', '興', '國', '民', '小', '學'].forEach((ch, i) => {
+      const wy = 3.32 - i * 0.474;
+      const size = (ch === '小') ? 150 : 188;
+      drawGoldText(ch, 118, yToPx(wy), kaiFont(size), '#451a03', '#92400e',
+        ['#ffffff', '#fef08a', '#f59e0b', '#78350f'], '#fffbeb', 12);
     });
 
     const t = new THREE.CanvasTexture(c);
@@ -15937,38 +15920,39 @@ function makeRedNoticeTexture() {
   const spotHousingMat   = new THREE.MeshStandardMaterial({ color: 0x1f2428, roughness: 0.45, metalness: 0.82 });
   const spotGlowMat      = new THREE.MeshBasicMaterial({ color: 0xfffaea });
 
-  // 1. 雙層洗石子踏階基座
-  addBox(mg, 2.35, 0.16, 2.65, pylonBaseMat, pylonX - 0.15, 0.08, pylonZ);
-  addBox(mg, 2.05, 0.16, 2.35, pylonBaseMat, pylonX - 0.10, 0.24, pylonZ);
+  // 1. 洗石子踏階基座（依實景：碑腳僅略寬於碑身，前緣兩塊深灰花崗岩踏塊）
+  addBox(mg, 1.30, 0.12, 2.30, pylonBaseMat, pylonX - 0.02, 0.06, pylonZ + 0.15);
+  const graniteStepMat = new THREE.MeshStandardMaterial({ color: 0x4b4a47, roughness: 0.80 });
+  addBox(mg, 0.50, 0.14, 0.95, graniteStepMat, pylonX + 0.46, 0.07, pylonZ + 0.80, false);   // 南側踏塊
+  addBox(mg, 0.50, 0.16, 0.95, graniteStepMat, pylonX + 0.52, 0.08, pylonZ - 0.55, false);   // 北側踏塊
 
-  // 2. 正面主銘刻立壁 (厚 0.62m × 高 4.65m × 寬 1.68m，採用天然深灰洗石子 pebbleMat)
-  addBox(mg, 0.62, 4.65, 1.68, pebbleMat, pylonX, 2.565, pylonZ);
-  // 頂部梯形斜冠 (微向西傾斜之梯形壓頂)
-  addBox(mg, 0.72, 0.18, 1.78, stoneCapMat, pylonX - 0.02, 4.98, pylonZ);
+  // 2. 三段式洗石子門碑（自南向北：南翼板 | 中央脊柱 | 北翼板），脊柱最高並向前凸出
+  const southSlab = addBox(mg, 0.46, 4.25, 0.70, pebbleMat, pylonX - 0.08, 2.125, pylonZ + 0.77);   // 前緣 X+0.15，頂高 4.25
+  const spineSlab = addBox(mg, 0.62, 4.65, 0.53, pebbleMat, pylonX,        2.325, pylonZ + 0.155);  // 前緣 X+0.31，頂高 4.65
+  const northSlab = addBox(mg, 0.54, 4.20, 0.72, pebbleMat, pylonX - 0.04, 2.100, pylonZ - 0.47);   // 前緣 X+0.23，頂高 4.20
+  // 脊柱頂部斜切壓頂
+  const spineCap = addBox(mg, 0.66, 0.10, 0.57, stoneCapMat, pylonX, 4.70, pylonZ + 0.155);
+  spineCap.rotation.z = 0.04;
+  // 脊柱北緣垂直深色溝槽（實景中銘刻字右側之垂直凹縫）
+  addBox(mg, 0.04, 4.40, 0.05, darkSteelMat, pylonX + 0.315, 2.35, pylonZ - 0.085, false);
 
-  // 柱頂黑色金屬夜間探照燈 (依照片 2 主柱頂部東北角朝下投光探照燈)
+  // 柱頂黑色金屬夜間探照燈（實景：北翼板上緣向東朝下投光）
   {
     const topSpotMat = new THREE.MeshStandardMaterial({ color: 0x181a1d, roughness: 0.42, metalness: 0.85 });
-    const tsX = pylonX + 0.18, tsY = 5.12, tsZ = pylonZ - 0.62;
-    // 安裝金屬支架
-    addBox(mg, 0.04, 0.14, 0.04, topSpotMat, tsX, tsY, tsZ, false);
-    // 探照燈筒身 (斜向下照向前方人行道與大門地面)
-    const topLamp = addMesh(mg, new THREE.CylinderGeometry(0.08, 0.11, 0.22, 12), topSpotMat, tsX + 0.08, tsY + 0.06, tsZ, false);
+    const tsX = pylonX + 0.30, tsY = 4.05, tsZ = pylonZ - 0.90;
+    addBox(mg, 0.14, 0.04, 0.04, topSpotMat, tsX - 0.06, tsY, tsZ, false);
+    const topLamp = addMesh(mg, new THREE.CylinderGeometry(0.08, 0.11, 0.22, 12), topSpotMat, tsX + 0.08, tsY + 0.02, tsZ, false);
     topLamp.rotation.z = Math.PI / 3;
-    const topLens = addMesh(mg, new THREE.CircleGeometry(0.075, 12), spotGlowMat, tsX + 0.14, tsY + 0.01, tsZ, false);
+    const topLens = addMesh(mg, new THREE.CircleGeometry(0.075, 12), spotGlowMat, tsX + 0.14, tsY - 0.03, tsZ, false);
     topLens.rotation.y = Math.PI / 2;
     topLens.rotation.x = -Math.PI / 3;
   }
 
-  // 3. 後翼雕塑弧形包角立柱 (照片中主柱西側後方之弧曲翼板，高 4.85m)
-  const wing = addBox(mg, 0.45, 4.85, 1.35, pylonRearWingMat, pylonX - 0.32, 2.505, pylonZ - 0.25);
-  wing.rotation.y = 0.08;
-
-  // 4. 東側正面「屏東縣屏東市復興國民小學」直書金屬立體雕刻銘牌
+  // 4. 脊柱正面金色立體銘牌：屏東縣(橫式第一排)／屏東市(橫式第二排)／復興國民小學(直式一排)
   const pylonInscription = addMesh(mg,
-    new THREE.PlaneGeometry(1.58, 4.45),
+    new THREE.PlaneGeometry(0.56, 4.48),
     new THREE.MeshStandardMaterial({ map: makePylonInscriptionTexture(), transparent: true, roughness: 0.32, metalness: 0.35 }),
-    pylonX + 0.32, 2.55, pylonZ, false
+    pylonX + 0.325, 2.40, pylonZ + 0.155, false
   );
   pylonInscription.rotation.y = Math.PI / 2;
 
@@ -15992,7 +15976,7 @@ function makeRedNoticeTexture() {
   {
     const pinkGraniteMat = new THREE.MeshStandardMaterial({ color: 0xb59085, roughness: 0.65 });
     const bannerStartX = pylonX - 0.02;
-    const bannerZ0 = pylonZ + 0.84; // 6.04 (緊貼主碑南側基座)
+    const bannerZ0 = pylonZ + 1.14; // 緊貼主碑南翼板外緣
     const bannerZ1 = 8.10;          // 南端柱北側接點
     const bannerLen = bannerZ1 - bannerZ0; // 2.06m
     const bannerCenterZ = (bannerZ0 + bannerZ1) / 2; // 7.07
@@ -16117,6 +16101,32 @@ function makeRedNoticeTexture() {
       pedStartX + 0.265, 0.85, housingZ, false
     );
     redSignMesh.rotation.y = Math.PI / 2;
+  }
+
+  // 7b. 大門右側地貌：校門碑前半圓形灰色洗石子廣場，外緣以淺色抿石子細帶圍成弧線，向外銜接連鎖磚鋪面（依實景照片）
+  {
+    const aprR = 2.95, aprCx = pylonX + 0.38, aprCz = pylonZ + 0.12;
+    const aprMat = new THREE.MeshStandardMaterial({ color: 0x8d8a85, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    const aprEdgeMat = new THREE.MeshStandardMaterial({ color: 0xcfcac0, roughness: 0.90, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    const aprGeo = new THREE.CircleGeometry(aprR, 72, -Math.PI / 2, Math.PI);
+    aprGeo.rotateX(-Math.PI / 2);
+    const aprMesh = new THREE.Mesh(aprGeo, aprMat);
+    aprMesh.position.set(aprCx, 0.19, aprCz);
+    aprMesh.receiveShadow = true;
+    mg.add(aprMesh);
+    const aprRingGeo = new THREE.RingGeometry(aprR - 0.05, aprR + 0.07, 72, 1, -Math.PI / 2, Math.PI);
+    aprRingGeo.rotateX(-Math.PI / 2);
+    const aprRing = new THREE.Mesh(aprRingGeo, aprEdgeMat);
+    aprRing.position.set(aprCx, 0.195, aprCz);
+    aprRing.receiveShadow = true;
+    mg.add(aprRing);
+    // 內圈第二道淺色弧線（實景中廣場內另有一道同心弧縫）
+    const aprRing2Geo = new THREE.RingGeometry(aprR * 0.62 - 0.02, aprR * 0.62 + 0.03, 60, 1, -Math.PI / 2, Math.PI);
+    aprRing2Geo.rotateX(-Math.PI / 2);
+    const aprRing2 = new THREE.Mesh(aprRing2Geo, aprEdgeMat);
+    aprRing2.position.set(aprCx, 0.196, aprCz);
+    aprRing2.receiveShadow = true;
+    mg.add(aprRing2);
   }
 
   // 8. 中央主出入口大門：鮮亮天藍色遙控電動伸縮門（由右向左移動收合開啟，停駐於左側矮門柱旁）
