@@ -16654,17 +16654,18 @@ function makeRedNoticeTexture() {
     side: THREE.DoubleSide
   });
 
-  // 菱形金屬網板 (置放於凹槽與長斜坡前段後方，支撐 SHING 字母)
-  const meshW = 1.88, meshH = 0.76;
-  const meshMesh = addMesh(mg, new THREE.PlaneGeometry(meshW, meshH), diamondMeshMat, wallRightX - 0.02, 0.96, wallRightZ - 0.15, false);
+  // 菱形金屬網板 (置放於凹槽與長斜坡前段後方，支撐 SHING 字母與校徽，依實景放大 1.5 倍)
+  const meshW = 2.85, meshH = 1.15;
+  const meshMesh = addMesh(mg, new THREE.PlaneGeometry(meshW, meshH), diamondMeshMat, wallRightX + 0.07, 1.25, wallRightZ - 0.20, false);
   meshMesh.rotation.y = Math.PI / 2;
 
   // 金屬垂直支撐方管/圓柱 (照片中網後三支直挺金屬柱，固定至矮牆上)
-  [-0.95, -0.15, 0.72].forEach(pz => {
-    addMesh(mg, new THREE.CylinderGeometry(0.016, 0.016, 0.88, 8), darkSteelMat, wallRightX - 0.04, 0.95, wallRightZ + pz);
+  [-1.25, -0.20, 0.85].forEach(pz => {
+    addMesh(mg, new THREE.CylinderGeometry(0.02, 0.02, 1.25, 8), darkSteelMat, wallRightX + 0.05, 1.25, wallRightZ + pz);
   });
 
-  // D. 雙色立體字「Fu SHING」與金色「復興」校徽向量高解析紋理 (1:1 忠實重現藍邊 F-u、金校徽、橘邊 SHING)
+  // D. 雙色立體字「Fu SHING」與金色「復興」校徽向量高解析紋理 (1:1 忠實重現藍邊 F-u、金校徽、橘邊 S 與 HING)
+  // 放大 1.5 倍並抬高至完全無遮擋狀態，S 懸垂入托槽，HING 齊平山脊 peak 並向北水平展延
   function makeCutoutSignTexture() {
     const c = document.createElement('canvas');
     c.width = 2048; c.height = 1024;
@@ -16692,29 +16693,29 @@ function makeRedNoticeTexture() {
       ctx.fillText(text, x, y);
     }
 
-    // 1. 巨大亮藍邊白面大寫「F」
-    drawLetter('F', 340, 540, '900 480px "Arial Black", "Montserrat", "Impact", sans-serif', '#0832a8', '#ffffff', 48);
+    // 1. 巨大亮藍邊白面大寫「F」(左側雄偉直立)
+    drawLetter('F', 320, 460, '900 500px "Arial Black", "Montserrat", "Impact", sans-serif', '#0832a8', '#ffffff', 52);
 
     // 2. 亮藍邊白面小寫「u」(嵌套於 F 字右上角開口中)
-    drawLetter('u', 740, 360, '900 290px "Arial Black", "Montserrat", "Impact", sans-serif', '#0832a8', '#ffffff', 38);
+    drawLetter('u', 680, 280, '900 300px "Arial Black", "Montserrat", "Impact", sans-serif', '#0832a8', '#ffffff', 40);
 
     // 3. 亮藍邊連接橫槓「-」
     ctx.fillStyle = '#0832a8';
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(880, 342, 85, 32, 8);
-    else ctx.rect(880, 342, 85, 32);
+    if (ctx.roundRect) ctx.roundRect(810, 264, 85, 34, 8);
+    else ctx.rect(810, 264, 85, 34);
     ctx.fill();
 
-    // 4. 「復興」精緻校徽 (金色雙側立體麥穗、上半部紅白放射扇芒、中央寶藍盾牌嵌白色「復興」二字)
-    const bX = 1260, bY = 275, bR = 155;
+    // 4. 「復興」精緻校徽 (金色雙側立體麥穗、上半部紅白放射扇芒、中央寶藍盾牌嵌白色「復興」二字，高踞 H、I 正上方)
+    const bX = 1085, bY = 150, bR = 135;
     ctx.fillStyle = '#f59e0b';
     for (let i = -5; i <= 5; i++) {
       const angL = Math.PI * 0.5 + i * 0.22, angR = Math.PI * 0.5 - i * 0.22;
       ctx.beginPath();
-      ctx.ellipse(bX - Math.cos(angL)*bR*0.9, bY + Math.sin(angL)*bR*0.7, 24, 36, angL + 0.3, 0, Math.PI*2);
+      ctx.ellipse(bX - Math.cos(angL)*bR*0.9, bY + Math.sin(angL)*bR*0.7, 22, 34, angL + 0.3, 0, Math.PI*2);
       ctx.fill();
       ctx.beginPath();
-      ctx.ellipse(bX + Math.cos(angR)*bR*0.9, bY + Math.sin(angR)*bR*0.7, 24, 36, -angR - 0.3, 0, Math.PI*2);
+      ctx.ellipse(bX + Math.cos(angR)*bR*0.9, bY + Math.sin(angR)*bR*0.7, 22, 34, -angR - 0.3, 0, Math.PI*2);
       ctx.fill();
     }
     ctx.fillStyle = '#ea580c';
@@ -16723,39 +16724,39 @@ function makeRedNoticeTexture() {
     ctx.beginPath(); ctx.arc(bX, bY, bR - 22, 0, Math.PI * 2); ctx.fill();
 
     ctx.save();
-    ctx.translate(bX, bY - 18);
+    ctx.translate(bX, bY - 16);
     ctx.fillStyle = '#fbbf24';
     for (let s = 0; s < 12; s++) {
       ctx.rotate((Math.PI * 2) / 12);
       ctx.beginPath();
-      ctx.moveTo(0, 0); ctx.lineTo(-14, -85); ctx.lineTo(14, -85); ctx.closePath();
+      ctx.moveTo(0, 0); ctx.lineTo(-12, -75); ctx.lineTo(12, -75); ctx.closePath();
       ctx.fill();
     }
     ctx.restore();
 
     ctx.fillStyle = '#0832a8';
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(bX - 100, bY - 22, 200, 80, 10);
-    else ctx.rect(bX - 100, bY - 22, 200, 80);
+    if (ctx.roundRect) ctx.roundRect(bX - 88, bY - 20, 176, 72, 10);
+    else ctx.rect(bX - 88, bY - 20, 176, 72);
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 4;
     ctx.stroke();
 
-    ctx.font = 'bold 58px "Noto Sans TC", "BiauKai", serif';
+    ctx.font = 'bold 52px "Noto Sans TC", "BiauKai", serif';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('復', bX - 52, bY + 18);
-    ctx.fillText('興', bX + 52, bY + 18);
+    ctx.fillText('復', bX - 45, bY + 16);
+    ctx.fillText('興', bX + 45, bY + 16);
 
-    // 5. 亮橘邊白面大寫「S」(嵌套於 F 中橫梁下方，下環懸入托槽)
-    drawLetter('S', 680, 715, '900 390px "Arial Black", "Montserrat", "Impact", sans-serif', '#ff6f00', '#ffffff', 44);
+    // 5. 亮橘邊白面大寫「S」(嵌套於 F 中橫梁下方，下環深深懸垂入抿石子圓弧托槽)
+    drawLetter('S', 580, 720, '900 480px "Arial Black", "Montserrat", "Impact", sans-serif', '#ff6f00', '#ffffff', 46);
 
-    // 6. 亮橘邊白面大寫「H I N G」(橫向排列，亮橘粗框白面)
-    const hing = [{ ch: 'H', x: 960 }, { ch: 'I', x: 1160 }, { ch: 'N', x: 1370 }, { ch: 'G', x: 1610 }];
+    // 6. 亮橘邊白面大寫「H I N G」(底緣齊平矮牆山脊 peak，橫向排列向北順坡展延)
+    const hing = [{ ch: 'H', x: 980 }, { ch: 'I', x: 1190 }, { ch: 'N', x: 1420 }, { ch: 'G', x: 1680 }];
     hing.forEach(item => {
-      drawLetter(item.ch, item.x, 705, '900 330px "Arial Black", "Montserrat", "Impact", sans-serif', '#ff6f00', '#ffffff', 40);
+      drawLetter(item.ch, item.x, 450, '900 360px "Arial Black", "Montserrat", "Impact", sans-serif', '#ff6f00', '#ffffff', 42);
     });
 
     const t = new THREE.CanvasTexture(c);
@@ -16774,37 +16775,37 @@ function makeRedNoticeTexture() {
     side: THREE.DoubleSide
   });
 
-  // 雕塑尺度：面寬 2.35m，高 1.15m，面向東方復興路
-  const signW = 2.35, signH = 1.15;
+  // 雕塑尺度：放大 1.5 倍（面寬 3.525m，高 1.725m），面向東方復興路
+  const signW = 3.525, signH = 1.725;
   const signZ = wallRightZ + 0.18; // 中心座落於 Z = -10.045m
-  const signY = 1.08;
+  const signY = 1.48; // 抬高至 1.48m，確保 HING 完全高於 1.25m 山脊，S 完美垂入托槽，0% 遮擋
 
-  // 正面標誌面板 (面向復興路東側)
-  const signMeshFront = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signMat, wallRightX + 0.08, signY, signZ, false);
+  // 正面標誌面板 (面向復興路東側，置於 wallRightX + 0.245m 徹底探出抿石子牆正面 2cm，徹底杜絕遮擋)
+  const signMeshFront = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signMat, wallRightX + 0.245, signY, signZ, false);
   signMeshFront.rotation.y = Math.PI / 2;
 
   // 背面標誌面板 (面向校內西側)
-  const signMeshBack = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signMat, wallRightX - 0.01, signY, signZ, false);
+  const signMeshBack = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signMat, wallRightX + 0.05, signY, signZ, false);
   signMeshBack.rotation.y = -Math.PI / 2;
 
-  // 雕塑 3D 立體側盒件 (具有 0.085m 實質厚度，展現立體發光雕塑字厚度)
+  // 雕塑 3D 立體側盒件 (具有 0.17m 實質厚度，完美吻合 1.5 倍放大各字母立體厚度)
   {
     const boxBlueMat   = new THREE.MeshStandardMaterial({ color: 0x0832a8, roughness: 0.32, metalness: 0.45 });
     const boxOrangeMat = new THREE.MeshStandardMaterial({ color: 0xff6f00, roughness: 0.32, metalness: 0.45 });
     const boxGoldMat   = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.32, metalness: 0.45 });
-    const boxThick = 0.085;
-    const midX = wallRightX + 0.035;
+    const boxThick = 0.17;
+    const midX = wallRightX + 0.155;
 
-    // F 區塊立體側盒
-    addBox(mg, boxThick, 0.54, 0.42, boxBlueMat, midX, signY - 0.12, signZ + 0.62, false);
-    // u 區塊立體側盒
-    addBox(mg, boxThick, 0.32, 0.32, boxBlueMat, midX, signY + 0.18, signZ + 0.22, false);
-    // 校徽立體側盒
-    addBox(mg, boxThick, 0.36, 0.38, boxGoldMat, midX, signY + 0.24, signZ - 0.28, false);
-    // S 區塊立體側盒
-    addBox(mg, boxThick, 0.44, 0.34, boxOrangeMat, midX, signY - 0.22, signZ + 0.24, false);
-    // HING 區塊立體長條側盒
-    addBox(mg, boxThick, 0.38, 0.78, boxOrangeMat, midX, signY - 0.22, signZ - 0.38, false);
+    // F 區塊立體側盒 (放大 1.5x)
+    addBox(mg, boxThick, 0.82, 0.65, boxBlueMat, midX, signY + 0.09, signZ + 1.21, false);
+    // u 區塊立體側盒 (放大 1.5x)
+    addBox(mg, boxThick, 0.48, 0.46, boxBlueMat, midX, signY + 0.39, signZ + 0.59, false);
+    // 校徽立體側盒 (放大 1.5x)
+    addBox(mg, boxThick, 0.52, 0.55, boxGoldMat, midX, signY + 0.61, signZ - 0.10, false);
+    // S 區塊立體側盒 (放大 1.5x)
+    addBox(mg, boxThick, 0.72, 0.54, boxOrangeMat, midX, signY - 0.35, signZ + 0.76, false);
+    // HING 區塊立體長條側盒 (放大 1.5x)
+    addBox(mg, boxThick, 0.58, 1.48, boxOrangeMat, midX, signY + 0.10, signZ - 0.53, false);
   }
 
   // E. 單一洗石子基座 ＋ 流線型銀灰斜背投射地燈 (座落於地面連鎖磚上，仰角 35° 正對 Fu SHING 打光 · Photo 3 特寫)
