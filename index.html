@@ -16250,9 +16250,10 @@ function makeRedNoticeTexture() {
       lowWallSeg(mg, wAt(s0 + (s1 - s0) * i / n), wAt(s0 + (s1 - s0) * (i + 1) / n), total);
     }
   }
-  // 黑色金屬直柵欄杆 (底部接矮牆，頂高約 1.25m)
+  // 深褐色木條欄杆 (依街景：約 0.45m 洗石子矮基座 + 約 0.55m 高木條欄杆，頂高約 1.0m)
+  const woodFenceMat = new THREE.MeshStandardMaterial({ color: 0x4d382b, roughness: 0.80 });
   function fenceRun(s0, s1) {
-    const baseTop = 0.40, topY = 1.22;
+    const baseTop = 0.45, topY = 1.0;
     wallRun(s0, s1, baseTop);
     const n = Math.max(1, Math.ceil((s1 - s0) / 0.4));
     for (let i = 0; i < n; i++) {
@@ -16261,14 +16262,16 @@ function makeRedNoticeTexture() {
       const g = new THREE.Group();
       g.position.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
       g.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
-      addBox(g, len + 0.02, 0.04, 0.04, darkSteelMat, 0, baseTop + 0.08, 0);
-      addBox(g, len + 0.02, 0.04, 0.04, darkSteelMat, 0, topY - 0.04, 0);
+      // 上下橫木
+      addBox(g, len + 0.02, 0.05, 0.05, woodFenceMat, 0, baseTop + 0.10, 0, false);
+      addBox(g, len + 0.02, 0.06, 0.05, woodFenceMat, 0, topY - 0.03, 0, false);
+      // 直立木條 (間距約 0.11m)
+      const nSl = Math.max(2, Math.floor(len / 0.11));
+      for (let k = 0; k <= nSl; k++) {
+        const lx = -len / 2 + (len * k) / nSl;
+        addBox(g, 0.05, topY - baseTop - 0.04, 0.035, woodFenceMat, lx, (topY + baseTop) / 2 - 0.01, 0, false);
+      }
       mg.add(g);
-    }
-    const nPk = Math.floor((s1 - s0) / 0.12);
-    for (let k = 0; k <= nPk; k++) {
-      const p = wAt(s0 + 0.06 + k * 0.12);
-      addMesh(mg, new THREE.CylinderGeometry(0.011, 0.011, topY - baseTop - 0.02, 5), darkSteelMat, p.x, (topY + baseTop) / 2, p.z);
     }
   }
   // 石砌方柱 (欄杆分段端柱)
@@ -16363,6 +16366,22 @@ function makeRedNoticeTexture() {
   lobePts.forEach(p => centroid.add(p));
   centroid.multiplyScalar(1 / lobePts.length);
 
+  // 花台外緣淡粉褐色弧形步道帶
+  {
+    const pinkPathMat = new THREE.MeshStandardMaterial({ color: 0xd2a58a, roughness: 0.90, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    const outer = [], inner = [];
+    lobePts.forEach(p => {
+      const d = new THREE.Vector3(p.x - centroid.x, 0, p.z - centroid.z).normalize();
+      outer.push(new THREE.Vector3(p.x + d.x * 1.00, 0, p.z + d.z * 1.00));
+      inner.push(new THREE.Vector3(p.x + d.x * 0.26, 0, p.z + d.z * 0.26));
+    });
+    const ribbon = outer.concat(inner.reverse());
+    const pathMesh = new THREE.Mesh(flatPolyGeo(ribbon), pinkPathMat);
+    pathMesh.position.y = 0.185;
+    pathMesh.receiveShadow = true;
+    mg.add(pathMesh);
+  }
+
   // 花台土壤與草皮 (微隆起於牆內)
   {
     const inset = lobePts.map(p => new THREE.Vector3(centroid.x + (p.x - centroid.x) * 0.92, 0, centroid.z + (p.z - centroid.z) * 0.92));
@@ -16404,18 +16423,14 @@ function makeRedNoticeTexture() {
   {
     const tp = wAt(10.6), tn = wEast(10.6);
     const tx = tp.x + tn.x * 2.2, tz = tp.z + tn.z * 2.2;
-    // 地坪平整石材樹穴框
-    addBox(mg, 1.10, 0.05, 1.10, stoneCapMat, tx, 0.18, tz, false);
-    addBox(mg, 0.92, 0.07, 0.92, gardenSoilMat, tx, 0.185, tz, false);
-    // 直挺修剪小喬木主幹
-    addMesh(mg, new THREE.CylinderGeometry(0.055, 0.085, 1.75, 8), trunkBrownMat, tx, 0.95, tz);
-    // 圓整端正之青綠多層次樹冠
-    const treeCrownMat = new THREE.MeshStandardMaterial({ color: 0x3d7e35, roughness: 0.78 });
-    const crownTopMat   = new THREE.MeshStandardMaterial({ color: 0x5a9a46, roughness: 0.75 });
-    const c1 = addMesh(mg, new THREE.SphereGeometry(0.68, 12, 10), treeCrownMat, tx, 2.15, tz);
-    c1.scale.set(1.15, 0.95, 1.15);
-    const c2 = addMesh(mg, new THREE.SphereGeometry(0.52, 10, 8), crownTopMat, tx, 2.65, tz);
-    c2.scale.set(1.05, 0.85, 1.05);
+    // 枯黃草皮小圓塊 (嵌於連鎖磚鋪面中)
+    const dryLawnMat = new THREE.MeshStandardMaterial({ color: 0xaaa36c, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    const lawn = addMesh(mg, new THREE.CylinderGeometry(1.7, 1.7, 0.02, 28), dryLawnMat, tx, 0.18, tz, false);
+    lawn.scale.set(1.35, 1, 1.0);
+    // 圓球形修剪灌木 (街景中央圓球狀常綠灌木)
+    const roundShrubMat = new THREE.MeshStandardMaterial({ color: 0x4d8a2e, roughness: 0.82 });
+    const ball = addMesh(mg, new THREE.SphereGeometry(0.58, 14, 11), roundShrubMat, tx, 0.78, tz);
+    ball.scale.set(1.0, 0.92, 1.0);
   }
 
   // ================================================================
