@@ -15986,13 +15986,14 @@ function makeRedNoticeTexture() {
     // (2) 上層粉紅色花崗石壓頂/踏階 (高 0.08m，厚 0.44m)
     addBox(mg, 0.44, 0.08, bannerLen + 0.04, pinkGraniteMat, bannerStartX, 0.32, bannerCenterZ);
 
-    // (3) 深黑褐色垂直金屬方管柵欄 (高度 0.80m，上下橫向方管樑，頂端高 1.16m)
-    addBox(mg, 0.04, 0.04, bannerLen - 0.06, darkSteelMat, bannerStartX, 0.42, bannerCenterZ);
-    addBox(mg, 0.04, 0.04, bannerLen - 0.06, darkSteelMat, bannerStartX, 1.12, bannerCenterZ);
-    const nSouthPickets = 7;
+    // (3) 深褐色木條欄杆 (依實景：矮基座上方約 0.75m 高木條，上下橫木)
+    const bannerWoodMat = new THREE.MeshStandardMaterial({ color: 0x4d382b, roughness: 0.80 });
+    addBox(mg, 0.05, 0.05, bannerLen - 0.06, bannerWoodMat, bannerStartX, 0.44, bannerCenterZ);
+    addBox(mg, 0.06, 0.06, bannerLen - 0.06, bannerWoodMat, bannerStartX, 1.10, bannerCenterZ);
+    const nSouthPickets = Math.floor(bannerLen / 0.11);
     for (let i = 1; i <= nSouthPickets; i++) {
       const pz = bannerZ0 + (bannerLen * i) / (nSouthPickets + 1);
-      addBox(mg, 0.025, 0.70, 0.025, darkSteelMat, bannerStartX, 0.77, pz);
+      addBox(mg, 0.04, 0.64, 0.04, bannerWoodMat, bannerStartX, 0.77, pz);
     }
 
     // (4) 南側洗石子獨立端柱 (斷面 0.48m × 0.48m，高 1.25m，附雙層線腳斜倒角平蓋)
@@ -16001,8 +16002,8 @@ function makeRedNoticeTexture() {
     addBox(mg, 0.56, 0.09, 0.56, stoneCapMat, bannerStartX, 1.295, endPillarZ);
 
     // (5) 「選擇復興 家長安心」全彩招生布條 (兩支黑金屬方管立桿固定)
-    addBox(mg, 0.03, 1.15, 0.03, darkSteelMat, bannerStartX + 0.10, 0.85, bannerZ0 + 0.18, false);
-    addBox(mg, 0.03, 1.15, 0.03, darkSteelMat, bannerStartX + 0.10, 0.85, bannerZ1 - 0.18, false);
+    addBox(mg, 0.04, 1.60, 0.04, darkSteelMat, bannerStartX + 0.10, 1.85, bannerZ0 + 0.18, false);
+    addBox(mg, 0.04, 1.60, 0.04, darkSteelMat, bannerStartX + 0.10, 1.85, bannerZ1 - 0.18, false);
 
     const bannerMat = new THREE.MeshStandardMaterial({
       map: makeFuxingGateBannerTexture(),
@@ -16010,9 +16011,9 @@ function makeRedNoticeTexture() {
       side: THREE.DoubleSide
     });
     const bannerMesh = addMesh(mg,
-      new THREE.PlaneGeometry(bannerLen - 0.08, 0.68),
+      new THREE.PlaneGeometry(bannerLen - 0.08, 0.80),
       bannerMat,
-      bannerStartX + 0.16, 1.05, bannerCenterZ, false
+      bannerStartX + 0.16, 2.05, bannerCenterZ, false
     );
     bannerMesh.rotation.y = Math.PI / 2; // 面向東側復興路人行道 (+X)
 
