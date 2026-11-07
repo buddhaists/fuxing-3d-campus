@@ -14463,19 +14463,22 @@ function makeTerracottaTilePatternTexture() {
       addBox(g, shW, parapetH, 0.28, whiteTileMat, shCx, fy + parapetH / 2, zG + 0.14);
       addBox(g, shW + 0.08, 0.08, 0.34, darkCopingMat, shCx, fy + parapetH + 0.04, zG + 0.14);
 
-      // 南向端頭欄杆 (South End Parapet across zC=20.28m: 2F 與 3F 為白色二丁掛磁磚女兒牆 + 深色壓頂，1F 為挑空通道入口)
+      // 南向端頭女兒牆 (South End Parapet across zC=20.28m: 2F 與 3F 實體清水混凝土深梁 + 白色二丁掛磁磚女兒牆 + 洗石子壓頂，1F 為挑空通道入口，100% 依 20261106_142638.jpg)
       if (f > 0) {
-        addBox(g, shW, parapetH, 0.28, whiteTileMat, shCx, fy + parapetH / 2, zC - 0.14);
-        addBox(g, shW + 0.08, 0.08, 0.34, darkCopingMat, shCx, fy + parapetH + 0.04, zC - 0.14);
-        addBox(g, shW - 0.10, 0.04, 0.04, handrailMat, shCx, fy + parapetH + 0.14, zC - 0.14, false);
+        // 樓板處外露清水混凝土結構深梁
+        addBox(g, shW, 0.54, 0.32, exposedConcreteBeamMat, shCx, fy + 0.16, zC - 0.16);
+        // 上方白色二丁掛磁磚女兒牆 (高度約 0.88m)
+        addBox(g, shW, 0.88, 0.28, whiteTileMat, shCx, fy + 0.44 + 0.44, zC - 0.14);
+        // 頂部洗石子/深色平整壓頂 (無多餘金屬扶手，完美對齊實景照片)
+        addBox(g, shW + 0.08, 0.08, 0.34, darkCopingMat, shCx, fy + 1.36, zC - 0.14);
       }
 
-      // 上方標誌性清水混凝土結構深梁 (Spandrel Exposed Concrete Beams: 西向、北向 zG、南向 zC)
+      // 上方標誌性清水混凝土結構深梁 (Spandrel Exposed Concrete Beams: 西向、北向 zG、南向 zC 頂部梁)
       addBox(g, 0.30, 0.54, northExtD, exposedConcreteBeamMat, shX1 + 0.15, fy + FH - 0.27, northExtCz);
       addBox(g, shW, 0.54, 0.32, exposedConcreteBeamMat, shCx, fy + FH - 0.27, zG + 0.16);
       addBox(g, shW, 0.56, 0.34, exposedConcreteBeamMat, shCx, fy + FH - 0.28, zC - 0.17);
 
-      // 欄杆頂部不銹鋼安全加高扶手
+      // 西向走廊欄杆頂部不銹鋼安全加高扶手 (面向中庭部分)
       addBox(g, 0.04, 0.04, northExtD, handrailMat, shX1 + 0.14, fy + parapetH + 0.14, northExtCz, false);
       addBox(g, shW - 0.1, 0.04, 0.04, handrailMat, shCx, fy + parapetH + 0.14, zG + 0.14, false);
 
@@ -14533,12 +14536,14 @@ function makeTerracottaTilePatternTexture() {
     addBox(g, shW + 0.06, 0.08, 0.34, darkCopingMat, shCx, yRF + 0.92, zG + 0.14);
     addBox(g, shW + 0.06, 0.08, 0.34, darkCopingMat, shCx, yRF + 0.92, zC - 0.14);
 
-    // 結構方柱 (Structural White-Tiled Columns along West ax(10) and East ax(11), matching 20261106_142631.jpg & 142638.jpg)
+    // 結構方柱與西側實體白磁磚牆面 (Structural White-Tiled Columns & West Wall along ax(10) zE~zC, matching corridor_zoom.jpg)
     addBox(g, 0.44, yRF + 0.88, 0.44, whiteTileMat, shX1 + 0.22, (yRF + 0.88) / 2, zG + 0.22);
     addBox(g, 0.44, yRF + 0.88, 0.44, whiteTileMat, shX1 + 0.22, (yRF + 0.88) / 2, (zG + zE) / 2);
     addBox(g, 0.44, yRF + 0.88, 0.44, whiteTileMat, shX1 + 0.22, (yRF + 0.88) / 2, zE);
     addBox(g, 0.44, yRF + 0.88, 0.44, whiteTileMat, shX1 + 0.22, (yRF + 0.88) / 2, zC - 0.22);
     addBox(g, 0.46, yRF + 0.88, 0.46, whiteTileMat, shX2 - 0.23, (yRF + 0.88) / 2, zC - 0.23);
+    // 走廊西側 (ax(10) zE 至 zC) 全高三層二丁掛白色磁磚實體側牆 (封閉衛生間/廚房側牆，使通道內部視野乾淨整潔)
+    addBox(g, 0.28, yRF + 0.88, zC - zE, whiteTileMat, shX1 + 0.14, (yRF + 0.88) / 2, (zE + zC) / 2);
 
     // 屋頂轉角金屬立柱全校廣播高音號角喇叭 (Broadcast Horn Speakers on Roof Corner)
     addBox(g, 0.10, 1.45, 0.10, whiteMetalMat, shX1 + 0.22, yRF + 1.55, zG + 0.26, false);
