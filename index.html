@@ -14809,7 +14809,8 @@ function makeTerracottaTilePatternTexture() {
     // 操場跑道緣石邊之【圓形洗石子樹穴保護緣石】(Circular Tree-Well Curb per Image 1)
     const treeWellCurbMat = new THREE.MeshStandardMaterial({ color: 0xbcb7ab, roughness: 0.72 });
     addMesh(g, new THREE.CylinderGeometry(1.15, 1.25, 0.12, 18), treeWellCurbMat, trackTreeX, 0.06, trackTreeZ, false);
-    addMesh(g, new THREE.CylinderGeometry(1.05, 1.05, 0.08, 18), sandySoilMat || mats.concrete, trackTreeX, 0.08, trackTreeZ, false);
+    const treeSoilMat = new THREE.MeshStandardMaterial({ color: 0x5a483a, roughness: 0.95 });
+    addMesh(g, new THREE.CylinderGeometry(1.05, 1.05, 0.08, 18), treeSoilMat, trackTreeX, 0.08, trackTreeZ, false);
 
     // 主樹幹 (粗壯挺拔，下粗上微收)
     const tTrunk = addMesh(g, new THREE.CylinderGeometry(0.32, 0.52, 5.2, 12), tTrunkMat, trackTreeX, 2.6, trackTreeZ);
