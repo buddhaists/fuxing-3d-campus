@@ -1893,6 +1893,14 @@ window.addEventListener('unhandledrejection', e => {
     <!-- Automated Campus Tour Bar -->
     <div class="tour-bar" id="tourBar">
       <div class="tour-progress-track"><div class="tour-progress-fill" id="tourProgressFill"></div></div>
+      <div class="tour-preset-strip" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+        <button class="tour-preset-btn" id="tourBellBtn" type="button" style="padding:6px 6px;font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .18s ease" title="學生日常入校晨讀與下課路線">
+          <span>🔔</span> 上課鐘聲路線
+        </button>
+        <button class="tour-preset-btn" id="tourBarrierBtn" type="button" style="padding:6px 6px;font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .18s ease" title="全平權坡道與垂直電梯動線">
+          <span>♿</span> 無障礙平權路線
+        </button>
+      </div>
       <button class="tour-start-btn" id="startTourBtn" type="button">
         <span>▶</span> 循圖自動巡禮（13 處精選地標環繞導覽）
       </button>
@@ -2026,6 +2034,9 @@ window.addEventListener('unhandledrejection', e => {
       <label><input id="toggle-people" type="checkbox" checked /> 校園師生行人</label>
       <label><input id="toggle-motion" type="checkbox" checked /> 環境動態效果</label>
       <label><input id="toggle-context" type="checkbox" checked /> 周邊街廓量體</label>
+      <label><input id="toggle-seasons" type="checkbox" checked /> 四季動態光影</label>
+      <label><input id="toggle-walkmode" type="checkbox" checked /> 第一人稱地面漫步</label>
+      <label><input id="toggle-lod" type="checkbox" checked /> 建築細節分層 (LOD)</label>
     </div>
 
     <button id="walkers-view" class="action" type="button" style="width:100%;margin-top:8px">近觀行人（跟隨師生漫步視角）↗</button>
@@ -3206,14 +3217,55 @@ const host = document.getElementById('sceneHost');
 const labelsRoot = document.getElementById('sceneLabels');
 const scene = new THREE.Scene();
 
+// Mobile device detection (touch screens / narrow viewport)
+const isMobileDevice = (typeof window !== 'undefined') && (
+  window.matchMedia('(max-width: 768px)').matches ||
+  /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+);
+
+// Global LOD (Level of Detail) Registry
+const LOD_REGISTRY = [];
+let lodEnabled = true;
+let seasonsEnabled = !isMobileDevice; // Defaults off on mobile to save CPU/GPU, on on desktop
+let walkModeAllowed = true;
+
+function registerLOD(landmarkId, centerPos, detailGroup, thresholdDist = 65) {
+  LOD_REGISTRY.push({
+    landmarkId,
+    center: new THREE.Vector3(...centerPos),
+    detailGroup,
+    thresholdDist
+  });
+}
+
+function updateLODs() {
+  if (!LOD_REGISTRY.length) return;
+  const camPos = camera.position;
+  const isMobileEco = isMobileDevice && (activeQuality === 'smooth');
+  for (let i = 0; i < LOD_REGISTRY.length; i++) {
+    const item = LOD_REGISTRY[i];
+    if (!lodEnabled) {
+      item.detailGroup.visible = true;
+      continue;
+    }
+    const dist = camPos.distanceTo(item.center);
+    if (isMobileEco) {
+      // In mobile eco mode, keep heavy sub-details hidden unless camera is very close (< 32m)
+      item.detailGroup.visible = dist < 32;
+    } else {
+      item.detailGroup.visible = dist < item.thresholdDist;
+    }
+  }
+}
+
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 1600);
-const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: !isMobileDevice, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(isMobileDevice ? 1.0 : Math.min(window.devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !isMobileDevice;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 host.appendChild(renderer.domElement);
 
@@ -3230,8 +3282,8 @@ scene.add(hemiLight);
 
 const sunLight = new THREE.DirectionalLight(0xfffdf7, 2.85);
 sunLight.position.set(-85, 175, 95);
-sunLight.castShadow = true;
-sunLight.shadow.mapSize.set(4096, 4096);
+sunLight.castShadow = !isMobileDevice;
+sunLight.shadow.mapSize.set(isMobileDevice ? 1024 : 4096, isMobileDevice ? 1024 : 4096);
 sunLight.shadow.bias = -0.00025;
 sunLight.shadow.normalBias = 0.02;
 Object.assign(sunLight.shadow.camera, { left: -165, right: 165, top: 145, bottom: -145, near: 10, far: 450 });
@@ -3322,6 +3374,72 @@ function makeTileTexture(baseHex = '#f6f6f2', lineHex = '#c4c2ba') {
   tex.repeat.set(6, 6);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+// Procedural Window & Facade Texture Atlas (Standard aluminum window, classroom door, ventilation louvers, transom)
+let _windowAtlasTex = null;
+function makeWindowAtlasTexture() {
+  if (_windowAtlasTex) return _windowAtlasTex;
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 512;
+  const ctx = c.getContext('2d');
+
+  // Background
+  ctx.fillStyle = '#f0eee9';
+  ctx.fillRect(0, 0, 1024, 512);
+
+  // Quadrant 1 (0, 0, 512, 256): 4-pane aluminum sliding window with light blue glass
+  ctx.fillStyle = '#e8e6df';
+  ctx.fillRect(4, 4, 504, 248);
+  ctx.fillStyle = '#b8d5e8';
+  const pw = 118, ph = 232;
+  for (let i = 0; i < 4; i++) {
+    ctx.fillRect(12 + i * 122, 12, pw, ph);
+    ctx.fillStyle = 'rgba(255,255,255,0.42)';
+    ctx.fillRect(16 + i * 122, 16, pw - 8, 20);
+    ctx.fillStyle = '#b8d5e8';
+  }
+  ctx.strokeStyle = '#8f9296';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(4, 4, 504, 248);
+
+  // Quadrant 2 (512, 0, 512, 256): Classroom entrance door with observation window
+  ctx.fillStyle = '#8b5a2b';
+  ctx.fillRect(516, 4, 504, 248);
+  ctx.fillStyle = '#7a4e24';
+  for (let y = 10; y < 250; y += 12) {
+    ctx.fillRect(520, y, 496, 2);
+  }
+  ctx.fillStyle = '#c5e0ee';
+  ctx.fillRect(560, 24, 180, 120);
+  ctx.strokeStyle = '#4a2f15';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(560, 24, 180, 120);
+  ctx.fillStyle = '#d4af37';
+  ctx.fillRect(720, 160, 16, 40);
+
+  // Quadrant 3 (0, 256, 512, 256): Louvered ventilation screen (百葉氣窗)
+  ctx.fillStyle = '#d8d7d0';
+  ctx.fillRect(4, 260, 504, 248);
+  ctx.fillStyle = '#4a4d50';
+  for (let y = 268; y < 500; y += 16) {
+    ctx.fillRect(12, y, 488, 7);
+  }
+
+  // Quadrant 4 (512, 256, 512, 256): Upper Transom Ribbon Window (走廊上端高氣窗)
+  ctx.fillStyle = '#e4e2da';
+  ctx.fillRect(516, 260, 504, 248);
+  ctx.fillStyle = '#a9cce3';
+  for (let i = 0; i < 6; i++) {
+    ctx.fillRect(524 + i * 82, 270, 74, 228);
+  }
+  ctx.strokeStyle = '#7c8085';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(516, 260, 504, 248);
+
+  _windowAtlasTex = new THREE.CanvasTexture(c);
+  _windowAtlasTex.colorSpace = THREE.SRGBColorSpace;
+  return _windowAtlasTex;
 }
 
 // Procedural Terrazzo Corridor Floor Texture (Two-tone terrazzo per p10.jpg site photo)
@@ -5554,6 +5672,10 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
 {
   const g = new THREE.Group();
   g.userData = { landmarkId: 'north-building' };
+  const northDetailGroup = new THREE.Group();
+  northDetailGroup.name = 'north-detail-group';
+  g.add(northDetailGroup);
+  registerLOD('north-building', [14.5, 6, -30], northDetailGroup, 68);
 
   // ==========================================================================
   // EXACT 19-AXIS CAD STRUCTURAL GRID (`軸線 ① ~ ⑲`, Total Span = 8980 cm):
@@ -5636,24 +5758,25 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   const fireExtGaugeMat = new THREE.MeshStandardMaterial({ color: 0x8cb83a, roughness: 0.3, metalness: 0.4 }); // 壓力表
 
   const addFireExtinguisher = (group, px, py, pz) => {
+    const tgt = (group === g) ? northDetailGroup : group;
     // 1) Base tray / stand (滅火器專用置放底座)
-    addBox(group, 0.22, 0.06, 0.22, fireExtStandMat, px, py + 0.03, pz);
+    addBox(tgt, 0.22, 0.06, 0.22, fireExtStandMat, px, py + 0.03, pz);
     // 2) Red pressure cylinder (滅火器紅色瓶身)
-    addMesh(group, new THREE.CylinderGeometry(0.065, 0.065, 0.36, 16), fireExtRedMat, px, py + 0.24, pz);
+    addMesh(tgt, new THREE.CylinderGeometry(0.065, 0.065, 0.36, 16), fireExtRedMat, px, py + 0.24, pz);
     // 3) Instruction & Inspection Label band (白色使用說明與檢驗標籤)
-    addMesh(group, new THREE.CylinderGeometry(0.067, 0.067, 0.18, 16), fireExtLabelMat, px, py + 0.24, pz);
+    addMesh(tgt, new THREE.CylinderGeometry(0.067, 0.067, 0.18, 16), fireExtLabelMat, px, py + 0.24, pz);
     // 4) Domed top neck (弧形瓶頸)
-    addMesh(group, new THREE.CylinderGeometry(0.024, 0.065, 0.05, 16), fireExtRedMat, px, py + 0.445, pz);
+    addMesh(tgt, new THREE.CylinderGeometry(0.024, 0.065, 0.05, 16), fireExtRedMat, px, py + 0.445, pz);
     // 5) Brass/black valve block & squeeze lever / carrying handle (金屬閥門、壓把與提把)
-    addBox(group, 0.03, 0.04, 0.03, ironGrilleMat, px, py + 0.485, pz);
-    addBox(group, 0.016, 0.012, 0.09, ironGrilleMat, px, py + 0.495, pz + 0.025); // carrying handle
-    addBox(group, 0.016, 0.012, 0.09, ironGrilleMat, px, py + 0.515, pz + 0.025); // operating squeeze lever
+    addBox(tgt, 0.03, 0.04, 0.03, ironGrilleMat, px, py + 0.485, pz);
+    addBox(tgt, 0.016, 0.012, 0.09, ironGrilleMat, px, py + 0.495, pz + 0.025); // carrying handle
+    addBox(tgt, 0.016, 0.012, 0.09, ironGrilleMat, px, py + 0.515, pz + 0.025); // operating squeeze lever
     // Small pressure gauge (圓形壓力表)
-    const gauge = addMesh(group, new THREE.CylinderGeometry(0.014, 0.014, 0.008, 12), fireExtGaugeMat, px, py + 0.495, pz + 0.032);
+    const gauge = addMesh(tgt, new THREE.CylinderGeometry(0.014, 0.014, 0.008, 12), fireExtGaugeMat, px, py + 0.495, pz + 0.032);
     gauge.rotation.x = Math.PI / 2;
     // 6) Black discharge hose & nozzle (黑色噴射皮管與噴嘴)
-    addBox(group, 0.016, 0.28, 0.016, ironGrilleMat, px + 0.062, py + 0.33, pz);
-    addBox(group, 0.022, 0.08, 0.022, ironGrilleMat, px + 0.062, py + 0.14, pz);
+    addBox(tgt, 0.016, 0.28, 0.016, ironGrilleMat, px + 0.062, py + 0.33, pz);
+    addBox(tgt, 0.022, 0.08, 0.022, ironGrilleMat, px + 0.062, py + 0.14, pz);
   };
   const waterDispenserMat = new THREE.MeshStandardMaterial({ color: 0xe2e6ea, roughness: 0.25, metalness: 0.85 }); // Stainless steel drinking fountain
   const plantPotMat = new THREE.MeshStandardMaterial({ color: 0xb5543c, roughness: 0.8 }); // Terracotta pots
@@ -5663,9 +5786,10 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   const soilMat = new THREE.MeshStandardMaterial({ color: 0x33281f, roughness: 0.95 }); // Soil
 
   const addPlantCluster = (group, px, py, pz, width = 0.8, foliageRise = 0.80, potCount = 3) => {
+    const tgt = (group === g) ? northDetailGroup : group;
     // 盆栽底座與花盆（放置於樓板 py 上，高度僅 0.20m，正面完全被 0.85m 高的實心圍牆遮擋，正面視角看不見花盆）
-    addBox(group, width, 0.20, 0.22, plantPotMat, px, py + 0.10, pz);
-    addBox(group, width - 0.04, 0.02, 0.18, soilMat, px, py + 0.19, pz);
+    addBox(tgt, width, 0.20, 0.22, plantPotMat, px, py + 0.10, pz);
+    addBox(tgt, width - 0.04, 0.02, 0.18, soilMat, px, py + 0.19, pz);
     // 向上生長舒展的茂盛綠色植物枝葉（高度超越 0.85m 圍牆頂部，自正面走廊欄杆與圓洞清晰可見綠意）
     const span = Math.max(0.1, width - 0.2);
     const step = span / Math.max(1, potCount - 1);
@@ -5802,17 +5926,17 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
       // ---- Classroom interior furnishings (blackboard on west partition, desks facing it) ----
       {
         const bx = xA + 0.17;
-        addBox(g, 0.05, 1.30, 4.05, panelPureWhite, bx, floorY + 1.55, cz);
-        addBox(g, 0.06, 1.15, 3.90, boardGreenMat, bx + 0.01, floorY + 1.55, cz);
-        addBox(g, 0.12, 0.05, 3.9, woodFrameMat, bx + 0.05, floorY + 0.93, cz);      // chalk tray
-        addBox(g, 0.9, 0.14, 6.2, platformMat, xA + 0.62, floorY + 0.07, cz);       // teaching platform
-        addBox(g, 0.55, 0.04, 1.1, deskTopMat, xA + 0.75, floorY + 0.90, cz + 2.3);  // teacher desk
-        addBox(g, 0.50, 0.70, 1.05, woodFrameMat, xA + 0.75, floorY + 0.55, cz + 2.3);
+        addBox(northDetailGroup, 0.05, 1.30, 4.05, panelPureWhite, bx, floorY + 1.55, cz);
+        addBox(northDetailGroup, 0.06, 1.15, 3.90, boardGreenMat, bx + 0.01, floorY + 1.55, cz);
+        addBox(northDetailGroup, 0.12, 0.05, 3.9, woodFrameMat, bx + 0.05, floorY + 0.93, cz);      // chalk tray
+        addBox(northDetailGroup, 0.9, 0.14, 6.2, platformMat, xA + 0.62, floorY + 0.07, cz);       // teaching platform
+        addBox(northDetailGroup, 0.55, 0.04, 1.1, deskTopMat, xA + 0.75, floorY + 0.90, cz + 2.3);  // teacher desk
+        addBox(northDetailGroup, 0.50, 0.70, 1.05, woodFrameMat, xA + 0.75, floorY + 0.55, cz + 2.3);
         // Bulletin board on east partition
-        addBox(g, 0.05, 1.1, 3.4, corkMat, xB - 0.17, floorY + 1.55, cz);
+        addBox(northDetailGroup, 0.05, 1.1, 3.4, corkMat, xB - 0.17, floorY + 1.55, cz);
         // Fluorescent ceiling lights
         for (const lx of [xA + 1.5, xA + 3.2]) for (const lz of [cz - 1.9, cz + 1.9]) {
-          addBox(g, 0.22, 0.06, 1.25, lightFixtureMat, lx, y0 + FH - 0.17, lz);
+          addBox(northDetailGroup, 0.22, 0.06, 1.25, lightFixtureMat, lx, y0 + FH - 0.17, lz);
         }
         // Student desks & chairs (instanced later): 4 rows × 5 columns facing -X
         for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) {
@@ -5920,7 +6044,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
       const m4 = new THREE.Matrix4();
       list.forEach((p, i) => { m4.makeTranslation(p[0], p[1], p[2]); im.setMatrixAt(i, m4); });
       im.castShadow = false; im.receiveShadow = true;
-      g.add(im);
+      northDetailGroup.add(im);
     };
     mk(new THREE.BoxGeometry(0.46, 0.035, 0.62), deskTopMat, deskInst.top);
     mk(new THREE.BoxGeometry(0.03, 0.70, 0.03), deskLegMat, deskInst.leg);
@@ -9031,6 +9155,10 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
 {
   const g = new THREE.Group();
   g.userData = { landmarkId: 'east-building' };
+  const eastDetailGroup = new THREE.Group();
+  eastDetailGroup.name = 'east-detail-group';
+  g.add(eastDetailGroup);
+  registerLOD('east-building', [58.8, 6, Z(201)], eastDetailGroup, 68);
 
   // ---------- 測繪尺寸系統 (圖面單位：公分；世界單位：與校園地圖 S=0.26 比例一致) ----------
   const z1 = Z(88), z2 = Z(315), L = z2 - z1, czm = (z1 + z2) / 2;
@@ -9979,23 +10107,23 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
       const midZ = (startZ + endZ) / 2;
 
       // 1. 頂層主手扶管 (直徑 5cm 圓管，距地面 0.85m)
-      const topRail = addBox(g, 0.05, 0.05, railLen, stainlessMat, railX, midY + 0.85, midZ, false);
+      const topRail = addBox(eastDetailGroup, 0.05, 0.05, railLen, stainlessMat, railX, midY + 0.85, midZ, false);
       topRail.rotation.x = railAngle;
 
       // 2. 次層輪椅/學童輔助扶手管 (直徑 3.8cm 圓管，距地面 0.65m)
-      const midRail = addBox(g, 0.038, 0.038, railLen, stainlessMat, railX, midY + 0.65, midZ, false);
+      const midRail = addBox(eastDetailGroup, 0.038, 0.038, railLen, stainlessMat, railX, midY + 0.65, midZ, false);
       midRail.rotation.x = railAngle;
 
       // 3. 中間第 1 道水平防護橫管 (直徑 2.8cm，距地面 0.46m)
-      const guard1 = addBox(g, 0.028, 0.028, railLen, stainlessMat, railX, midY + 0.46, midZ, false);
+      const guard1 = addBox(eastDetailGroup, 0.028, 0.028, railLen, stainlessMat, railX, midY + 0.46, midZ, false);
       guard1.rotation.x = railAngle;
 
       // 4. 中間第 2 道水平防護橫管 (直徑 2.8cm，距地面 0.28m)
-      const guard2 = addBox(g, 0.028, 0.028, railLen, stainlessMat, railX, midY + 0.28, midZ, false);
+      const guard2 = addBox(eastDetailGroup, 0.028, 0.028, railLen, stainlessMat, railX, midY + 0.28, midZ, false);
       guard2.rotation.x = railAngle;
 
       // 5. 底層踢腳防滑防護橫管 (直徑 2.5cm，距地面 0.10m)
-      const botRail = addBox(g, 0.025, 0.025, railLen, stainlessMat, railX, midY + 0.10, midZ, false);
+      const botRail = addBox(eastDetailGroup, 0.025, 0.025, railLen, stainlessMat, railX, midY + 0.10, midZ, false);
       botRail.rotation.x = railAngle;
 
       // 6. 垂直主支撐立柱 (直徑 4.8cm 方/圓管，間距約 1.15m)
@@ -10004,13 +10132,13 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
         const frac = p / nPosts;
         const pz = startZ + frac * (endZ - startZ);
         const py = startY + frac * (endY - startY);
-        addBox(g, 0.048, 0.88, 0.048, stainlessMat, railX, py + 0.44, pz, false);
+        addBox(eastDetailGroup, 0.048, 0.88, 0.048, stainlessMat, railX, py + 0.44, pz, false);
       }
 
       // 7. 起迄端部向下圓弧彎折收頭
       if (hasEndDrop) {
-        addBox(g, 0.045, 0.22, 0.045, stainlessMat, railX, startY + 0.74, startZ, false);
-        addBox(g, 0.045, 0.22, 0.045, stainlessMat, railX, endY + 0.74, endZ, false);
+        addBox(eastDetailGroup, 0.045, 0.22, 0.045, stainlessMat, railX, startY + 0.74, startZ, false);
+        addBox(eastDetailGroup, 0.045, 0.22, 0.045, stainlessMat, railX, endY + 0.74, endZ, false);
       }
     };
 
@@ -19751,12 +19879,14 @@ function updateEnvironmentSimulation() {
   sunLight.position.set(sunX, sunY, sunZ);
 
   const cfg = LIGHTING_PRESETS[presetKey];
-  const seasonCfg = SEASON_PALETTES[activeSeason] || SEASON_PALETTES.summer;
 
   // Apply seasonal foliage colors across all 4 botanical material groups
-  foliageMats.forEach((mat, idx) => {
-    mat.color.setHex(seasonCfg.foliage[idx % seasonCfg.foliage.length]);
-  });
+  if (seasonsEnabled) {
+    const seasonCfg = SEASON_PALETTES[activeSeason] || SEASON_PALETTES.summer;
+    foliageMats.forEach((mat, idx) => {
+      mat.color.setHex(seasonCfg.foliage[idx % seasonCfg.foliage.length]);
+    });
+  }
 
   // Sky & Fog with Weather adjustments
   const skyTex = createSkyTexture(presetKey);
@@ -19837,6 +19967,9 @@ document.querySelectorAll('[data-weather]').forEach(btn => {
 });
 
 // Persist quality preset in localStorage (`PKU-3D readQualityPreset / saveQualityPreset`)
+if (isMobileDevice && !localStorage.getItem('fuxing.quality.preset')) {
+  activeQuality = 'smooth';
+}
 try {
   const savedQ = localStorage.getItem('fuxing.quality.preset');
   if (['smooth', 'auto', 'fine'].includes(savedQ)) activeQuality = savedQ;
@@ -19884,6 +20017,45 @@ document.getElementById('toggle-context').addEventListener('change', e => {
   layerState.context = e.target.checked;
   if (!isIsolated) layerGroups.context.visible = layerState.context;
 });
+
+// Mobile & Performance Optimization Toggles (Seasons, Walk Mode, LOD)
+const toggleSeasonsEl = document.getElementById('toggle-seasons');
+if (toggleSeasonsEl) {
+  toggleSeasonsEl.checked = seasonsEnabled;
+  toggleSeasonsEl.addEventListener('change', e => {
+    seasonsEnabled = e.target.checked;
+    if (!seasonsEnabled) {
+      hemiLight.intensity = 1.05;
+      sunLight.intensity = 2.85;
+      showToast('已鎖定靜態日光（關閉四季動態著色計算，節省行動端算力）');
+    } else {
+      updateEnvironmentSimulation();
+      showToast('已開啟四季動態光影模擬');
+    }
+  });
+}
+
+const toggleWalkEl = document.getElementById('toggle-walkmode');
+if (toggleWalkEl) {
+  toggleWalkEl.checked = walkModeAllowed;
+  toggleWalkEl.addEventListener('change', e => {
+    walkModeAllowed = e.target.checked;
+    const walkBtn = document.getElementById('walk-start');
+    if (walkBtn) walkBtn.hidden = !walkModeAllowed;
+    if (!walkModeAllowed && walkState.active) exitWalkMode();
+    showToast(walkModeAllowed ? '已啟用第一人稱漫步' : '已關閉第一人稱漫步（鎖定俯仰軌道，防誤觸）');
+  });
+}
+
+const toggleLodEl = document.getElementById('toggle-lod');
+if (toggleLodEl) {
+  toggleLodEl.checked = lodEnabled;
+  toggleLodEl.addEventListener('change', e => {
+    lodEnabled = e.target.checked;
+    updateLODs();
+    showToast(lodEnabled ? '已啟用建築細節分層 (LOD)' : '已關閉 LOD（強制常駐高面數細節）');
+  });
+}
 
 // ============================================================================
 // 9. `沿路探索` (`#route-panel`) CAMPUS WALKWAY GRAPH & AUTO-WALK PLAYBACK
@@ -20825,15 +20997,221 @@ minimapSvg.addEventListener('click', e => {
 // ============================================================================
 // 12. AUTOMATED CAMPUS TOUR, MAP CONTROLS, PICKING, SHORTCUTS & EXPORT
 // ============================================================================
+// Westminster School Bell Chime Synthesis (Web Audio API)
+function playSchoolBellChime() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    // 4-note Westminster chime: E4, C4, D4, G3
+    const notes = [329.63, 261.63, 293.66, 196.00];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.42);
+      gain.gain.setValueAtTime(0, ctx.currentTime + idx * 0.42);
+      gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + idx * 0.42 + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + idx * 0.42 + 1.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + idx * 0.42);
+      osc.stop(ctx.currentTime + idx * 0.42 + 1.2);
+    });
+  } catch (e) {}
+}
+
+// Native Web Speech API Voice Guide
+let speechGuideEnabled = true;
+function speakTourStop(text) {
+  if (!speechGuideEnabled) return;
+  try {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'zh-TW';
+    u.rate = 1.02;
+    u.pitch = 1.0;
+    window.speechSynthesis.speak(u);
+  } catch (e) {}
+}
+
+const PRESET_TOUR_ROUTES = {
+  'bell': {
+    id: 'bell',
+    name: '上課鐘聲路線',
+    icon: '🔔',
+    description: '從復興路正門出發，經迎賓彩繪穿堂、愛悅樓圓洞中庭，走入智慧教室與操場活動空間。',
+    chime: true,
+    stops: [
+      {
+        landmarkId: 'main-gate',
+        title: '第 1 站 · 復興路正門通學步道',
+        tag: '通學晨曦',
+        desc: '晨曦灑落於復興路376號校門，左側立體金字門柱與右側彩色FU-SHING雕塑迎接入校學生。',
+        cam: [85, 9, 0],
+        target: [62, 3, 0],
+        duration: 5200
+      },
+      {
+        landmarkId: 'east-building',
+        title: '第 2 站 · 東棟行政大樓穿堂',
+        tag: '迎賓穿堂',
+        desc: '穿堂軸線長頸鹿高聳彩繪大柱，師生穿過穿堂通往幾何花磚中庭，聽見校園廣播與晨鐘。',
+        cam: [52, 6, -3],
+        target: [60, 4.5, -3],
+        duration: 5200
+      },
+      {
+        landmarkId: 'north-building',
+        title: '第 3 站 · 中庭花園與愛悅樓圓洞',
+        tag: '核心中庭',
+        desc: '中庭回字形連鎖地磚廣場，愛悅樓鮮紅圓洞鏤空門樓頂部栽植綠意，象徵「適性樂學・多元永續」。',
+        cam: [14.5, 6.5, 6],
+        target: [14.5, 5.8, -28],
+        duration: 5500
+      },
+      {
+        landmarkId: 'north-building',
+        title: '第 4 站 · 北棟智慧標準教學教室',
+        tag: '上課鐘響',
+        desc: '前後雙走廊懸掛班級門牌與滅火器，教室內標準課桌椅面向黑板，上課鐘聲響起，全校進入專注晨讀。',
+        cam: [18, 5.2, -26],
+        target: [18, 5.2, -32],
+        duration: 5500
+      },
+      {
+        landmarkId: 'west-building',
+        title: '第 5 站 · 西棟育樂樓專科教學中心',
+        tag: '專科探索',
+        desc: '育樂樓 1F 圓柱川堂與自然科學實驗室、音樂教室，西側連接 2 層供餐廚房。',
+        cam: [-4.5, 6.2, -2.5],
+        target: [-31.0, 5.2, -2.5],
+        duration: 5200
+      },
+      {
+        landmarkId: 'sports-field',
+        title: '第 6 站 · 運動場 PU 跑道與司令台',
+        tag: '體育下課',
+        desc: '下課鐘聲迴盪於 200m 全天候藍橘 PU 跑道與彩繪司令台，學生奔向戶外揮灑活力。',
+        cam: [-65, 14, 18],
+        target: [-60, 2, 45],
+        duration: 5500
+      }
+    ]
+  },
+  'barrier-free': {
+    id: 'barrier-free',
+    name: '無障礙路線',
+    icon: '♿',
+    description: '全校 100% 友善平權無障礙動線：校門平整通道、東棟穿堂緩坡、北棟無障礙電梯與西新棟防滑坡道。',
+    chime: false,
+    stops: [
+      {
+        landmarkId: 'main-gate',
+        title: '第 1 站 · 復興路正門平權通道',
+        tag: '無門檻起點',
+        desc: '正門人行通學步道採無高低差平緩鋪面設計，無障礙輪椅與推車可順暢平穩進入校園。',
+        cam: [78, 6.5, 5],
+        target: [62, 3, 0],
+        duration: 5200
+      },
+      {
+        landmarkId: 'east-building',
+        title: '第 2 站 · 東棟穿堂南北雙向無障礙緩坡道',
+        tag: '雙層防護扶手',
+        desc: '穿堂兩側配置標準 1:12 坡度雙折返無障礙坡道，設有雙層不銹鋼金屬安全扶手與防滑抿石子緣石。',
+        cam: [46.5, 4.2, -3.5],
+        target: [44.0, 3.2, 9.5],
+        duration: 5500
+      },
+      {
+        landmarkId: 'north-building',
+        title: '第 3 站 · 北棟西側無障礙電梯與緩坡連廊',
+        tag: '垂直升降無障礙',
+        desc: '北棟軸線 ②–③ 設置專屬無障礙升降電梯塔與連廊，直通 1F～3F 全樓層，旁接無障礙專用盥洗大樓。',
+        cam: [-28.8, 5.2, -42.5],
+        target: [-28.8, 5.8, -34.5],
+        duration: 5500
+      },
+      {
+        landmarkId: 'west-building',
+        title: '第 4 站 · 西棟育樂樓 1F 平行無障礙坡道',
+        tag: '專科樓平權',
+        desc: '育樂樓東北端設置專屬緩坡直達 1F 體育器材室、配膳室及無障礙友善廁所。',
+        cam: [-14.0, 3.8, -9.5],
+        target: [-31.0, 3.5, -10.5],
+        duration: 5200
+      },
+      {
+        landmarkId: 'new-building',
+        title: '第 5 站 · 新棟幼兒園全長防滑緩坡道',
+        tag: '幼兒友善防護',
+        desc: '復興非營利幼兒園 1F 前方設置全長無障礙防滑坡道與黃金比例雙層金屬安全扶手，坡道兩側綠意環繞。',
+        cam: [-12, 4.2, 8],
+        target: [-18, 4.2, 20],
+        duration: 5500
+      }
+    ]
+  }
+};
+
+let activePresetRouteKey = null;
+let presetRouteStopIdx = 0;
+let presetRouteElapsed = 0;
+
+function startPresetRoute(routeKey) {
+  const route = PRESET_TOUR_ROUTES[routeKey];
+  if (!route) return;
+  if (walkState.active) exitWalkMode();
+  if (activeMode !== '3d') switchViewMode('3d');
+
+  activePresetRouteKey = routeKey;
+  presetRouteStopIdx = 0;
+  presetRouteElapsed = 0;
+  tourRunning = true;
+  tourPaused = false;
+  tourBarEl.classList.add('running');
+  tourToggleBtn.textContent = '❚❚';
+
+  document.querySelectorAll('.tour-preset-btn').forEach(b => {
+    b.classList.toggle('is-active', b.id === (routeKey === 'bell' ? 'tourBellBtn' : 'tourBarrierBtn'));
+  });
+
+  if (route.chime) playSchoolBellChime();
+  goToPresetStop(0);
+}
+
+function goToPresetStop(idx) {
+  const route = PRESET_TOUR_ROUTES[activePresetRouteKey];
+  if (!route) return;
+  presetRouteStopIdx = (idx + route.stops.length) % route.stops.length;
+  presetRouteElapsed = 0;
+  const stop = route.stops[presetRouteStopIdx];
+
+  tourCounterTextEl.textContent = `${route.icon} ${route.name} · 0${presetRouteStopIdx + 1} / 0${route.stops.length}`;
+  tourPlaceTextEl.textContent = stop.title;
+
+  flyTo(stop.cam, stop.target, 850);
+  selectLandmark(stop.landmarkId, 'tour');
+
+  // Voice narration & toast
+  speakTourStop(`${stop.title}。${stop.desc}`);
+  showToast(`${route.icon} 【${stop.tag}】${stop.title}`);
+}
+
 function startTour(fromIndex = 0) {
   if (walkState.active) exitWalkMode();
   if (activeMode !== '3d') switchViewMode('3d');
+  activePresetRouteKey = null;
   tourRunning = true;
   tourPaused = false;
   tourIdx = fromIndex;
   tourElapsed = 0;
   tourBarEl.classList.add('running');
   tourToggleBtn.textContent = '❚❚';
+  document.querySelectorAll('.tour-preset-btn').forEach(b => b.classList.remove('is-active'));
   if (window.innerWidth <= 820 || window.innerHeight <= 640) {
     setCatalogOpen(false);
     detailEl.hidden = true;
@@ -20853,23 +21231,48 @@ function goToTourStop(idx) {
 function stopTour(resetUI = true) {
   tourRunning = false;
   tourPaused = false;
+  activePresetRouteKey = null;
   tourElapsed = 0;
+  presetRouteElapsed = 0;
   tourProgressFillEl.style.width = '0%';
-  if (resetUI) tourBarEl.classList.remove('running');
+  if (resetUI) {
+    tourBarEl.classList.remove('running');
+    document.querySelectorAll('.tour-preset-btn').forEach(b => b.classList.remove('is-active'));
+  }
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 }
 
+document.getElementById('tourBellBtn')?.addEventListener('click', () => startPresetRoute('bell'));
+document.getElementById('tourBarrierBtn')?.addEventListener('click', () => startPresetRoute('barrier-free'));
 document.getElementById('startTourBtn').addEventListener('click', () => {
   const startIdx = selectedId ? Math.max(0, LANDMARKS.findIndex(l => l.id === selectedId)) : 0;
   startTour(startIdx);
 });
-document.getElementById('tourPrevBtn').addEventListener('click', () => goToTourStop(tourIdx - 1));
-document.getElementById('tourNextBtn').addEventListener('click', () => goToTourStop(tourIdx + 1));
+document.getElementById('tourPrevBtn').addEventListener('click', () => {
+  if (activePresetRouteKey) {
+    goToPresetStop(presetRouteStopIdx - 1);
+  } else {
+    goToTourStop(tourIdx - 1);
+  }
+});
+document.getElementById('tourNextBtn').addEventListener('click', () => {
+  if (activePresetRouteKey) {
+    goToPresetStop(presetRouteStopIdx + 1);
+  } else {
+    goToTourStop(tourIdx + 1);
+  }
+});
 tourToggleBtn.addEventListener('click', () => {
   tourPaused = !tourPaused;
   isOrbiting = !tourPaused;
   tourToggleBtn.textContent = tourPaused ? '▶' : '❚❚';
-  const lm = LANDMARKS[tourIdx];
-  tourCounterTextEl.textContent = `${tourPaused ? '已暫停' : '巡禮中'} · ${lm.index} / 12`;
+  if (activePresetRouteKey) {
+    const route = PRESET_TOUR_ROUTES[activePresetRouteKey];
+    tourCounterTextEl.textContent = `${tourPaused ? '已暫停' : route.icon + ' 巡禮中'} · 0${presetRouteStopIdx + 1} / 0${route.stops.length}`;
+  } else {
+    const lm = LANDMARKS[tourIdx];
+    tourCounterTextEl.textContent = `${tourPaused ? '已暫停' : '巡禮中'} · ${lm.index} / 12`;
+  }
 });
 document.getElementById('tourStopBtn').addEventListener('click', () => {
   stopTour(true);
@@ -21272,6 +21675,9 @@ renderer.setAnimationLoop(now => {
     fpsAccum = 0;
   }
 
+  // Dynamic Level of Detail (LOD) update across buildings
+  updateLODs();
+
   // 1) Collision-Aware First-Person Ground Walk Movement (`PKU-3D FirstPerson.move` substepping)
   if (walkState.active && !routeWalkActive) {
     const speed = (walkState.keys.sprint ? 16.0 : 8.2) * dtSec;
@@ -21397,13 +21803,30 @@ renderer.setAnimationLoop(now => {
   // Update PKU-3D Off-Center Panel Framing (`camera.setViewOffset`)
   updateCameraViewOffset(dtSec);
 
-  // 5) Automated Tour Timer
+  // 5) Automated Tour Timer (Preset Routes & Standard Landmark Tour)
   if (tourRunning && !tourPaused) {
-    tourElapsed += dt;
-    const pct = Math.min(100, (tourElapsed / TOUR_MS) * 100);
-    tourProgressFillEl.style.width = `${pct}%`;
-    if (tourElapsed >= TOUR_MS) {
-      goToTourStop(tourIdx + 1);
+    if (activePresetRouteKey) {
+      presetRouteElapsed += dt;
+      const route = PRESET_TOUR_ROUTES[activePresetRouteKey];
+      const stop = route.stops[presetRouteStopIdx];
+      const dur = stop.duration || 5200;
+      const pct = Math.min(100, (presetRouteElapsed / dur) * 100);
+      tourProgressFillEl.style.width = `${pct}%`;
+      if (presetRouteElapsed >= dur) {
+        if (presetRouteStopIdx < route.stops.length - 1) {
+          goToPresetStop(presetRouteStopIdx + 1);
+        } else {
+          stopTour(true);
+          showToast(`✓ 已完成「${route.name}」校園巡禮`);
+        }
+      }
+    } else {
+      tourElapsed += dt;
+      const pct = Math.min(100, (tourElapsed / TOUR_MS) * 100);
+      tourProgressFillEl.style.width = `${pct}%`;
+      if (tourElapsed >= TOUR_MS) {
+        goToTourStop(tourIdx + 1);
+      }
     }
   }
 
