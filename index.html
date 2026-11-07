@@ -15006,9 +15006,11 @@ function makeTerracottaTilePatternTexture() {
     addBox(g, 0.02, 0.52, 0.38, new THREE.MeshStandardMaterial({ color: 0xf4b8c4, roughness: 0.6 }), pocketX1 + 0.09, 1.50, 20.72, false);
     addBox(g, 0.025, 0.24, 0.34, new THREE.MeshStandardMaterial({ color: 0xf7e479, roughness: 0.6 }), pocketX1 + 0.095, 1.38, 20.72, false);
     // 1F 西側牆腳低矮洗石子花台與綠植 (`20261106_142631.jpg`)
-    addBox(g, 0.36, 0.24, 1.65, curbMat, pocketX1 + 0.22, 0.12, 21.35, false);
+    const planterCurbMat = new THREE.MeshStandardMaterial({ color: 0xb5afa4, roughness: 0.68 });
+    const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4a8c3d, roughness: 0.80 });
+    addBox(g, 0.36, 0.24, 1.65, planterCurbMat, pocketX1 + 0.22, 0.12, 21.35, false);
     for (let p = 0; p < 3; p++) {
-      const sp = addMesh(g, new THREE.SphereGeometry(0.22, 8, 8), hedgeMat1, pocketX1 + 0.24, 0.34, 20.80 + p * 0.52, false);
+      const sp = addMesh(g, new THREE.SphereGeometry(0.22, 8, 8), planterHedgeMat, pocketX1 + 0.24, 0.34, 20.80 + p * 0.52, false);
       sp.scale.set(0.9, 0.85, 1.1);
     }
 
