@@ -1946,6 +1946,8 @@ window.addEventListener('unhandledrejection', e => {
       <button type="button" data-viewpoint="oblique" class="is-active">鳥瞰</button>
       <button type="button" data-viewpoint="front">正面</button>
       <button type="button" data-viewpoint="entrance">近景</button>
+      <button type="button" data-viewpoint="read">READ書架</button>
+      <button type="button" data-viewpoint="train">德馬號</button>
       <button type="button" data-viewpoint="dinosaur">恐龍草坡</button>
       <button type="button" data-viewpoint="back">背面</button>
       <button type="button" data-viewpoint="track_junction">操場交接</button>
@@ -2806,7 +2808,7 @@ const LANDMARKS = [
       back: { p: [45, 2.8, -6.3], t: [58, 2.5, -6.3] },
       entrance: { p: [72, 2.2, -6.3], t: [58, 2.2, -6.3] },
       train: { p: [56.2, 2.2, -4.5], t: [60.0, 2.3, -10.6] },
-      read: { p: [60.5, 2.2, -8.0], t: [56.8, 2.3, -1.9] }
+      read: { p: [58.4, 2.25, -6.5], t: [58.4, 2.05, -2.15] }
     }
   },
   {
@@ -3281,7 +3283,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.065;
 controls.maxPolarAngle = Math.PI / 2 - 0.025;
-controls.minDistance = 14;
+controls.minDistance = 1.2;
 controls.maxDistance = 420;
 
 // High-Fidelity Architectural Lighting Rig (Crisp shadows, soft bounce, warm corridor fill)
@@ -9229,7 +9231,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   // 穿堂 1F 地坪與天花
   const breezeZ = (cz(AXIS_CM[7]) + cz(AXIS_CM[8])) / 2;
   const breezeW = cz(AXIS_CM[7]) - cz(AXIS_CM[8]);
-  addBox(g, 750 * K + 0.1, 0.03, breezeW, passageFloorMat, bodyCx, y0 + 0.015, breezeZ, false);
+  // (低位地坪已移除，穿堂 1F 地坪統一由架高實體平臺 yBreezeFloor 繪製，避免雙層地板)
 
   // ---------- 2) 前(東)走廊：樓板、柱列、彩繪護牆 ----------
   // 2F、3F 走廊樓板與屋頂版 (厚 25 cm)
@@ -9846,67 +9848,71 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   const blackWallH = 1.52;
   const blackWallW = hallLenX - 0.1;
   addBox(g, blackWallW, blackWallH, 0.05, chalkBoardMat,
-         bodyCx, yBreezeFloor + blackWallH / 2, zSouthWall - 0.025);
+         bodyCx, yBreezeFloor + blackWallH / 2, zSouthWall - 0.02);
 
   // 2. READ 立體書架 (溫暖蜂蜜金 #D4A030)
+  // 面向南牆（+Z方向）之觀察者由左至右依序閱讀 R · E · A · D
+  // 觀察者左方為 +X（東），右方為 -X（西）
   const letterGoldMat = new THREE.MeshStandardMaterial({ color: 0xd4a030, roughness: 0.42 });
 
   const LH  = 1.28;    // 字高
   const LD  = 0.28;    // 字厚 (前後深)
   const LW  = 0.95;    // 字寬
   const LT  = 0.090;   // 板厚
-  const LSP = 0.09;    // 字間距
+  const LSP = 0.12;    // 字間距
 
-  // 四字母中心 X (以 bodyCx 為中心均等排列)
   const totalLetterW = 4 * LW + 3 * LSP;
-  const xLet0 = bodyCx - totalLetterW / 2;  // R 的左邊緣
-
-  // 各字母左邊緣
-  const xlR = xLet0;
-  const xlE = xLet0 + LW + LSP;
-  const xlA = xLet0 + 2 * (LW + LSP);
-  const xlD = xLet0 + 3 * (LW + LSP);
+  // 觀察者視野由左至右：R 在最高 X，D 在最低 X
+  const xLetR = bodyCx + totalLetterW / 2 - LW / 2;
+  const xLetE = xLetR - (LW + LSP);
+  const xLetA = xLetE - (LW + LSP);
+  const xLetD = xLetA - (LW + LSP);
 
   const yL = yBreezeFloor;
-  const zL = zSouthWall - 0.16;  // 字母中心 Z：貼南牆並向穿堂凸出 ~16cm
+  const zL = zSouthWall - 0.22;  // 字母中心 Z：貼南牆消光黑底牆前方，留足夠進深避免Z-fighting
 
   // ════════════════════════════════════════════
   // ─── 「R」字母書架 ───────────────────────────
   // ════════════════════════════════════════════
   {
-    const xl = xlR;
-    const bowlW   = LW * 0.70;          // 碗形寬度 (0.665m)
-    const bowlMidY = LH * 0.54;         // 中橫樑高 (0.691m)
-    const bowlH   = LH - bowlMidY;      // 碗形高 (0.589m)
+    const xc = xLetR;
+    const x_spine = xc + LW / 2 - LT / 2; // 觀察者左側主柱（高 X 端）
+    const bowlW   = LW * 0.65;
+    const bowlMidY = LH * 0.52;
+    const bowlH   = LH - bowlMidY;
 
     // 左垂直主柱 (全高)
-    addBox(g, LT, LH, LD, letterGoldMat, xl + LT/2, yL + LH/2, zL);
+    addBox(g, LT, LH, LD, letterGoldMat, x_spine, yL + LH / 2, zL);
 
-    // 頂橫板：左柱右邊緣到碗右緣
-    addBox(g, bowlW, LT, LD, letterGoldMat,
-           xl + LT + bowlW/2, yL + LH - LT/2, zL);
+    // 頂橫樑 (向觀察者右方 -X 延伸)
+    addBox(g, bowlW, LT, LD, letterGoldMat, x_spine - LT / 2 - bowlW / 2, yL + LH - LT / 2, zL);
 
-    // 碗右弧板 (垂直，接頂橫板右端往下到中橫樑)
+    // 中橫樑 (向觀察者右方 -X 延伸)
+    addBox(g, bowlW, LT, LD, letterGoldMat, x_spine - LT / 2 - bowlW / 2, yL + bowlMidY + LT / 2, zL);
+
+    // 碗形右側垂直弧板 (連接頂橫樑與中橫樑)
     addBox(g, LT, bowlH - LT, LD, letterGoldMat,
-           xl + LT + bowlW - LT/2,
-           yL + bowlMidY + LT + (bowlH - LT)/2, zL);
+           x_spine - LT / 2 - bowlW + LT / 2,
+           yL + bowlMidY + LT + (bowlH - LT) / 2, zL);
 
-    // 中橫樑 (中間分隔，接碗右板左邊緣到左柱)
-    addBox(g, bowlW - LT, LT, LD, letterGoldMat,
-           xl + LT + (bowlW - LT)/2, yL + bowlMidY + LT/2, zL);
-
-    // 斜腿：從碗右板底部 (xl+LT+bowlW, bowlMidY) 往右下到 (xl+LW, 0)
-    // 長度 = 0.7182m，旋轉 Z = -0.2750 rad (-15.8°)
-    const rLegMesh = addBox(g, LT * 1.4, 0.7182, LD, letterGoldMat,
-           xl + LT + bowlW + (LW - LT - bowlW) / 2,
-           yL + bowlMidY / 2, zL);
-    rLegMesh.rotation.z = -0.2750;
+    // 右斜腿：自中橫樑底部往右下（-X、-Y）延伸至 (xc - LW/2 + LT/2, yL)
+    const leg_startX = x_spine - LT / 2 - bowlW * 0.68;
+    const leg_startY = yL + bowlMidY;
+    const leg_endX   = xc - LW / 2 + LT / 2;
+    const leg_endY   = yL;
+    const legDx = leg_endX - leg_startX;
+    const legDy = leg_endY - leg_startY;
+    const legLen = Math.hypot(legDx, legDy);
+    const legAngle = Math.atan2(legDx, -legDy);
+    const rLegMesh = addBox(g, LT * 1.3, legLen, LD, letterGoldMat,
+           (leg_startX + leg_endX) / 2, (leg_startY + leg_endY) / 2, zL);
+    rLegMesh.rotation.z = legAngle;
 
     // 書籍：R 碗內 (中橫樑上方)
-    makeBooksRow(xl + LT + 0.04, xl + LT + bowlW - LT - 0.04,
+    makeBooksRow(x_spine - LT - bowlW + 0.08, x_spine - LT - 0.04,
                  yL + bowlMidY + LT + 0.02, zL, 5, LD * 0.70, true);
-    // 書籍：R 下格左區 (中橫樑下方，斜腿左側)
-    makeBooksRow(xl + LT + 0.04, xl + LT + 0.26,
+    // 書籍：R 下格左區 (主柱旁中橫樑下方)
+    makeBooksRow(x_spine - LT - bowlW * 0.45, x_spine - LT - 0.04,
                  yL + 0.02, zL, 3, LD * 0.70);
   }
 
@@ -9914,69 +9920,73 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   // ─── 「E」字母書架 ───────────────────────────
   // ════════════════════════════════════════════
   {
-    const xl = xlE;
-    const topW = LW * 0.86;    // 頂/底臂寬度
-    const midW = LW * 0.68;    // 中臂寬度 (較短)
-    const midY = LH * 0.48;    // 中臂 Y 中心
+    const xc = xLetE;
+    const x_spine = xc + LW / 2 - LT / 2; // 觀察者左側背柱（高 X 端）
+    const armTopW = LW * 0.82;
+    const armMidW = LW * 0.64;
+    const armBotW = LW * 0.82;
+    const midY    = LH * 0.50;
 
     // 左垂直背柱 (全高)
-    addBox(g, LT, LH, LD, letterGoldMat, xl + LT/2, yL + LH/2, zL);
-    // 頂橫臂
-    addBox(g, topW - LT, LT, LD, letterGoldMat,
-           xl + LT + (topW - LT)/2, yL + LH - LT/2, zL);
-    // 中橫臂 (稍短，約在 48% 高)
-    addBox(g, midW - LT, LT, LD, letterGoldMat,
-           xl + LT + (midW - LT)/2, yL + midY, zL);
-    // 底橫臂
-    addBox(g, topW - LT, LT, LD, letterGoldMat,
-           xl + LT + (topW - LT)/2, yL + LT/2, zL);
+    addBox(g, LT, LH, LD, letterGoldMat, x_spine, yL + LH / 2, zL);
+    // 頂橫臂 (向觀察者右方 -X 延伸)
+    addBox(g, armTopW - LT, LT, LD, letterGoldMat,
+           x_spine - LT / 2 - (armTopW - LT) / 2, yL + LH - LT / 2, zL);
+    // 中橫臂 (向觀察者右方 -X 延伸)
+    addBox(g, armMidW - LT, LT, LD, letterGoldMat,
+           x_spine - LT / 2 - (armMidW - LT) / 2, yL + midY, zL);
+    // 底橫臂 (向觀察者右方 -X 延伸)
+    addBox(g, armBotW - LT, LT, LD, letterGoldMat,
+           x_spine - LT / 2 - (armBotW - LT) / 2, yL + LT / 2, zL);
 
     // 書籍：上格 (中臂 → 頂臂之間)
-    makeBooksRow(xl + LT + 0.04, xl + LT + topW - LT - 0.04,
-                 yL + midY + LT/2 + 0.02, zL, 6, LD * 0.70, true);
+    makeBooksRow(x_spine - LT - armMidW + 0.12, x_spine - LT - 0.04,
+                 yL + midY + LT / 2 + 0.02, zL, 6, LD * 0.70, true);
     // 書籍：下格 (底臂 → 中臂之間)
-    makeBooksRow(xl + LT + 0.04, xl + LT + topW - LT - 0.04,
-                 yL + 0.02, zL, 7, LD * 0.70);
+    makeBooksRow(x_spine - LT - armBotW + 0.12, x_spine - LT - 0.04,
+                 yL + LT + 0.02, zL, 7, LD * 0.70);
   }
 
   // ════════════════════════════════════════════
   // ─── 「A」字母書架 ───────────────────────────
   // ════════════════════════════════════════════
   {
-    const xl = xlA;
-    const halfW  = LW / 2;
-    // 斜柱長度 = sqrt((LW/2)^2 + LH^2) = 1.3653m
-    // 斜柱旋轉 Z = ±0.3553 rad (±20.4°)
-    const strLen = 1.3653;
-    const strAngle = 0.3553;
+    const xc = xLetA;
+    const apexX = xc;
+    const apexY = yL + LH;
+    const dxL = (xc + LW / 2 - LT / 2) - apexX;
+    const lenA = Math.hypot(dxL, -LH);
 
-    // 左斜柱：中心在 (xl + halfW*0.5, yL + LH/2)
-    const aLMesh = addBox(g, LT * 1.3, strLen, LD, letterGoldMat,
-                           xl + halfW * 0.5, yL + LH/2, zL);
-    aLMesh.rotation.z = strAngle;
+    // 左斜柱 (頂端 apexX 向觀察者左側 +X 傾斜向下開展)
+    const rotL = Math.atan2(dxL, LH);
+    const aLMesh = addBox(g, LT * 1.25, lenA, LD, letterGoldMat,
+                          (apexX + (xc + LW / 2 - LT / 2)) / 2, yL + LH / 2, zL);
+    aLMesh.rotation.z = rotL;
 
-    // 右斜柱：中心在 (xl + LW - halfW*0.5, yL + LH/2)
-    const aRMesh = addBox(g, LT * 1.3, strLen, LD, letterGoldMat,
-                           xl + LW - halfW * 0.5, yL + LH/2, zL);
-    aRMesh.rotation.z = -strAngle;
+    // 右斜柱 (頂端 apexX 向觀察者右側 -X 傾斜向下開展)
+    const dxR = (xc - LW / 2 + LT / 2) - apexX;
+    const rotR = Math.atan2(dxR, LH);
+    const aRMesh = addBox(g, LT * 1.25, lenA, LD, letterGoldMat,
+                          (apexX + (xc - LW / 2 + LT / 2)) / 2, yL + LH / 2, zL);
+    aRMesh.rotation.z = rotR;
 
     // 頂封帽
-    addBox(g, LT * 2.2, LT, LD, letterGoldMat, xl + halfW, yL + LH - LT * 0.5, zL);
+    addBox(g, LT * 2.2, LT, LD, letterGoldMat, xc, yL + LH - LT / 2, zL);
 
-    // 中橫檔：在 crossY=0.5376m 高，左右各接到斜柱
-    // 中橫檔寬 = 0.5510m，左邊緣 X = xl + 0.1995
-    const crossW_a = 0.5510;
-    const crossX_a = xl + 0.1995 + crossW_a / 2;
-    addBox(g, crossW_a, LT * 1.3, LD, letterGoldMat, crossX_a, yL + 0.5376, zL);
+    // 中橫檔層板
+    const crossY = yL + LH * 0.44;
+    const frac = (crossY - yL) / LH;
+    const wAtCross = (LW - LT) * (1 - frac);
+    addBox(g, wAtCross, LT * 1.1, LD, letterGoldMat, xc, crossY, zL);
 
-    // 書籍：中橫檔上方 (三角內)
-    makeBooksRow(xl + 0.1995 + LT + 0.02, xl + 0.7505 - LT - 0.02,
-                 yL + 0.5376 + LT + 0.02, zL, 3, LD * 0.70, true);
-    // 書籍：左腳
-    makeBooksRow(xl + 0.05, xl + 0.1995 - 0.04,
+    // 書籍：中橫檔上方 (三角格內)
+    makeBooksRow(xc - wAtCross / 2 + 0.06, xc + wAtCross / 2 - 0.06,
+                 crossY + LT * 0.55 + 0.02, zL, 3, LD * 0.70, true);
+    // 書籍：左側開展腳區
+    makeBooksRow(xc + wAtCross / 2 - 0.02, xc + LW / 2 - 0.12,
                  yL + 0.02, zL, 2, LD * 0.70);
-    // 書籍：右腳
-    makeBooksRow(xl + 0.7505 + 0.04, xl + LW - 0.05,
+    // 書籍：右側開展腳區
+    makeBooksRow(xc - LW / 2 + 0.12, xc - wAtCross / 2 + 0.02,
                  yL + 0.02, zL, 2, LD * 0.70);
   }
 
@@ -9984,38 +9994,43 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   // ─── 「D」字母書架 ───────────────────────────
   // ════════════════════════════════════════════
   {
-    const xl = xlD;
-    const capW = LW * 0.68;    // 頂/底橫板寬 (0.646m)
+    const xc = xLetD;
+    const x_spine = xc + LW / 2 - LT / 2; // 觀察者左側垂直主柱（高 X 端）
+    const capW = LW * 0.65;
 
     // 左垂直主柱 (全高)
-    addBox(g, LT, LH, LD, letterGoldMat, xl + LT/2, yL + LH/2, zL);
-    // 頂橫板
+    addBox(g, LT, LH, LD, letterGoldMat, x_spine, yL + LH / 2, zL);
+    // 頂橫板 (向觀察者右方 -X 延伸)
     addBox(g, capW - LT, LT, LD, letterGoldMat,
-           xl + LT + (capW - LT)/2, yL + LH - LT/2, zL);
-    // 底橫板
+           x_spine - LT / 2 - (capW - LT) / 2, yL + LH - LT / 2, zL);
+    // 底橫板 (向觀察者右方 -X 延伸)
     addBox(g, capW - LT, LT, LD, letterGoldMat,
-           xl + LT + (capW - LT)/2, yL + LT/2, zL);
+           x_spine - LT / 2 - (capW - LT) / 2, yL + LT / 2, zL);
 
-    // 右弧形：三段折線近似半橢圓
-    // 上段弧：(xl+capW, LH-LT) → (xl+LW, LH*0.5)
-    //   長=0.6284m，角=-0.5049 rad (-28.9°)
-    const dUpMesh = addBox(g, LT * 1.4, 0.6284, LD, letterGoldMat,
-           xl + capW + (LW - capW) / 2,
-           yL + (LH - LT + LH * 0.5) / 2, zL);
-    dUpMesh.rotation.z = -0.5049;
+    // 右弧形拱板：上斜段、中垂直段、下斜段向右圓潤凸出
+    const p0 = [x_spine - capW, yL + LH - LT];
+    const p1 = [xc - LW / 2 + LT / 2, yL + LH * 0.68];
+    const p2 = [xc - LW / 2 + LT / 2, yL + LH * 0.32];
+    const p3 = [x_spine - capW, yL + LT];
 
-    // 下段弧：(xl+LW, LH*0.5) → (xl+capW, LT)
-    //   長=0.6284m，角=0.5049 rad (28.9°)
-    const dDnMesh = addBox(g, LT * 1.4, 0.6284, LD, letterGoldMat,
-           xl + LW - (LW - capW) / 2,
-           yL + (LH * 0.5 + LT) / 2, zL);
-    dDnMesh.rotation.z = 0.5049;
+    const addArcSegment = (pa, pb) => {
+      const dx = pb[0] - pa[0];
+      const dy = pb[1] - pa[1];
+      const len = Math.hypot(dx, dy);
+      const rot = Math.atan2(dx, -dy);
+      const m = addBox(g, LT * 1.25, len, LD, letterGoldMat, (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2, zL);
+      m.rotation.z = rot;
+    };
+
+    addArcSegment(p0, p1);
+    addBox(g, LT, p1[1] - p2[1], LD, letterGoldMat, p1[0], (p1[1] + p2[1]) / 2, zL);
+    addArcSegment(p2, p3);
 
     // 書籍：D 字下排
-    makeBooksRow(xl + LT + 0.04, xl + capW - 0.06,
-                 yL + 0.02, zL, 6, LD * 0.70);
+    makeBooksRow(x_spine - capW + 0.06, x_spine - LT - 0.04,
+                 yL + LT + 0.02, zL, 6, LD * 0.70);
     // 書籍：D 字上排
-    makeBooksRow(xl + LT + 0.04, xl + capW - 0.06,
+    makeBooksRow(x_spine - capW + 0.06, x_spine - LT - 0.04,
                  yL + LH * 0.52 + 0.02, zL, 5, LD * 0.70, true);
   }
 
@@ -10198,8 +10213,11 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   const stepTreadD = 0.35;   // 踏步進深 35cm
   const stairTotalRunX = nBreezeSteps * stepTreadD; // 2.80m
 
-  // 穿堂地坪整體架高平臺 (自 xW0 延伸貫通穿堂)
-  addBox(g, 750 * K + 0.2, 0.18, breezeW, passageFloorMat, bodyCx, yBreezeFloor - 0.09, breezeZ, false);
+  // 穿堂地坪整體架高平臺 (自 xW0 戶外台階頂端延伸貫通至 xA，自基座 y0 向上實體厚實構築至 yBreezeFloor 水磨石面，單一正確地坪無懸空空隙)
+  const breezeFloorW = xA - xW0;
+  const breezeFloorCx = (xW0 + xA) / 2;
+  const breezeFloorH = yBreezeFloor - y0;
+  addBox(g, breezeFloorW + 0.15, breezeFloorH, breezeW, passageFloorMat, breezeFloorCx, y0 + breezeFloorH / 2, breezeZ, false);
 
   // 穿堂西側 8 階寬大戶外花崗石台階 (正對挑高大穿堂出口)
   const stairZ_Min = cz(AXIS_CM[8]) + 0.25;
@@ -21125,7 +21143,7 @@ function getClassroomCorridorView(lm, floorKey, rm, worldPos) {
   return { p, t };
 }
 
-function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoomCode = null) {
+function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoomCode = null, initialViewpoint = null) {
   if (walkState.active) exitWalkMode();
   followingPedestrianIdx = -1;
   selectedId = id;
@@ -21192,14 +21210,20 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
         flyTo(targetV.p, targetV.t, 900);
       }
     } else {
-      // 點選北棟時直接定位至俯瞰北棟的 45 度斜角 (views.oblique)；其餘地點預設使用 views.front
-      const preferOblique = (origin === 'tour' || id === 'north-building');
-      const targetV = (preferOblique && lm.views && lm.views.oblique)
-        ? lm.views.oblique
-        : (lm.views && (lm.views.front || lm.views.entrance || lm.views.oblique || Object.values(lm.views)[0])) || { p: [-12, 58, 16.5], t: [10, 5.5, -31.5] };
-      activeViewMode = (preferOblique && lm.views && lm.views.oblique)
-        ? 'oblique'
-        : ((lm.views && lm.views.front) ? 'front' : ((lm.views && lm.views.entrance) ? 'entrance' : 'oblique'));
+      let targetV;
+      if (initialViewpoint && lm.views && lm.views[initialViewpoint]) {
+        targetV = lm.views[initialViewpoint];
+        activeViewMode = initialViewpoint;
+      } else {
+        // 點選北棟時直接定位至俯瞰北棟的 45 度斜角 (views.oblique)；其餘地點預設使用 views.front
+        const preferOblique = (origin === 'tour' || id === 'north-building');
+        targetV = (preferOblique && lm.views && lm.views.oblique)
+          ? lm.views.oblique
+          : (lm.views && (lm.views.front || lm.views.entrance || lm.views.oblique || Object.values(lm.views)[0])) || { p: [-12, 58, 16.5], t: [10, 5.5, -31.5] };
+        activeViewMode = (preferOblique && lm.views && lm.views.oblique)
+          ? 'oblique'
+          : ((lm.views && lm.views.front) ? 'front' : ((lm.views && lm.views.entrance) ? 'entrance' : 'oblique'));
+      }
       flyTo(targetV.p, targetV.t, 900);
       if (origin === 'manual' && !highlightRoomCode) {
         showToast(`已定位至地標：${lm.name}`);
@@ -21403,7 +21427,7 @@ document.querySelectorAll('#viewpoints-bar button').forEach(btn => {
     } else {
       isOrbiting = false;
       activeViewMode = vp;
-      setDetailCompact(['front', 'back', 'entrance', 'top', 'west_toilet', 'west_stair_side', 'track_junction', 'courtyard_junction', 'indoor_junction', 'south_new_junction', 'dinosaur'].includes(vp));
+      setDetailCompact(['front', 'back', 'entrance', 'top', 'west_toilet', 'west_stair_side', 'track_junction', 'courtyard_junction', 'indoor_junction', 'south_new_junction', 'dinosaur', 'read', 'train'].includes(vp));
       if (lm.views[vp]) flyTo(lm.views[vp].p, lm.views[vp].t, 820);
     }
     document.querySelectorAll('#viewpoints-bar button').forEach(b => {
@@ -23243,6 +23267,20 @@ function restoreHashSnapshot() {
 updateEnvironmentSimulation();
 renderPlacesList();
 restoreHashSnapshot();
+// URL Query Parameters support (?landmark=breezeway-hub&vp=read)
+try {
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetLm = urlParams.get('landmark') || urlParams.get('place');
+  if (targetLm) {
+    const vp = urlParams.get('vp');
+    selectLandmark(targetLm, 'card', '1F', null, vp);
+    const lm = LANDMARKS.find(l => l.id === targetLm);
+    if (vp && lm && lm.views && lm.views[vp]) {
+      const v = lm.views[vp];
+      flyTo(v.p, v.t, 0);
+    }
+  }
+} catch (e) {}
 
 // ============================================================================
 // 13. MAIN RENDER LOOP (CAMERA, WALK, ROUTE, PEDESTRIANS, FLAGS, LABELS, FPS)
@@ -23620,13 +23658,13 @@ renderer.setAnimationLoop(now => {
 
     renderer.render(scene, camera);
   }
-
-  // Expose global helpers for interactive navigation & automation
-  window.selectLandmark = selectLandmark;
-  window.camera = camera;
-  window.controls = controls;
-  window.scene = scene;
 });
+
+// Expose global helpers for interactive navigation & automation
+window.selectLandmark = selectLandmark;
+window.camera = camera;
+window.controls = controls;
+window.scene = scene;
 </script>
 </body>
 </html>
