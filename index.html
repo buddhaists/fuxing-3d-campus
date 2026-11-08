@@ -9830,135 +9830,189 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   }
 
   // ============================================================
-  // (C) 南側牆面：消光黑底牆 ＆ READ 立體原木造型書架 ＆ 校務公佈欄
-  //     依據實拍照片精準重建：
-  //     - 字母高度 1.28m，每字寬約 0.95m，厚度 0.28m
-  //     - 顏色：溫暖蜂蜜金 #D4A030
-  //     - R: 圓弧上框 + 中橫樑 + 右斜腿，框內嵌書
-  //     - E: 左背柱 + 頂/中/底三道橫板，各格放書
-  //     - A: 人字雙斜柱 + 中橫檔，三區塊放書
-  //     - D: 左垂直柱 + 大圓弧，D 字內大書格
+  // ============================================================
+  // (C) 南側牆面：消光黑底牆 ＆ READ 立體原木造型書架
+  //     依實拍照片精準 1:1 重建 (精確數學版)
+  //     LD=28cm 厚度、LH=1.28m 高、LW=0.95m 寬
+  //     顏色：溫暖蜂蜜金 #D4A030
   // ============================================================
 
-  // 1. 下半部消光黑底牆 (Chalkboard Paint Wall) — 加高至 1.52m
+  // 1. 消光黑底牆
   const blackWallH = 1.52;
   const blackWallW = hallLenX - 0.1;
   addBox(g, blackWallW, blackWallH, 0.05, chalkBoardMat,
          bodyCx, yBreezeFloor + blackWallH / 2, zSouthWall - 0.025);
 
-  // 2. R·E·A·D 立體書架（溫暖蜂蜜金 #D4A030）
+  // 2. READ 立體書架 (溫暖蜂蜜金 #D4A030)
   const letterGoldMat = new THREE.MeshStandardMaterial({ color: 0xd4a030, roughness: 0.42 });
-  const LH  = 1.28;   // 字母總高
-  const LD  = 0.28;   // 字母厚度 (前後深)
-  const LW  = 0.95;   // 字母寬 (每字)
-  const LT  = 0.090;  // 字母壁厚
-  const LSP = 0.08;   // 字間距
-  const yL  = yBreezeFloor;
-  const zL  = zSouthWall - LD / 2 - 0.03;
 
-  // 4 個字母中心 X
+  const LH  = 1.28;    // 字高
+  const LD  = 0.28;    // 字厚 (前後深)
+  const LW  = 0.95;    // 字寬
+  const LT  = 0.090;   // 板厚
+  const LSP = 0.09;    // 字間距
+
+  // 四字母中心 X (以 bodyCx 為中心均等排列)
   const totalLetterW = 4 * LW + 3 * LSP;
-  const xL0 = bodyCx - totalLetterW / 2 + LW / 2;
-  const xLetR = xL0;
-  const xLetE = xL0 + LW + LSP;
-  const xLetA = xL0 + 2 * (LW + LSP);
-  const xLetD = xL0 + 3 * (LW + LSP);
+  const xLet0 = bodyCx - totalLetterW / 2;  // R 的左邊緣
 
-  // ── 「R」字母書架 ──────────────────────────────────────────
-  // 左垂直主柱 (全高)
-  addBox(g, LT, LH, LD, letterGoldMat, xLetR - LW/2 + LT/2, yL + LH/2, zL);
-  // 頂橫板
-  addBox(g, LW * 0.74, LT, LD, letterGoldMat,
-         xLetR - LW/2 + LT + (LW*0.74)/2, yL + LH - LT/2, zL);
-  // 上框右弧板 (垂直)
-  addBox(g, LT, LH * 0.44, LD, letterGoldMat,
-         xLetR + LW * 0.37 - LW/2 + LT, yL + LH - (LH*0.44)/2, zL);
-  // 上框中橫樑 (分隔上下)
-  addBox(g, LW * 0.74, LT, LD, letterGoldMat,
-         xLetR - LW/2 + LT + (LW*0.74)/2, yL + LH * 0.56, zL);
-  // 右斜腿 (從中橫樑右端向右下伸出)
-  const rLeg3 = addBox(g, LT * 1.2, LH * 0.56, LD, letterGoldMat,
-                        xLetR + LW * 0.28, yL + LH * 0.28, zL);
-  rLeg3.rotation.z = -0.38;
-  // 底橫板
-  addBox(g, LW * 0.60, LT, LD, letterGoldMat,
-         xLetR - LW/2 + LT + (LW*0.60)/2, yL + LT/2, zL);
-  // 書籍：R 上框內
-  makeBooksRow(xLetR - LW/2 + LT + 0.04, xLetR + LW*0.36 - LW/2 + LT,
-               yL + LH * 0.56 + 0.02, zL, 5, LD * 0.70, true);
-  // 書籍：R 下格左區
-  makeBooksRow(xLetR - LW/2 + LT + 0.04, xLetR - LW/2 + LT + LW * 0.36,
-               yL + 0.02, zL, 4, LD * 0.70);
+  // 各字母左邊緣
+  const xlR = xLet0;
+  const xlE = xLet0 + LW + LSP;
+  const xlA = xLet0 + 2 * (LW + LSP);
+  const xlD = xLet0 + 3 * (LW + LSP);
 
-  // ── 「E」字母書架 ──────────────────────────────────────────
-  // 左垂直背柱 (全高)
-  addBox(g, LT, LH, LD, letterGoldMat, xLetE - LW/2 + LT/2, yL + LH/2, zL);
-  // 頂橫板 (全寬)
-  addBox(g, LW * 0.86, LT, LD, letterGoldMat,
-         xLetE - LW/2 + LT + (LW*0.86)/2 - LT, yL + LH - LT/2, zL);
-  // 中橫板 (稍短，約在 48% 高)
-  addBox(g, LW * 0.70, LT, LD, letterGoldMat,
-         xLetE - LW/2 + LT + (LW*0.70)/2 - LT, yL + LH * 0.48 + LT/2, zL);
-  // 底橫板 (全寬)
-  addBox(g, LW * 0.86, LT, LD, letterGoldMat,
-         xLetE - LW/2 + LT + (LW*0.86)/2 - LT, yL + LT/2, zL);
-  // 書籍：上格 (頂板 ↔ 中板)
-  makeBooksRow(xLetE - LW/2 + LT + 0.04, xLetE - LW/2 + LT + LW * 0.80,
-               yL + LH * 0.48 + LT + 0.02, zL, 6, LD * 0.70, true);
-  // 書籍：下格 (中板 ↔ 底板)
-  makeBooksRow(xLetE - LW/2 + LT + 0.04, xLetE - LW/2 + LT + LW * 0.80,
-               yL + 0.02, zL, 7, LD * 0.70);
+  const yL = yBreezeFloor;
+  const zL = zSouthWall - 0.16;  // 字母中心 Z：貼南牆並向穿堂凸出 ~16cm
 
-  // ── 「A」字母書架 ──────────────────────────────────────────
-  // 左斜柱
-  const aLft = addBox(g, LT * 1.15, LH, LD, letterGoldMat,
-                       xLetA - LW * 0.26, yL + LH/2, zL);
-  aLft.rotation.z = 0.26;
-  // 右斜柱
-  const aRgt = addBox(g, LT * 1.15, LH, LD, letterGoldMat,
-                       xLetA + LW * 0.26, yL + LH/2, zL);
-  aRgt.rotation.z = -0.26;
-  // 頂封帽 (細短橫板)
-  addBox(g, LW * 0.24, LT, LD, letterGoldMat, xLetA, yL + LH - LT * 0.5, zL);
-  // 中橫檔 (約 42% 高)
-  addBox(g, LW * 0.52, LT * 1.2, LD, letterGoldMat, xLetA, yL + LH * 0.42, zL);
-  // 書籍：中橫檔上方三角內
-  makeBooksRow(xLetA - LW * 0.14, xLetA + LW * 0.14,
-               yL + LH * 0.42 + LT + 0.02, zL, 4, LD * 0.70, true);
-  // 書籍：中橫檔下方左腳
-  makeBooksRow(xLetA - LW * 0.38, xLetA - LW * 0.08,
-               yL + 0.02, zL, 3, LD * 0.70);
-  // 書籍：中橫檔下方右腳
-  makeBooksRow(xLetA + LW * 0.08, xLetA + LW * 0.38,
-               yL + 0.02, zL, 3, LD * 0.70);
+  // ════════════════════════════════════════════
+  // ─── 「R」字母書架 ───────────────────────────
+  // ════════════════════════════════════════════
+  {
+    const xl = xlR;
+    const bowlW   = LW * 0.70;          // 碗形寬度 (0.665m)
+    const bowlMidY = LH * 0.54;         // 中橫樑高 (0.691m)
+    const bowlH   = LH - bowlMidY;      // 碗形高 (0.589m)
 
-  // ── 「D」字母書架 ──────────────────────────────────────────
-  // 左垂直主柱 (全高)
-  addBox(g, LT, LH, LD, letterGoldMat, xLetD - LW/2 + LT/2, yL + LH/2, zL);
-  // 頂橫板
-  addBox(g, LW * 0.70, LT, LD, letterGoldMat,
-         xLetD - LW/2 + LT + (LW*0.70)/2 - LT, yL + LH - LT/2, zL);
-  // 底橫板
-  addBox(g, LW * 0.70, LT, LD, letterGoldMat,
-         xLetD - LW/2 + LT + (LW*0.70)/2 - LT, yL + LT/2, zL);
-  // 右弧形板 — 上段斜板
-  const dArcUp = addBox(g, LT, LH * 0.44, LD, letterGoldMat,
-                         xLetD + LW * 0.46 - LW/2 + LT, yL + LH * 0.76, zL);
-  dArcUp.rotation.z = -0.44;
-  // 右弧形板 — 中段最遠點
-  addBox(g, LT, LH * 0.28, LD, letterGoldMat,
-         xLetD + LW * 0.52 - LW/2 + LT, yL + LH * 0.50, zL);
-  // 右弧形板 — 下段斜板
-  const dArcDn = addBox(g, LT, LH * 0.44, LD, letterGoldMat,
-                         xLetD + LW * 0.46 - LW/2 + LT, yL + LH * 0.24, zL);
-  dArcDn.rotation.z = 0.44;
-  // 書籍：D 字下排
-  makeBooksRow(xLetD - LW/2 + LT + 0.04, xLetD - LW/2 + LT + LW * 0.60,
-               yL + 0.02, zL, 7, LD * 0.70);
-  // 書籍：D 字上排
-  makeBooksRow(xLetD - LW/2 + LT + 0.04, xLetD - LW/2 + LT + LW * 0.56,
-               yL + LH * 0.52 + 0.02, zL, 6, LD * 0.70, true);
+    // 左垂直主柱 (全高)
+    addBox(g, LT, LH, LD, letterGoldMat, xl + LT/2, yL + LH/2, zL);
 
+    // 頂橫板：左柱右邊緣到碗右緣
+    addBox(g, bowlW, LT, LD, letterGoldMat,
+           xl + LT + bowlW/2, yL + LH - LT/2, zL);
+
+    // 碗右弧板 (垂直，接頂橫板右端往下到中橫樑)
+    addBox(g, LT, bowlH - LT, LD, letterGoldMat,
+           xl + LT + bowlW - LT/2,
+           yL + bowlMidY + LT + (bowlH - LT)/2, zL);
+
+    // 中橫樑 (中間分隔，接碗右板左邊緣到左柱)
+    addBox(g, bowlW - LT, LT, LD, letterGoldMat,
+           xl + LT + (bowlW - LT)/2, yL + bowlMidY + LT/2, zL);
+
+    // 斜腿：從碗右板底部 (xl+LT+bowlW, bowlMidY) 往右下到 (xl+LW, 0)
+    // 長度 = 0.7182m，旋轉 Z = -0.2750 rad (-15.8°)
+    const rLegMesh = addBox(g, LT * 1.4, 0.7182, LD, letterGoldMat,
+           xl + LT + bowlW + (LW - LT - bowlW) / 2,
+           yL + bowlMidY / 2, zL);
+    rLegMesh.rotation.z = -0.2750;
+
+    // 書籍：R 碗內 (中橫樑上方)
+    makeBooksRow(xl + LT + 0.04, xl + LT + bowlW - LT - 0.04,
+                 yL + bowlMidY + LT + 0.02, zL, 5, LD * 0.70, true);
+    // 書籍：R 下格左區 (中橫樑下方，斜腿左側)
+    makeBooksRow(xl + LT + 0.04, xl + LT + 0.26,
+                 yL + 0.02, zL, 3, LD * 0.70);
+  }
+
+  // ════════════════════════════════════════════
+  // ─── 「E」字母書架 ───────────────────────────
+  // ════════════════════════════════════════════
+  {
+    const xl = xlE;
+    const topW = LW * 0.86;    // 頂/底臂寬度
+    const midW = LW * 0.68;    // 中臂寬度 (較短)
+    const midY = LH * 0.48;    // 中臂 Y 中心
+
+    // 左垂直背柱 (全高)
+    addBox(g, LT, LH, LD, letterGoldMat, xl + LT/2, yL + LH/2, zL);
+    // 頂橫臂
+    addBox(g, topW - LT, LT, LD, letterGoldMat,
+           xl + LT + (topW - LT)/2, yL + LH - LT/2, zL);
+    // 中橫臂 (稍短，約在 48% 高)
+    addBox(g, midW - LT, LT, LD, letterGoldMat,
+           xl + LT + (midW - LT)/2, yL + midY, zL);
+    // 底橫臂
+    addBox(g, topW - LT, LT, LD, letterGoldMat,
+           xl + LT + (topW - LT)/2, yL + LT/2, zL);
+
+    // 書籍：上格 (中臂 → 頂臂之間)
+    makeBooksRow(xl + LT + 0.04, xl + LT + topW - LT - 0.04,
+                 yL + midY + LT/2 + 0.02, zL, 6, LD * 0.70, true);
+    // 書籍：下格 (底臂 → 中臂之間)
+    makeBooksRow(xl + LT + 0.04, xl + LT + topW - LT - 0.04,
+                 yL + 0.02, zL, 7, LD * 0.70);
+  }
+
+  // ════════════════════════════════════════════
+  // ─── 「A」字母書架 ───────────────────────────
+  // ════════════════════════════════════════════
+  {
+    const xl = xlA;
+    const halfW  = LW / 2;
+    // 斜柱長度 = sqrt((LW/2)^2 + LH^2) = 1.3653m
+    // 斜柱旋轉 Z = ±0.3553 rad (±20.4°)
+    const strLen = 1.3653;
+    const strAngle = 0.3553;
+
+    // 左斜柱：中心在 (xl + halfW*0.5, yL + LH/2)
+    const aLMesh = addBox(g, LT * 1.3, strLen, LD, letterGoldMat,
+                           xl + halfW * 0.5, yL + LH/2, zL);
+    aLMesh.rotation.z = strAngle;
+
+    // 右斜柱：中心在 (xl + LW - halfW*0.5, yL + LH/2)
+    const aRMesh = addBox(g, LT * 1.3, strLen, LD, letterGoldMat,
+                           xl + LW - halfW * 0.5, yL + LH/2, zL);
+    aRMesh.rotation.z = -strAngle;
+
+    // 頂封帽
+    addBox(g, LT * 2.2, LT, LD, letterGoldMat, xl + halfW, yL + LH - LT * 0.5, zL);
+
+    // 中橫檔：在 crossY=0.5376m 高，左右各接到斜柱
+    // 中橫檔寬 = 0.5510m，左邊緣 X = xl + 0.1995
+    const crossW_a = 0.5510;
+    const crossX_a = xl + 0.1995 + crossW_a / 2;
+    addBox(g, crossW_a, LT * 1.3, LD, letterGoldMat, crossX_a, yL + 0.5376, zL);
+
+    // 書籍：中橫檔上方 (三角內)
+    makeBooksRow(xl + 0.1995 + LT + 0.02, xl + 0.7505 - LT - 0.02,
+                 yL + 0.5376 + LT + 0.02, zL, 3, LD * 0.70, true);
+    // 書籍：左腳
+    makeBooksRow(xl + 0.05, xl + 0.1995 - 0.04,
+                 yL + 0.02, zL, 2, LD * 0.70);
+    // 書籍：右腳
+    makeBooksRow(xl + 0.7505 + 0.04, xl + LW - 0.05,
+                 yL + 0.02, zL, 2, LD * 0.70);
+  }
+
+  // ════════════════════════════════════════════
+  // ─── 「D」字母書架 ───────────────────────────
+  // ════════════════════════════════════════════
+  {
+    const xl = xlD;
+    const capW = LW * 0.68;    // 頂/底橫板寬 (0.646m)
+
+    // 左垂直主柱 (全高)
+    addBox(g, LT, LH, LD, letterGoldMat, xl + LT/2, yL + LH/2, zL);
+    // 頂橫板
+    addBox(g, capW - LT, LT, LD, letterGoldMat,
+           xl + LT + (capW - LT)/2, yL + LH - LT/2, zL);
+    // 底橫板
+    addBox(g, capW - LT, LT, LD, letterGoldMat,
+           xl + LT + (capW - LT)/2, yL + LT/2, zL);
+
+    // 右弧形：三段折線近似半橢圓
+    // 上段弧：(xl+capW, LH-LT) → (xl+LW, LH*0.5)
+    //   長=0.6284m，角=-0.5049 rad (-28.9°)
+    const dUpMesh = addBox(g, LT * 1.4, 0.6284, LD, letterGoldMat,
+           xl + capW + (LW - capW) / 2,
+           yL + (LH - LT + LH * 0.5) / 2, zL);
+    dUpMesh.rotation.z = -0.5049;
+
+    // 下段弧：(xl+LW, LH*0.5) → (xl+capW, LT)
+    //   長=0.6284m，角=0.5049 rad (28.9°)
+    const dDnMesh = addBox(g, LT * 1.4, 0.6284, LD, letterGoldMat,
+           xl + LW - (LW - capW) / 2,
+           yL + (LH * 0.5 + LT) / 2, zL);
+    dDnMesh.rotation.z = 0.5049;
+
+    // 書籍：D 字下排
+    makeBooksRow(xl + LT + 0.04, xl + capW - 0.06,
+                 yL + 0.02, zL, 6, LD * 0.70);
+    // 書籍：D 字上排
+    makeBooksRow(xl + LT + 0.04, xl + capW - 0.06,
+                 yL + LH * 0.52 + 0.02, zL, 5, LD * 0.70, true);
+  }
 
   // 3. 上方四聯式木框玻璃校務歷史公佈欄 (Glass Showcase Bulletin Board)
   function makeEastHallwayBulletinBoardTexture() {
