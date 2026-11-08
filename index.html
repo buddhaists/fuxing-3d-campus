@@ -22,18 +22,37 @@ window.addEventListener('unhandledrejection', e => {
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#faf8f2">
-<title>復興 · 循圖，走進復興｜屏東縣復興國小 3D 數位校園導覽</title>
+<link rel="preload" as="image" href="./assets/campus_overview_preview.webp" type="image/webp">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=Noto+Serif+TC:wght@500;600;700&display=swap" rel="stylesheet">
-<script src="./tex/pbr_data.js"></script>
-<script src="./tex/east_mural_data.js"></script>
-<script src="./tex/campus_detail_textures.js"></script>
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=Noto+Serif+TC:wght@500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=Noto+Serif+TC:wght@500;600;700&display=swap"></noscript>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('DOMContentLoaded', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+window.__preQueue = [];
+document.addEventListener('click', function(e) {
+  if (window.__threeReady) return;
+  const place = e.target.closest('[data-landmark-id]');
+  if (place) {
+    window.__preQueue.push({ type: 'landmark', id: place.dataset.landmarkId });
+    return;
+  }
+  const pill = e.target.closest('[data-precinct]');
+  if (pill) {
+    window.__preQueue.push({ type: 'precinct', key: pill.dataset.precinct });
+    return;
+  }
+}, true);
+</script>
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
   }
 }
 </script>
@@ -62,7 +81,7 @@ window.addEventListener('unhandledrejection', e => {
     --label-bg: rgba(250, 248, 242, 0.95);
     --label-fg: #253d37;
     --label-border: rgba(37, 61, 55, 0.16);
-    --font-sans: 'Inter', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
     --font-serif: 'Noto Serif TC', 'Songti TC', 'STSong', 'PMingLiU', Georgia, serif;
     color-scheme: light;
   }
@@ -154,6 +173,42 @@ window.addEventListener('unhandledrejection', e => {
     width: 100%;
     height: 100%;
     outline: none;
+  }
+  /* ---- 2.5D Campus Preview Instant Shell ---- */
+  .campus-preview-shell {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+    overflow: hidden;
+    background: var(--scene-bg);
+    transition: opacity 0.55s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.55s;
+  }
+  .campus-preview-shell.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+  }
+  .campus-preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
+  .campus-preview-shimmer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, rgba(49, 91, 78, 0.65), transparent);
+    animation: previewGlow 1.8s infinite ease-in-out;
+  }
+  @keyframes previewGlow {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
   }
   #plan {
     z-index: 4;
@@ -1777,6 +1832,13 @@ window.addEventListener('unhandledrejection', e => {
   <!-- 3D WebGL Viewport + Full-Screen Pan/Zoom 2D Architectural Plan SVG -->
   <main id="viewport" aria-label="屏東縣復興國小三維與平面校園地圖">
     <div id="sceneHost" tabindex="0"></div>
+    <div id="campus-preview-shell" class="campus-preview-shell" aria-hidden="true">
+      <picture>
+        <source srcset="./assets/campus_overview_preview.webp" type="image/webp">
+        <img src="./assets/campus_overview_preview.jpg" alt="校園鳥瞰預覽" class="campus-preview-img" fetchpriority="high" decoding="sync">
+      </picture>
+      <div class="campus-preview-shimmer"></div>
+    </div>
     <div class="scene-labels" id="sceneLabels" data-light="day"></div>
     <svg id="plan" viewBox="-135 -70 275 165" role="img" aria-label="屏東縣復興國小 115學年度平面配置圖" hidden></svg>
   </main>
@@ -5836,22 +5898,28 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
 
   // Poly Haven CC0 PBR maps (embedded as data-URIs in tex/pbr_data.js so WebGL never hits file:// CORS limits)
   function applyPBR(mat, base, rx, ry) {
-    const data = window.PBR_DATA;
-    if (!data) return;
-    const loader = new THREE.TextureLoader();
-    const setup = (key, srgb, prop) => {
-      const u = data[`${base}_${key}`];
-      if (!u) return;
-      loader.load(u, t => {
-        t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        t.repeat.set(rx, ry);
-        t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-        mat[prop] = t;
-        mat.needsUpdate = true;
-      });
+    const doApply = data => {
+      if (!data) return;
+      const loader = new THREE.TextureLoader();
+      const setup = (key, srgb, prop) => {
+        const u = data[`${base}_${key}`];
+        if (!u) return;
+        loader.load(u, t => {
+          t.wrapS = t.wrapT = THREE.RepeatWrapping;
+          t.repeat.set(rx, ry);
+          t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+          mat[prop] = t;
+          mat.needsUpdate = true;
+        });
+      };
+      setup('diff', true, 'map'); setup('nor', false, 'normalMap'); setup('rough', false, 'roughnessMap');
     };
-    setup('diff', true, 'map'); setup('nor', false, 'normalMap'); setup('rough', false, 'roughnessMap');
+    if (window.PBR_DATA) {
+      doApply(window.PBR_DATA);
+    } else {
+      window.addEventListener('deferred-textures-loaded', () => doApply(window.PBR_DATA), { once: true });
+    }
   }
   applyPBR(corridorFloorMat, 'terrazzo_tiles', 36, 5);
   corridorFloorMat.roughness = 1.0; corridorFloorMat.metalness = 0.0;
@@ -9240,7 +9308,11 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
     muralTex.anisotropy = 8;
     const img = new Image();
     img.onload = () => { muralTex.image = img; muralTex.needsUpdate = true; muralMat.color.set(0xffffff); muralMat.map = muralTex; muralMat.needsUpdate = true; };
-    img.src = window.EAST_MURAL_DATA || './tex/east_elevation.jpg';
+    const loadMural = () => { img.src = window.EAST_MURAL_DATA || './tex/east_elevation.jpg'; };
+    loadMural();
+    if (!window.EAST_MURAL_DATA) {
+      window.addEventListener('deferred-textures-loaded', () => { if (window.EAST_MURAL_DATA) loadMural(); }, { once: true });
+    }
   }
   // 設計圖水平範圍 (u) 對應軸線全長；垂直方向四條彩繪帶 (1F 矮牆 / 2F / 3F / RF 護牆) 之 v 範圍
   const uImg = cm => 0.0117 + 0.9766 * cm / 6037;
@@ -23897,8 +23969,50 @@ renderer.setAnimationLoop(now => {
     });
 
     renderer.render(scene, camera);
+    if (!window.__hasFirst3DRender) {
+      window.__hasFirst3DRender = true;
+      onFirst3DFrameReady();
+    }
   }
 });
+
+function onFirst3DFrameReady() {
+  window.__threeReady = true;
+  const shell = document.getElementById('campus-preview-shell');
+  if (shell) {
+    shell.classList.add('is-hidden');
+    setTimeout(() => { if (shell.parentNode) shell.remove(); }, 600);
+  }
+  // Schedule deferred texture loading in background idle time
+  const schedule = window.requestIdleCallback || (cb => setTimeout(cb, 120));
+  schedule(loadDeferredTextures);
+
+  // Flush pre-interactive queue if user clicked anything during initial load
+  if (window.__preQueue && window.__preQueue.length) {
+    const act = window.__preQueue[window.__preQueue.length - 1];
+    if (act.type === 'landmark') selectLandmark(act.id, 'card');
+    else if (act.type === 'precinct') fitPrecinct(act.key);
+    window.__preQueue = [];
+  }
+}
+
+function loadDeferredTextures() {
+  const loadScript = src => new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  Promise.all([
+    loadScript('./tex/east_mural_data.js'),
+    loadScript('./tex/pbr_data.js'),
+    loadScript('./tex/campus_detail_textures.js')
+  ]).then(() => {
+    window.dispatchEvent(new CustomEvent('deferred-textures-loaded'));
+  }).catch(e => console.warn('Deferred textures load:', e));
+}
 
 // Expose global helpers for interactive navigation & automation
 window.selectLandmark = selectLandmark;
