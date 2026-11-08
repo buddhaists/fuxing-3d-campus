@@ -2703,6 +2703,11 @@ const LANDMARKS = [
       track_junction: { p: [-53.0, 3.8, 16.5], t: [-34.5, 4.8, 16.5] },
       courtyard_junction: { p: [-17.0, 3.2, 10.5], t: [-24.8, 4.2, 15.8] },
       indoor_junction: { p: [-25.7, 2.2, 13.8], t: [-25.7, 2.6, 17.2] },
+      stair_2f_down: { p: [-20.3, 7.35, 14.658], t: [-25.5, 4.6, 14.658] },
+      stair_2f_up: { p: [-26.4, 5.35, 14.658], t: [-20.5, 6.6, 14.658] },
+      stair_1f_down: { p: [-20.3, 2.50, 14.658], t: [-25.5, 1.0, 14.658] },
+      stair_1f_up: { p: [-26.4, 1.80, 14.658], t: [-20.5, 2.3, 14.658] },
+      stair_facade: { p: [-22.06, 7.5, 4.5], t: [-22.06, 6.5, 14.658] },
       south_new_junction: { p: [-5.2, 2.3, 27.8], t: [-5.4, 3.4, 16.5] }
     }
   },
@@ -3285,6 +3290,7 @@ controls.dampingFactor = 0.065;
 controls.maxPolarAngle = Math.PI / 2 - 0.025;
 controls.minDistance = 1.2;
 controls.maxDistance = 420;
+window.__scene = scene; window.__camera = camera; window.__controls = controls; window.__renderer = renderer;
 
 // High-Fidelity Architectural Lighting Rig (Crisp shadows, soft bounce, warm corridor fill)
 const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8fa88a, 1.05);
@@ -13592,9 +13598,7 @@ function makeTrenchGrateTexture() {
     addBox(g, 0.58, 1.15, 1.10, stainlessMat, xCoreWest - 0.34, y1F + 0.58, 6.85);
     addBox(g, 0.95, 0.06, 1.35, darkMetalMat, xWest - 0.65, 0.03, 7.38); // 新設截油脂槽鐵蓋
 
-    // 1F South-East Corner Enclosed Stair (`UP`, `z = 15.918` to `12.938`, projecting `212 cm` East of East Corridor per CAD 1F/2F plans)
-    addBox(g, eastCorW + 2.12, h1F, 2.95, whiteTileMat, eastCorCx + 1.06, y1F + h1F / 2, zSouth - 1.48);
-    addBox(g, eastCorW + 2.16, 0.92, 2.98, dadoBrickMat, eastCorCx + 1.06, y1F + 0.46, zSouth - 1.48);
+    // 1F South-East corridor connects seamlessly East into the New Building stair portal (z = 12.938 to 15.918)
 
     // 1F East & West Classroom Facade Details (Bays 1–5: `體育器材室`, `配膳室`, `教室/國際柑仔店`, per CAD 1F plan & `crop_back_right.jpg` / `crop_front_left.jpg`)
     for (let b = 0; b < 5; b++) {
@@ -13764,89 +13768,8 @@ function makeTrenchGrateTexture() {
     // 地坪不銹鋼雨水截水溝蓋板
     addBox(g, 0.45, 0.03, 0.45, trenchGrateMat, juncWallX - 0.15, 0.015, juncWallZ + 0.15, false);
 
-    // ========================================================================
-    // 【西棟與新棟 1F 室內連通高低差過渡階梯與門額標牌】（依 2024 現場實況 Image 4 & 5）
-    // 位於東走廊南端與新棟幼兒園門廳交接區（xCoreEast=-27.04 至 xEast=-24.31，z=15.0 至 16.8）：
-    // 設 6 階磨石子防滑踏步（高差約 0.84m），不銹鋼包邊門框過梁、黑底白字幼兒園門牌、
-    // 原木不銹鋼扶手、白色安全防墜護欄，下層設藍色烤漆鐵捲門、黑色防滑地墊與菱形鐵網防盜窗
-    // ========================================================================
-    const indoorPortalX = (xCoreEast + xEast) / 2; // -25.675m
-    const indoorPortalW = 1.95;
-    const indoorPortalH = 2.65;
-    const nIndoorSteps = 6;
-    const indoorStepRise = 0.14;
-    const indoorStepRun = 0.28;
-    const stepStartFloorY = y1F; // 0.25m
-    const upperFloorY = stepStartFloorY + nIndoorSteps * indoorStepRise; // 1.09m
-
-    const terrazzoStepMat = new THREE.MeshStandardMaterial({ color: 0xcdc9bf, roughness: 0.65 });
-    const brassNosingMat  = new THREE.MeshStandardMaterial({ color: 0xc8a452, roughness: 0.32, metalness: 0.75 });
-    const woodHandrailMat = new THREE.MeshStandardMaterial({ color: 0x824e2c, roughness: 0.45 });
-    const blueShutterMat  = new THREE.MeshStandardMaterial({ map: makeBlueRollerShutterTexture(), roughness: 0.42 });
-    const meshWindowMat   = new THREE.MeshStandardMaterial({ map: makeDiamondMeshWindowTexture(), roughness: 0.45 });
-    const indoorSignMat   = new THREE.MeshBasicMaterial({ map: makeKindergartenIndoorPortalSignTexture() });
-
-    // 1. 室內 6 階磨石子連通階梯
-    for (let st = 0; st < nIndoorSteps; st++) {
-      const sy = stepStartFloorY + (st + 1) * indoorStepRise;
-      const sz = zSouth - 0.60 + (st + 0.5) * indoorStepRun;
-      addBox(g, indoorPortalW, (st + 1) * indoorStepRise, indoorStepRun, terrazzoStepMat, indoorPortalX, stepStartFloorY + (st + 1) * indoorStepRise / 2, sz);
-      // 黃銅防滑嵌條
-      addBox(g, indoorPortalW - 0.08, 0.015, 0.04, brassNosingMat, indoorPortalX, sy + 0.008, sz - indoorStepRun / 2 + 0.03, false);
-    }
-    // 上層平台地坪（銜接幼兒園室內走廊）
-    addBox(g, indoorPortalW + 0.40, 0.32, 1.40, terrazzoStepMat, indoorPortalX, upperFloorY - 0.16, zSouth + 1.25);
-
-    // 2. 不銹鋼包邊門柱與結構過梁
-    const portalZ = zSouth + 0.85;
-    addBox(g, 0.16, indoorPortalH, 0.28, stainlessMat, indoorPortalX - indoorPortalW / 2 - 0.08, stepStartFloorY + indoorPortalH / 2, portalZ);
-    addBox(g, 0.16, indoorPortalH, 0.28, stainlessMat, indoorPortalX + indoorPortalW / 2 + 0.08, stepStartFloorY + indoorPortalH / 2, portalZ);
-    addBox(g, indoorPortalW + 0.32, 0.28, 0.30, stainlessMat, indoorPortalX, stepStartFloorY + indoorPortalH - 0.14, portalZ);
-
-    // 3. 門額上方【長矩形幼兒園招牌】（「財團法人彭婉如文教基金會承辦 / 屏東復興非營利幼兒園」，Image 4 實拍）
-    const pSignW = 1.82, pSignH = 0.54;
-    addBox(g, pSignW + 0.04, pSignH + 0.04, 0.05, stainlessMat, indoorPortalX, stepStartFloorY + indoorPortalH + pSignH / 2 + 0.02, portalZ - 0.02);
-    const pSignFace = addMesh(g, new THREE.PlaneGeometry(pSignW, pSignH), indoorSignMat, indoorPortalX, stepStartFloorY + indoorPortalH + pSignH / 2 + 0.02, portalZ - 0.055, false);
-    pSignFace.rotation.y = Math.PI;
-
-    // 4. 階梯安全扶手與上層防墜護欄
-    // 階梯側斜向扶手（原木面不銹鋼直立立柱）
-    const railStartX = indoorPortalX + indoorPortalW / 2 - 0.08;
-    for (let st = 0; st <= nIndoorSteps; st++) {
-      const rxZ = zSouth - 0.60 + st * indoorStepRun;
-      const rxY = stepStartFloorY + st * indoorStepRise;
-      addMesh(g, new THREE.CylinderGeometry(0.02, 0.02, 0.88, 8), stainlessMat, railStartX, rxY + 0.44, rxZ, false);
-    }
-    const stairSlopeLen = Math.hypot(nIndoorSteps * indoorStepRun, nIndoorSteps * indoorStepRise);
-    const stairRail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, stairSlopeLen + 0.3), woodHandrailMat);
-    stairRail.position.set(railStartX, stepStartFloorY + nIndoorSteps * indoorStepRise * 0.5 + 0.88, zSouth - 0.60 + nIndoorSteps * indoorStepRun * 0.5);
-    stairRail.rotation.x = Math.atan2(nIndoorSteps * indoorStepRise, nIndoorSteps * indoorStepRun);
-    g.add(stairRail);
-
-    // 上層平台白色金屬垂直安全柵欄（隔絕高程跌落，Image 4/5 實拍）
-    const upperGuardW = 1.40;
-    const upperGuardX = indoorPortalX - indoorPortalW / 2 + 0.08;
-    addBox(g, 0.05, 0.05, upperGuardW, whiteTileMat, upperGuardX, upperFloorY + 0.95, zSouth + 0.55);
-    addBox(g, 0.05, 0.05, upperGuardW, whiteTileMat, upperGuardX, upperFloorY + 0.10, zSouth + 0.55);
-    for (let k = 0; k < 8; k++) {
-      addBox(g, 0.025, 0.85, 0.025, whiteTileMat, upperGuardX, upperFloorY + 0.525, zSouth - 0.10 + k * (upperGuardW / 7), false);
-    }
-
-    // 5. 階梯下方走廊特徵（Image 5 俯視角實景：藍色鐵捲門、黑色地墊、菱形防盜窗與紅磚色腰壁）
-    // 藍色烤漆鐵捲門（西棟下層走廊端頭）
-    addBox(g, indoorPortalW - 0.10, 2.30, 0.06, blueShutterMat, indoorPortalX, stepStartFloorY + 1.15, zSouth - 0.95);
-    // 階梯前黑色防塵防滑橡膠地墊
-    addBox(g, 0.95, 0.02, 0.62, new THREE.MeshStandardMaterial({ color: 0x181a1d, roughness: 0.92 }), indoorPortalX, stepStartFloorY + 0.01, zSouth - 0.68, false);
-
-    // 走廊側壁帶菱形金屬防盜網排窗（Image 5 右壁）
-    const sideWallX = indoorPortalX + indoorPortalW / 2 + 0.22;
-    addBox(g, 0.16, h1F, 2.20, whiteTileMat, sideWallX, stepStartFloorY + h1F / 2, zSouth - 0.40);
-    addBox(g, 0.18, 0.92, 2.22, dadoBrickMat, sideWallX, stepStartFloorY + 0.46, zSouth - 0.40); // 紅褐色腰壁
-    const meshWin = addMesh(g, new THREE.PlaneGeometry(1.60, 1.25), meshWindowMat, sideWallX - 0.09, stepStartFloorY + 1.65, zSouth - 0.40, false);
-    meshWin.rotation.y = -Math.PI / 2;
-
-    // 天花板懸掛金屬電纜走線架（Cable Tray）
-    addBox(g, 0.42, 0.08, 2.80, new THREE.MeshStandardMaterial({ color: 0x90969d, roughness: 0.5, metalness: 0.6 }), indoorPortalX - 0.35, stepStartFloorY + h1F - 0.12, zSouth + 0.20, false);
+    // 【西棟與新棟 1F/2F/3F 室內連通高低差過渡階梯與門額標牌】
+    // 依據建築平面圖與現場實拍，統一建置於新棟與西棟交接專屬樞紐模組（含 1F 8階、2F 11階、3F 11階向下直通階梯）。
 
     // 1F West Colonnade: Bays 1–8 (`z = 15.918` to `-11.162`) are OPEN between the cylindrical columns (per `crop_back_right.jpg` & CAD `改善後背面立視圖`)!
     // Bays 6–9 (`川堂`) West side is completely open between columns toward the PU running track (per Photo 1 & Photo 3)!
@@ -13865,13 +13788,15 @@ function makeTrenchGrateTexture() {
     for (let b = 0; b < 9; b++) {
       const bz = (zCol[b] + zCol[b + 1]) / 2;
       const bw = BAY_SPANS[b];
-      const wEast = addMesh(g, new THREE.PlaneGeometry(bw * 0.58, 1.62), win4x3Mat, xCoreEast + 0.04, fy + 1.92, bz, false);
-      wEast.rotation.y = Math.PI / 2;
+      if (b > 0) {
+        const wEast = addMesh(g, new THREE.PlaneGeometry(bw * 0.58, 1.62), win4x3Mat, xCoreEast + 0.04, fy + 1.92, bz, false);
+        wEast.rotation.y = Math.PI / 2;
+      }
       const wWest = addMesh(g, new THREE.PlaneGeometry(bw * 0.64, 1.62), win4x3Mat, xCoreWest - 0.04, fy + 1.92, bz, false);
       wWest.rotation.y = -Math.PI / 2;
       if (b % 3 === 0 || b % 3 === 2) {
         const doorZ = b % 3 === 0 ? (zCol[b] - 0.58) : (zCol[b + 1] + 0.58);
-        addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreEast + 0.03, fy + 1.075, doorZ);
+        if (b > 0) addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreEast + 0.03, fy + 1.075, doorZ);
         addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreWest - 0.03, fy + 1.075, doorZ);
       }
       addBox(g, 0.42, fh - 0.22, 0.42, colTileMat, xCoreEast, fy + (fh - 0.22) / 2, zCol[b]);
@@ -13933,30 +13858,43 @@ function makeTrenchGrateTexture() {
       const bz = (z1 + z2) / 2;
       const bw = z1 - z2 - 0.42;
 
-      addBox(g, 0.24, 0.38, bw, whiteTileMat, xEast - 0.14, y2F + 0.19, bz);
-      addBox(g, 0.24, 0.38, bw, whiteTileMat, xEast - 0.14, y2F + 0.87, bz);
-      addBox(g, 0.24, 0.30, 0.34, whiteTileMat, xEast - 0.14, y2F + 0.53, bz);
-      addBox(g, 0.24, 0.30, 0.24, whiteTileMat, xEast - 0.14, y2F + 0.53, z1 - 0.32);
-      addBox(g, 0.24, 0.30, 0.24, whiteTileMat, xEast - 0.14, y2F + 0.53, z2 + 0.32);
-      const slotW = (bw - 0.82) / 2;
-      for (const sgn of [-1, 1]) {
-        const sz = bz + sgn * (slotW / 2 + 0.17);
-        addBox(g, 0.26, 0.04, slotW, slotFrameMat, xEast - 0.14, y2F + 0.39, sz);
-        addBox(g, 0.26, 0.04, slotW, slotFrameMat, xEast - 0.14, y2F + 0.67, sz);
-        addBox(g, 0.16, 0.26, slotW - 0.04, darkMetalMat, xEast - 0.16, y2F + 0.53, sz);
+      // East Parapet & Ventilation Slots (Bays 1-8; Bay 0 is the open stair portal to New Building)
+      if (b > 0) {
+        addBox(g, 0.24, 0.38, bw, whiteTileMat, xEast - 0.14, y2F + 0.19, bz);
+        addBox(g, 0.24, 0.38, bw, whiteTileMat, xEast - 0.14, y2F + 0.87, bz);
+        addBox(g, 0.24, 0.30, 0.34, whiteTileMat, xEast - 0.14, y2F + 0.53, bz);
+        addBox(g, 0.24, 0.30, 0.24, whiteTileMat, xEast - 0.14, y2F + 0.53, z1 - 0.32);
+        addBox(g, 0.24, 0.30, 0.24, whiteTileMat, xEast - 0.14, y2F + 0.53, z2 + 0.32);
+        const slotW = (bw - 0.82) / 2;
+        for (const sgn of [-1, 1]) {
+          const sz = bz + sgn * (slotW / 2 + 0.17);
+          addBox(g, 0.26, 0.04, slotW, slotFrameMat, xEast - 0.14, y2F + 0.39, sz);
+          addBox(g, 0.26, 0.04, slotW, slotFrameMat, xEast - 0.14, y2F + 0.67, sz);
+          addBox(g, 0.16, 0.26, slotW - 0.04, darkMetalMat, xEast - 0.16, y2F + 0.53, sz);
+        }
+        addBox(g, 0.24, paraH, bw, whiteTileMat, xEast - 0.14, y3F + paraH / 2, bz);
       }
 
-      addBox(g, 0.24, paraH, bw, whiteTileMat, xEast - 0.14, y3F + paraH / 2, bz);
+      // West Parapet
       addBox(g, 0.24, paraH, bw, whiteTileMat, xWest + 0.14, y2F + paraH / 2, bz);
       addBox(g, 0.24, paraH, bw, whiteTileMat, xWest + 0.14, y3F + paraH / 2, bz);
 
       [y2F, y3F].forEach(fy => {
-        for (const rx of [xEast - 0.14, xWest + 0.14]) {
+        // East railing only when b > 0
+        if (b > 0) {
+          const rx = xEast - 0.14;
           addBox(g, 0.045, 0.045, bw, skyBlueRailMat, rx, fy + paraH + 0.22, bz);
           addBox(g, 0.035, 0.035, bw, skyBlueRailMat, rx, fy + paraH + 0.11, bz);
           for (let p = -1; p <= 1; p++) {
             addBox(g, 0.04, 0.24, 0.04, skyBlueRailMat, rx, fy + paraH + 0.12, bz + p * (bw * 0.34));
           }
+        }
+        // West railing
+        const rx = xWest + 0.14;
+        addBox(g, 0.045, 0.045, bw, skyBlueRailMat, rx, fy + paraH + 0.22, bz);
+        addBox(g, 0.035, 0.035, bw, skyBlueRailMat, rx, fy + paraH + 0.11, bz);
+        for (let p = -1; p <= 1; p++) {
+          addBox(g, 0.04, 0.24, 0.04, skyBlueRailMat, rx, fy + paraH + 0.12, bz + p * (bw * 0.34));
         }
       });
 
@@ -14580,6 +14518,95 @@ function makeKindergartenIndoorPortalSignTexture() {
   return tex;
 }
 
+function makeWest2FStairDoorTexture() {
+  // 依實景照片高清還原（新棟2F通往西棟2F_樓梯通道.jpg）：西棟 2F 梯間端頭雙開白門與「健康體位妙招」全彩宣導海報
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 512;
+  const ctx = c.getContext('2d');
+
+  // 白底牆面與門框
+  ctx.fillStyle = '#f0eee8';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // 底部紅褐色磁磚腰壁（占下 28%）
+  ctx.fillStyle = '#7a3b2e';
+  ctx.fillRect(0, 368, 512, 144);
+  ctx.strokeStyle = '#5a261c';
+  ctx.lineWidth = 2;
+  for (let y = 368; y < 512; y += 24) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+  }
+  for (let x = 0; x < 512; x += 48) {
+    ctx.beginPath(); ctx.moveTo(x, 368); ctx.lineTo(x, 512); ctx.stroke();
+  }
+
+  // 白色雙開教室大門
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(56, 56, 400, 444);
+  ctx.strokeStyle = '#8a929a';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(56, 56, 400, 444);
+  ctx.beginPath(); ctx.moveTo(256, 56); ctx.lineTo(256, 500); ctx.stroke();
+
+  // 門扇上半部採光玻璃窗
+  ctx.fillStyle = '#b8cdd8';
+  ctx.fillRect(76, 76, 164, 224);
+  ctx.fillRect(272, 76, 164, 224);
+
+  // 左扇海報：天藍底白字「健康體位妙招」（新棟2F通道實拍畫面左門）
+  ctx.fillStyle = '#0288d1';
+  ctx.fillRect(86, 88, 144, 200);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(92, 94, 132, 188);
+  ctx.fillStyle = '#0277bd';
+  ctx.fillRect(92, 94, 132, 32);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 14px "Noto Sans TC", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('健康體位妙招', 158, 116);
+  ctx.fillStyle = '#0288d1';
+  for (let i = 0; i < 5; i++) {
+    ctx.fillRect(102, 138 + i * 26, 112, 14);
+  }
+
+  // 右扇海報：深藍/彩色「健康促進學校」視力與運動宣導海報
+  ctx.fillStyle = '#1565c0';
+  ctx.fillRect(282, 88, 144, 200);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(288, 94, 132, 188);
+  ctx.fillStyle = '#0d47a1';
+  ctx.fillRect(288, 94, 132, 32);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 13px "Noto Sans TC", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('健康促進宣導', 354, 116);
+  ctx.fillStyle = '#42a5f5';
+  ctx.fillRect(300, 138, 108, 64);
+  ctx.fillStyle = '#37474f';
+  for (let i = 0; i < 3; i++) {
+    ctx.fillRect(300, 218 + i * 20, 108, 12);
+  }
+
+  // 金屬門把與鎖具
+  ctx.fillStyle = '#455a64';
+  ctx.fillRect(238, 305, 12, 40);
+  ctx.fillRect(262, 305, 12, 40);
+
+  // 門楣上方實木教室牌「科任教室」
+  ctx.fillStyle = '#5d4037';
+  ctx.fillRect(200, 16, 112, 32);
+  ctx.strokeStyle = '#3e2723';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(200, 16, 112, 32);
+  ctx.fillStyle = '#ffd54f';
+  ctx.font = 'bold 14px "Noto Serif TC", serif';
+  ctx.fillText('科任教室', 256, 38);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function makeKindergartenArtWallTexture() {
   // 依實景照片高清還原（Image 1）：新棟西側 1F 露天階梯下方白磁磚牆面之幼兒園兒童繪畫成果與全彩公告展示板
   const c = document.createElement('canvas');
@@ -15102,6 +15129,18 @@ function makeTerracottaTilePatternTexture() {
   const exposedConcreteBeamMat = new THREE.MeshStandardMaterial({ color: 0x545b66, roughness: 0.82 }); // 實景照片標誌性清水混凝土結構過梁
   const roofMetalMat     = new THREE.MeshStandardMaterial({ color: 0xd2d7dc, roughness: 0.42, metalness: 0.4 }); // 屋頂金屬挑簷與收邊滴水條
 
+  // 西棟與新棟連通樓梯專屬材質
+  const terrazzoStepMat  = new THREE.MeshStandardMaterial({ color: 0xcdc9bf, roughness: 0.65 });
+  const stairNosingMat   = new THREE.MeshStandardMaterial({ color: 0x26282b, roughness: 0.75 });
+  const brassNosingMat   = new THREE.MeshStandardMaterial({ color: 0xc8a452, roughness: 0.32, metalness: 0.75 });
+  const woodHandrailMat  = new THREE.MeshStandardMaterial({ color: 0x824e2c, roughness: 0.45 });
+  const stainlessMat     = new THREE.MeshStandardMaterial({ color: 0xdce2e8, roughness: 0.24, metalness: 0.84 });
+  const blueShutterMat   = new THREE.MeshStandardMaterial({ map: makeBlueRollerShutterTexture(), roughness: 0.42, side: THREE.DoubleSide });
+  const meshWindowMat    = new THREE.MeshStandardMaterial({ map: makeDiamondMeshWindowTexture(), roughness: 0.45, side: THREE.DoubleSide });
+  const indoorSignMat    = new THREE.MeshBasicMaterial({ map: makeKindergartenIndoorPortalSignTexture(), side: THREE.DoubleSide });
+  const west2FDoorMat    = new THREE.MeshStandardMaterial({ map: makeWest2FStairDoorTexture(), roughness: 0.50, side: THREE.DoubleSide });
+  const dadoBrickMat     = new THREE.MeshStandardMaterial({ color: 0x7a3b2e, roughness: 0.76 });
+
   // Helper: Protruding Terracotta Brick Balcony Box with 45° Rotated Green Diamond Medallion
   function addTerracottaBalconyBox(cx, cy, cz, boxW, boxH, boxD, faceDirZ = -1) {
     addBox(g, boxW, boxH, boxD, terracottaBoxMat, cx, cy, cz);
@@ -15136,7 +15175,7 @@ function makeTerracottaTilePatternTexture() {
   // 2.1 【西棟與新棟 100% 緊鄰無縫銜接建築體】(`①–④`, `zE = 15.918m` 至 `zD = 19.053m`)
   // 徹底消除兩棟交接處之 3.135m 綠地空隙！西棟大樓與新棟大樓完全緊密相連：
   // - 1F: 設貫通操場跑道至中庭之挑高穿堂（底層淨空通透，上方設深灰結構梁與結構板）
-  // - 2F/3F: 教室與走廊實體結構樓板與外牆完全連貫，向北直抵西棟南端（zE = 15.918m）
+  // - 2F/3F: 通暢開放之北側走廊（走廊樓板連貫，北側設白色二丁掛磁磚欄杆與深灰壓頂）
   // - RF: 屋頂層結構板與防水女兒牆無縫銜接西棟女兒牆，平屋頂防水層與收邊
   // ==========================================================================
   const juncW = ax(4) - ax(1); // 13.52m (完美銜接西棟總進深 13.80m)
@@ -15147,9 +15186,12 @@ function makeTerracottaTilePatternTexture() {
   // 1F 地面混凝土結構地坪（貫通穿堂走道，徹底覆蓋綠地，無縫銜接西棟與新棟地坪）
   addBox(g, juncW + 0.10, 0.25, juncD + 0.04, mats.concrete, juncCx, 0.125, juncCz);
 
-  // 2F 與 3F 實體建築主體（連通多功能活動室與 201/301 幼兒教室）：
-  // 2F (y2F=3.60m 至 y3F=7.20m) & 3F (y3F=7.20m 至 yRF=10.80m) 實體結構主體
-  addBox(g, juncW, yRF - y2F, juncD, creamWallMat, juncCx, y2F + (yRF - y2F) / 2, juncCz);
+  // 2F 與 3F 開放走廊北側外護欄矮牆（帶深灰壓頂，保持走廊內部完全通透）
+  for (let f = 1; f <= 2; f++) {
+    const fy = f * FH;
+    addBox(g, juncW, parapetH, 0.26, whiteTileMat, juncCx, fy + parapetH / 2, zE + 0.13);
+    addBox(g, juncW + 0.06, 0.08, 0.32, darkCopingMat, juncCx, fy + parapetH + 0.04, zE + 0.13);
+  }
 
   // 2F, 3F, RF 結構樓板層（自 zE = 15.918m 貫通至 zD = 19.053m）
   [y2F, y3F, yRF].forEach(fy => {
@@ -15267,7 +15309,8 @@ function makeTerracottaTilePatternTexture() {
     const stTopY = yRF + 2.05; // 梯間塔樓高於 3F 屋頂約 2.05m (照片：3F 深梁上方尚有磁磚牆與鋼板屋頂)
 
     // 梯塔主體結構側牆與頂板 (西側山牆、東側隔牆、頂部結構板)
-    addBox(g, 0.38, stTopY, stD, whiteTileMat, stX1 + 0.19, stTopY / 2, stCz);
+    // 西側在 1F~3F 為通往西棟之連通樓梯通道，徹底移除阻擋 1F/2F/3F 之實體封閉牆！僅在屋頂層 (y >= yRF) 保留梯塔山牆：
+    addBox(g, 0.38, stTopY - yRF, stD, whiteTileMat, stX1 + 0.19, (yRF + stTopY) / 2, stCz);
     addBox(g, 0.38, stTopY, stD, whiteTileMat, stX2 - 0.19, stTopY / 2, stCz);
     addBox(g, stW, 0.35, stD, mats.roof, stCx, stTopY, stCz);
 
@@ -15383,103 +15426,242 @@ function makeTerracottaTilePatternTexture() {
     }
 
     // ------------------------------------------------------------------------
-    // 【2F & 3F 新棟與西棟銜接樓梯之側面立面】（依據 20261029_072214.jpg 黃框與實景照片）
-    // 特徵說明：
-    // 1. 正面朝北（-z 方向）看過去，此處為新棟大樓與西棟大樓銜接樓梯的「側面（Side Profile）」，絕非樓梯正面
-    // 2. 樓梯本體為東西向（自西棟往東拾級而上進入新棟走廊），因此正面絕不會看到階梯踏步面
-    // 3. 正面立面呈現醒目的「斜向實體白色磁磚側板護牆」（自右側西棟較低處，向左上方斜升銜接新棟樓板），牆頂飾以深灰壓頂
-    // 4. 斜牆上方為通風採光之三角斜邊洞口，頂部橫貫深灰清水混凝土防雨結構過梁
-    // 5. 新棟大樓自身的主樓梯間依 1F/3F 平面圖配置於西側 ①–② 軸端頭
+    // 【西棟與新棟 1F / 2F / 3F 室內連通高低差向下階梯通道與景觀立面】
+    // 依據建築平面圖 (new_plan_1f.jpg, new_plan_2f.jpg, new_plan_3f.jpg)
+    // 與現場實景實拍照片極致精細還原：
+    //   - 新棟1F通往西棟1F_樓梯通道.jpg & 西棟1F通往新棟1F_樓梯通道.jpg
+    //   - 新棟2F通往西棟2F_樓梯通道.jpg & 西棟2F通往新棟2F_樓梯通道.jpg
+    //   - 新棟大樓正面立圖_向北面.jpg
+    //
+    // 核心建築規範與方向：
+    // 1. 東西走向 (X 軸)：新棟大樓在東側，西棟大樓在西側。
+    //    新棟 1F/2F/3F 要通往隔壁西棟大樓，一律使用東西走向階梯【向下 (WESTWARD / DOWN)】前往！
+    // 2. 梯段起訖 (X 軸)：
+    //    - 西端底層門洞：ax(4) = -24.31m（西棟東走廊邊界）
+    //    - 梯段長度：11 階踏階 × 0.28m = 2.80m，到達 x = -21.51m
+    //    - 東端頂層平台：x = -21.51m 至 ax(6) = -19.81m（面寬 1.70m），向南銜接新棟各層走廊
+    //    - 西棟端頭休息平台：xCoreEast=-27.04m 至 ax(4)=-24.31m（面寬 2.73m，中心 -25.675m）
+    // 3. 南北向寬度 (Z 軸)：
+    //    - 位於 Axis E (zE = 15.918m) 至 Axis F (zF = 13.398m) 之間（總跨深 2.52m）
+    //    - 階梯淨寬 2.05m，中心 stairZ = 14.658m (z = 13.633m 至 15.683m)
+    //    - 南側 (z = 15.80m)：實體矮牆帶暗紅原木扶手與不銹鋼立柱，底座帶紅褐色磁磚踢腳線
+    //    - 北側 (z = 13.51m)：面向中庭之實體二丁掛磁磚女兒牆帶深灰壓頂與不銹鋼原木安全扶手
     // ------------------------------------------------------------------------
-    const openX1 = stX1 + 0.18;            // 西側（銜接西棟處，約 -23.60m）
-    const openX2 = entCx - 1.66;            // 東側（中央門樓分界立柱，約 -21.24m）
-    const openSpan = openX2 - openX1;       // 梯間開口面寬約 2.36m
-    const openMidX = (openX1 + openX2) / 2;
+    const xStairWest = ax(4);       // -24.31m (西棟邊界門柱線)
+    const xEast = xStairWest;       // -24.31m (西棟走廊東界)
+    const xCoreEast = -27.04;       // -27.04m (西棟走廊西緣牆面線)
+    const xStairEast = -21.51;      // 階梯頂部起步線 (梯段面寬 2.80m)
+    const xTopLandEast = ax(6);     // -19.81m (新棟頂層平台東界，深 1.70m)
+    const stairBayW = xStairEast - xStairWest; // 2.80m
+    const topLandW = xTopLandEast - xStairEast; // 1.70m
+    const wLandingCx = (xCoreEast + xEast) / 2; // -25.675m (西棟端頭平台中心)
+    const wLandingW = xEast - xCoreEast;        // 2.73m
+    const stairZ = (zE + zF) / 2;              // 14.658m
+    const stairClearDepth = 2.05;               // 踏面通透淨寬
+    const nStepsWest = 11;                      // 11 階踏階 (依西棟2F實拍數出 11 risers)
 
-    // 東段（中央門樓東半部，entCx - 1.66 至 stX2）
-    const eastW = stX2 - openX2;
-    const eastCx = (openX2 + stX2) / 2;
+    // ========================================================================
+    // A. 1F 室內連通向下階梯 (新棟 1F +120 -> 西棟 1F +40，高低差 0.80m，8 階踏步)
+    // ========================================================================
+    const y1F_west = 0.40;
+    const y1F_new = 1.20;
+    const n1FSteps = 8;
+    const rise1F = (y1F_new - y1F_west) / n1FSteps; // 0.10m
+    const run1F = stairBayW / n1FSteps;             // 0.35m
 
+    // 1.1 西棟 1F 下層休息平台地坪 (磨石子地坪)
+    addBox(g, wLandingW + 0.10, 0.40, stairClearDepth + 0.40, terrazzoStepMat, wLandingCx, y1F_west - 0.20, stairZ);
+    // 西端牆面紅褐色腰壁 (實拍畫面底部)
+    addBox(g, 0.08, 0.92, stairClearDepth + 0.40, dadoBrickMat, xCoreEast + 0.05, y1F_west + 0.46, stairZ);
+    // 西端牆面左側：深藍色烤漆鐵捲門與頂部捲筒收納箱 (實拍畫面正前方)
+    const shutter1FZ = stairZ + 0.42;
+    const shutter1FW = 1.05;
+    const shutterMesh = addMesh(g, new THREE.PlaneGeometry(shutter1FW, 2.35), blueShutterMat, xCoreEast + 0.10, y1F_west + 1.175, shutter1FZ, false);
+    shutterMesh.rotation.y = Math.PI / 2;
+    addBox(g, 0.28, 0.32, shutter1FW + 0.08, blueShutterMat, xCoreEast + 0.14, y1F_west + 2.35 + 0.16, shutter1FZ); // 鐵捲門上方外凸收納箱
+    // 西端牆面右側：菱形鐵網防盜鋁排窗 (實拍畫面右側)
+    const win1FZ = stairZ - 0.55;
+    const win1FW = 1.00;
+    const win1FMesh = addMesh(g, new THREE.PlaneGeometry(win1FW, 1.30), meshWindowMat, xCoreEast + 0.10, y1F_west + 1.60, win1FZ, false);
+    win1FMesh.rotation.y = Math.PI / 2;
+    // 階梯前黑色橡膠防滑除塵地墊
+    addBox(g, 0.95, 0.02, 0.65, new THREE.MeshStandardMaterial({ color: 0x181a1d, roughness: 0.92 }), xStairWest - 0.55, y1F_west + 0.01, stairZ, false);
+
+    // 1.2 8 階磨石子踏步 (向西遞減 / 向東遞升)
+    for (let st = 0; st < n1FSteps; st++) {
+      const sx = xStairWest + (st + 0.5) * run1F;
+      const sh = (st + 1) * rise1F;
+      const sy = y1F_west + sh;
+      addBox(g, run1F + 0.015, sh, stairClearDepth, terrazzoStepMat, sx, y1F_west + sh / 2, stairZ);
+      // 黃銅/暗色止滑嵌條
+      addBox(g, 0.04, 0.015, stairClearDepth - 0.08, brassNosingMat, sx - run1F / 2 + 0.02, sy + 0.008, stairZ, false);
+    }
+
+    // 1.3 新棟 1F 上層連通平台地坪 (+120 高程)
+    addBox(g, topLandW + 0.10, 0.32, stairClearDepth + 0.40, terrazzoStepMat, xStairEast + topLandW / 2, y1F_new - 0.16, stairZ);
+
+    // 1.4 不銹鋼包邊門框過梁與門額招牌 (位於 xStairWest = -24.31m)
+    addBox(g, 0.22, 2.70, 0.26, stainlessMat, xStairWest, y1F_west + 1.35, stairZ - stairClearDepth / 2 - 0.13);
+    addBox(g, 0.22, 2.70, 0.26, stainlessMat, xStairWest, y1F_west + 1.35, stairZ + stairClearDepth / 2 + 0.13);
+    addBox(g, 0.24, 0.45, stairClearDepth + 0.52, stainlessMat, xStairWest, y1F_west + 2.70 + 0.225, stairZ);
+    // 招牌面朝西棟 (-x 方向，供自西棟走廊往東看時辨識)
+    const sign1FW = 2.05, sign1FH = 0.52;
+    addBox(g, 0.04, sign1FH + 0.04, sign1FW + 0.04, stainlessMat, xStairWest - 0.02, y1F_west + 2.70 + 0.24, stairZ);
+    const sign1FFace = addMesh(g, new THREE.PlaneGeometry(sign1FW, sign1FH), indoorSignMat, xStairWest - 0.045, y1F_west + 2.70 + 0.24, stairZ, false);
+    sign1FFace.rotation.y = -Math.PI / 2;
+
+    // 1.5 1F 階梯扶手與安全護欄 (南側原木+不銹鋼斜向扶手，上層防跌落白色柵欄)
+    const rail1FZ = stairZ + stairClearDepth / 2 - 0.08;
+    for (let st = 0; st <= n1FSteps; st++) {
+      const rxX = xStairWest + st * run1F;
+      const rxY = y1F_west + st * rise1F;
+      addMesh(g, new THREE.CylinderGeometry(0.02, 0.02, 0.88, 8), stainlessMat, rxX, rxY + 0.44, rail1FZ, false);
+    }
+    const stair1FLen = Math.hypot(stairBayW, y1F_new - y1F_west);
+    const stair1FAngle = Math.atan2(y1F_new - y1F_west, stairBayW);
+    const rail1F = new THREE.Mesh(new THREE.BoxGeometry(stair1FLen + 0.2, 0.06, 0.07), woodHandrailMat);
+    rail1F.position.set(xStairWest + stairBayW / 2, (y1F_west + y1F_new) / 2 + 0.88, rail1FZ);
+    rail1F.rotation.z = stair1FAngle;
+    g.add(rail1F);
+
+    // 1F 上層高差安全白色金屬防墜柵欄 (隔絕走廊跌落)
+    addBox(g, topLandW, 0.05, 0.05, whiteTileMat, xStairEast + topLandW / 2, y1F_new + 0.95, rail1FZ);
+    addBox(g, topLandW, 0.05, 0.05, whiteTileMat, xStairEast + topLandW / 2, y1F_new + 0.10, rail1FZ);
+    for (let k = 0; k < 6; k++) {
+      addBox(g, 0.025, 0.85, 0.025, whiteTileMat, xStairEast + 0.15 + k * ((topLandW - 0.3) / 5), y1F_new + 0.525, rail1FZ, false);
+    }
+
+    // ========================================================================
+    // B. 2F 與 3F 室內連通向下階梯 (新棟走廊 -> 西棟走廊，直通 11 階踏階)
+    // ========================================================================
+    const floorsConfig = [
+      { fl: 2, yWest: 3.95, yNew: 5.85, drop: 1.90, soffitAbove: true },
+      { fl: 3, yWest: 7.70, yNew: 9.40, drop: 1.70, soffitAbove: false }
+    ];
+
+    floorsConfig.forEach(cfg => {
+      const { fl, yWest, yNew, drop, soffitAbove } = cfg;
+      const stepH = drop / nStepsWest; // 2F: ~0.173m, 3F: ~0.155m
+      const stepW = stairBayW / nStepsWest; // 0.28m
+
+      // B.1 西棟端頭休息平台地坪 (+365 / +745)
+      addBox(g, wLandingW + 0.10, 0.30, stairClearDepth + 0.40, terrazzoStepMat, wLandingCx, yWest - 0.15, stairZ);
+
+      // 西端牆面：教室雙開門 (2F 貼有「健康體位妙招」海報；3F 為標準教室門)
+      if (fl === 2) {
+        const dMesh = addMesh(g, new THREE.PlaneGeometry(stairClearDepth - 0.10, 2.35), west2FDoorMat, xCoreEast + 0.08, yWest + 1.175, stairZ, false);
+        dMesh.rotation.y = Math.PI / 2;
+      } else {
+        const dMesh = addMesh(g, new THREE.PlaneGeometry(stairClearDepth - 0.10, 2.35), new THREE.MeshStandardMaterial({ map: makeWestMultiPaneWindowTex(3, 2, '#2c3035', '#68839a', '#3d5366', true), side: THREE.DoubleSide }), xCoreEast + 0.08, yWest + 1.175, stairZ, false);
+        dMesh.rotation.y = Math.PI / 2;
+      }
+
+      // 西棟門洞不銹鋼包邊門柱 (實拍畫面左右金屬框線)
+      addBox(g, 0.18, 2.70, 0.24, stainlessMat, xStairWest, yWest + 1.35, stairZ - stairClearDepth / 2 - 0.12);
+      addBox(g, 0.18, 2.70, 0.24, stainlessMat, xStairWest, yWest + 1.35, stairZ + stairClearDepth / 2 + 0.12);
+
+      // B.2 11 階東西向磨石子直通階梯 (踏面平整，止滑條清晰，踏面朝向西棟)
+      for (let st = 0; st < nStepsWest; st++) {
+        const sx = xStairWest + (st + 0.5) * stepW;
+        const sh = (st + 1) * stepH;
+        const sy = yWest + sh;
+        addBox(g, stepW + 0.012, sh, stairClearDepth, terrazzoStepMat, sx, yWest + sh / 2, stairZ);
+        // 深色防滑條 (嵌入踏面靠近西緣邊角)
+        addBox(g, 0.035, 0.015, stairClearDepth - 0.06, stairNosingMat, sx - stepW / 2 + 0.025, sy + 0.008, stairZ, false);
+      }
+
+      // B.3 新棟上層走廊連通平台地坪 (+560 / +920)
+      addBox(g, topLandW + 0.10, 0.32, stairClearDepth + 0.40, terrazzoStepMat, xStairEast + topLandW / 2, yNew - 0.16, stairZ);
+
+      // 頂層平台南側防跌落護欄 (2F 實拍照片上方醒目的原木扶手欄杆與蜜桃橘矮牆)
+      const topRailZ = stairZ + stairClearDepth / 2 + 0.05;
+      addBox(g, topLandW, 0.70, 0.18, new THREE.MeshStandardMaterial({ color: 0xd68565, roughness: 0.6 }), xStairEast + topLandW / 2, yNew + 0.35, topRailZ);
+      addBox(g, topLandW + 0.04, 0.06, 0.22, woodHandrailMat, xStairEast + topLandW / 2, yNew + 0.73, topRailZ);
+      for (let rp = 0; rp < 4; rp++) {
+        addBox(g, 0.04, 0.38, 0.04, woodHandrailMat, xStairEast + 0.25 + rp * ((topLandW - 0.5) / 3), yNew + 0.92, topRailZ, false);
+      }
+      addBox(g, topLandW + 0.04, 0.05, 0.08, woodHandrailMat, xStairEast + topLandW / 2, yNew + 1.11, topRailZ);
+
+      // B.4 階梯雙側斜向扶手 (原木頂軌 + 不銹鋼垂直立柱)
+      const flightL = Math.hypot(stairBayW, drop);
+      const flightPitch = Math.atan2(drop, stairBayW);
+
+      // 南側扶手 (靠內壁)
+      const sRailZ = stairZ + stairClearDepth / 2 - 0.06;
+      for (let st = 0; st <= nStepsWest; st++) {
+        const px = xStairWest + st * stepW;
+        const py = yWest + st * stepH;
+        addMesh(g, new THREE.CylinderGeometry(0.018, 0.018, 0.88, 8), stainlessMat, px, py + 0.44, sRailZ, false);
+      }
+      const sHandrail = new THREE.Mesh(new THREE.BoxGeometry(flightL + 0.25, 0.06, 0.07), woodHandrailMat);
+      sHandrail.position.set(xStairWest + stairBayW / 2, (yWest + yNew) / 2 + 0.88, sRailZ);
+      sHandrail.rotation.z = flightPitch;
+      g.add(sHandrail);
+
+      // 北側扶手 (靠中庭矮牆側)
+      const nRailZ = stairZ - stairClearDepth / 2 + 0.06;
+      for (let st = 0; st <= nStepsWest; st++) {
+        const px = xStairWest + st * stepW;
+        const py = yWest + st * stepH;
+        addMesh(g, new THREE.CylinderGeometry(0.018, 0.018, 0.88, 8), stainlessMat, px, py + 0.44, nRailZ, false);
+      }
+      const nHandrail = new THREE.Mesh(new THREE.BoxGeometry(flightL + 0.25, 0.06, 0.07), woodHandrailMat);
+      nHandrail.position.set(xStairWest + stairBayW / 2, (yWest + yNew) / 2 + 0.88, nRailZ);
+      nHandrail.rotation.z = flightPitch;
+      g.add(nHandrail);
+
+      // B.5 頂部斜向結構底梁板 (Soffit) — 還原新棟2F俯瞰視角中醒目的 3F 階梯斜底板！
+      if (soffitAbove) {
+        const soffitAngle = Math.atan2(1.70, stairBayW);
+        const soffitL = Math.hypot(stairBayW, 1.70);
+        const soffitMesh = new THREE.Mesh(new THREE.BoxGeometry(soffitL + 0.3, 0.22, stairClearDepth + 0.1), creamWallMat);
+        soffitMesh.position.set(xStairWest + stairBayW / 2, 7.70 + 1.70 / 2 - 0.11, stairZ);
+        soffitMesh.rotation.z = soffitAngle;
+        g.add(soffitMesh);
+      }
+
+      // 天花板吸頂吸頂投光燈
+      addMesh(g, new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12), whiteMetalMat, xStairWest + stairBayW / 2, yNew + 2.45, stairZ, false);
+    });
+
+    // ========================================================================
+    // C. 外立面 (面向中庭 / 北側 z = zF = 13.398m) 依正面立圖精確還原斜向白色護牆與深灰清水過梁
+    // ========================================================================
+    const facadeZ = zF + 0.14;
     for (let f = 1; f <= 2; f++) {
       const fy = f * FH;
+      const yWestBase = (f === 1 ? 3.95 : 7.70) + 0.45;
+      const yEastBase = (f === 1 ? 5.85 : 9.40) + 0.45;
 
-      // 1. 東半部（門樓走廊與樓板）：平整樓板 + 白色二丁掛實體矮護欄牆 + 深灰壓頂
-      addBox(g, eastW, 0.32, stD, mats.slab, eastCx, fy + 0.16, stCz);
-      addBox(g, eastW, parapetH, 0.28, whiteTileMat, eastCx, fy + parapetH / 2, zF + 0.14);
-      addBox(g, eastW + 0.06, 0.08, 0.34, darkCopingMat, eastCx, fy + parapetH + 0.04, zF + 0.14);
-
-      // 2. 上方貫穿整座門樓的標誌性清水混凝土防雨結構過梁 (Spandrel Exposed Concrete Beam)
-      addBox(g, stW, 0.52, 0.40, exposedConcreteBeamMat, stCx, fy + FH - 0.26, zF + 0.19);
-      addBox(g, stW + 0.04, 0.05, 0.44, darkCopingMat, stCx, fy + FH - 0.52, zF + 0.19);
-
-      // 3. 中間垂直支撐結構方柱（位於 openX2，貫穿 2F/3F 形成照片中的門樓框線）
-      addBox(g, 0.44, FH - 0.52, 0.44, whiteTileMat, openX2, fy + (FH - 0.52) / 2, zF + 0.19);
-
-      // 4. 西半部開口：【斜向白色二丁掛實體樓梯側面護牆】（20261029_072214.jpg 黃框特徵）
-      //    右側（西）較低：起點高約 fy + 0.45m；左側（東）較高：終點斜升至 fy + 2.15m
-      const yWestTop = fy + 0.45;
-      const yEastTop = fy + 2.15;
-
+      // C.1 斜向白色二丁掛實體側板護牆 (沿著梯段斜升)
       const slopeShape = new THREE.Shape();
-      slopeShape.moveTo(openX1, fy);
-      slopeShape.lineTo(openX2, fy);
-      slopeShape.lineTo(openX2, yEastTop);
-      slopeShape.lineTo(openX1, yWestTop);
+      slopeShape.moveTo(xStairWest, f * FH);
+      slopeShape.lineTo(xTopLandEast, f * FH);
+      slopeShape.lineTo(xTopLandEast, yEastBase);
+      slopeShape.lineTo(xStairWest, yWestBase);
       slopeShape.closePath();
 
-      const slopeGeom = new THREE.ExtrudeGeometry(slopeShape, { depth: 0.28, bevelEnabled: false });
+      const slopeGeom = new THREE.ExtrudeGeometry(slopeShape, { depth: 0.26, bevelEnabled: false });
       const slopeMesh = new THREE.Mesh(slopeGeom, whiteTileMat);
       slopeMesh.position.set(0, 0, zF);
       g.add(slopeMesh);
 
-      // 5. 斜向牆頂之深灰壓頂帽樑（Dark Coping along diagonal edge）
-      const slopeDx = openX2 - openX1;
-      const slopeDy = yEastTop - yWestTop;
-      const slopeLen = Math.hypot(slopeDx, slopeDy);
-      const slopePitch = Math.atan2(slopeDy, slopeDx);
-      const copingMesh = new THREE.Mesh(new THREE.BoxGeometry(slopeLen + 0.06, 0.08, 0.34), darkCopingMat);
-      copingMesh.position.set(openMidX, (yWestTop + yEastTop) / 2 + 0.04, zF + 0.14);
-      copingMesh.rotation.z = slopePitch;
+      // C.2 斜牆深灰水泥壓頂 (Dark Coping)
+      const sDx = xTopLandEast - xStairWest;
+      const sDy = yEastBase - yWestBase;
+      const sLen = Math.hypot(sDx, sDy);
+      const sPitch = Math.atan2(sDy, sDx);
+      const copingMesh = new THREE.Mesh(new THREE.BoxGeometry(sLen + 0.08, 0.08, 0.32), darkCopingMat);
+      copingMesh.position.set((xStairWest + xTopLandEast) / 2, (yWestBase + yEastBase) / 2 + 0.04, facadeZ);
+      copingMesh.rotation.z = sPitch;
       g.add(copingMesh);
 
-      // 6. 內部東西走向銜接樓梯（East-West Connecting Staircase between 西棟 & 新棟）
-      //    樓梯踏面朝西，拾級向東升入新棟；北側外立面完全由斜向實體護牆遮蔽，絕不露出南北向正面踏步
-      const nConnectSteps = 10;
-      const stairZ = zF + 1.45;
-      const stairDepth = 1.95;
-      const stairRise = yEastTop - fy - 0.35; // 約 1.35m
-      const stairSoffitLen = Math.hypot(openSpan, stairRise);
-      const stairSoffitAngle = Math.atan2(stairRise, openSpan);
+      // C.3 上方橫貫整跨之深灰清水混凝土防雨結構過梁
+      addBox(g, xTopLandEast - xStairWest + 0.2, 0.52, 0.38, exposedConcreteBeamMat, (xStairWest + xTopLandEast) / 2, fy + FH - 0.26, facadeZ);
 
-      // 斜向結構梯板底梁 (East-West Sloping Soffit Slab)
-      const soffitMesh = new THREE.Mesh(new THREE.BoxGeometry(stairSoffitLen, 0.18, stairDepth), exposedConcreteBeamMat);
-      soffitMesh.position.set(openMidX, fy + 0.09 + stairRise / 2, stairZ);
-      soffitMesh.rotation.z = stairSoffitAngle;
-      g.add(soffitMesh);
-
-      // 東西向階梯踏步（Treads run East-West; risers face West; 面朝北向完全看不到台階踏面）
-      const stepW = openSpan / nConnectSteps;
-      const stepH = stairRise / nConnectSteps;
-      for (let st = 0; st < nConnectSteps; st++) {
-        const sx = openX1 + (st + 0.5) * stepW;
-        const sy = fy + 0.09 + (st + 0.5) * stepH;
-        addBox(g, stepW + 0.015, stepH, stairDepth - 0.05, stairBaseMat, sx, sy, stairZ, false);
-      }
-
-      // 7. 內部南側金屬安全扶手（Interior Handrail per 西棟2F通往新棟2F_樓梯通道.jpg）
-      const railZ = stairZ + stairDepth / 2 - 0.08;
-      const railMesh = new THREE.Mesh(new THREE.BoxGeometry(stairSoffitLen, 0.05, 0.05), handrailMat);
-      railMesh.position.set(openMidX, fy + stairRise / 2 + 0.85, railZ);
-      railMesh.rotation.z = stairSoffitAngle;
-      g.add(railMesh);
-      for (let rp = 0; rp <= 4; rp++) {
-        const rpx = openX1 + rp * (openSpan / 4);
-        const rpy = fy + rp * (stairRise / 4) + 0.45;
-        addMesh(g, new THREE.CylinderGeometry(0.02, 0.02, 0.85, 8), handrailMat, rpx, rpy, railZ, false);
-      }
-
-      // 8. 樓梯通道天花板下懸式吸頂筒燈
-      addMesh(g, new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12), whiteMetalMat, openMidX, fy + FH - 0.06, stairZ, false);
+      // C.4 兩端結構支撐方柱 (Axis 4 與 Axis 6)
+      addBox(g, 0.44, FH - 0.52, 0.44, whiteTileMat, xStairWest + 0.22, fy + (FH - 0.52) / 2, facadeZ);
+      addBox(g, 0.44, FH - 0.52, 0.44, whiteTileMat, xTopLandEast - 0.22, fy + (FH - 0.52) / 2, facadeZ);
     }
 
     // ------------------------------------------------------------------------
@@ -20494,6 +20676,8 @@ function flyTo(posArr, targetArr, duration = 900) {
   followingPedestrianIdx = -1;
   const toPos = new THREE.Vector3(...posArr);
   const toTarget = new THREE.Vector3(...targetArr);
+  controls.maxPolarAngle = Math.PI - 0.01;
+  controls.minPolarAngle = 0.01;
   if (prefersReducedMotion() || !motionEnabled || duration <= 0) {
     camera.position.copy(toPos);
     controls.target.copy(toTarget);
@@ -23280,6 +23464,18 @@ try {
       flyTo(v.p, v.t, 0);
     }
   }
+  const cx = urlParams.get('cx'), cy = urlParams.get('cy'), cz = urlParams.get('cz');
+  const tx = urlParams.get('tx'), ty = urlParams.get('ty'), tz = urlParams.get('tz');
+  if (cx !== null && tx !== null) {
+    camAnim = null;
+    isOrbiting = false;
+    controls.maxPolarAngle = Math.PI - 0.01;
+    controls.minPolarAngle = 0.01;
+    controls.minDistance = 0.1;
+    camera.position.set(parseFloat(cx), parseFloat(cy), parseFloat(cz));
+    controls.target.set(parseFloat(tx), parseFloat(ty), parseFloat(tz));
+    controls.update();
+  }
 } catch (e) {}
 
 // ============================================================================
@@ -23662,6 +23858,7 @@ renderer.setAnimationLoop(now => {
 
 // Expose global helpers for interactive navigation & automation
 window.selectLandmark = selectLandmark;
+window.flyTo = flyTo;
 window.camera = camera;
 window.controls = controls;
 window.scene = scene;
