@@ -9632,115 +9632,200 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   // 壁畫頂部木飾收邊橫楣
   addBox(g, sugarTrainMuralW + 0.2, 0.16, 0.14, warmOakMat, bodyCx, sugarTrainMuralY + sugarTrainMuralH / 2 + 0.08, zNorthWall + 0.07);
 
-  // 2. 「復興德馬號」黃色五分車機車頭 (Diema Locomotive)
-  // 位於北側牆面前方東段 (朝向大門前庭)
-  const xLoco = xA - 1.45; // 車身中心 X
-  const zLoco = zNorthWall + 0.62; // 進深中心 Z (貼齊牆面並向穿堂延伸)
-  const locoLen = 2.05, locoWid = 1.05, locoH = 1.72;
+  // ============================================================
+  // 2.「復興德馬號」黃色五分車機車頭 (Diema Diesel Locomotive)
+  //    依據實拍照片精準 1:1 重建：
+  //    - 車身：淡奶油黃 (#E8D86B)
+  //    - 前面板：黑色大方框 + 白百葉格柵 + 2 顆紅圓燈
+  //    - 引擎蓋頂：藍色八角形警示燈 (police-lamp style)
+  //    - 駕駛室：2 扇大方窗(白框/黑玻璃)，高出機罩約 55 cm
+  //    - 前裙：深紅色寬底擋 (cowcatcher)
+  //    - 兩側銀色扶手管
+  //    - 位置：東段靠牆，車頭朝向穿堂西側出口(+X 方向)
+  // ============================================================
+  const locoYellowMatV2 = new THREE.MeshStandardMaterial({ color: 0xe8d86b, roughness: 0.42 });
+  const locoBlackFrameMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.80 });
+  const locoGrilleLightMat = new THREE.MeshStandardMaterial({ color: 0xd4d8dc, roughness: 0.55 });
+  const locoRedV2Mat = new THREE.MeshStandardMaterial({ color: 0xbe1a2e, roughness: 0.48 });
+  const locoBlueV2Mat = new THREE.MeshStandardMaterial({ color: 0x1a56a8, roughness: 0.45 });
+  const locoSilverMat = new THREE.MeshStandardMaterial({ color: 0x9fa8b0, roughness: 0.35, metalness: 0.6 });
+  const cabGlassMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.1, transparent: true, opacity: 0.85 });
 
-  // (1) 大紅底盤排障器 (Red Cowcatcher Base)
-  addBox(g, locoLen, 0.14, locoWid, locoRedMat, xLoco, yBreezeFloor + 0.12, zLoco);
-  // 前端傾斜排障器 (Cowcatcher wedge at East front)
-  addBox(g, 0.18, 0.22, locoWid * 0.95, locoRedMat, xLoco + locoLen / 2 + 0.06, yBreezeFloor + 0.11, zLoco);
-  // 牽引勾 (Coupler)
-  addBox(g, 0.15, 0.08, 0.10, darkMat, xLoco + locoLen / 2 + 0.18, yBreezeFloor + 0.10, zLoco, false);
-  // 4 顆黑色鋼質圓輪 (Black Train Wheels)
-  [-0.65, 0.65].forEach(dx => {
-    const wx = xLoco + dx;
-    const w1 = addMesh(g, new THREE.CylinderGeometry(0.11, 0.11, 0.06, 16), trainWheelMat, wx, yBreezeFloor + 0.08, zLoco + locoWid / 2 - 0.05, false);
-    w1.rotation.x = Math.PI / 2;
-    const w2 = addMesh(g, new THREE.CylinderGeometry(0.11, 0.11, 0.06, 16), trainWheelMat, wx, yBreezeFloor + 0.08, zLoco - locoWid / 2 + 0.05, false);
-    w2.rotation.x = Math.PI / 2;
+  const xLoco  = xA - 1.80;
+  const zLoco  = zNorthWall + 0.56;
+  const locoWid   = 1.00;
+  const locoBaseH = 0.18;
+  const yBase     = yBreezeFloor;
+
+  // --- (1) 大紅前裙 / 排障器 ---
+  const skirtLen = 0.22, skirtH = 0.42;
+  const xSkirtFront = xLoco + 1.025 + skirtLen / 2;
+  addBox(g, skirtLen, skirtH, locoWid * 1.02, locoRedV2Mat, xSkirtFront, yBase + skirtH / 2, zLoco);
+
+  // --- (2) 底盤大樑 ---
+  addBox(g, 2.05, locoBaseH, locoWid, locoBlackFrameMat, xLoco, yBase + locoBaseH / 2, zLoco);
+
+  // --- (3) 4 顆黑色圓輪 ---
+  const locoWheelR = 0.11, locoWheelT = 0.06;
+  [+0.68, -0.68].forEach(dx => {
+    [+1, -1].forEach(ds => {
+      const wm = addMesh(g, new THREE.CylinderGeometry(locoWheelR, locoWheelR, locoWheelT, 16),
+                         trainWheelMat, xLoco + dx, yBase + locoWheelR, zLoco + ds * (locoWid / 2 - 0.04), false);
+      wm.rotation.x = Math.PI / 2;
+      const hub = addMesh(g, new THREE.CylinderGeometry(0.038, 0.038, locoWheelT + 0.01, 12),
+                          locoSilverMat, xLoco + dx, yBase + locoWheelR, zLoco + ds * (locoWid / 2 - 0.04), false);
+      hub.rotation.x = Math.PI / 2;
+    });
   });
 
-  // (2) 引擎機罩 (Engine Bonnet / Hood) - 東半段
-  const hoodLen = 1.05, hoodWid = locoWid * 0.92, hoodH = 0.72;
-  const xHood = xLoco + (locoLen - hoodLen) / 2;
-  addBox(g, hoodLen, hoodH, hoodWid, locoYellowMat, xHood, yBreezeFloor + 0.19 + hoodH / 2, zLoco);
-  // 前端微傾斜頂飾
-  addBox(g, hoodLen * 0.85, 0.06, hoodWid * 0.96, locoYellowMat, xHood - 0.05, yBreezeFloor + 0.19 + hoodH + 0.03, zLoco);
-  // 黑色散熱百葉進氣柵 (Radiator Grille on East face)
-  addBox(g, 0.04, 0.48, 0.52, locoGrilleMat, xHood + hoodLen / 2 + 0.02, yBreezeFloor + 0.19 + hoodH / 2 - 0.05, zLoco, false);
-  // 百葉窗灰色導流片紋理
-  for (let l = 0; l < 6; l++) {
-    addBox(g, 0.02, 0.02, 0.44, columnMat, xHood + hoodLen / 2 + 0.04, yBreezeFloor + 0.32 + l * 0.07, zLoco, false);
+  // --- (4) 引擎機罩 (Engine Hood) ---
+  const hoodLen = 1.10, hoodH = 0.70;
+  const xHoodCtr = xLoco + (2.05 / 2 - hoodLen / 2);
+  addBox(g, hoodLen, hoodH, locoWid * 0.94, locoYellowMatV2,
+         xHoodCtr, yBase + locoBaseH + hoodH / 2, zLoco);
+  addBox(g, 0.22, 0.14, locoWid * 0.90, locoYellowMatV2,
+         xHoodCtr - hoodLen / 2 + 0.11, yBase + locoBaseH + hoodH + 0.07, zLoco);
+
+  // --- (5) 前端面板細節 ---
+  const xFace = xHoodCtr + hoodLen / 2;
+  const faceY  = yBase + locoBaseH + hoodH / 2;
+  addBox(g, 0.06, hoodH * 0.96, locoWid * 0.90, locoBlackFrameMat, xFace + 0.03, faceY, zLoco, false);
+  addBox(g, 0.05, hoodH * 0.60, locoWid * 0.56, locoGrilleLightMat, xFace + 0.05, faceY + 0.04, zLoco, false);
+  for (let lv = 0; lv < 8; lv++) {
+    addBox(g, 0.03, 0.025, locoWid * 0.52, locoBlackFrameMat,
+           xFace + 0.06, faceY - hoodH * 0.60 / 2 + 0.04 + lv * (hoodH * 0.60 / 7.5), zLoco, false);
   }
-  // 圓形紅色大車燈 (Red Headlights with warm core)
-  [-0.32, 0.32].forEach(dz => {
-    const lampX = xHood + hoodLen / 2 + 0.03;
-    const lampY = yBreezeFloor + 0.35;
-    const lRim = addMesh(g, new THREE.CylinderGeometry(0.07, 0.07, 0.04, 14), locoRedMat, lampX, lampY, zLoco + dz, false);
-    lRim.rotation.z = Math.PI / 2;
-    const lBulb = addMesh(g, new THREE.SphereGeometry(0.045, 10, 8), ceilingLightMat, lampX + 0.02, lampY, zLoco + dz, false);
+  [-0.30, +0.30].forEach(dz => {
+    const lampY = yBase + locoBaseH + 0.22;
+    const lr = addMesh(g, new THREE.CylinderGeometry(0.075, 0.075, 0.055, 16),
+                       locoRedV2Mat, xFace + 0.04, lampY, zLoco + dz, false);
+    lr.rotation.z = Math.PI / 2;
+    const lb = addMesh(g, new THREE.CylinderGeometry(0.044, 0.044, 0.06, 12),
+                       ceilingLightMat, xFace + 0.06, lampY, zLoco + dz, false);
+    lb.rotation.z = Math.PI / 2;
   });
-  // 引擎蓋頂部深藍色多邊形頂燈裝飾
-  addBox(g, 0.32, 0.10, 0.18, locoBlueMat, xHood + 0.15, yBreezeFloor + 0.19 + hoodH + 0.08, zLoco);
 
-  // (3) 駕駛室 (Driver's Cab) - 西半段 (通透留空，學童可入內)
-  const cabLen = 0.95, cabWid = locoWid, cabH = 1.38;
-  const xCab = xLoco - (locoLen - cabLen) / 2;
-  const cabTopY = yBreezeFloor + 0.19 + cabH;
-  // 駕駛室立體薄壁結構 (外黃內飾)
-  // 西側背牆 (附窗洞隔板)
-  addBox(g, 0.08, cabH, cabWid, locoYellowMat, xCab - cabLen / 2 + 0.04, yBreezeFloor + 0.19 + cabH / 2, zLoco);
-  // 北側靠牆板
-  addBox(g, cabLen, cabH, 0.08, locoYellowMat, xCab, yBreezeFloor + 0.19 + cabH / 2, zLoco - cabWid / 2 + 0.04);
-  // 南側穿堂面 (留有寬闊開放門戶，東段為黃色門柱與白框大側窗)
-  addBox(g, 0.35, cabH, 0.08, locoYellowMat, xCab + cabLen / 2 - 0.175, yBreezeFloor + 0.19 + cabH / 2, zLoco + cabWid / 2 - 0.04);
-  // 駕駛室車頂 (微斜飛簷)
-  addBox(g, cabLen + 0.12, 0.08, cabWid + 0.12, locoYellowMat, xCab, cabTopY + 0.04, zLoco);
-  // 東面雙前車窗 (White Double Front Windows)
-  const frontWinMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
-  addBox(g, 0.06, 0.56, 0.36, frontWinMat, xCab + cabLen / 2 - 0.03, yBreezeFloor + 0.95, zLoco - 0.22, false);
-  addBox(g, 0.06, 0.56, 0.36, frontWinMat, xCab + cabLen / 2 - 0.03, yBreezeFloor + 0.95, zLoco + 0.22, false);
-  // 窗戶深色玻璃
-  addBox(g, 0.02, 0.48, 0.28, darkMat, xCab + cabLen / 2 + 0.01, yBreezeFloor + 0.95, zLoco - 0.22, false);
-  addBox(g, 0.02, 0.48, 0.28, darkMat, xCab + cabLen / 2 + 0.01, yBreezeFloor + 0.95, zLoco + 0.22, false);
-  // 駕駛室內部地板與小操控儀表台
-  addBox(g, cabLen - 0.15, 0.05, cabWid - 0.15, slabMat, xCab, yBreezeFloor + 0.22, zLoco);
-  addBox(g, 0.22, 0.45, 0.35, carriageDarkMat, xCab + cabLen / 2 - 0.20, yBreezeFloor + 0.45, zLoco);
-  // 登車小踏板與黑色金屬扶手
-  addBox(g, 0.22, 0.04, 0.32, locoRedMat, xCab - 0.15, yBreezeFloor + 0.10, zLoco + cabWid / 2 + 0.12);
-  addBox(g, 0.03, 0.95, 0.03, darkMat, xCab + 0.02, yBreezeFloor + 0.65, zLoco + cabWid / 2 + 0.02, false);
+  // --- (6) 機罩兩側薄板 ---
+  addBox(g, hoodLen, hoodH * 0.80, 0.045, locoYellowMatV2,
+         xHoodCtr, yBase + locoBaseH + hoodH * 0.40, zLoco + locoWid * 0.47 + 0.02, false);
+  addBox(g, hoodLen, hoodH * 0.80, 0.045, locoYellowMatV2,
+         xHoodCtr, yBase + locoBaseH + hoodH * 0.40, zLoco - locoWid * 0.47 - 0.02, false);
 
-  // 3. 三節雙層書架車廂與閱覽桌 (Carriage Bookshelves & Reading Desk)
-  const carStartX = xCab - cabLen / 2; // 接在駕駛室後端
-  const carTotalLen = 4.25;
-  const numCars = 3;
-  const carLen = carTotalLen / numCars; // 每節約 1.41m
-  const carWid = 0.52, carH = 1.25;
-  const zCar = zNorthWall + carWid / 2 + 0.05;
+  // --- (7) 藍色八角形警示燈 ---
+  addBox(g, 0.26, 0.09, 0.19, locoBlueV2Mat,
+         xHoodCtr + 0.12, yBase + locoBaseH + hoodH + 0.045, zLoco);
+  addBox(g, 0.22, 0.14, 0.15, locoBlueV2Mat,
+         xHoodCtr + 0.12, yBase + locoBaseH + hoodH + 0.14, zLoco);
+  const blueTopDome = addMesh(g,
+    new THREE.CylinderGeometry(0.07, 0.10, 0.08, 8),
+    locoBlueV2Mat, xHoodCtr + 0.12, yBase + locoBaseH + hoodH + 0.25, zLoco);
+
+  // --- (8) 兩側銀色扶手管 ---
+  const railLen2 = hoodLen * 0.70;
+  const railY2 = yBase + locoBaseH + hoodH * 0.72;
+  [-1, +1].forEach(ds => {
+    const railZ2 = zLoco + ds * (locoWid / 2 + 0.055);
+    addBox(g, railLen2, 0.025, 0.025, locoSilverMat, xHoodCtr - 0.05, railY2, railZ2, false);
+    addBox(g, 0.025, 0.28, 0.025, locoSilverMat, xHoodCtr + railLen2 / 2 - 0.08, railY2 - 0.14, railZ2, false);
+    addBox(g, 0.025, 0.28, 0.025, locoSilverMat, xHoodCtr - railLen2 / 2 + 0.04, railY2 - 0.14, railZ2, false);
+  });
+
+  // ============================================================
+  // --- (9) 駕駛室 (Driver's Cab) ---
+  // ============================================================
+  const cabLen = 0.95, cabH = 1.30;
+  const xCabCtr = xLoco - 2.05 / 2 + cabLen / 2;
+  const yFloorInner = yBase + locoBaseH;
+  const yCabTop = yFloorInner + cabH;
+
+  addBox(g, 0.07, cabH, locoWid * 0.95, locoYellowMatV2,
+         xCabCtr + cabLen / 2 - 0.035, yFloorInner + cabH / 2, zLoco);
+  addBox(g, 0.07, cabH, locoWid * 0.95, locoYellowMatV2,
+         xCabCtr - cabLen / 2 + 0.035, yFloorInner + cabH / 2, zLoco);
+  addBox(g, cabLen, cabH, 0.07, locoYellowMatV2,
+         xCabCtr, yFloorInner + cabH / 2, zLoco - locoWid / 2 + 0.035);
+  addBox(g, cabLen, cabH, 0.07, locoYellowMatV2,
+         xCabCtr, yFloorInner + cabH / 2, zLoco + locoWid / 2 - 0.035);
+  addBox(g, cabLen + 0.14, 0.09, locoWid + 0.14, locoYellowMatV2,
+         xCabCtr, yCabTop + 0.045, zLoco);
+
+  const frontWinMat = new THREE.MeshStandardMaterial({ color: 0xe8e4dc, roughness: 0.45 });
+  [-0.23, +0.23].forEach(dz => {
+    addBox(g, 0.06, 0.60, 0.38, frontWinMat,
+           xCabCtr + cabLen / 2 - 0.03, yFloorInner + 0.78, zLoco + dz, false);
+    addBox(g, 0.03, 0.50, 0.30, cabGlassMat,
+           xCabCtr + cabLen / 2, yFloorInner + 0.78, zLoco + dz, false);
+  });
+
+  addBox(g, cabLen - 0.14, 0.05, locoWid - 0.14, slabMat, xCabCtr, yFloorInner + 0.02, zLoco);
+  addBox(g, 0.20, 0.42, 0.32, carriageDarkMat,
+         xCabCtr + cabLen / 2 - 0.18, yFloorInner + 0.21, zLoco);
+
+  addBox(g, 0.26, 0.05, 0.36, locoRedV2Mat,
+         xCabCtr, yBase + 0.05, zLoco + locoWid / 2 + 0.16);
+  addBox(g, 0.028, 1.02, 0.028, locoSilverMat,
+         xCabCtr + 0.10, yBase + 0.52, zLoco + locoWid / 2 + 0.04, false);
+  addBox(g, 0.028, 1.02, 0.028, locoSilverMat,
+         xCabCtr - 0.10, yBase + 0.52, zLoco + locoWid / 2 + 0.04, false);
+
+  // ============================================================
+  // 3. 2 節大型書架車廂 (Book-Cart Wagons x 2)
+  //    深褐灰色箱體 / 3 列 x 2 排格子 / 黃色踢腳板 / 黑小輪
+  // ============================================================
+  const carStartX   = xCabCtr - cabLen / 2;
+  const numCars     = 2;
+  const carLen      = 1.65;
+  const carWid      = 0.56;
+  const carH        = 1.22;
+  const carBaseH    = 0.10;
+  const carWheelR   = 0.09;
+  const zCar        = zNorthWall + carWid / 2 + 0.05;
 
   for (let c = 0; c < numCars; c++) {
-    const cx = carStartX - (c + 0.5) * carLen;
+    const cx = carStartX - carLen / 2 - c * carLen;
 
-    // 車廂深鐵灰外框主體
-    addBox(g, carLen - 0.08, carH, carWid, carriageDarkMat, cx, yBreezeFloor + carH / 2, zCar);
-    // 底盤黑色大樑與車輪
-    addBox(g, carLen - 0.04, 0.08, carWid * 0.9, darkMat, cx, yBreezeFloor + 0.06, zCar, false);
-    // 兩組火車車輪
-    [-0.38, 0.38].forEach(dwx => {
-      const cw = addMesh(g, new THREE.CylinderGeometry(0.10, 0.10, 0.045, 14), trainWheelMat, cx + dwx, yBreezeFloor + 0.06, zCar + carWid / 2 + 0.02, false);
-      cw.rotation.x = Math.PI / 2;
+    addBox(g, carLen, carBaseH, carWid, locoBlackFrameMat, cx, yBase + carBaseH / 2, zCar);
+
+    [+0.60, -0.60].forEach(dwx => {
+      [+1, -1].forEach(ds => {
+        const cw = addMesh(g, new THREE.CylinderGeometry(carWheelR, carWheelR, 0.04, 14),
+                           trainWheelMat, cx + dwx, yBase + carWheelR, zCar + ds * (carWid / 2 + 0.02), false);
+        cw.rotation.x = Math.PI / 2;
+      });
     });
 
-    // 雙層展示空間 (上層斜面繪本槽、下層直立書架)
-    // 上層暖木色傾斜背板
-    addBox(g, carLen - 0.14, 0.42, 0.04, warmOakMat, cx, yBreezeFloor + 0.90, zCar + 0.08, false);
-    // 下層直立書架格 (滿載彩色繪本圖書)
-    makeBooksRow(cx - carLen / 2 + 0.12, cx + carLen / 2 - 0.12, yBreezeFloor + 0.14, zCar + 0.12, 14, 0.22);
-    // 上層傾斜擺放展示繪本
-    makeBooksRow(cx - carLen / 2 + 0.16, cx + carLen / 2 - 0.16, yBreezeFloor + 0.70, zCar + 0.16, 7, 0.16, true);
+    const carBodyMat = new THREE.MeshStandardMaterial({ color: 0x3e3b35, roughness: 0.70 });
 
-    // 車廂間向外延伸的亮黃色圓角閱讀座台小桌 (在第 1、2 節車廂間與第 2、3 節車廂間)
+    addBox(g, carLen, carH, 0.045, carBodyMat, cx, yBase + carBaseH + carH / 2, zCar - carWid / 2 + 0.022, false);
+    addBox(g, 0.045, carH, carWid, carBodyMat, cx - carLen / 2 + 0.022, yBase + carBaseH + carH / 2, zCar, false);
+    addBox(g, 0.045, carH, carWid, carBodyMat, cx + carLen / 2 - 0.022, yBase + carBaseH + carH / 2, zCar, false);
+    addBox(g, carLen, 0.045, carWid, carBodyMat, cx, yBase + carBaseH + carH - 0.022, zCar, false);
+    addBox(g, carLen + 0.04, 0.055, carWid + 0.04, carriageYellowMat,
+           cx, yBase + carBaseH + carH + 0.005, zCar);
+    addBox(g, carLen + 0.04, 0.09, carWid + 0.04, carriageYellowMat,
+           cx, yBase + carBaseH + 0.045, zCar);
+
+    addBox(g, carLen - 0.09, 0.040, carWid - 0.06, carBodyMat,
+           cx, yBase + carBaseH + carH / 2, zCar, false);
+    for (let col = 1; col < 3; col++) {
+      addBox(g, 0.040, carH - 0.09, carWid - 0.06, carBodyMat,
+             cx - carLen / 2 + col * (carLen / 3), yBase + carBaseH + carH / 2, zCar, false);
+    }
+
     if (c < numCars - 1) {
       const deskX = cx - carLen / 2;
-      // 亮黃色桌面
-      addBox(g, 0.48, 0.04, 0.58, carriageYellowMat, deskX, yBreezeFloor + 0.46, zCar + 0.22);
-      // 支撐立柱
-      addBox(g, 0.08, 0.44, 0.08, darkMat, deskX, yBreezeFloor + 0.22, zCar + 0.45, false);
-      // 桌上放置借閱的繪本
-      addBox(g, 0.22, 0.02, 0.16, bookPalette[c + 2], deskX, yBreezeFloor + 0.49, zCar + 0.26, false);
+      addMesh(g, new THREE.CylinderGeometry(0.26, 0.26, 0.04, 20),
+              carriageYellowMat, deskX, yBase + carBaseH + carH / 2 + 0.04, zCar + carWid / 2 + 0.22);
+      addMesh(g, new THREE.CylinderGeometry(0.06, 0.06, carH / 2 - 0.02, 12),
+              locoBlackFrameMat, deskX, yBase + carBaseH + carH / 4, zCar + carWid / 2 + 0.22);
+    }
+
+    const colW = (carLen - 0.09) / 3;
+    for (let col = 0; col < 3; col++) {
+      const bStartX = cx - carLen / 2 + 0.045 + col * colW;
+      const bEndX   = bStartX + colW - 0.025;
+      makeBooksRow(bStartX, bEndX, yBase + carBaseH + 0.10, zCar + 0.05, 6, 0.46);
+      makeBooksRow(bStartX, bEndX, yBase + carBaseH + carH / 2 + 0.04, zCar + 0.05, 5, 0.46);
     }
   }
 
