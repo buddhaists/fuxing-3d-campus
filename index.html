@@ -9229,7 +9229,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   // 穿堂 1F 地坪與天花
   const breezeZ = (cz(AXIS_CM[7]) + cz(AXIS_CM[8])) / 2;
   const breezeW = cz(AXIS_CM[7]) - cz(AXIS_CM[8]);
-  addBox(g, 750 * K + 0.1, 0.03, breezeW, passageFloorMat, bodyCx, y0 + 0.015, breezeZ, false);
+  // (低位地坪已移除，穿堂地坪統一由高位地板 yBreezeFloor 繪製)
 
   // ---------- 2) 前(東)走廊：樓板、柱列、彩繪護牆 ----------
   // 2F、3F 走廊樓板與屋頂版 (厚 25 cm)
@@ -9841,7 +9841,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   const blackWallH = 1.52;
   const blackWallW = hallLenX - 0.1;
   addBox(g, blackWallW, blackWallH, 0.05, chalkBoardMat,
-         bodyCx, yBreezeFloor + blackWallH / 2, zSouthWall - 0.025);
+         bodyCx, yBreezeFloor + blackWallH / 2, zSouthWall - 0.01);
 
   // 2. READ 立體書架 (溫暖蜂蜜金 #D4A030)
   const letterGoldMat = new THREE.MeshStandardMaterial({ color: 0xd4a030, roughness: 0.42 });
@@ -9863,7 +9863,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   const xlD = xLet0 + 3 * (LW + LSP);
 
   const yL = yBreezeFloor;
-  const zL = zSouthWall - 0.16;  // 字母中心 Z：貼南牆並向穿堂凸出 ~16cm
+  const zL = zSouthWall - 0.25;  // 字母中心 Z：貼南牆並向穿堂凸出 ~25cm（修正避免被黑牆遮蓋）
 
   // ════════════════════════════════════════════
   // ─── 「R」字母書架 ───────────────────────────
