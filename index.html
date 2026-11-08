@@ -10938,286 +10938,239 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   landmarkGroupMap.set('east-south-mosaic', mosaicHitBox);
 
   // ============================================================
-
-  // ============================================================================
-  // 11. 東棟南端樓梯間 (依建築平面圖 A2-1~A2-4 精確還原)
-  //     位置：軸①~②（cm 0~400），後走廊 (B 軸西側，xW0~xB，200cm 寬)，全高 1F~RF
-  //     1F：儲藏室 102 (B~A 教室本體側) + 樓梯間西翼 (xW0 外側南向開口)
-  //     2F：202 (樓梯間), 3F：302, RF：R01/R02/R03 樓梯塔
-  //     外觀：南面粉紅開口＋2 步磨石子入口台階，藍色鋼門框，1F~3F 全高封閉
-  // ============================================================================
+  // 11. 東棟南端樓梯間 (依實拍照片精緻化還原)
+  //     特徵：粉紅外牆、藍色鋼門框、磨石子內部階梯、3F 高封閉樓梯塔
+  //     位置：軸線 ①～② (cm 0～400)，開口朝南 (+Z 方向)
+  // ============================================================
   {
-    // 座標
-    const sS_zFace = cz(0);        // 南面（開口面）world Z = z2 ≈ +19.50m
-    const sS_zBack = cz(400);      // 北面（封閉牆）world Z ≈ +15.59m
-    const sS_D    = sS_zFace - sS_zBack;    // 樓梯間深度 ≈ 3.91m (400cm)
-    const sS_czm  = (sS_zFace + sS_zBack) / 2;
+    // 座標系
+    const sST_zS = cz(0);           // 南面外牆世界 Z (=z2=19.5m)
+    const sST_zN = cz(400);         // 北面內牆世界 Z (=15.59m)
+    const sST_czm = (sST_zS + sST_zN) / 2;  // 中心 Z
+    const sST_D = sST_zS - sST_zN;  // 樓梯間深度 (約3.91m，從軸1到軸2)
 
-    // X 範圍：後走廊外緣 xW0 → B 軸（教室西牆）xB (200cm 後走廊寬)
-    // 在南端，前走廊 300cm 也會向南延伸（1F 儲藏室 102 在 B~A 範圍 750cm）
-    // 但 stair tower 的封閉空間是在 xW0~xB (後走廊側，200cm 寬)
-    const sS_xW = xW0;             // 後走廊外緣 (西牆)
-    const sS_xE = xB;              // B 軸 (東牆，與教室主體交界)
-    const sS_xCx = (sS_xW + sS_xE) / 2;    // 中心 ≈ 53.76m
-    const sS_wid = sS_xE - sS_xW;          // 樓梯塔寬 ≈ 1.955m (200cm)
+    // 西牆東牆
+    const sST_xW = xB;      // 西牆＝教室西牆 B 軸
+    const sST_xE = xA + 300 * K; // 東牆＝東走廊外緣 (xE)
+    const sST_xCx = (sST_xW + sST_xE) / 2;
+    const sST_width = sST_xE - sST_xW;  // 寬度 ≈ 7.33m
 
     // 材質
-    const ssPinkMat  = new THREE.MeshStandardMaterial({ color: 0xf4a7c3, roughness: 0.75 }); // 粉紅外牆
-    const ssWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf2f0eb, roughness: 0.70 }); // 白灰內牆
-    const ssConcrete = new THREE.MeshStandardMaterial({ color: 0xd0cdc5, roughness: 0.80 }); // 磨石子踏面
-    const ssBlueDoor = new THREE.MeshStandardMaterial({ color: 0x1e6fa8, roughness: 0.45 }); // 藍色鋼門框
-    const ssNosing   = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.88 }); // 防滑條
+    const southStairPinkMat = new THREE.MeshStandardMaterial({ color: 0xf4a7c3, roughness: 0.75 });  // 粉紅外牆
+    const southStairWallMat = new THREE.MeshStandardMaterial({ color: 0xf2f0eb, roughness: 0.70 });  // 內部白灰牆
+    const stairConcreteMat  = new THREE.MeshStandardMaterial({ color: 0xd0cdc5, roughness: 0.80 });  // 磨石子踏面
+    const blueDoorFrameMat  = new THREE.MeshStandardMaterial({ color: 0x1e6fa8, roughness: 0.45 });  // 藍色鋼門框
+    const stairNosingDkMat  = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.88 });  // 防滑條
 
-    // === A. 南端樓梯塔主體（xW0~xB，軸①~②，全高 1F~RF） ===
-    const sTowerH = yR - y0;  // 全塔高度
-
-    // 南面外牆（粉紅，開口）——門洞居中
-    const sDoorW = 1.80;    // 樓梯入口門洞寬 (約 180cm)
-    const sDoorH = 2.60;    // 門洞高
-    // 門洞左右牆
-    addBox(g, (sS_wid - sDoorW) / 2, sTowerH, 0.22, ssPinkMat,
-      sS_xW + (sS_wid - sDoorW) / 4, y0 + sTowerH / 2, sS_zFace);
-    addBox(g, (sS_wid - sDoorW) / 2, sTowerH, 0.22, ssPinkMat,
-      sS_xE - (sS_wid - sDoorW) / 4, y0 + sTowerH / 2, sS_zFace);
+    // === A. 樓梯間主體（全高 3F 封閉牆體，B 軸至 xE，軸①至軸②） ===
+    // 南面外牆：粉紅色（開口見藍色門框，因此中間留門洞）
+    const doorOpenW = 2.80;   // 南開口門洞寬度
+    const doorOpenH = 2.60;   // 門洞高度
+    // 南牆 (左半、右半：門洞左右)
+    const sSouthDoorX = sST_xCx;  // 門洞居中
+    // 左側南牆段
+    addBox(g, (sST_width - doorOpenW) / 2, yR - y0, 0.22, southStairPinkMat,
+      sST_xW + (sST_width - doorOpenW) / 4, y0 + (yR - y0) / 2, sST_zS);
+    // 右側南牆段
+    addBox(g, (sST_width - doorOpenW) / 2, yR - y0, 0.22, southStairPinkMat,
+      sST_xE - (sST_width - doorOpenW) / 4, y0 + (yR - y0) / 2, sST_zS);
     // 門洞上方過梁
-    addBox(g, sDoorW, sTowerH - sDoorH, 0.22, ssPinkMat,
-      sS_xCx, y0 + sDoorH + (sTowerH - sDoorH) / 2, sS_zFace);
-    // 藍色鋼門框（左右立柱）
-    addBox(g, 0.08, sDoorH + 0.10, 0.14, ssBlueDoor,
-      sS_xCx - sDoorW / 2, y0 + sDoorH / 2, sS_zFace);
-    addBox(g, 0.08, sDoorH + 0.10, 0.14, ssBlueDoor,
-      sS_xCx + sDoorW / 2, y0 + sDoorH / 2, sS_zFace);
+    addBox(g, doorOpenW, yR - y0 - doorOpenH, 0.22, southStairPinkMat,
+      sSouthDoorX, y0 + doorOpenH + (yR - y0 - doorOpenH) / 2, sST_zS);
+
+    // 藍色鋼門框（垂直兩側）
+    addBox(g, 0.08, doorOpenH, 0.12, blueDoorFrameMat, sST_xCx - doorOpenW / 2, y0 + doorOpenH / 2, sST_zS);
+    addBox(g, 0.08, doorOpenH, 0.12, blueDoorFrameMat, sST_xCx + doorOpenW / 2, y0 + doorOpenH / 2, sST_zS);
     // 藍色門框頂橫檔
-    addBox(g, sDoorW + 0.10, 0.09, 0.14, ssBlueDoor,
-      sS_xCx, y0 + sDoorH + 0.045, sS_zFace);
+    addBox(g, doorOpenW + 0.08, 0.10, 0.12, blueDoorFrameMat, sST_xCx, y0 + doorOpenH, sST_zS);
 
-    // 北面封閉牆（白灰）
-    addBox(g, sS_wid, sTowerH, 0.20, ssWhiteMat, sS_xCx, y0 + sTowerH / 2, sS_zBack);
+    // 北牆（封閉，白灰）
+    addBox(g, sST_width, yR - y0, 0.22, southStairWallMat, sST_xCx, y0 + (yR - y0) / 2, sST_zN);
 
-    // 東側牆（緊貼 B 軸，白灰，與教室主體交界）
-    addBox(g, 0.18, sTowerH, sS_D, ssWhiteMat, sS_xE, y0 + sTowerH / 2, sS_czm);
+    // 東側外牆（粉紅）
+    addBox(g, 0.22, yR - y0, sST_D, southStairPinkMat, sST_xE, y0 + (yR - y0) / 2, sST_czm);
 
-    // 西側外牆（粉紅，面向後側）
-    addBox(g, 0.22, sTowerH, sS_D, ssPinkMat, sS_xW, y0 + sTowerH / 2, sS_czm);
+    // 西側牆（與建築主體合並，白灰略薄）
+    addBox(g, 0.18, yR - y0, sST_D, southStairWallMat, sST_xW, y0 + (yR - y0) / 2, sST_czm);
 
     // 樓板（2F、3F）
-    addBox(g, sS_wid, 0.22, sS_D, slabMat, sS_xCx, yF[1] - 0.11, sS_czm);
-    addBox(g, sS_wid, 0.22, sS_D, slabMat, sS_xCx, yF[2] - 0.11, sS_czm);
+    addBox(g, sST_width, 0.22, sST_D, slabMat, sST_xCx, yF[1] - 0.11, sST_czm);
+    addBox(g, sST_width, 0.22, sST_D, slabMat, sST_xCx, yF[2] - 0.11, sST_czm);
     // 屋頂版
-    addBox(g, sS_wid + 0.1, 0.22, sS_D + 0.1, slabMat, sS_xCx, yR - 0.11, sS_czm);
+    addBox(g, sST_width + 0.1, 0.22, sST_D + 0.1, slabMat, sST_xCx, yR - 0.11, sST_czm);
 
-    // === B. 室內直跑磨石子梯（1F→2F→3F，沿 Z 方向由南往北上升） ===
-    // 梯段寬 = 後走廊寬 - 牆厚 ≈ 1.60m
-    const sStW = 1.50;         // 梯段淨寬
-    const sStXcx = sS_xCx;    // 居中於後走廊
+    // === B. 室內磨石子直梯（由南面門口往北爬升，1F→2F 與 2F→3F 各一段） ===
+    const sFlight_z0 = sST_zS - 0.30;    // 梯段起點 (稍內縮離南開口)
+    const sFlight_zEnd = sST_zN + 0.50;  // 梯段終點 (稍離北牆)
+    const sFlight_D = sFlight_z0 - sFlight_zEnd;  // 梯段全長 Z
+    const sFlight_nSteps = 16;            // 每段階數
+    const sFlight_tread = sFlight_D / sFlight_nSteps;  // 踏面深
 
-    // 1F→2F 梯段（由南口往北爬升，Z: sS_zFace-0.30 → sS_zBack+0.40）
-    // 2F→3F 梯段（反向：由北往南，回頭梯或簡化為同向再爬）
-    // 依平面圖：折返型樓梯（下半段南→北，上半段北→南，中間休息平台）
-    [[y0, yF[1]], [yF[1], yF[2]]].forEach(([baseY, topY], flIdx) => {
-      const nSteps = 18;         // 每段階數（1F→2F 420cm / 18 = 23.3cm 每步）
-      const riseH  = (topY - baseY) / nSteps;
-      // 梯段長度（走 Z 方向，分上下兩段各 9 步 + 中間平台）
-      const treadD = (sS_D - 0.80) / nSteps;  // 每步踏深
-      const goNorth = flIdx % 2 === 0;   // 1F→2F 段由南向北
+    // 梯段寬度 (中央走廊，寬 1.60m)
+    const sFlight_w = 1.60;
+    const sFlight_xCx = sST_xCx;  // 居中
 
-      for (let st = 0; st < nSteps; st++) {
-        const stepZ = goNorth
-          ? sS_zFace - 0.30 - (st + 0.5) * treadD
-          : sS_zBack + 0.30 + (st + 0.5) * treadD;
-        const stepY = baseY + (st + 1) * riseH;
-        const solidH = Math.min((st + 1) * riseH, riseH * 2.2);
-        addBox(g, sStW, solidH, treadD, ssConcrete,
-          sStXcx, stepY - solidH / 2, stepZ);
+    [[y0, yF[1]], [yF[1], yF[2]]].forEach(([baseY, topY]) => {
+      const riseH = (topY - baseY) / sFlight_nSteps;
+      for (let st = 0; st < sFlight_nSteps; st++) {
+        const sz = sFlight_z0 - (st + 0.5) * sFlight_tread;
+        const sy = baseY + (st + 1) * riseH;
+        const solidH = Math.min((st + 1) * riseH, riseH * 2.0);
+        addBox(g, sFlight_w, solidH, sFlight_tread, stairConcreteMat,
+          sFlight_xCx, sy - solidH / 2, sz);
         // 防滑條
-        const nosingZ = goNorth
-          ? stepZ + treadD / 2 - 0.02
-          : stepZ - treadD / 2 + 0.02;
-        addBox(g, sStW - 0.04, 0.012, 0.035, ssNosing,
-          sStXcx, stepY + 0.006, nosingZ, false);
+        addBox(g, sFlight_w - 0.04, 0.012, 0.035, stairNosingDkMat,
+          sFlight_xCx, sy + 0.006, sz + sFlight_tread / 2 - 0.02, false);
       }
     });
 
-    // === C. 南端出入口台階（門外 2 步磨石子） ===
-    for (let s = 0; s < 2; s++) {
-      addBox(g, sDoorW + 0.60, 0.15, 0.40, ssConcrete,
-        sS_xCx, y0 - 0.15 + (s + 1) * 0.15, sS_zFace + (s + 1) * 0.40 + 0.08, false);
-    }
+    // 2F 樓梯平台板
+    addBox(g, sFlight_w + 0.08, 0.14, 0.60, stairConcreteMat, sFlight_xCx, yF[1] - 0.07, sFlight_zEnd + 0.30);
 
-    // === D. 1F 儲藏室 102 本體（B~A 教室主體側，軸①~②） ===
-    // 已由主體 addBox 覆蓋，僅補東側標示門（白色板門，xA 牆面）
-    const stor102DoorZ = sS_czm;
-    addBox(g, 0.08, 2.15, 0.90, ssWhiteMat, xA + 0.03, y0 + 1.075, stor102DoorZ);
+    // === C. 南端出入口台階（門外 2 步磨石子，朝南） ===
+    for (let s = 0; s < 2; s++) {
+      addBox(g, sST_width + 0.3, 0.14, 0.42, stairConcreteMat,
+        sST_xCx, (s + 1) * 0.14 - 0.07, sST_zS + (s + 1) * 0.42 + 0.05, false);
+    }
   }
 
-  // ============================================================================
-  // 12. 東棟北端樓梯間 (依建築平面圖 A2-1~A2-4 精確還原)
-  //     位置：軸⑰~⑲（cm 5542~6037，495cm），後走廊 (xW0~xB，200cm 寬)
-  //     特徵：北面彩色壁畫（藍/綠/黃），開口朝北，折返型直跑混凝土梯
-  // ============================================================================
+  // ============================================================
+  // 12. 東棟北端樓梯間 + 北側廁所 (依實拍照片精緻化還原)
+  //     北端樓梯特徵：彩色壁畫外牆 (藍/綠/黃)、開口朝北 (-Z 方向)、直跑混凝土階梯
+  //     廁所特徵：北端緊鄰樓梯間東側，白牆，窗格
+  //     位置：軸線 ⑰～⑲ (cm 5542～6037)，含廁所 ⑮～⑰
+  // ============================================================
   {
-    // 座標（軸⑰ cm=5542，軸⑱ cm=5574，軸⑲ cm=6037）
-    const nST_zS = cz(5542);    // 南面（內牆/閉牆）world Z ≈ -34.68m
-    const nST_zN = cz(6037);    // 北面（開口面）world Z ≈ -39.52m
-    const nST_D  = nST_zS - nST_zN;    // 深度 ≈ 4.84m (495cm)
+    // 北端樓梯間 (軸線⑰~⑲ = cm 5542~6037)
+    const nST_zS = cz(5542);    // 南面（開口反向側）世界 Z ≈ -34.68m
+    const nST_zN = cz(6037);    // 北面外牆世界 Z ≈ -39.52m
     const nST_czm = (nST_zS + nST_zN) / 2;
+    const nST_D = nST_zS - nST_zN;   // 深度 ≈ 4.84m
 
-    // X 範圍：後走廊側 xW0~xB (200cm)
-    const nST_xW  = xW0;
-    const nST_xE  = xB;
+    // X 範圍：後走廊外緣 xW0 至東走廊外緣 xE（全寬封閉樓梯間）
+    const nST_xW = xW0;         // 西牆
+    const nST_xE = xE;          // 東牆（前走廊外緣）
     const nST_xCx = (nST_xW + nST_xE) / 2;
-    const nST_wid = nST_xE - nST_xW;    // ≈ 1.955m
+    const nST_width = nST_xE - nST_xW;
+
+    // 北端廁所 (軸線⑮~⑰ = cm 4892~5542, 長 6.5m，東西方向同主體)
+    const nToilet_zS = cz(4892);  // 廁所南牆 ≈ -28.33m
+    const nToilet_zN = nST_zS;    // 廁所北牆即樓梯南面 ≈ -34.68m
+    const nToilet_czm = (nToilet_zS + nToilet_zN) / 2;
+    const nToilet_D = nToilet_zS - nToilet_zN;
 
     // 材質
-    const nsBlueMat   = new THREE.MeshStandardMaterial({ color: 0x63b3d4, roughness: 0.70 }); // 壁畫藍
-    const nsGreenMat  = new THREE.MeshStandardMaterial({ color: 0x5bbd7a, roughness: 0.70 }); // 壁畫綠
-    const nsYellowMat = new THREE.MeshStandardMaterial({ color: 0xe8c842, roughness: 0.70 }); // 壁畫黃
-    const nsWhiteMat  = new THREE.MeshStandardMaterial({ color: 0xf0ede6, roughness: 0.75 }); // 白灰內牆
-    const nsConcrete  = new THREE.MeshStandardMaterial({ color: 0xd2cfc7, roughness: 0.80 }); // 磨石子
-    const nsNosing    = new THREE.MeshStandardMaterial({ color: 0x28282c, roughness: 0.88 }); // 防滑條
+    const northStairMuralMat  = new THREE.MeshStandardMaterial({ color: 0x63b3d4, roughness: 0.7 }); // 彩繪藍
+    const northStairMural2Mat = new THREE.MeshStandardMaterial({ color: 0x5bbd7a, roughness: 0.7 }); // 彩繪綠
+    const northStairMural3Mat = new THREE.MeshStandardMaterial({ color: 0xe8c842, roughness: 0.7 }); // 彩繪黃
+    const northStairWallMat   = new THREE.MeshStandardMaterial({ color: 0xf0ede6, roughness: 0.75 }); // 白灰內壁
+    const toiletWallMat       = new THREE.MeshStandardMaterial({ color: 0xeceae3, roughness: 0.70 }); // 廁所外牆米白
+    const nStairConcreteMat   = new THREE.MeshStandardMaterial({ color: 0xd2cfc7, roughness: 0.80 }); // 磨石子踏面
+    const nStairNosingMat     = new THREE.MeshStandardMaterial({ color: 0x28282c, roughness: 0.88 }); // 防滑條
 
-    const nTowerH = yR - y0;
+    // === A. 北端樓梯間主體 ===
+    // 北面外牆（開口朝北，留入口門洞）
+    const nDoorW = 2.60;  // 北開口寬
+    const nDoorH = 2.60;  // 門洞高
+    const nDoor_xCx = nST_xCx;
 
-    // === A. 北端樓梯塔主體（xW0~xB，軸⑰~⑲） ===
-    // 北面外牆（開口朝北，彩色壁畫）——門洞居中
-    const nDoorW = 1.80;
-    const nDoorH = 2.60;
+    // 彩繪壁畫北牆（3 色帶，分上中下）
+    // 下段（1F）：藍色
+    addBox(g, (nST_width - nDoorW) / 2, yR - y0, 0.22, northStairMuralMat,
+      nST_xW + (nST_width - nDoorW) / 4, y0 + (yR - y0) / 2, nST_zN);
+    addBox(g, (nST_width - nDoorW) / 2, yR - y0, 0.22, northStairMuralMat,
+      nST_xE - (nST_width - nDoorW) / 4, y0 + (yR - y0) / 2, nST_zN);
+    // 門洞上方過梁 (綠色帶)
+    addBox(g, nDoorW, (yR - y0 - nDoorH) * 0.5, 0.22, northStairMural2Mat,
+      nDoor_xCx, y0 + nDoorH + (yR - y0 - nDoorH) * 0.25, nST_zN);
+    addBox(g, nDoorW, (yR - y0 - nDoorH) * 0.5, 0.22, northStairMural3Mat,
+      nDoor_xCx, y0 + nDoorH + (yR - y0 - nDoorH) * 0.75, nST_zN);
 
-    // 門洞左右粉色帶
-    addBox(g, (nST_wid - nDoorW) / 2, nTowerH, 0.22, nsBlueMat,
-      nST_xW + (nST_wid - nDoorW) / 4, y0 + nTowerH / 2, nST_zN);
-    addBox(g, (nST_wid - nDoorW) / 2, nTowerH, 0.22, nsBlueMat,
-      nST_xE - (nST_wid - nDoorW) / 4, y0 + nTowerH / 2, nST_zN);
-    // 門洞上方 (分兩段色帶)
-    addBox(g, nDoorW, (nTowerH - nDoorH) * 0.5, 0.22, nsGreenMat,
-      nST_xCx, y0 + nDoorH + (nTowerH - nDoorH) * 0.25, nST_zN);
-    addBox(g, nDoorW, (nTowerH - nDoorH) * 0.5, 0.22, nsYellowMat,
-      nST_xCx, y0 + nDoorH + (nTowerH - nDoorH) * 0.75, nST_zN);
+    // 南面外牆（封閉，白灰）— 與廁所北牆共用
+    addBox(g, nST_width, yR - y0, 0.22, northStairWallMat, nST_xCx, y0 + (yR - y0) / 2, nST_zS);
 
-    // 南面封閉牆（白灰）
-    addBox(g, nST_wid, nTowerH, 0.20, nsWhiteMat, nST_xCx, y0 + nTowerH / 2, nST_zS);
+    // 東面外牆（彩繪延伸，藍）
+    addBox(g, 0.22, yR - y0, nST_D, northStairMuralMat, nST_xE, y0 + (yR - y0) / 2, nST_czm);
 
-    // 西外牆（彩色）
-    addBox(g, 0.22, nTowerH, nST_D, nsBlueMat, nST_xW, y0 + nTowerH / 2, nST_czm);
+    // 西面外牆（彩繪，綠）
+    addBox(g, 0.22, yR - y0, nST_D, northStairMural2Mat, nST_xW, y0 + (yR - y0) / 2, nST_czm);
 
-    // 東內牆（B 軸，白灰）
-    addBox(g, 0.18, nTowerH, nST_D, nsWhiteMat, nST_xE, y0 + nTowerH / 2, nST_czm);
+    // 樓板 2F / 3F
+    addBox(g, nST_width, 0.22, nST_D, slabMat, nST_xCx, yF[1] - 0.11, nST_czm);
+    addBox(g, nST_width, 0.22, nST_D, slabMat, nST_xCx, yF[2] - 0.11, nST_czm);
+    // 屋頂
+    addBox(g, nST_width + 0.1, 0.22, nST_D + 0.1, slabMat, nST_xCx, yR - 0.11, nST_czm);
 
-    // 樓板 2F / 3F / RF
-    addBox(g, nST_wid, 0.22, nST_D, slabMat, nST_xCx, yF[1] - 0.11, nST_czm);
-    addBox(g, nST_wid, 0.22, nST_D, slabMat, nST_xCx, yF[2] - 0.11, nST_czm);
-    addBox(g, nST_wid + 0.1, 0.22, nST_D + 0.1, slabMat, nST_xCx, yR - 0.11, nST_czm);
+    // === B. 北端室內直跑階梯（由北門往南爬升，1F→2F 與 2F→3F） ===
+    const nFlight_zStart = nST_zN + 0.30;   // 梯段北起點
+    const nFlight_zEnd   = nST_zS - 0.40;   // 梯段南終點
+    const nFlight_D      = nFlight_zStart - nFlight_zEnd;
+    const nFlight_nSteps = 16;
+    const nFlight_tread  = nFlight_D / nFlight_nSteps;
+    const nFlight_w      = 1.60;
+    const nFlight_xCx    = nST_xCx;
 
-    // === B. 北端室內折返型磨石子梯 ===
-    const nStW   = 1.50;
-    const nStXcx = nST_xCx;
-
-    [[y0, yF[1]], [yF[1], yF[2]]].forEach(([baseY, topY], flIdx) => {
-      const nSteps = 18;
-      const riseH  = (topY - baseY) / nSteps;
-      const treadD = (nST_D - 0.80) / nSteps;
-      const goSouth = flIdx % 2 === 0;  // 1F→2F 由北往南（開口在北）
-
-      for (let st = 0; st < nSteps; st++) {
-        const stepZ = goSouth
-          ? nST_zN + 0.30 + (st + 0.5) * treadD
-          : nST_zS - 0.30 - (st + 0.5) * treadD;
-        const stepY = baseY + (st + 1) * riseH;
-        const solidH = Math.min((st + 1) * riseH, riseH * 2.2);
-        addBox(g, nStW, solidH, treadD, nsConcrete,
-          nStXcx, stepY - solidH / 2, stepZ);
-        const nosingZ = goSouth
-          ? stepZ - treadD / 2 + 0.02
-          : stepZ + treadD / 2 - 0.02;
-        addBox(g, nStW - 0.04, 0.012, 0.035, nsNosing,
-          nStXcx, stepY + 0.006, nosingZ, false);
+    [[y0, yF[1]], [yF[1], yF[2]]].forEach(([baseY, topY]) => {
+      const riseH = (topY - baseY) / nFlight_nSteps;
+      for (let st = 0; st < nFlight_nSteps; st++) {
+        // 由北向南：z 由大到小
+        const sz = nFlight_zStart - (st + 0.5) * nFlight_tread;
+        const sy = baseY + (st + 1) * riseH;
+        const solidH = Math.min((st + 1) * riseH, riseH * 2.0);
+        addBox(g, nFlight_w, solidH, nFlight_tread, nStairConcreteMat,
+          nFlight_xCx, sy - solidH / 2, sz);
+        addBox(g, nFlight_w - 0.04, 0.012, 0.035, nStairNosingMat,
+          nFlight_xCx, sy + 0.006, sz - nFlight_tread / 2 + 0.02, false);
       }
     });
 
     // === C. 北端出入口台階（門外 2 步，朝北） ===
     for (let s = 0; s < 2; s++) {
-      addBox(g, nDoorW + 0.60, 0.15, 0.40, nsConcrete,
-        nST_xCx, y0 - 0.15 + (s + 1) * 0.15, nST_zN - (s + 1) * 0.40 - 0.08, false);
+      addBox(g, nDoorW + 0.4, 0.14, 0.42, nStairConcreteMat,
+        nDoor_xCx, (s + 1) * 0.14 - 0.07, nST_zN - (s + 1) * 0.42 - 0.05, false);
     }
-  }
 
-  // ============================================================================
-  // 13. 東棟廁所（依建築平面圖精確還原）
-  //     位置：軸⑮~⑰（cm 4892~5542），A 軸東側前走廊（xA~xE，300cm 寬）
-  //     1F:110 / 2F:209 / 3F:309（見各層平面圖右上角）
-  //     特徵：格子氣窗（東向）、磁磚外牆、廁所入口門洞（前走廊 xA 面）
-  // ============================================================================
-  {
-    // 座標（軸⑮=4892cm，軸⑰=5542cm）
-    const tZ_S   = cz(4892);    // 南牆 world Z ≈ -28.33m
-    const tZ_N   = cz(5542);    // 北牆 world Z = nST_zS ≈ -34.68m
-    const tZ_D   = tZ_S - tZ_N;         // 深度 ≈ 6.35m (650cm)
-    const tZ_czm = (tZ_S + tZ_N) / 2;
+    // 2F 平台板
+    addBox(g, nFlight_w + 0.08, 0.14, 0.60, nStairConcreteMat,
+      nFlight_xCx, yF[1] - 0.07, nFlight_zEnd - 0.30);
 
-    // X 範圍：A 軸（前走廊西壁）→ 東走廊外緣 xE（300cm 前走廊寬）
-    const tX_W   = xA;        // A 軸 (西牆)
-    const tX_E   = xE;        // 東走廊外緣 (東牆)
-    const tX_Cx  = (tX_W + tX_E) / 2;
-    const tX_wid = tX_E - tX_W;   // ≈ 2.933m (300cm)
-
-    // 材質
-    const toiletTileMat  = new THREE.MeshStandardMaterial({ color: 0xeae8e1, roughness: 0.60 }); // 瓷磚米白
-    const toiletGrillMat = new THREE.MeshStandardMaterial({ color: 0xb0b8c4, roughness: 0.50 }); // 格柵窗灰
-    const toiletDoorMat  = new THREE.MeshStandardMaterial({ color: 0x444850, roughness: 0.55 }); // 深色門板
-
-    // === A. 廁所主體牆（全高 1F~RF） ===
-    // 東向外牆（面向馬路，含格柵窗）
-    addBox(g, 0.22, yR - y0, tZ_D, toiletTileMat, tX_E, y0 + (yR - y0) / 2, tZ_czm);
-    // 西牆（A 軸，與教室主體交界）
-    addBox(g, 0.18, yR - y0, tZ_D, toiletTileMat, tX_W, y0 + (yR - y0) / 2, tZ_czm);
+    // === D. 北側廁所 (軸線⑮~⑰，cm 4892~5542) ===
+    // 廁所主體牆（東西向全寬 xW0~xE，同主體寬度）
     // 南牆
-    addBox(g, tX_wid, yR - y0, 0.20, toiletTileMat, tX_Cx, y0 + (yR - y0) / 2, tZ_S);
-    // 北牆（與北端樓梯間 A 軸共牆）
-    addBox(g, tX_wid, yR - y0, 0.20, toiletTileMat, tX_Cx, y0 + (yR - y0) / 2, tZ_N);
+    addBox(g, nST_width, yR - y0, 0.20, toiletWallMat, nST_xCx, y0 + (yR - y0) / 2, nToilet_zS);
+    // 東牆（與教室外牆連接）
+    addBox(g, 0.20, yR - y0, nToilet_D, toiletWallMat, nST_xE, y0 + (yR - y0) / 2, nToilet_czm);
+    // 西牆（後走廊側）
+    addBox(g, 0.20, yR - y0, nToilet_D, toiletWallMat, nST_xW, y0 + (yR - y0) / 2, nToilet_czm);
+    // 樓板
+    addBox(g, nST_width, 0.22, nToilet_D, slabMat, nST_xCx, yF[1] - 0.11, nToilet_czm);
+    addBox(g, nST_width, 0.22, nToilet_D, slabMat, nST_xCx, yF[2] - 0.11, nToilet_czm);
+    // 廁所體（填充主牆，米白色整體方塊作基底）
+    addBox(g, nST_width - 0.4, yR - y0 - 0.5, nToilet_D - 0.4, toiletWallMat, nST_xCx, y0 + (yR - y0 - 0.5) / 2, nToilet_czm);
 
-    // === B. 樓板（2F、3F） ===
-    addBox(g, tX_wid, 0.22, tZ_D, slabMat, tX_Cx, yF[1] - 0.11, tZ_czm);
-    addBox(g, tX_wid, 0.22, tZ_D, slabMat, tX_Cx, yF[2] - 0.11, tZ_czm);
-    // 屋頂版（前走廊廁所頂版）
-    addBox(g, tX_wid + 0.1, 0.22, tZ_D + 0.1, slabMat, tX_Cx, yR - 0.11, tZ_czm);
-
-    // === C. 廁所內部填充（實心磚牆色，作為視覺基底） ===
-    addBox(g, tX_wid - 0.4, yR - y0 - 0.5, tZ_D - 0.4, toiletTileMat,
-      tX_Cx, y0 + (yR - y0 - 0.5) / 2, tZ_czm);
-
-    // === D. 東向格柵通風窗（每樓層 2 扇，高窗） ===
+    // 廁所東牆通風格柵窗 (每樓層 2 扇)
     for (let fl = 0; fl < 3; fl++) {
-      const winY = yF[fl] + 1.80;   // 窗台高
-      const winH = 0.80;            // 窗高
-      // 兩扇間距
-      const winPositions = [tZ_czm - tZ_D * 0.22, tZ_czm + tZ_D * 0.22];
-      winPositions.forEach(wz => {
-        // 窗洞（深色格柵）
-        addBox(g, 0.08, winH, 0.95, toiletGrillMat, tX_E + 0.02, winY + winH / 2, wz);
-      });
+      for (let winIdx = 0; winIdx < 2; winIdx++) {
+        const wz = nToilet_zS - (winIdx + 0.5) * (nToilet_D / 2.5);
+        const wp = addMesh(g, new THREE.PlaneGeometry(0.90, 0.75),
+          new THREE.MeshStandardMaterial({ color: 0xd0d8e2, roughness: 0.5 }),
+          nST_xE + 0.02, yF[fl] + 1.70, wz, false);
+        wp.rotation.y = Math.PI / 2;
+      }
     }
 
-    // === E. 廁所入口門（A 軸西面，每層各一組入口） ===
-    // 1F 廁所入口在前走廊側（xA 面，開口朝走廊）
-    const tDoorW = 1.20, tDoorH = 2.30;
-    // 男廁、女廁各一道門
-    const tDoor_positions = [
-      tZ_czm - tZ_D * 0.18,
-      tZ_czm + tZ_D * 0.18,
-    ];
-    tDoor_positions.forEach(dz => {
-      addBox(g, 0.07, tDoorH, tDoorW, toiletDoorMat,
-        tX_W - 0.02, y0 + tDoorH / 2, dz);
-    });
+    // 廁所入口門（南牆，對外開口）
+    const toiletDoorW = 1.20, toiletDoorH = 2.30;
+    const toiletDoorZ = nToilet_czm;
+    addBox(g, 0.08, toiletDoorH, toiletDoorW, northStairWallMat, nST_xE + 0.02, y0 + toiletDoorH / 2, toiletDoorZ);
 
-    // === F. 欣閱書屋標示牌（北端前走廊柱，軸⑰，依照片） ===
-    const xinTex = makeSignTexture('欣閱書屋', 'Reading Corner', '#e8f5e9', '#1a5c36', 240, 80);
-    const xinSign = addMesh(g, new THREE.PlaneGeometry(1.80, 0.56),
-      new THREE.MeshBasicMaterial({ map: xinTex }),
-      tX_E - 0.05, y0 + 2.65, tZ_N + 0.60, false);
+    // 欣閱書屋標示牌（北端東走廊柱，依照片可見）
+    const xinLabel = makeSignTexture('欣閱書屋', 'Reading Corner', '#e8f5e9', '#1a5c36', 240, 80);
+    const xinSign = addMesh(g, new THREE.PlaneGeometry(1.8, 0.56),
+      new THREE.MeshBasicMaterial({ map: xinLabel }),
+      nST_xE - 0.05, y0 + 2.65, nST_zS - 0.5, false);
     xinSign.rotation.y = Math.PI / 2;
   }
-
 
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'east-building'; });
   layerGroups.buildings.add(g);
