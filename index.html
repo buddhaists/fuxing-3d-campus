@@ -2476,7 +2476,9 @@ const LANDMARKS = [
       back: { p: [12, 24, -72], t: [12, 5.5, -32] },
       west_toilet: { p: [-28.8, 3.8, -46.5], t: [-28.8, 5.8, -34.5] },
       west_stair_side: { p: [-16.0, 3.6, -35.2], t: [-29.5, 5.5, -35.2] },
-      entrance: { p: [14.5, 4.8, 3], t: [14.5, 5.5, -26] }
+      entrance: { p: [14.5, 4.8, 3], t: [14.5, 5.5, -26] },
+      classroom_front: { p: [17.5, 2.75, -32.5], t: [24.8, 2.75, -32.5] },
+      classroom_back: { p: [24.0, 2.75, -32.5], t: [17.0, 2.30, -34.5] }
     }
   },
   {
@@ -5939,28 +5941,56 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
         addBox(g, midInteriorW, lintelH, 0.10, interiorWallMat, ccx, y0 + 2.65 + lintelH / 2, zCoreFront - 0.04);
       }
 
-      // ---- Classroom interior furnishings (blackboard on west partition, desks facing it) ----
+      // ---- Classroom interior furnishings (黑板裝設在東邊牆壁 xB，學生課桌椅 25 套面向東方，教室後方 xA 設教師辦公桌椅) ----
       {
-        const bx = xA + 0.17;
+        // 1) 東面講台前牆 (East Wall xB)：標準綠色黑板＋白邊框＋粉筆槽＋木質講台＋前方講桌
+        const bx = xB - 0.17;
         addBox(northDetailGroup, 0.05, 1.30, 4.05, panelPureWhite, bx, floorY + 1.55, cz);
-        addBox(northDetailGroup, 0.06, 1.15, 3.90, boardGreenMat, bx + 0.01, floorY + 1.55, cz);
-        addBox(northDetailGroup, 0.12, 0.05, 3.9, woodFrameMat, bx + 0.05, floorY + 0.93, cz);      // chalk tray
-        addBox(northDetailGroup, 0.9, 0.14, 6.2, platformMat, xA + 0.62, floorY + 0.07, cz);       // teaching platform
-        addBox(northDetailGroup, 0.55, 0.04, 1.1, deskTopMat, xA + 0.75, floorY + 0.90, cz + 2.3);  // teacher desk
-        addBox(northDetailGroup, 0.50, 0.70, 1.05, woodFrameMat, xA + 0.75, floorY + 0.55, cz + 2.3);
-        // Bulletin board on east partition
-        addBox(northDetailGroup, 0.05, 1.1, 3.4, corkMat, xB - 0.17, floorY + 1.55, cz);
-        // Fluorescent ceiling lights
-        for (const lx of [xA + 1.5, xA + 3.2]) for (const lz of [cz - 1.9, cz + 1.9]) {
+        addBox(northDetailGroup, 0.06, 1.15, 3.90, boardGreenMat, bx - 0.01, floorY + 1.55, cz);
+        addBox(northDetailGroup, 0.12, 0.05, 3.90, woodFrameMat, bx - 0.05, floorY + 0.93, cz);      // chalk tray
+        addBox(northDetailGroup, 0.90, 0.14, 6.20, platformMat, xB - 0.62, floorY + 0.07, cz);       // teaching platform
+        // 前方教學講桌 (靠近前門南側)
+        addBox(northDetailGroup, 0.50, 0.80, 0.70, woodFrameMat, xB - 0.85, floorY + 0.54, cz + 2.0);
+        addBox(northDetailGroup, 0.55, 0.04, 0.75, deskTopMat, xB - 0.85, floorY + 0.96, cz + 2.0);
+
+        // 2) 西面後牆 (West Wall xA)：後方布告欄＋班級公佈欄
+        addBox(northDetailGroup, 0.05, 1.10, 3.60, corkMat, xA + 0.17, floorY + 1.55, cz);
+        addBox(northDetailGroup, 0.04, 1.14, 3.64, woodFrameMat, xA + 0.165, floorY + 1.55, cz);
+
+        // 3) 教室後面老師辦公桌椅 (位於西側後方靠北窗處，面向東方照看全班)
+        const tDeskX = xA + 1.35, tDeskZ = cz - 2.25;
+        // 教師辦公桌本體 (木質桌面 + 抽屜側櫃 + 前擋板)
+        addBox(northDetailGroup, 0.70, 0.04, 1.30, deskTopMat, tDeskX, floorY + 0.75, tDeskZ);
+        addBox(northDetailGroup, 0.60, 0.68, 0.40, woodFrameMat, tDeskX, floorY + 0.35, tDeskZ - 0.42); // 右側三抽屜櫃
+        addBox(northDetailGroup, 0.60, 0.68, 0.05, woodFrameMat, tDeskX, floorY + 0.35, tDeskZ + 0.58); // 左側立板
+        addBox(northDetailGroup, 0.04, 0.48, 0.95, woodFrameMat, tDeskX + 0.28, floorY + 0.48, tDeskZ + 0.08); // 前擋板
+        // 桌上擺件 (電腦筆電、作業簿講義、筆筒)
+        addBox(northDetailGroup, 0.04, 0.28, 0.42, deskLegMat, tDeskX + 0.15, floorY + 0.92, tDeskZ);
+        addBox(northDetailGroup, 0.24, 0.08, 0.20, platformMat, tDeskX - 0.10, floorY + 0.81, tDeskZ + 0.40);
+        addBox(northDetailGroup, 0.08, 0.10, 0.08, deskLegMat, tDeskX + 0.15, floorY + 0.82, tDeskZ - 0.45);
+        // 教師辦公旋轉椅 (位於辦公桌西側，坐向東方 +X)
+        const tChairX = tDeskX - 0.52;
+        addBox(northDetailGroup, 0.44, 0.05, 0.44, chairSeatMat, tChairX, floorY + 0.45, tDeskZ); // 座墊
+        addBox(northDetailGroup, 0.04, 0.42, 0.40, chairSeatMat, tChairX - 0.20, floorY + 0.68, tDeskZ); // 靠背
+        addBox(northDetailGroup, 0.06, 0.40, 0.06, deskLegMat, tChairX, floorY + 0.21, tDeskZ); // 氣壓中軸
+        addBox(northDetailGroup, 0.42, 0.04, 0.42, deskLegMat, tChairX, floorY + 0.04, tDeskZ); // 五星腳座
+        addBox(northDetailGroup, 0.26, 0.03, 0.04, deskLegMat, tChairX - 0.03, floorY + 0.60, tDeskZ - 0.21); // 右扶手
+        addBox(northDetailGroup, 0.26, 0.03, 0.04, deskLegMat, tChairX - 0.03, floorY + 0.60, tDeskZ + 0.21); // 左扶手
+
+        // 4) 天花板山型雙管日光燈具 (均勻分布於教室各排)
+        for (const lx of [xA + 2.0, xA + 4.5, xA + 7.0]) for (const lz of [cz - 1.9, cz + 1.9]) {
           addBox(northDetailGroup, 0.22, 0.06, 1.25, lightFixtureMat, lx, y0 + FH - 0.17, lz);
         }
-        // Student desks & chairs (instanced later): 4 rows × 5 columns facing -X
-        for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) {
-          const dx = xA + 1.75 + r * 0.82, dz = cz + (c - 2) * 1.2;
+
+        // 5) 學生課桌椅陣列：5 排 × 5 列 (每班 25 套課桌椅)，面向東側黑板 (+X 方向)
+        for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) {
+          const dx = xB - 2.20 - r * 0.88; // 5排課桌椅，由東至西排列
+          const dz = cz + (c - 2) * 1.15;  // 5列課桌椅，均勻留出南北兩側大走道
           deskInst.top.push([dx, floorY + 0.72, dz]);
           for (const sx of [-0.19, 0.19]) for (const sz of [-0.27, 0.27]) deskInst.leg.push([dx + sx, floorY + 0.36, dz + sz]);
-          deskInst.seat.push([dx + 0.48, floorY + 0.43, dz]);
-          deskInst.back.push([dx + 0.64, floorY + 0.62, dz]);
+          // 學生面向 +X (東方黑板)：椅子在桌子後方 (-X 西側)，椅背在更西側 (-X)
+          deskInst.seat.push([dx - 0.48, floorY + 0.43, dz]);
+          deskInst.back.push([dx - 0.64, floorY + 0.62, dz]);
         }
       }
       // 1) Continuous Ceiling Suspension Cable Tray (金屬懸吊線槽) running full corridor length (per p1.jpg & p10.jpg)
@@ -6053,7 +6083,7 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
     }
   });
 
-  // Instanced classroom furniture (all 21 classrooms × 20 desks) — cheap to render
+  // Instanced classroom furniture (all 21 classrooms × 25 desks = 525 sets) — cheap to render
   {
     const mk = (geo, mat, list) => {
       const im = new THREE.InstancedMesh(geo, mat, list.length);
@@ -23464,7 +23494,21 @@ try {
       flyTo(v.p, v.t, 0);
     }
   }
-  const cx = urlParams.get('cx'), cy = urlParams.get('cy'), cz = urlParams.get('cz');
+  const camParam = urlParams.get('cam');
+  if (camParam) {
+    const parts = camParam.split(',').map(Number);
+    if (parts.length === 6 && !parts.some(isNaN)) {
+      camAnim = null;
+      isOrbiting = false;
+      controls.maxPolarAngle = Math.PI - 0.01;
+      controls.minPolarAngle = 0.01;
+      controls.minDistance = 0.1;
+      camera.position.set(parts[0], parts[1], parts[2]);
+      controls.target.set(parts[3], parts[4], parts[5]);
+      controls.update();
+    }
+  }
+  const cx = urlParams.get('cx'), cy = urlParams.get('cy'), czParam = urlParams.get('cz');
   const tx = urlParams.get('tx'), ty = urlParams.get('ty'), tz = urlParams.get('tz');
   if (cx !== null && tx !== null) {
     camAnim = null;
@@ -23472,7 +23516,7 @@ try {
     controls.maxPolarAngle = Math.PI - 0.01;
     controls.minPolarAngle = 0.01;
     controls.minDistance = 0.1;
-    camera.position.set(parseFloat(cx), parseFloat(cy), parseFloat(cz));
+    camera.position.set(parseFloat(cx), parseFloat(cy), parseFloat(czParam));
     controls.target.set(parseFloat(tx), parseFloat(ty), parseFloat(tz));
     controls.update();
   }
