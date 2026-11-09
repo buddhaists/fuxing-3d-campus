@@ -76,7 +76,7 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [-12, 58, 16.5], t: [10, 5.5, -31.5] },
+      oblique: { p: [-12, 42, 22], t: [10, 5.5, -31.5] },
       top: { p: [10, 95, -30.5], t: [10, 0, -31.5] },
       front: { p: [14.5, 11.5, 6], t: [14.5, 5.8, -28] },
       back: { p: [12, 24, -72], t: [12, 5.5, -32] },
@@ -162,7 +162,7 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [4.3, 53.5, -31.5], t: [24.3, 5.5, 14.5] },
+      oblique: { p: [24.0, 38.0, -32.0], t: [24.3, 5.5, 14.5] },
       top: { p: [24.3, 38.0, 14.5], t: [24.3, 6.0, 14.5] },
       front: { p: [24.3, 8.0, -22.5], t: [24.3, 5.2, 9.5] },
       back: { p: [24.3, 6.5, 34.0], t: [24.3, 5.5, 20.0] },
@@ -224,7 +224,7 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [15.0, 51.5, 12.0], t: [-31.0, 5.5, -12.0] },
+      oblique: { p: [-85.0, 30.0, 16.0], t: [-31.0, 5.5, -5.0] },
       top: { p: [-31.0, 72.0, -3.0], t: [-31.0, 0.0, -3.5] },
       front: { p: [-4.5, 6.2, -2.5], t: [-31.0, 5.2, -2.5] },
       back: { p: [-74.0, 4.8, -8.5], t: [-30.0, 6.2, -8.5] },
@@ -303,7 +303,7 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [13.0, 47.5, 54.0], t: [-21.0, 5.5, 20.0] },
+      oblique: { p: [-16.0, 36.0, 72.0], t: [-21.0, 5.5, 20.0] },
       top: { p: [-21, 68, 22], t: [-21, 0, 22] },
       front: { p: [-14, 5.2, -1], t: [-18, 5.2, 17] },
       back: { p: [-19, 4.8, 50], t: [-21, 5.5, 24] },
@@ -362,7 +362,7 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [117.0, 53.5, 16.0], t: [59.0, 5.5, -10.0] },
+      oblique: { p: [115.0, 36.0, 16.0], t: [60.0, 6.0, -10.0] },
       top: { p: [62, 95, -9], t: [62, 0, -10] },
       front: { p: [115, 7.2, -10], t: [62, 6.0, -10] },
       back: { p: [14, 9, -10], t: [60, 5, -10] },
@@ -389,7 +389,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [4, 22, 6], t: [18, 2, -8] },
+      oblique: { p: [14.0, 38.0, 45.0], t: [18.0, 2.0, -10.0] },
       top: { p: [17, 85, -7], t: [17, 0, -8] },
       front: { p: [17, 5, 12], t: [17, 3, -25] },
       back: { p: [17, 6, -24], t: [17, 3, 15] },
@@ -415,7 +415,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [96, 12, 6], t: [60, 4.5, -6] },
+      oblique: { p: [96.0, 26.0, 32.0], t: [60.0, 4.0, -8.0] },
       top: { p: [60, 60, -6], t: [60, 0, -6] },
       front: { p: [80, 2.8, -6.3], t: [58, 2.5, -6.3] },
       back: { p: [45, 2.8, -6.3], t: [58, 2.5, -6.3] },
@@ -441,7 +441,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [-56, 48, 82], t: [-57, 0, 4] },
+      oblique: { p: [-110.0, 18.0, 28.0], t: [-57.0, 1.0, 8.0] },
       top: { p: [-57, 130, 5], t: [-57, 0, 4] },
       front: { p: [-20, 12, 4], t: [-57, 1, 4] },
       back: { p: [-110, 18, 28], t: [-57, 1, 8] },
@@ -494,7 +494,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [-60, 5.5, 11], t: [-83.2, 2.6, 3.12] },
+      oblique: { p: [-52.0, 22.0, 25.0], t: [-83.2, 2.6, 3.12] },
       top: { p: [-83.2, 45, 3.12], t: [-83.2, 0, 3.12] },
       front: { p: [-64, 3.5, 3.12], t: [-83.2, 2.5, 3.12] },
       back: { p: [-104, 5.5, 3.12], t: [-83.2, 2.5, 3.12] },
@@ -523,7 +523,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [33, 7.5, -9], t: [41, 2.2, -20.8] },
+      oblique: { p: [32.0, 24.0, 10.0], t: [41, 2.2, -20.8] },
       top: { p: [41, 45, -20], t: [41, 0, -21] },
       front: { p: [40.5, 4.2, -10.5], t: [40.5, 2.2, -20.8] },
       back: { p: [54, 6, -32], t: [41, 2.0, -21] },
@@ -553,7 +553,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [68.0, 12.5, -4.2], t: [95.0, 1.5, -4.2] },
+      oblique: { p: [64.0, 25.0, 24.0], t: [95.0, 2.0, -4.2] },
       top: { p: [92.0, 68.0, -6.0], t: [92.0, 0.0, -6.0] },
       front: { p: [126.0, 2.4, -1.8], t: [72.0, 2.6, -5.5] },
       back: { p: [67.0, 9.5, -4.2], t: [112.0, 2.0, -3.5] },
@@ -579,7 +579,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [66.5, 4.6, 30.5], t: [58.5, 3.6, 19.5] },
+      oblique: { p: [72.0, 22.0, 42.0], t: [58.5, 4.5, 19.5] },
       top: { p: [58.5, 38, 19.5], t: [58.5, 0, 19.5] },
       front: { p: [58.5, 4.0, 30.5], t: [58.5, 3.8, 19.5] },
       back: { p: [58.5, 8, 8], t: [58.5, 4.0, 19.5] },
@@ -608,7 +608,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [-140.5, 4.2, -29.5], t: [-118.0, 2.6, -31.9] },
+      oblique: { p: [-156.0, 22.0, -10.0], t: [-124.0, 2.6, -31.9] },
       top: { p: [-128.8, 36.0, -31.9], t: [-128.8, 0.0, -31.9] },
       front: { p: [-141.0, 2.4, -31.9], t: [-110.0, 2.5, -31.5] },
       back: { p: [-114.0, 4.0, -31.9], t: [-136.0, 2.2, -31.9] },
@@ -633,7 +633,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [66.0, 4.2, 30.0], t: [59.8, 2.2, 20.8] },
+      oblique: { p: [72.0, 22.0, 42.0], t: [59.8, 2.2, 20.8] },
       top: { p: [59.8, 32.0, 20.8], t: [59.8, 0.0, 20.8] },
       front: { p: [59.8, 2.5, 30.5], t: [59.8, 2.0, 20.8] },
       back: { p: [59.8, 5.0, 10.0], t: [59.8, 2.2, 20.8] },
@@ -658,7 +658,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [45.5, 4.2, 29.5], t: [37.8, 2.2, 20.3] },
+      oblique: { p: [45.0, 22.0, 42.0], t: [37.8, 2.2, 20.3] },
       top: { p: [37.8, 32.0, 20.3], t: [37.8, 0.0, 20.3] },
       front: { p: [37.8, 2.5, 29.5], t: [37.8, 2.2, 20.3] },
       back: { p: [37.8, 5.0, 10.0], t: [37.8, 2.2, 20.3] },
@@ -684,7 +684,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [128.5, 4.2, -49.5], t: [113.5, 2.0, -43.2] },
+      oblique: { p: [134.0, 22.0, -25.0], t: [113.5, 2.0, -43.2] },
       top: { p: [114.5, 34.0, -43.5], t: [114.5, 0.0, -43.5] },
       front: { p: [129.0, 2.8, -43.5], t: [112.0, 2.0, -43.5] },
       back: { p: [98.0, 4.5, -43.2], t: [115.5, 2.0, -43.5] },
@@ -706,7 +706,7 @@ const LANDMARKS = [
     photos: [],
     rooms: {},
     views: {
-      oblique: { p: [-72.0, 5.2, 28.0], t: [-82.5, 2.2, 18.0] },
+      oblique: { p: [-68.0, 22.0, 38.0], t: [-82.5, 2.2, 18.0] },
       top: { p: [-82.5, 32.0, 18.0], t: [-82.5, 0.0, 18.0] },
       front: { p: [-82.5, 3.2, 28.0], t: [-82.5, 2.2, 17.5] },
       back: { p: [-82.5, 4.5, 8.0], t: [-82.5, 2.2, 18.0] },
@@ -730,7 +730,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [28.0, 9.5, -36.0], t: [14.0, 2.2, -51.5] },
+      oblique: { p: [28.0, 24.0, -26.0], t: [14.0, 2.2, -51.5] },
       top: { p: [14.0, 48.0, -51.5], t: [14.0, 0.0, -51.5] },
       front: { p: [14.0, 4.5, -36.0], t: [14.0, 2.2, -51.5] },
       back: { p: [14.0, 6.5, -64.0], t: [14.0, 2.2, -51.5] },
@@ -754,7 +754,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [84.0, 5.2, -37.5], t: [74.0, 1.8, -50.5] },
+      oblique: { p: [84.0, 22.0, -28.0], t: [74.0, 1.8, -50.5] },
       top: { p: [75.0, 36.0, -50.5], t: [75.0, 0.0, -50.5] },
       front: { p: [75.0, 3.5, -38.0], t: [75.0, 1.8, -51.0] },
       back: { p: [75.0, 6.0, -62.0], t: [75.0, 1.8, -50.5] },
@@ -778,7 +778,7 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [112.0, 6.5, -38.0], t: [106.0, 2.0, -51.5] },
+      oblique: { p: [115.0, 22.0, -28.0], t: [106.0, 2.0, -51.5] },
       top: { p: [106.0, 34.0, -51.5], t: [106.0, 0.0, -51.5] },
       front: { p: [106.0, 3.8, -38.5], t: [106.0, 2.0, -51.5] },
       back: { p: [106.0, 6.0, -62.0], t: [106.0, 2.0, -51.5] },
@@ -19063,6 +19063,47 @@ function getClassroomCorridorView(lm, floorKey, rm, worldPos) {
   return { p, t };
 }
 
+// ============================================================================
+// CLASSROOM BIRD-EYE OBLIQUE VIEW & SURROUNDING CAMPUS BACKGROUND CALCULATION
+// ============================================================================
+function getClassroomBirdEyeView(lm, floorKey, rm, worldPos) {
+  const lmId = lm?.id || '';
+  const flNum = floorKey === 'B1' ? -0.5 : (floorKey === '1F' ? 0 : (floorKey === '2F' ? 1 : 2));
+  const ry = worldPos ? worldPos.y : (flNum * 3.5 + 2.4);
+  const wx = worldPos ? worldPos.x : (lm?.center ? lm.center[0] : 0);
+  const wz = worldPos ? worldPos.z : (lm?.center ? lm.center[2] : 0);
+
+  let p, t;
+
+  if (lmId === 'north-building') {
+    // 北棟・愛悅樓：教室朝向南側中庭，從中庭偏西南斜上方俯瞰北棟，教室標籤清晰居中，背景包含北側樹林與圍牆街道
+    p = [wx - 10.0, 26.0, 10.0];
+    t = [wx, Math.max(ry, 5.0), -31.5];
+  } else if (lmId === 'south-building') {
+    // 南棟・興學樓：教室朝向北側中庭，從中庭北側斜上方俯瞰南棟，背景呈現南側街景與校園全貌
+    p = [wx + 8.0, 26.0, -26.0];
+    t = [wx, Math.max(ry, 5.0), 14.5];
+  } else if (lmId === 'west-building') {
+    // 西棟・育樂樓：教室朝向中庭東側，從操場西側斜上方俯瞰西棟（如運動場空拍視角），背景呈現綠意中庭與對面東棟
+    p = [-85.0, 28.0, wz + 16.0];
+    t = [-31.0, Math.max(ry, 5.0), wz];
+  } else if (lmId === 'east-building') {
+    // 東棟・彩繪行政大樓：教室與處室朝向前庭，從復興路前庭斜上方俯瞰東棟彩繪立面，背景呈現中庭與穿堂綠意
+    p = [112.0, 30.0, wz + 16.0];
+    t = [60.0, Math.max(ry, 5.0), wz];
+  } else if (lmId === 'new-building') {
+    // 新棟・幼兒園：從南側草皮區斜上方俯瞰幼兒園，背景呈現中庭與北棟
+    p = [wx + 10.0, 28.0, wz + 38.0];
+    t = [wx, Math.max(ry, 5.0), 20.0];
+  } else {
+    // 通用地點或開放空間鳥瞰角度
+    p = [wx + 24.0, 26.0, wz + 28.0];
+    t = [wx, ry || 3.0, wz];
+  }
+
+  return { p, t };
+}
+
 function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoomCode = null, initialViewpoint = null) {
   if (walkState.active) exitWalkMode();
   followingPedestrianIdx = -1;
@@ -19120,14 +19161,14 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
         }
       }
       if (pin) {
-        // 定位至指定班級/教室之前走廊位置，正對該間教室
-        const corridorV = getClassroomCorridorView(lm, pin.floorKey || initialFloor, pin.room, pin.pos);
-        activeViewMode = 'front';
-        flyTo(corridorV.p, corridorV.t, 850);
-        showToast(`已定位：${lm.name} ${pin.floorKey || initialFloor} · ${pin.room?.name || highlightRoomCode}（前走廊視角）`);
+        // 定位至指定班級/教室之宏偉鳥瞰視角，清晰顯示教室標籤與周遭校園背景
+        const birdEyeV = getClassroomBirdEyeView(lm, pin.floorKey || initialFloor, pin.room, pin.pos);
+        activeViewMode = 'oblique';
+        flyTo(birdEyeV.p, birdEyeV.t, 850);
+        showToast(`已定位：${lm.name} ${pin.floorKey || initialFloor} · ${pin.room?.name || highlightRoomCode}（鳥瞰視角）`);
       } else {
-        const targetV = (lm.views && (lm.views.front || lm.views.entrance || lm.views.oblique || Object.values(lm.views)[0])) || { p: [16, 25, 36], t: [16, 6, -26] };
-        activeViewMode = (lm.views && lm.views.front) ? 'front' : 'oblique';
+        const targetV = (lm.views && (lm.views.oblique || lm.views.front || Object.values(lm.views)[0])) || { p: [-12, 42, 22], t: [10, 5.5, -31.5] };
+        activeViewMode = 'oblique';
         flyTo(targetV.p, targetV.t, 900);
       }
     } else {
@@ -19136,19 +19177,13 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
         targetV = lm.views[initialViewpoint];
         activeViewMode = initialViewpoint;
       } else {
-        // 點選北棟、東棟、南棟、西棟、新棟時直接定位至俯瞰該建築的 45 度宏偉鳥瞰視角 (views.oblique)；其餘地點預設使用 views.front
-        const MAJOR_BUILDING_IDS = ['north-building', 'east-building', 'south-building', 'west-building', 'new-building'];
-        const preferOblique = (origin === 'tour' || MAJOR_BUILDING_IDS.includes(id));
-        targetV = (preferOblique && lm.views && lm.views.oblique)
-          ? lm.views.oblique
-          : (lm.views && (lm.views.front || lm.views.entrance || lm.views.oblique || Object.values(lm.views)[0])) || { p: [-12, 58, 16.5], t: [10, 5.5, -31.5] };
-        activeViewMode = (preferOblique && lm.views && lm.views.oblique)
-          ? 'oblique'
-          : ((lm.views && lm.views.front) ? 'front' : ((lm.views && lm.views.entrance) ? 'entrance' : 'oblique'));
+        // 全校 21 處地標與各棟建築在選取後，一律優先定位至宏偉鳥瞰角度 (views.oblique)，清晰呈現該地點與周遭背景
+        targetV = (lm.views && lm.views.oblique) || (lm.views && (lm.views.front || lm.views.entrance || Object.values(lm.views)[0])) || { p: [-12, 42, 22], t: [10, 5.5, -31.5] };
+        activeViewMode = (lm.views && lm.views.oblique) ? 'oblique' : 'front';
       }
       flyTo(targetV.p, targetV.t, 900);
       if (origin === 'manual' && !highlightRoomCode) {
-        showToast(`已定位至地標：${lm.name}`);
+        showToast(`已定位至地標：${lm.name}（鳥瞰視角）`);
       }
     }
   } else if (lm.pxBounds) {
@@ -19180,13 +19215,13 @@ function focusClassroom(lm, floorKey, rm, worldPos) {
   requestRender(80);
   document.querySelectorAll('[data-plan-floor]').forEach(b => b.classList.toggle('is-active', b.dataset.planFloor === floorKey));
   roomPinElements.forEach(p => p.el.classList.toggle('active-room', p.code === rm.code));
-  activeViewMode = 'front';
+  activeViewMode = 'oblique';
   updateToolButtons();
   if (activeMode === '3d') {
-    // 定位至指定教室之前走廊位置，直視教室內部
-    const corridorV = getClassroomCorridorView(lm, floorKey, rm, worldPos);
-    flyTo(corridorV.p, corridorV.t, 820);
-    showToast(`已定位：${lm.name} ${floorKey} · ${rm.name}（前走廊視角）`);
+    // 定位至指定教室之宏偉鳥瞰視角，清晰顯示教室標籤與周遭校園背景
+    const birdEyeV = getClassroomBirdEyeView(lm, floorKey, rm, worldPos);
+    flyTo(birdEyeV.p, birdEyeV.t, 820);
+    showToast(`已定位：${lm.name} ${floorKey} · ${rm.name}（鳥瞰視角）`);
   } else {
     renderPlanSvg();
     if (worldPos) {
@@ -20387,14 +20422,16 @@ function switchViewMode(mode) {
       if (pin) {
         const lm = LANDMARKS.find(l => l.id === pin.landmarkId);
         if (lm) {
-          const corridorV = getClassroomCorridorView(lm, pin.floorKey, pin.room, pin.pos);
-          flyTo(corridorV.p, corridorV.t, 780);
+          const birdEyeV = getClassroomBirdEyeView(lm, pin.floorKey, pin.room, pin.pos);
+          activeViewMode = 'oblique';
+          flyTo(birdEyeV.p, birdEyeV.t, 780);
         }
       }
     } else if (selectedId) {
       const lm = LANDMARKS.find(l => l.id === selectedId);
       if (lm && lm.views) {
-        const targetV = lm.views.front || lm.views.entrance || lm.views.oblique;
+        const targetV = lm.views.oblique || lm.views.front || lm.views.entrance;
+        activeViewMode = (lm.views && lm.views.oblique) ? 'oblique' : 'front';
         if (targetV) flyTo(targetV.p, targetV.t, 780);
       }
     } else {
