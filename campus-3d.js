@@ -162,7 +162,7 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [24.3, 22.0, -22.0], t: [24.3, 6.0, 14.5] },
+      oblique: { p: [4.3, 53.5, -31.5], t: [24.3, 5.5, 14.5] },
       top: { p: [24.3, 38.0, 14.5], t: [24.3, 6.0, 14.5] },
       front: { p: [24.3, 8.0, -22.5], t: [24.3, 5.2, 9.5] },
       back: { p: [24.3, 6.5, 34.0], t: [24.3, 5.5, 20.0] },
@@ -224,7 +224,7 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [-3.5, 13.5, -2.0], t: [-31.0, 5.2, -3.5] },
+      oblique: { p: [15.0, 51.5, 12.0], t: [-31.0, 5.5, -12.0] },
       top: { p: [-31.0, 72.0, -3.0], t: [-31.0, 0.0, -3.5] },
       front: { p: [-4.5, 6.2, -2.5], t: [-31.0, 5.2, -2.5] },
       back: { p: [-74.0, 4.8, -8.5], t: [-30.0, 6.2, -8.5] },
@@ -303,7 +303,7 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [-4, 15, 48], t: [-21, 5.5, 22] },
+      oblique: { p: [13.0, 47.5, 54.0], t: [-21.0, 5.5, 20.0] },
       top: { p: [-21, 68, 22], t: [-21, 0, 22] },
       front: { p: [-14, 5.2, -1], t: [-18, 5.2, 17] },
       back: { p: [-19, 4.8, 50], t: [-21, 5.5, 24] },
@@ -362,7 +362,7 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [116, 22, 16], t: [62, 5.5, -10] },
+      oblique: { p: [117.0, 53.5, 16.0], t: [59.0, 5.5, -10.0] },
       top: { p: [62, 95, -9], t: [62, 0, -10] },
       front: { p: [115, 7.2, -10], t: [62, 6.0, -10] },
       back: { p: [14, 9, -10], t: [60, 5, -10] },
@@ -19045,8 +19045,9 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
         targetV = lm.views[initialViewpoint];
         activeViewMode = initialViewpoint;
       } else {
-        // 點選北棟時直接定位至俯瞰北棟的 45 度斜角 (views.oblique)；其餘地點預設使用 views.front
-        const preferOblique = (origin === 'tour' || id === 'north-building');
+        // 點選北棟、東棟、南棟、西棟、新棟時直接定位至俯瞰該建築的 45 度宏偉鳥瞰視角 (views.oblique)；其餘地點預設使用 views.front
+        const MAJOR_BUILDING_IDS = ['north-building', 'east-building', 'south-building', 'west-building', 'new-building'];
+        const preferOblique = (origin === 'tour' || MAJOR_BUILDING_IDS.includes(id));
         targetV = (preferOblique && lm.views && lm.views.oblique)
           ? lm.views.oblique
           : (lm.views && (lm.views.front || lm.views.entrance || lm.views.oblique || Object.values(lm.views)[0])) || { p: [-12, 58, 16.5], t: [10, 5.5, -31.5] };
@@ -21564,3 +21565,5 @@ window.flyTo = flyTo;
 window.camera = camera;
 window.controls = controls;
 window.scene = scene;
+window.getActiveViewMode = () => activeViewMode;
+window.getSelectedId = () => selectedId;
