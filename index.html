@@ -1289,6 +1289,72 @@ document.addEventListener('click', function(e) {
     transform: translateX(-50%) translateY(0);
   }
 
+  /* ---- First-time Onboarding Gesture Hint Overlay ---- */
+  .onboarding-hint {
+    position: fixed;
+    bottom: 84px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 38;
+    background: var(--paper-glass);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--accent);
+    border-radius: 36px;
+    padding: 8px 14px 8px 16px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.22);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(520px, 92vw);
+    animation: toastIn 0.35s ease-out;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  .onboarding-hint.is-dismissed {
+    opacity: 0;
+    transform: translateX(-50%) translateY(14px);
+    pointer-events: none;
+  }
+  .onboarding-hint[hidden] { display: none !important; }
+  .onboarding-icon {
+    font-size: 22px;
+    user-select: none;
+    animation: gestureSwing 2s ease-in-out infinite;
+  }
+  @keyframes gestureSwing {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    50% { transform: translateX(5px) rotate(10deg); }
+  }
+  .onboarding-text {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ink);
+  }
+  .onboarding-text strong {
+    display: block;
+    font-size: 12.5px;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .onboarding-text p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .onboarding-dismiss-btn {
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s ease;
+  }
+  .onboarding-dismiss-btn:hover { opacity: 0.9; }
+
   /* ---- Modal Dialogs (Plan & Elevation Gallery, Controls Help w/ Mouse SVGs, About, Lightbox) ---- */
   .modal-backdrop {
     position: fixed;
@@ -1798,12 +1864,25 @@ document.addEventListener('click', function(e) {
       font-size: 10px;
     }
     .detail {
-      left: 10px;
-      right: 10px;
+      left: 0;
+      right: 0;
       top: auto;
-      bottom: 10px;
-      width: auto;
-      max-height: min(72dvh, calc(100dvh - 65px));
+      bottom: 0;
+      width: 100%;
+      max-height: min(78dvh, calc(100dvh - 60px));
+      border-radius: 20px 20px 0 0;
+      border-bottom: none;
+      box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.22);
+      padding: 10px 16px 20px;
+    }
+    .detail::before {
+      content: "";
+      display: block;
+      width: 44px;
+      height: 4.5px;
+      border-radius: 3px;
+      background: var(--line);
+      margin: 0 auto 12px;
     }
     .route-panel { left: 10px; right: 10px; bottom: 56px; width: auto; }
     .minimap-card, .map-footer { display: none; }
@@ -2002,6 +2081,9 @@ document.addEventListener('click', function(e) {
     <div class="detail-actions">
       <button id="focus" class="action primary" type="button">走近看看 ↗</button>
       <button id="isolate" class="action" type="button">單體欣賞</button>
+    </div>
+    <div class="detail-actions" style="margin-top:6px">
+      <button id="share-link-btn" class="action" type="button" style="grid-column:1 / -1" title="產生專屬 QR Code 或複製網址分享給家長與班級群組">🔗 分享專屬連結 / 產生 QR Code ↗</button>
     </div>
 
     <div class="viewpoints" id="viewpoints-bar" aria-label="建築觀察角度">
@@ -2451,8 +2533,40 @@ document.addEventListener('click', function(e) {
       </div>
     </div>
   </div>
+
+  <!-- MODAL 5: QR Code & Deep Link Sharing -->
+  <div class="modal-backdrop" id="qrModal">
+    <div class="modal-card" style="width:min(400px,94vw);text-align:center">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">SHARE &amp; QR CODE</p>
+          <h3 id="qrModalTitle">空間專屬 QR Code</h3>
+        </div>
+        <button class="modal-close" data-close="qrModal">✕</button>
+      </div>
+      <div class="modal-body" style="padding:16px 20px 20px">
+        <p id="qrModalSubtitle" style="font-size:12.5px;color:var(--muted);margin:0 0 14px"></p>
+        <div id="qrCodeContainer" style="display:flex;justify-content:center;align-items:center;padding:14px;background:#fff;border-radius:12px;margin:0 auto 16px;max-width:240px;box-shadow:inset 0 0 0 1px var(--line)"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <button id="qrCopyUrlBtn" class="action primary" type="button">📋 複製分享網址</button>
+          <button id="qrDownloadBtn" class="action" type="button">📥 下載 QR 圖片</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Onboarding Gesture Hint Overlay -->
+  <div id="onboardingHint" class="onboarding-hint" hidden>
+    <span class="onboarding-icon">👆</span>
+    <div class="onboarding-text">
+      <strong>探索復興 3D 校園</strong>
+      <p>單指滑動旋轉視角 ｜ 雙指縮放 ｜ 點選建築進入處室詳情</p>
+    </div>
+    <button id="onboardingDismiss" type="button" class="onboarding-dismiss-btn">知道了</button>
+  </div>
 </div>
 
-<script type="module" src="./campus-3d.js?v=2.1"></script>
+<script src="./vendor/qrcode.min.js"></script>
+<script type="module" src="./campus-3d.js?v=2.2"></script>
 </body>
 </html>

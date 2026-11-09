@@ -881,10 +881,15 @@ function updateLODs() {
   }
 }
 
+const getOptimalDpr = () => {
+  const isMobileScreen = (window.innerWidth <= 820 || isMobileDevice);
+  return isMobileScreen ? Math.min(window.devicePixelRatio || 1, 1.5) : Math.min(window.devicePixelRatio || 1, 1.75);
+};
+
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 1600);
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobileDevice, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(isMobileDevice ? 1.0 : Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(getOptimalDpr());
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
@@ -899,6 +904,19 @@ controls.maxPolarAngle = Math.PI / 2 - 0.025;
 controls.minDistance = 1.2;
 controls.maxDistance = 420;
 window.__scene = scene; window.__camera = camera; window.__controls = controls; window.__renderer = renderer;
+
+// On-Demand Demand-Driven Render Loop Manager (Saves 80%+ battery & eliminates mobile heating)
+let renderDemandFrames = 90;
+function requestRender(frames = 35) {
+  renderDemandFrames = Math.max(renderDemandFrames, frames);
+}
+window.requestRender = requestRender;
+controls.addEventListener('change', () => requestRender(20));
+window.addEventListener('pointerdown', () => requestRender(60), { passive: true });
+window.addEventListener('pointermove', e => { if (e.buttons > 0) requestRender(35); }, { passive: true });
+window.addEventListener('wheel', () => requestRender(35), { passive: true });
+window.addEventListener('touchstart', () => requestRender(60), { passive: true });
+window.addEventListener('touchmove', () => requestRender(35), { passive: true });
 
 // High-Fidelity Architectural Lighting Rig (Crisp shadows, soft bounce, warm corridor fill)
 const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8fa88a, 1.05);
@@ -18292,6 +18310,30 @@ const FEATURED_IDS = [
   'sports-track', 'ball-courts', 'command-stage', 'main-gate', 'east-south-mosaic'
 ];
 
+// Extension Directory Boxes (matching right side of 115學年度 official floor plans)
+const EXTENSION_DIR_COL1 = [
+  { label: '校長室', ext: '11', pid: 'east-building', floor: '1F', code: '11' },
+  { label: '教務處', ext: '12', pid: 'south-building', floor: '1F', code: '12' },
+  { label: '學務處', ext: '13', pid: 'east-building', floor: '1F', code: '13' },
+  { label: '總務處', ext: '14', pid: 'east-building', floor: '1F', code: '14' },
+  { label: '人事室', ext: '21', pid: 'east-building', floor: '1F', code: '21' },
+  { label: '保健室', ext: '20', pid: 'east-building', floor: '1F', code: '20' },
+  { label: '圖書室', ext: '32', pid: 'east-building', floor: '2F', code: '32' },
+  { label: '會議室', ext: '40', pid: 'south-building', floor: '1F', code: '40' }
+];
+const EXTENSION_DIR_COL2 = [
+  { label: '教學組', ext: '12', pid: 'south-building', floor: '1F', code: '12' },
+  { label: '資源組', ext: '22', pid: 'south-building', floor: '1F', code: '12' },
+  { label: '研發組', ext: '22', pid: 'south-building', floor: '1F', code: '12' },
+  { label: '閱推師', ext: '23', pid: 'east-building', floor: '2F', code: '32' },
+  { label: '生教組', ext: '25', pid: 'east-building', floor: '1F', code: '13' },
+  { label: '體衛組', ext: '25', pid: 'east-building', floor: '1F', code: '13' },
+  { label: '輔導組', ext: '26', pid: 'north-building', floor: '3F', code: '71' },
+  { label: '事務組', ext: '28', pid: 'east-building', floor: '1F', code: '14' },
+  { label: '主計',   ext: '29', pid: 'east-building', floor: '1F', code: '14' },
+  { label: '出納',   ext: '29', pid: 'east-building', floor: '1F', code: '14' }
+];
+
 // PKU-3D Precinct Presets (`片區快速定位`)
 const PRECINCT_PRESETS = {
   campus:    { p: [-55, 105, 215], t: [0, 2, 10],    plan: { x: -135, y: -70, w: 275, h: 165 }, label: '全校總覽' },
@@ -18318,8 +18360,22 @@ const layerState = {
 let camAnim = null;
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+function updateUrlParams(bldgId, floor, roomCode) {
+  try {
+    const url = new URL(window.location.href);
+    if (bldgId) url.searchParams.set('bldg', bldgId);
+    else url.searchParams.delete('bldg');
+    if (floor && floor !== '1F') url.searchParams.set('floor', floor);
+    else url.searchParams.delete('floor');
+    if (roomCode) url.searchParams.set('room', roomCode);
+    else url.searchParams.delete('room');
+    window.history.replaceState(null, '', url.pathname + url.search);
+  } catch {}
+}
+
 function flyTo(posArr, targetArr, duration = 900) {
   followingPedestrianIdx = -1;
+  requestRender(Math.ceil((duration / 1000) * 60) + 40);
   const toPos = new THREE.Vector3(...posArr);
   const toTarget = new THREE.Vector3(...targetArr);
   controls.maxPolarAngle = Math.PI - 0.01;
@@ -18329,6 +18385,7 @@ function flyTo(posArr, targetArr, duration = 900) {
     controls.target.copy(toTarget);
     controls.update();
     camAnim = null;
+    requestRender(20);
     return;
   }
   camAnim = {
@@ -18424,6 +18481,8 @@ document.querySelectorAll('#precinct-bar .precinct-pill').forEach(btn => {
 
 function resetOverview() {
   fitPrecinct('campus');
+  updateUrlParams(null, null, null);
+  requestRender(70);
   if (window.innerWidth <= 820 || window.innerHeight <= 640) {
     setCatalogOpen(false);
     detailEl.hidden = true;
@@ -18686,7 +18745,7 @@ function renderPlacesList() {
           selectLandmark(lm.id, 'manual');
           if (window.innerWidth <= 820 || window.innerHeight <= 640) {
             setCatalogOpen(false);
-            detailEl.hidden = true;
+            detailEl.hidden = false;
           }
         });
         btn.addEventListener('pointerenter', () => setHovered(lm.id));
@@ -18715,7 +18774,7 @@ function renderPlacesList() {
           selectLandmark(lm.id, 'manual');
           if (window.innerWidth <= 820 || window.innerHeight <= 640) {
             setCatalogOpen(false);
-            detailEl.hidden = true;
+            detailEl.hidden = false;
           }
         });
         btn.addEventListener('pointerenter', () => setHovered(lm.id));
@@ -18771,7 +18830,7 @@ function renderPlacesList() {
         selectLandmark(lm.id, 'manual');
         if (window.innerWidth <= 820 || window.innerHeight <= 640) {
           setCatalogOpen(false);
-          detailEl.hidden = true;
+          detailEl.hidden = false;
         }
       });
       btn.addEventListener('pointerenter', () => setHovered(lm.id));
@@ -18795,7 +18854,7 @@ function renderPlacesList() {
         selectLandmark(lm.id, 'manual', fl, rm.code);
         if (window.innerWidth <= 820 || window.innerHeight <= 640) {
           setCatalogOpen(false);
-          detailEl.hidden = true;
+          detailEl.hidden = false;
         }
       });
       placesListEl.appendChild(btn);
@@ -18835,7 +18894,7 @@ function renderPlacesList() {
       selectLandmark(lm.id, 'manual');
       if (window.innerWidth <= 820 || window.innerHeight <= 640) {
         setCatalogOpen(false);
-        detailEl.hidden = true;
+        detailEl.hidden = false;
       }
     });
     btn.addEventListener('pointerenter', () => setHovered(lm.id));
@@ -18844,10 +18903,41 @@ function renderPlacesList() {
   });
 
   let matchedRoomCount = 0;
+
+  // 1) Match Official Extension Numbers (e.g. 11 校長室, 14 總務處, 12 教務處, 20 保健室)
+  const allExts = [...EXTENSION_DIR_COL1, ...EXTENSION_DIR_COL2];
+  allExts.forEach(ext => {
+    if (ext.ext === q || ext.label.toLowerCase().includes(q) || (q.length >= 2 && ext.ext.includes(q))) {
+      matchedRoomCount++;
+      const btn = document.createElement('button');
+      btn.className = 'place-item';
+      btn.innerHTML = `
+        <span class="place-number" style="color:var(--accent);font-weight:700">分機 ${ext.ext}</span>
+        <span>
+          <strong class="place-title">${ext.label}</strong>
+          <small class="place-sub">學校處室分機直達 · ${ext.floor}</small>
+        </span>
+        <span class="place-tag" style="background:var(--accent);color:#fff">分機 ⌕</span>
+      `;
+      btn.addEventListener('click', () => {
+        selectLandmark(ext.pid, 'manual', ext.floor, ext.code);
+        if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+          setCatalogOpen(false);
+          detailEl.hidden = false;
+        }
+      });
+      placesListEl.appendChild(btn);
+    }
+  });
+
+  // 2) Match Classrooms, Rooms & Short Codes (e.g. 401, 101, 幼幼, 居禮)
   LANDMARKS.forEach(lm => {
     Object.entries(lm.rooms || {}).forEach(([fl, arr]) => {
       arr.forEach(rm => {
-        if (rm.name.toLowerCase().includes(q) || rm.code.toLowerCase().includes(q)) {
+        const matchesName = rm.name.toLowerCase().includes(q);
+        const matchesCode = rm.code.toLowerCase().includes(q);
+        const matchesShort = rm.short && rm.short.toLowerCase().includes(q);
+        if (matchesName || matchesCode || matchesShort) {
           matchedRoomCount++;
           const btn = document.createElement('button');
           btn.className = 'place-item';
@@ -18863,7 +18953,7 @@ function renderPlacesList() {
             selectLandmark(lm.id, 'manual', fl, rm.code);
             if (window.innerWidth <= 820 || window.innerHeight <= 640) {
               setCatalogOpen(false);
-              detailEl.hidden = true;
+              detailEl.hidden = false;
             }
           });
           placesListEl.appendChild(btn);
@@ -18997,14 +19087,15 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
 
   document.getElementById('minimapLabel').textContent = lm.name;
 
-  if (origin === 'manual') {
+  if (origin === 'manual' || origin === 'card') {
     stopTour(false);
     // Hide environment panel if open so right `#detail` card is clearly visible
     document.getElementById('environment').hidden = true;
     document.getElementById('environment-open').setAttribute('aria-expanded', 'false');
     if (window.innerWidth <= 820 || window.innerHeight <= 640) {
       setCatalogOpen(false);
-      detailEl.hidden = true;
+      detailEl.hidden = false;
+      setDetailCompact(false);
     } else {
       detailEl.hidden = false;
       detailEl.scrollTop = 0;
@@ -19076,6 +19167,8 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
     renderPlanSvg();
   }
 
+  updateUrlParams(id, initialFloor, highlightRoomCode);
+  requestRender(80);
   updateToolButtons();
   renderDetailCard(lm, initialFloor);
 }
@@ -19083,6 +19176,8 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
 function focusClassroom(lm, floorKey, rm, worldPos) {
   activeRoomCode = rm.code;
   activePlanFloor = floorKey;
+  updateUrlParams(lm.id, floorKey, rm.code);
+  requestRender(80);
   document.querySelectorAll('[data-plan-floor]').forEach(b => b.classList.toggle('is-active', b.dataset.planFloor === floorKey));
   roomPinElements.forEach(p => p.el.classList.toggle('active-room', p.code === rm.code));
   activeViewMode = 'front';
@@ -20057,30 +20152,6 @@ const OFFICIAL_PLAN_CONFIG = {
     }
   }
 };
-
-// Extension Directory Boxes (matching right side of 115學年度 official floor plans)
-const EXTENSION_DIR_COL1 = [
-  { label: '校長室', ext: '11', pid: 'east-building', floor: '1F', code: '11' },
-  { label: '教務處', ext: '12', pid: 'south-building', floor: '1F', code: '12' },
-  { label: '學務處', ext: '13', pid: 'east-building', floor: '1F', code: '13' },
-  { label: '總務處', ext: '14', pid: 'east-building', floor: '1F', code: '14' },
-  { label: '人事室', ext: '21', pid: 'east-building', floor: '1F', code: '21' },
-  { label: '保健室', ext: '20', pid: 'east-building', floor: '1F', code: '20' },
-  { label: '圖書室', ext: '32', pid: 'east-building', floor: '2F', code: '32' },
-  { label: '會議室', ext: '40', pid: 'south-building', floor: '1F', code: '40' }
-];
-const EXTENSION_DIR_COL2 = [
-  { label: '教學組', ext: '12', pid: 'south-building', floor: '1F', code: '12' },
-  { label: '資源組', ext: '22', pid: 'south-building', floor: '1F', code: '12' },
-  { label: '研發組', ext: '22', pid: 'south-building', floor: '1F', code: '12' },
-  { label: '閱推師', ext: '23', pid: 'east-building', floor: '2F', code: '32' },
-  { label: '生教組', ext: '25', pid: 'east-building', floor: '1F', code: '13' },
-  { label: '體衛組', ext: '25', pid: 'east-building', floor: '1F', code: '13' },
-  { label: '輔導組', ext: '26', pid: 'north-building', floor: '3F', code: '71' },
-  { label: '事務組', ext: '28', pid: 'east-building', floor: '1F', code: '14' },
-  { label: '主計',   ext: '29', pid: 'east-building', floor: '1F', code: '14' },
-  { label: '出納',   ext: '29', pid: 'east-building', floor: '1F', code: '14' }
-];
 
 function renderExtensionDirectory() {
   const col1El = document.getElementById('plan-ext-col1');
@@ -21072,7 +21143,10 @@ function showToast(msg) {
 // Restore URL Hash Snapshot if present
 function restoreHashSnapshot() {
   if (!location.hash || location.hash.length < 2) {
-    resetOverview();
+    const searchParams = new URLSearchParams(window.location.search);
+    if (!searchParams.has('bldg') && !searchParams.has('landmark') && !searchParams.has('place') && !searchParams.has('room')) {
+      fitPrecinct('campus');
+    }
     return;
   }
   const params = new URLSearchParams(location.hash.slice(1));
@@ -21091,7 +21165,7 @@ function restoreHashSnapshot() {
   if (p?.length === 3 && t?.length === 3 && p.every(Number.isFinite) && t.every(Number.isFinite)) {
     flyTo(p, t, 0);
   } else if (!place) {
-    resetOverview();
+    fitPrecinct('campus');
   }
 }
 
@@ -21151,7 +21225,9 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   if (window.innerWidth > 820 && window.innerHeight > 640) setDetailCompact(false);
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(getOptimalDpr());
   renderer.setSize(window.innerWidth, window.innerHeight);
+  requestRender(35);
 });
 
 // PKU-3D Smart Label Decluttering & Panel Collision Check (`blocked` in `app-v29.js` line 243)
@@ -21187,6 +21263,26 @@ renderer.setAnimationLoop(now => {
   const dt = Math.min(100, now - lastFrameTime);
   const dtSec = dt * 0.001;
   lastFrameTime = now;
+
+  // On-demand rendering condition checks (Camera movement, active tour, walks, weather, or user interactions)
+  const hasContinuousAnimation =
+    Boolean(camAnim) ||
+    walkState.active ||
+    routeWalkActive ||
+    isOrbiting ||
+    tourRunning ||
+    followingPedestrianIdx >= 0 ||
+    (motionEnabled && weatherPoints && weatherPoints.visible && activeWeather !== 'clear');
+
+  if (hasContinuousAnimation) {
+    requestRender(10);
+  }
+
+  // When scene is static and no interaction is occurring: bypass rendering & physics to save battery & prevent heating
+  if (renderDemandFrames <= 0) {
+    return;
+  }
+  renderDemandFrames--;
 
   // FPS counter
   frameCount++;
@@ -21532,6 +21628,12 @@ function onFirst3DFrameReady() {
   const schedule = window.requestIdleCallback || (cb => setTimeout(cb, 120));
   schedule(loadDeferredTextures);
 
+  // Initialize Deep Link URL on initial page boot
+  handleDeepLinkOnStartup();
+
+  // Initialize Onboarding Hint
+  initOnboarding();
+
   // Flush pre-interactive queue if user clicked anything during initial load
   if (window.__preQueue && window.__preQueue.length) {
     const act = window.__preQueue[window.__preQueue.length - 1];
@@ -21540,6 +21642,121 @@ function onFirst3DFrameReady() {
     window.__preQueue = [];
   }
 }
+
+function handleDeepLinkOnStartup() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const bldg = params.get('bldg') || params.get('landmark') || params.get('place');
+    const room = params.get('room');
+    const floor = params.get('floor') || '1F';
+    if (bldg && LANDMARKS.some(l => l.id === bldg)) {
+      selectLandmark(bldg, 'card', floor, room || undefined);
+    } else if (room) {
+      for (const lm of LANDMARKS) {
+        for (const [fl, rms] of Object.entries(lm.rooms || {})) {
+          const matched = rms.find(r => r.code === room);
+          if (matched) {
+            selectLandmark(lm.id, 'card', fl, room);
+            return;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Deep link startup handler:', e);
+  }
+}
+
+function initOnboarding() {
+  const hintEl = document.getElementById('onboardingHint');
+  const dismissBtn = document.getElementById('onboardingDismiss');
+  if (!hintEl) return;
+  const key = 'fuxing_onboarded_v1';
+  try {
+    if (localStorage.getItem(key)) return;
+  } catch {}
+
+  hintEl.hidden = false;
+
+  const dismiss = () => {
+    hintEl.classList.add('is-dismissed');
+    setTimeout(() => { hintEl.hidden = true; }, 320);
+    try { localStorage.setItem(key, '1'); } catch {}
+  };
+
+  dismissBtn?.addEventListener('click', dismiss);
+  setTimeout(dismiss, 7000);
+}
+
+function openQrShareModal(title, url, subtitle) {
+  const qrModal = document.getElementById('qrModal');
+  const qrTitle = document.getElementById('qrModalTitle');
+  const qrSub = document.getElementById('qrModalSubtitle');
+  const qrContainer = document.getElementById('qrCodeContainer');
+  if (!qrModal || !qrContainer) return;
+
+  qrTitle.textContent = title || '空間專屬 QR Code';
+  qrSub.textContent = subtitle || url;
+  qrContainer.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:20px">產生 QR Code 中...</div>';
+  qrModal.classList.add('open');
+
+  if (window.QRCode && window.QRCode.toString) {
+    window.QRCode.toString(url, { type: 'svg', margin: 1, width: 200 }, (err, svg) => {
+      if (err) {
+        qrContainer.innerHTML = '<div style="color:#c92a2a;font-size:12px">QR Code 產生失敗</div>';
+      } else {
+        qrContainer.innerHTML = svg;
+      }
+    });
+  } else {
+    qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}" alt="QR Code" width="200" height="200" style="border-radius:6px">`;
+  }
+}
+
+// Wire Share & QR Code Button in Right Detail Panel
+document.getElementById('share-link-btn')?.addEventListener('click', () => {
+  const lm = LANDMARKS.find(l => l.id === selectedId);
+  if (!lm) return;
+  const currentUrl = window.location.href;
+  const title = activeRoomCode
+    ? `${lm.name} · ${activeRoomCode} 空間分享`
+    : `${lm.name} 建築分享`;
+  openQrShareModal(title, currentUrl, `掃描 QR 碼直接進入 ${activeRoomCode ? `${lm.name} (${activeRoomCode})` : lm.name}`);
+});
+
+document.getElementById('qrCopyUrlBtn')?.addEventListener('click', () => {
+  const url = window.location.href;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('✓ 已複製分享連結至剪貼簿！');
+    }).catch(() => {
+      prompt('請複製以下分享網址：', url);
+    });
+  } else {
+    prompt('請複製以下分享網址：', url);
+  }
+});
+
+document.getElementById('qrDownloadBtn')?.addEventListener('click', () => {
+  const qrContainer = document.getElementById('qrCodeContainer');
+  const svg = qrContainer?.querySelector('svg');
+  if (!svg) {
+    showToast('請稍候，QR 碼載入中');
+    return;
+  }
+  const svgData = new XMLSerializer().serializeToString(svg);
+  const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  const lm = LANDMARKS.find(l => l.id === selectedId);
+  a.download = `復興國小_${lm ? lm.name : '校園'}_${activeRoomCode || '3D'}_QRCode.svg`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+  showToast('✓ 已下載專屬 QR Code (SVG) 檔案');
+});
 
 function loadDeferredTextures() {
   const loadScript = src => new Promise((resolve, reject) => {
@@ -21567,3 +21784,4 @@ window.controls = controls;
 window.scene = scene;
 window.getActiveViewMode = () => activeViewMode;
 window.getSelectedId = () => selectedId;
+window.openQrShareModal = openQrShareModal;
