@@ -14474,6 +14474,76 @@ function makeBasketballRulesSignTexture() {
   return tex;
 }
 
+// =========================================================================
+// Helper: 1:1 中華民國國旗 (Flag of the Republic of China) 精確幾何材質產生器
+// 依法規《中華民國國徽國旗法》第三、四條規範：
+// 1. 旗面橫縱比為 3:2 (1200 x 800)
+// 2. 青天面積為全旗四分之一 (長 600、寬 400)，位於左上方旗桿側
+// 3. 白日十二道光芒頂角各為 30 度，呈正向北南西東及均勻排列
+// 4. 白日與光芒間留一青圈，寬度等於白日體直徑十五分之一
+// 5. 靠旗桿邊具備防撕裂白色帆布旗帶與金屬扣環細節
+// =========================================================================
+function makeROCFlagTexture() {
+  const c = document.createElement('canvas');
+  c.width = 1200;
+  c.height = 800;
+  const ctx = c.getContext('2d');
+
+  // 1. 紅地 (滿地紅 - 正式標準色 #de2910)
+  ctx.fillStyle = '#de2910';
+  ctx.fillRect(0, 0, 1200, 800);
+
+  // 2. 青天 (長方形青天面積為全旗四分之一，長 600、寬 400，正式標準海軍藍 #000095)
+  ctx.fillStyle = '#000095';
+  ctx.fillRect(0, 0, 600, 400);
+
+  // 3. 白日十二道光芒 ({12/5} 幾何正星形多邊形，頂點位於外接圓半徑 150，頂角精確為 30 度)
+  const cx = 300, cy = 200;
+  const rRay = 150;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  for (let i = 0; i <= 12; i++) {
+    const step = (i * 5) % 12;
+    const angle = -Math.PI / 2 + step * (2 * Math.PI / 12);
+    const x = cx + rRay * Math.cos(angle);
+    const y = cy + rRay * Math.sin(angle);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  // 4. 青圈 (直徑 150 的十五分之一為 10，青圈外半徑為 75 + 10 = 85)
+  ctx.fillStyle = '#000095';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 85, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 5. 白日體圓 (半徑為 75 之純白正圓)
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 75, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 6. 旗桿側 (左側 x = 0..14) 白色加強旗帶 (Hoist Header) 與黃銅扣環 (Grommets)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 14, 800);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.fillRect(13, 0, 1, 800); // 邊緣縫線細節
+
+  // 上下金屬穿孔扣環
+  [[7, 28], [7, 772]].forEach(([gx, gy]) => {
+    ctx.fillStyle = '#b45309';
+    ctx.beginPath(); ctx.arc(gx, gy, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fef3c7';
+    ctx.beginPath(); ctx.arc(gx, gy, 2, 0, Math.PI * 2); ctx.fill();
+  });
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
   // 10 Command Stage & Flagpoles (`司令台` 雙層洗石子挑簷、半月形洗石子拱額、動物彩繪磁磚台座壁畫、「復興國小」雙幅童趣舞台布幕與三階升旗台)
   const sg = new THREE.Group();
   sg.userData = { landmarkId: 'command-stage' };
@@ -14848,17 +14918,33 @@ function makeBasketballRulesSignTexture() {
   addMesh(sg, new THREE.CylinderGeometry(0.055, 0.095, 10.6, 16), mats.stainless, poleX, 0.40 + 5.30, poleZ);
   addMesh(sg, new THREE.SphereGeometry(0.14, 16, 12), mats.yellow, poleX, 11.05, poleZ);
 
-  const flagGeo = new THREE.PlaneGeometry(1.95, 1.25, 12, 6);
+  // 升旗拉繩與旗桿底部固定扣 (Halyard & Cleat)
+  addMesh(sg, new THREE.CylinderGeometry(0.007, 0.007, 10.6, 6), mats.stainless, poleX + 0.065, 0.40 + 5.30, poleZ);
+  addBox(sg, 0.05, 0.12, 0.06, mats.stainless, poleX + 0.07, 1.35, poleZ);
+
+  // 中華民國國旗 (依憲法與《中華民國國徽國旗法》規範 3:2 寬高比，寬 1.95m、高 1.30m)
+  const flagW = 1.95, flagH = 1.30;
+  const flagGeo = new THREE.PlaneGeometry(flagW, flagH, 24, 12);
+  const flagTex = makeROCFlagTexture();
   const flagMat = new THREE.MeshStandardMaterial({
-    color: 0xd93832,
-    roughness: 0.55,
+    map: flagTex,
+    roughness: 0.60,
+    metalness: 0.05,
     side: THREE.DoubleSide
   });
   const flagMesh = new THREE.Mesh(flagGeo, flagMat);
-  flagMesh.position.set(poleX + 1.02, 10.25, poleZ);
+  flagMesh.position.set(poleX + flagW / 2 + 0.045, 10.20, poleZ);
   flagMesh.castShadow = true;
   sg.add(flagMesh);
-  flagMeshes.push({ mesh: flagMesh, baseAttr: flagGeo.attributes.position.clone(), phase: 0 });
+  flagMeshes.push({
+    mesh: flagMesh,
+    baseAttr: flagGeo.attributes.position.clone(),
+    halfW: flagW / 2,
+    phase: 0
+  });
+
+  // 全域旗幟動畫清單（供主渲染迴圈計算微風飄動）
+  window.__campusFlags = flagMeshes;
 
   sg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'command-stage'; });
   layerGroups.sports.add(sg);
@@ -21485,17 +21571,22 @@ renderer.setAnimationLoop(now => {
     });
   }
 
-  // 7) Animate Waving Flags on Command Stage Flagpoles (`司令台國旗與校旗隨風飄揚`)
-  if (motionEnabled && window.__campusFlags) {
+  // 7) Animate Waving Flags on Command Stage Flagpoles (`司令台國旗隨風飄揚`)
+  if (motionEnabled && window.__campusFlags && window.__campusFlags.length > 0) {
     window.__campusFlags.forEach(f => {
       const posAttr = f.mesh.geometry.attributes.position;
       const baseArr = f.baseAttr.array;
       const arr = posAttr.array;
+      const halfW = f.halfW || 0.975;
       for (let i = 0; i < posAttr.count; i++) {
-        const bx = baseArr[i * 3]; // -0.925 (at pole) to +0.925 (free tip)
+        const bx = baseArr[i * 3]; // -halfW (at pole) to +halfW (free tip)
         const by = baseArr[i * 3 + 1];
-        const pinFactor = Math.max(0, (bx + 0.925) / 1.85);
-        arr[i * 3 + 2] = Math.sin(now * 0.0055 - bx * 3.2 + by * 1.1 + f.phase) * 0.16 * pinFactor;
+        const pinFactor = Math.max(0, Math.min(1, (bx + halfW) / (2 * halfW)));
+        // 自然微風多頻率正弦布料飄動波浪
+        const waveZ = (Math.sin(now * 0.0055 - bx * 3.4 + by * 1.2 + f.phase) * 0.14 +
+                       Math.sin(now * 0.0085 - bx * 5.2) * 0.05) * pinFactor;
+        arr[i * 3 + 2] = waveZ;
+        arr[i * 3 + 1] = by + Math.sin(now * 0.004 + bx * 2.2) * 0.02 * pinFactor;
       }
       posAttr.needsUpdate = true;
     });
