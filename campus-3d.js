@@ -9,6 +9,7 @@ const X = (typeof window !== "undefined" && window.X) || (px => (px - OX) * S);
 const Z = (typeof window !== "undefined" && window.Z) || (py => (py - OY) * S);
 
 const LANDMARKS = (typeof window !== "undefined" && window.LANDMARKS) ? window.LANDMARKS : [];
+const campusTreeRecords = []; // Stored for 2D Architectural Plan (`#plan`) canopy rendering!
 
 const LAYER_CONFIG = [
   { key: 'labels', name: '地點名稱', desc: '在地圖上顯示 13 處精選地標浮動標註', icon: '🏷️' },
@@ -18020,7 +18021,6 @@ const SEASON_PALETTES = {
 };
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x69543e, roughness: 0.9 });
 const palmTrunkMat = new THREE.MeshStandardMaterial({ color: 0x8c897e, roughness: 0.86 });
-const campusTreeRecords = []; // Stored for 2D Architectural Plan (`#plan`) canopy rendering!
 
 // Multi-Species Procedural Tree Builder — 升級為高挑、透光、具層次分支的真實校園景觀喬木
 function addTree(x, z, scale = 1, species = 'broad') {
