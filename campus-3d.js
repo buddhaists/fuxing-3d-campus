@@ -11222,6 +11222,7 @@ function makeTrenchGrateTexture() {
     const zStairSouth = zNorthMain;                   // -14.192m (西棟主棟 9 跨北端 / 川堂世界地圖牆)
     const zStairMid   = -16.05;                       // -16.05m  (樓梯道與北側右轉連通通道之分隔牆線)
     const zStairNorth = -17.85;                       // -17.85m  (3層樓梯通道區與2層廚房增建物之交界線)
+    const kH          = 8.12;                         // 主廚房高度 (~8.12 m)
     const stairBayD   = zStairSouth - zStairNorth;    // 3.658m   (樓梯與連通通道區總進深)
     const stairBayCz  = (zStairSouth + zStairNorth) / 2; // -16.021m
 
@@ -11493,7 +11494,6 @@ function makeTrenchGrateTexture() {
     // ------------------------------------------------------------------------
     // 【第二部分】西棟北翼 L 型 2 層白磁磚廚房增建物 (z = -17.85m ~ -23.35m)
     // ------------------------------------------------------------------------
-    const kH = 8.12;                                  // 主廚房高度 (~8.12 m)
     const kWestX = xWest;                             // -38.11m (西向跑道立面齊平線)
     const kEastX = xEast;                             // -24.31m (東向中庭立面齊平線)
     const kW = kEastX - kWestX;                       // 13.80m
