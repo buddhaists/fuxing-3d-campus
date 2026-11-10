@@ -2538,6 +2538,28 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   return tex;
 }
 
+// Procedural Emergency Air-Raid Shelter Signage (`防空避難設備` 屏東縣警察局列管標示牌)
+function makeShelterSignTexture(text = '防空避難設備') {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#1b5e20';
+  ctx.fillRect(0, 0, 512, 128);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(6, 6, 500, 116);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 44px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 256, 48);
+  ctx.font = 'bold 22px sans-serif';
+  ctx.fillText('AIR RAID SHELTER · 屏東縣警察局列管', 256, 95);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 // ---- 01 北棟（愛悅樓） (`buildNorth` — 1:1 Precision from `正向立面圖`, `背向立面圖`, `地下層平面圖` & `1F/2F/3F 平面圖`) ----
 {
   const g = new THREE.Group();
@@ -2721,13 +2743,139 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
   const mainWestX = ax(3), mainEastX = ax(18), mainSpanW = mainEastX - mainWestX, mainCenterX = (mainWestX + mainEastX) / 2;
   const coreH = 3 * FH;
 
-  // B1 / 1F Plinth Base (`+155 cm`) with B1 Basement Grey Recess Band
-  addBox(g, mainSpanW, baseH, D, whiteTileFine, mainCenterX, baseH / 2, (zf + zb) / 2);
+  // --------------------------------------------------------------------------
+  // B1 / 1F Plinth & Complete 1:1 CAD Underground Basement Structure (BF)
+  // 依據 CAD 地下層平面圖 (Page 1) 及 結構平面圖 (Page 9/10)
+  // --------------------------------------------------------------------------
+  const bfY = -2.50;                     // 地下室地坪標高 -2.50m
+  const bfSlabThick = 0.25;              // 基礎混凝土底板厚度 0.25m
+  const bfWallThick = 0.25;              // 25cm RC.WL 防護外牆厚度
+  const bfClearH = baseH - bfY;          // 地下室淨高 ~ 3.75m (-2.50m 至 1.25m)
+  const bfMidY = bfY + bfClearH / 2;      // 牆體中心 Y (~ -0.625m)
+
+  const concreteFloorMat = new THREE.MeshStandardMaterial({ color: 0x9fa3a8, roughness: 0.90 }); // 清水混凝土防塵耐磨地坪
+  const rcWallMat = new THREE.MeshStandardMaterial({ color: 0xc4c2ba, roughness: 0.92 });        // 25cm RC 剪力防護混凝土牆
+  const rcPartitionMat = new THREE.MeshStandardMaterial({ color: 0xd0cec6, roughness: 0.88 });   // 20cm RC 內部隔間牆
+  const shelterSignMat = new THREE.MeshStandardMaterial({ map: makeShelterSignTexture('防空避難設備'), roughness: 0.45 });
+
+  // A. 1F 地面以上外圍基座牆（Y = 0 至 baseH = 1.25m）
+  // 1F 南正面外飾基座牆 (Axis B / zf)
+  addBox(g, mainSpanW, baseH, 0.25, whiteTileFine, mainCenterX, baseH / 2, zf - 0.125);
+  // 1F 北後走廊外飾基座牆 (Axis E / zb)
+  addBox(g, mainSpanW, baseH, 0.25, whiteTileFine, mainCenterX, baseH / 2, zb + 0.125);
+  // 1F 西端軸線 ③ 與東端軸線 ⑱ 基座山牆
+  addBox(g, 0.25, baseH, D, whiteTileFine, mainWestX + 0.125, baseH / 2, (zf + zb) / 2);
+  addBox(g, 0.25, baseH, D, whiteTileFine, mainEastX - 0.125, baseH / 2, (zf + zb) / 2);
+
+  // B. 地下室基礎底板 (Foundation Concrete Slab at Y = -2.50m)
+  addBox(g, mainSpanW + 0.60, bfSlabThick, coreD + 0.60, concreteFloorMat, mainCenterX, bfY - bfSlabThick / 2, cz);
+  // 雙側地下走廊底板 (Corridor floor slabs down at Y = -2.50m)
+  addBox(g, mainSpanW + 0.60, bfSlabThick, frontCorridorD, concreteFloorMat, mainCenterX, bfY - bfSlabThick / 2, (zCoreFront + zf) / 2);
+  addBox(g, mainSpanW + 0.60, bfSlabThick, rearCorridorD, concreteFloorMat, mainCenterX, bfY - bfSlabThick / 2, (zCoreBack + zb) / 2);
+
+  // C. 25cm RC 防護剪力外牆 (Perimeter 25cm RC Retaining Walls, Y = -2.50m to +1.25m)
+  // 西側外牆 (Axis ③)
+  addBox(g, bfWallThick, bfClearH, coreD + frontCorridorD + rearCorridorD, rcWallMat, mainWestX + bfWallThick / 2, bfMidY, (zf + zb) / 2);
+  // 東側外牆 (Axis ⑱)
+  addBox(g, bfWallThick, bfClearH, coreD + frontCorridorD + rearCorridorD, rcWallMat, mainEastX - bfWallThick / 2, bfMidY, (zf + zb) / 2);
+
+  // 北側主剪力牆 (Axis D, zCoreBack): 留出門洞與通風高窗 (開向北側天井走廊)
+  // 南側主剪力牆 (Axis C, zCoreFront): 留出門洞與通風高窗 (開向南側天井走廊)
+  for (let b = 3; b < 18; b++) {
+    if (b === 11) continue; // ⑪–⑫ 為中央通道
+    const x1 = ax(b), x2 = ax(b + 1), bw = x2 - x1, bcx = (x1 + x2) / 2;
+    // 北側牆體 (Axis D)
+    addBox(g, bw - 0.10, bfClearH - 0.90, bfWallThick, rcWallMat, bcx, bfY + (bfClearH - 0.90) / 2, zCoreBack + bfWallThick / 2);
+    addBox(g, bw - 0.10, 0.40, bfWallThick, rcWallMat, bcx, baseH - 0.20, zCoreBack + bfWallThick / 2);
+    addBox(g, bw - 1.20, 0.50, 0.05, ironGrilleMat, bcx, baseH - 0.65, zCoreBack + bfWallThick / 2);
+
+    // 南側牆體 (Axis C)
+    addBox(g, bw - 0.10, bfClearH - 0.90, bfWallThick, rcWallMat, bcx, bfY + (bfClearH - 0.90) / 2, zCoreFront - bfWallThick / 2);
+    addBox(g, bw - 0.10, 0.40, bfWallThick, rcWallMat, bcx, baseH - 0.20, zCoreFront - bfWallThick / 2);
+    addBox(g, bw - 1.20, 0.50, 0.05, ironGrilleMat, bcx, baseH - 0.65, zCoreFront - bfWallThick / 2);
+  }
+
+  // D. CAD 結構方柱網 (C1–C5 Structural Columns, 0.60m x 0.60m)
+  for (let b = 3; b <= 18; b++) {
+    const cx = ax(b);
+    addBox(g, 0.60, bfClearH, 0.60, rcWallMat, cx, bfMidY, zCoreBack + 0.30);
+    addBox(g, 0.60, bfClearH, 0.60, rcWallMat, cx, bfMidY, zCoreFront - 0.30);
+  }
+
+  // E. 內部空間隔間牆與代表性體量 (Interior Partitions per CAD Page 1)
+  // 1) 軸線 ⑧ 隔間牆 (劃分西側大避難室與儲藏室，留門洞)
+  addBox(g, bfWallThick, bfClearH - 2.20, coreD, rcPartitionMat, ax(8), bfY + 2.20 + (bfClearH - 2.20) / 2, cz);
+  addBox(g, bfWallThick, 2.20, (coreD - 1.80) / 2, rcPartitionMat, ax(8), bfY + 1.10, zCoreBack + (coreD - 1.80) / 4);
+  addBox(g, bfWallThick, 2.20, (coreD - 1.80) / 2, rcPartitionMat, ax(8), bfY + 1.10, zCoreFront - (coreD - 1.80) / 4);
+
+  // 2) 軸線 ⑧–⑨ 儲藏室 (北半側，長 4.5m，深 3.8m)
+  const storeW89 = ax(9) - ax(8), storeCx89 = (ax(8) + ax(9)) / 2;
+  addBox(g, storeW89, bfClearH, bfWallThick, rcPartitionMat, storeCx89, bfMidY, cz);
+  addBox(g, bfWallThick, bfClearH, coreD / 2, rcPartitionMat, ax(9), bfMidY, cz - coreD / 4);
+
+  // 3) 軸線 ⑩–⑪ 地面水箱與配電室 (Water Tank & Electrical Room)
+  const utilW1011 = ax(11) - ax(10), utilCx1011 = (ax(10) + ax(11)) / 2;
+  addBox(g, utilW1011, bfClearH, bfWallThick, rcPartitionMat, utilCx1011, bfMidY, cz);
+  addBox(g, bfWallThick, bfClearH, coreD, rcPartitionMat, ax(10), bfMidY, cz);
+  addBox(g, utilW1011 - 0.40, 2.20, coreD / 2 - 0.40, rcWallMat, utilCx1011, bfY + 1.10, cz - coreD / 4);
+  addBox(g, bfWallThick, 2.20, 0.80, rcPartitionMat, ax(11), bfY + 1.10, cz + coreD / 4 - 1.0);
+
+  // 4) 軸線 ⑪–⑫ 中央川堂梯廳 (Central Lobby & Downward Stair)
+  const bfHallL = ax(11), bfHallR = ax(12), bfHallW = bfHallR - bfHallL, bfHcx = (bfHallL + bfHallR) / 2;
+  addBox(g, bfWallThick, bfClearH - 2.50, coreD, rcWallMat, bfHallL, bfY + 2.50 + (bfClearH - 2.50) / 2, cz);
+  addBox(g, bfWallThick, bfClearH - 2.50, coreD, rcWallMat, bfHallR, bfY + 2.50 + (bfClearH - 2.50) / 2, cz);
+  addBox(g, 0.05, 0.42, 1.60, shelterSignMat, bfHallL - 0.03, bfY + 2.65, cz);
+  addBox(g, 0.05, 0.42, 1.60, shelterSignMat, bfHallR + 0.03, bfY + 2.65, cz);
+
+  // 1F 向下直通地下室之實體階梯踏步 (1F -> BF Downward Stair Flight)
+  {
+    const stDropH = baseH - bfY; // 3.75m
+    const stSteps = 18;
+    const stStepH = stDropH / stSteps; // ~0.208m
+    const stRunZ = 5.20;
+    const stStepD = stRunZ / stSteps; // ~0.288m
+    const stStartX = bfHcx - 0.85;
+    const stStartZ = zCoreFront;
+    for (let s = 0; s < stSteps; s++) {
+      const sy = baseH - (s + 1) * stStepH;
+      const sz = stStartZ - (s + 0.5) * stStepD;
+      addBox(g, 1.50, sy - bfY, stStepD + 0.02, mats.slab, stStartX, bfY + (sy - bfY) / 2, sz);
+      addBox(g, 1.50, 0.025, stStepD + 0.02, corridorFloorMat, stStartX, sy + 0.0125, sz);
+    }
+    addBox(g, 0.14, 0.90, stRunZ, whiteTileFine, stStartX - 0.75 - 0.07, bfY + stDropH / 2 + 0.45, stStartZ - stRunZ / 2);
+    addBox(g, 0.14, 0.90, stRunZ, whiteTileFine, stStartX + 0.75 + 0.07, bfY + stDropH / 2 + 0.45, stStartZ - stRunZ / 2);
+  }
+
+  // 5) 軸線 ⑯ 隔間牆 (劃分東側大避難室與機房/儲藏室)
+  addBox(g, bfWallThick, bfClearH - 2.20, coreD, rcPartitionMat, ax(16), bfY + 2.20 + (bfClearH - 2.20) / 2, cz);
+  addBox(g, bfWallThick, 2.20, (coreD - 1.80) / 2, rcPartitionMat, ax(16), bfY + 1.10, zCoreBack + (coreD - 1.80) / 4);
+  addBox(g, bfWallThick, 2.20, (coreD - 1.80) / 2, rcPartitionMat, ax(16), bfY + 1.10, zCoreFront - (coreD - 1.80) / 4);
+
+  // 6) 軸線 ⑯–⑰ 消防機房 (北側，標高 -2.45m) 與儲藏室 (南側)
+  const utilW1617 = ax(17) - ax(16), utilCx1617 = (ax(16) + ax(17)) / 2;
+  addBox(g, utilW1617, bfClearH, bfWallThick, rcPartitionMat, utilCx1617, bfMidY, cz);
+  addBox(g, bfWallThick, bfClearH, coreD, rcPartitionMat, ax(17), bfMidY, cz);
+
+  // 7) 軸線 ⑰–⑱ 男更衣室 (南側，標高 -2.45m) 與女更衣室 (北側，標高 -2.45m)
+  const utilW1718 = ax(18) - ax(17), utilCx1718 = (ax(17) + ax(18)) / 2;
+  addBox(g, utilW1718, bfClearH, bfWallThick, rcPartitionMat, utilCx1718, bfMidY, cz);
 
   // Continuous 1F, 2F, 3F Floor Slabs & Roof Slab across Full Double-Corridor Depth (`B–E`)
   for (let k = 0; k <= 3; k++) {
     const sy = baseH + k * FH;
-    if (k === 1 || k === 2) {
+    if (k === 0) {
+      // 1F floor slab: keep stairwell open at central hall (⑪–⑫) for downward stair to basement
+      const hL = ax(11), hR = ax(12);
+      const westL = mainWestX - 0.1, eastR = mainEastX + 0.1;
+      addBox(g, hL - westL, 0.26, D + 0.2, corridorFloorMat, (westL + hL) / 2, sy, (zf + zb) / 2);
+      addBox(g, eastR - hR, 0.26, D + 0.2, corridorFloorMat, (hR + eastR) / 2, sy, (zf + zb) / 2);
+      // Front and rear corridor slabs at central bay
+      addBox(g, hR - hL, 0.26, frontCorridorD, corridorFloorMat, (hL + hR) / 2, sy, (zCoreFront + zf) / 2);
+      addBox(g, hR - hL, 0.26, rearCorridorD, corridorFloorMat, (hL + hR) / 2, sy, (zCoreBack + zb) / 2);
+      // East run of central bay (up to 2F) floor slab
+      const eastRunW = (hR - hL) * 0.48;
+      addBox(g, eastRunW, 0.26, coreD, corridorFloorMat, hR - eastRunW / 2, sy, cz);
+    } else if (k === 1 || k === 2) {
       // Leave an open stairwell void in the central hall (⑪–⑫) so the dog-leg stair reads as open
       const hL = ax(11), hR = ax(12);
       const westL = mainWestX - 0.1, eastR = mainEastX + 0.1;
@@ -4389,64 +4537,121 @@ function makeNorthFacadeBannerTexture(mode = 'motto') {
       });
 
       // -----------------------------------------------------------
-      // I. 東側地下採光井、透光採光罩、墨綠鋼管護欄、落水管與太陽能路燈 (Lightwell & Canopy per Photos 6 & 7)
+      // I. 北側與南側地下採光天井走廊、採光罩、防護欄杆與階梯花台 (1:1 CAD Page 1 & 2)
       // -----------------------------------------------------------
       {
-        const lwW = 6.40;                                    // 採光井總長 ~ 6.40m（跨越 103 教室後牆）
-        const lwCx = b2R + lwW / 2;
-        const lwZ1 = zStOuter + 0.18;                        // 護欄與採光罩外緣 Z (~ -35.53m)
-        const lwZ2 = zb;                                     // 教室後牆外緣 Z (~ -34.16m)
-        const lwD = Math.abs(lwZ1 - lwZ2);                   // 採光井淨深 ~ 1.37m
-        const lwCz = (lwZ1 + lwZ2) / 2;
-
-        // 1) 地下採光天井走廊坑體 (Sunken Lightwell Well down to B1 Floor -2.5m)
-        const pitDepth = 2.50;
-        addBox(g, lwW, pitDepth, lwD, mats.whiteWall, lwCx, -pitDepth / 2, lwCz);
-        addBox(g, lwW, 0.15, lwD, corridorFloorMat, lwCx, -pitDepth + 0.075, lwCz);
-
-        // 2) 地面邊緣水泥截水台與排水溝 (Concrete Curb & Gutter)
-        const curbW = lwW + 0.30;
-        const curbH = 0.18;
-        const curbThick = 0.22;
-        addBox(g, curbW, curbH, curbThick, outdoorConcreteMat, lwCx, curbH / 2, lwZ1 + curbThick / 2);
-        // 排水水溝格柵 (Drain Grating)
-        addBox(g, curbW, 0.03, 0.18, ironGrilleMat, lwCx, 0.015, lwZ1 + curbThick + 0.09);
-
-        // 3) 弧形傾斜藍綠色透光 PC 採光罩 (Translucent Cyan/Teal Polycarbonate Skylight Canopy per Photo 6)
-        // 採光罩自教室後牆 Y~1.35m 呈微弧形傾斜向下延伸至外護欄頂部 Y~0.92m
         const skylightCyanMat = new THREE.MeshStandardMaterial({
           color: 0x1f727c,
           roughness: 0.24,
           metalness: 0.12,
           transparent: true,
-          opacity: 0.70
+          opacity: 0.70,
+          depthWrite: false
         });
-        const canopySlopeAng = Math.atan2(1.35 - 0.92, lwD);
-        const canopyLenZ = Math.hypot(lwD, 1.35 - 0.92);
-        const canopyMesh = addBox(g, lwW, 0.025, canopyLenZ, skylightCyanMat, lwCx, (1.35 + 0.92) / 2, lwCz);
-        canopyMesh.rotation.x = -canopySlopeAng;
 
-        // 採光罩深綠色鋁合金壓條支撐骨架 (Aluminum Framing Rafters)
-        const nRafters = 7;
-        for (let r = 0; r <= nRafters; r++) {
-          const rx = b2R + r * (lwW / nRafters);
-          const rib = addBox(g, 0.045, 0.045, canopyLenZ + 0.04, appleGreenMat, rx, (1.35 + 0.92) / 2 + 0.015, lwCz);
-          rib.rotation.x = -canopySlopeAng;
-        }
+        // 1) 北側後走廊沉降採光天井走廊 (North Rear Lightwells at Y = -2.60m, Axis E–F, 淨深 1.70m)
+        const nLwD = 1.70;
+        const nLwZ1 = zb - nLwD;                             // 天井外緣 Z (~ -35.86m)
+        const nLwZ2 = zb;                                    // 後走廊外牆線 Z (~ -34.16m)
+        const nLwCz = (nLwZ1 + nLwZ2) / 2;
+        const nLwFloorY = -2.60;
+        const nPitDepth = baseH - nLwFloorY;                 // 坑深 3.85m
 
-        // 4) 外緣墨綠色金屬圓鋼管防護欄杆 (Dark Green Metal Handrail & Balusters per Photos 6 & 7)
-        const railH = 0.96;
-        addBox(g, lwW, 0.045, 0.045, appleGreenMat, lwCx, railH, lwZ1);
-        addBox(g, lwW, 0.035, 0.035, appleGreenMat, lwCx, railH * 0.52, lwZ1);
-        // 豎向立柱每 1.05m 一根
-        for (let p = 0; p <= 6; p++) {
-          const px = b2R + p * (lwW / 6);
-          addBox(g, 0.04, railH, 0.04, appleGreenMat, px, railH / 2, lwZ1);
-        }
-        // 西側端部向後回折欄杆 (West Return Railing connecting to Axis ③ Column)
-        addBox(g, 0.045, 0.045, lwD, appleGreenMat, b2R, railH, lwCz);
-        addBox(g, 0.035, 0.035, lwD, appleGreenMat, b2R, railH * 0.52, lwCz);
-        addBox(g, 0.04, railH, 0.04, appleGreenMat, b2R, railH / 2, lwZ2);
+        const northRuns = [
+          { x1: ax(3), x2: ax(11), label: 'west' },          // 西翼 36.0m
+          { x1: ax(12), x2: ax(18), label: 'east' }          // 東翼 27.0m
+        ];
+
+        northRuns.forEach(run => {
+          const rW = run.x2 - run.x1;
+          const rCx = (run.x1 + run.x2) / 2;
+
+          // A. 沉降天井坑體地坪與四周 RC 擋土矮牆
+          addBox(g, rW, 0.20, nLwD, concreteFloorMat, rCx, nLwFloorY + 0.10, nLwCz);
+          // 北外側擋土牆 (外緣 Y=-2.60m 至 地面 +0.20m 截水緣石)
+          addBox(g, rW, nPitDepth + 0.20, 0.20, outdoorConcreteMat, rCx, (nLwFloorY + baseH + 0.20) / 2, nLwZ1 - 0.10);
+          // 兩端封頭牆
+          addBox(g, 0.20, nPitDepth + 0.20, nLwD, outdoorConcreteMat, run.x1 + 0.10, (nLwFloorY + baseH + 0.20) / 2, nLwCz);
+          addBox(g, 0.20, nPitDepth + 0.20, nLwD, outdoorConcreteMat, run.x2 - 0.10, (nLwFloorY + baseH + 0.20) / 2, nLwCz);
+
+          // B. 地面邊緣水泥截水台與排水溝
+          const curbH = 0.18, curbThick = 0.22;
+          addBox(g, rW + 0.20, curbH, curbThick, outdoorConcreteMat, rCx, curbH / 2, nLwZ1 - curbThick / 2);
+          addBox(g, rW + 0.20, 0.03, 0.18, ironGrilleMat, rCx, 0.015, nLwZ1 - curbThick - 0.09);
+
+          // C. 傾斜透光 PC 採光罩 (Translucent Polycarbonate Canopy per Photo 6)
+          const canopySlopeAng = Math.atan2(1.35 - 0.88, nLwD);
+          const canopyLenZ = Math.hypot(nLwD, 1.35 - 0.88);
+          const cMesh = addBox(g, rW, 0.025, canopyLenZ, skylightCyanMat, rCx, (1.35 + 0.88) / 2, nLwCz);
+          cMesh.rotation.x = -canopySlopeAng;
+
+          // 鋁合金壓條骨架 (Rafters every ~2.0m)
+          const nRafters = Math.max(4, Math.round(rW / 2.0));
+          for (let r = 0; r <= nRafters; r++) {
+            const rx = run.x1 + r * (rW / nRafters);
+            const rib = addBox(g, 0.045, 0.045, canopyLenZ + 0.04, appleGreenMat, rx, (1.35 + 0.88) / 2 + 0.015, nLwCz);
+            rib.rotation.x = -canopySlopeAng;
+          }
+
+          // D. 外緣墨綠色金屬圓鋼管防護欄杆 (Dark Green Metal Handrail & Balusters per Photo 6 & 7)
+          const railH = 0.96;
+          addBox(g, rW, 0.045, 0.045, appleGreenMat, rCx, railH, nLwZ1 - 0.04);
+          addBox(g, rW, 0.035, 0.035, appleGreenMat, rCx, railH * 0.52, nLwZ1 - 0.04);
+          const nPosts = Math.max(4, Math.round(rW / 1.5));
+          for (let p = 0; p <= nPosts; p++) {
+            const px = run.x1 + p * (rW / nPosts);
+            addBox(g, 0.04, railH, 0.04, appleGreenMat, px, railH / 2, nLwZ1 - 0.04);
+          }
+          // 兩端回折欄杆
+          addBox(g, 0.045, 0.045, nLwD, appleGreenMat, run.x1 + 0.04, railH, nLwCz);
+          addBox(g, 0.045, 0.045, nLwD, appleGreenMat, run.x2 - 0.04, railH, nLwCz);
+        });
+
+        // 2) 南側前走廊沉降採光天井與「階梯花台」(South Front Lightwells & Stepped Planters, Axis A–B)
+        const sLwD = 2.40;
+        const sLwZ1 = zf;                                    // 前走廊外緣 Z (~ -21.63m)
+        const sLwZ2 = zf + sLwD;                             // 南側中庭外緣 Z (~ -19.23m)
+        const sLwCz = (sLwZ1 + sLwZ2) / 2;
+
+        const southRuns = [
+          { x1: ax(5), x2: ax(11) },                         // 西翼中庭採光段
+          { x1: ax(12), x2: ax(16) }                         // 東翼中庭採光段
+        ];
+        southRuns.forEach(run => {
+          const rW = run.x2 - run.x1;
+          const rCx = (run.x1 + run.x2) / 2;
+          addBox(g, rW, 0.20, sLwD, concreteFloorMat, rCx, nLwFloorY + 0.10, sLwCz);
+          addBox(g, rW, nPitDepth, 0.20, outdoorConcreteMat, rCx, (nLwFloorY + baseH) / 2, sLwZ2 + 0.10);
+          // 傾斜採光罩 (南低北高，向南傾斜排水)
+          const sCanopySlope = Math.atan2(1.35 - 0.88, sLwD);
+          const sCanopyLenZ = Math.hypot(sLwD, 1.35 - 0.88);
+          const sCanopyMesh = addBox(g, rW, 0.025, sCanopyLenZ, skylightCyanMat, rCx, (1.35 + 0.88) / 2, sLwCz);
+          sCanopyMesh.rotation.x = sCanopySlope;
+        });
+
+        // 3) 南側「階梯花台」(Stepped Garden Planters per CAD Page 1 & 2: 位於 Axis ③–⑤ 與 ⑯–⑱)
+        const planterRuns = [
+          { x1: ax(3), x2: ax(5), cx: (ax(3) + ax(5)) / 2, w: ax(5) - ax(3) },
+          { x1: ax(16), x2: ax(18), cx: (ax(16) + ax(18)) / 2, w: ax(18) - ax(16) }
+        ];
+        const nStepsPl = 10;
+        const pStepH = Math.abs(nLwFloorY) / nStepsPl;       // 每級高約 0.26m
+        const pStepD = sLwD / nStepsPl;                      // 每級進深約 0.24m
+
+        planterRuns.forEach(pr => {
+          for (let s = 0; s < nStepsPl; s++) {
+            const stepY = nLwFloorY + (s + 1) * pStepH;
+            const stepZ = sLwZ1 + (s + 0.5) * pStepD;
+            // 階梯水泥踏面
+            addBox(g, pr.w, stepY - nLwFloorY, pStepD + 0.02, mats.slab, pr.cx, nLwFloorY + (stepY - nLwFloorY) / 2, stepZ);
+            addBox(g, pr.w, 0.03, pStepD + 0.02, outdoorConcreteMat, pr.cx, stepY + 0.015, stepZ);
+            // 綠色花台植栽草皮
+            if (s % 2 === 0) {
+              addBox(g, pr.w * 0.35, 0.12, pStepD * 0.85, foliageDarkMat, pr.cx - pr.w * 0.25, stepY + 0.06, stepZ);
+              addBox(g, pr.w * 0.35, 0.12, pStepD * 0.85, foliageLightMat, pr.cx + pr.w * 0.25, stepY + 0.06, stepZ);
+            }
+          }
+        });
 
         // 5) 教室外牆轉角垂直落水管 (Vertical Cream Rainwater Downpipe per Photo 6)
         // 實景照片 6 中，103 教室後牆轉角處有一根筆直貫通至地面的垂直落水管
@@ -19184,21 +19389,25 @@ SOLID_BUILDING_OBSTACLES.push(
   { minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(233),       maxZ: Z(315) + 0.5 }
 );
 
-// Collision footprint exclusions: allow walking inside North Building (愛悅樓) Front/Rear corridors, Central Stairwell & Breezeways!
+// Collision footprint exclusions: allow walking inside North Building (愛悅樓) Front/Rear corridors, Central Stairwell, Basement & Lightwells!
 function isWalkPointAllowed(wx, wz) {
   if (wx < -125 || wx > 130 || wz < -60 || wz > 80) return false;
 
-  // North Building (愛悅樓): walls are now solid. Walkable = front corridor, rear corridor, central stair hall,
-  // and the interior of each classroom reached through its open doorway (data published by buildNorth).
+  // North Building (愛悅樓):
   const C = window.NORTH_COLLISION;
-  if (C && wx > C.westX && wx < C.eastX && wz > C.zb - 0.3 && wz < C.zf + 0.3) {
+  if (C && wx > C.westX - 0.2 && wx < C.eastX + 0.2 && wz > C.zb - 1.95 && wz < C.zf + 2.65) {
+    // If exploring Basement (camera Y <= 1.55m): allow full basement rooms, central stair lobby, and lightwells!
+    if (typeof camera !== 'undefined' && camera.position.y <= 1.55) {
+      if (wz >= C.zb - 1.85 && wz <= C.zb + 0.10) return true; // North Lightwell corridor
+      if (wz >= C.zf - 0.10 && wz <= C.zf + 2.55) return true; // South Lightwell corridor & stepped garden planters
+      if (wx >= C.hallL - 0.2 && wx <= C.hallR + 0.2 && wz >= C.zCB - 0.2 && wz <= C.zCF + 0.2) return true; // central lobby
+      if (wz >= C.zCB + 0.15 && wz <= C.zCF - 0.15) return true; // air-raid shelters and utility rooms
+      return false;
+    }
+    // Ground & upper floors (1F–3F)
     if (wz >= C.zCF - 0.05) return true;                       // front corridor (+ balcony edge)
     if (wz <= C.zCB + 0.05) return true;                       // rear corridor
-    if (wx >= C.hallL && wx <= C.hallR) {                      // central stair hall
-      // 1F closed basement iron roller gate on west half (wx < 20.0): prevent walking through closed iron gate
-      if (typeof camera !== 'undefined' && camera.position.y < 3.8 && wx < 20.0 && wz > C.zCF - 0.40) return false;
-      return true;
-    }
+    if (wx >= C.hallL && wx <= C.hallR) return true;           // central stair hall (including downward stair)
     for (const r of C.rooms) {
       if (wx > r.x1 + 0.25 && wx < r.x2 - 0.25 && wz > C.zCB + 0.25 && wz < C.zCF - 0.25) return true; // classroom interior
       if (Math.abs(wx - r.doorX) < 0.38 && wz >= C.zCF - 0.30 && wz <= C.zCF + 0.05) return true;      // open doorway
@@ -19324,17 +19533,23 @@ document.getElementById('walk-start').addEventListener('click', () => {
 });
 document.getElementById('walk-exit').addEventListener('click', exitWalkMode);
 
-// Quick Floor Jump Shortcuts inside North Building (1F: y=2.97m, 2F: y=6.57m, 3F: y=10.17m)
+// Quick Floor Jump Shortcuts inside North Building (BF: y=-0.78m, 1F: y=2.97m, 2F: y=6.57m, 3F: y=10.17m)
 const jumpToNorthFloor = (floorLevel) => {
-  if (!walkState.active) startWalkMode([20.0, 1.25 + (floorLevel - 1) * 3.6 + 1.72, -26.0], [20.0, 1.25 + (floorLevel - 1) * 3.6 + 1.72, -32.0]);
+  const isBf = (floorLevel === 0 || floorLevel === 'BF' || floorLevel === 'B1');
+  const posY = isBf ? (-2.50 + 1.72) : (1.25 + (floorLevel - 1) * 3.6 + 1.72);
+  const posZ = isBf ? -30.0 : -26.0;
+  const tgtZ = isBf ? -34.0 : -32.0;
+  const label = isBf ? 'BF 地下室防空避難大廳' : `${floorLevel}F 走廊`;
+  if (!walkState.active) startWalkMode([20.0, posY, posZ], [20.0, posY, tgtZ]);
   else {
-    camera.position.set(20.0, 1.25 + (floorLevel - 1) * 3.6 + 1.72, -26.0);
-    walkState.yaw = 0; // facing north into central stair & corridor
+    camera.position.set(20.0, posY, posZ);
+    walkState.yaw = 0;
     walkState.pitch = 0.02;
     updateWalkCameraTarget();
-    showToast(`已抵達北棟（愛悅樓）${floorLevel}F 走廊（雙走廊與樓梯可自由走動）`);
+    showToast(`已抵達北棟（愛悅樓）${label}（可自由走動探索）`);
   }
 };
+document.getElementById('walk-floor-bf')?.addEventListener('click', () => jumpToNorthFloor('BF'));
 document.getElementById('walk-floor-1f')?.addEventListener('click', () => jumpToNorthFloor(1));
 document.getElementById('walk-floor-2f')?.addEventListener('click', () => jumpToNorthFloor(2));
 document.getElementById('walk-floor-3f')?.addEventListener('click', () => jumpToNorthFloor(3));
@@ -19438,10 +19653,10 @@ const OFFICIAL_PLAN_CONFIG = {
     src: './assets/plans/bf.jpg',
     title: '115學年度 屏東縣復興國小校園 - BF地下層平面圖（版本:2026_0801）',
     clipY: 1.32,
-    slabY: 0.45,
+    slabY: -2.35,
     camY: 158,
     bldgHeaders: {
-      'north-building': '北棟01 (BF防空避難室)',
+      'north-building': '北棟11 (BF防空避難室與機房群)',
       'east-building':  '東棟0 (BF)',
       'south-building': '南棟01 (展演廳30 BF)',
       'west-building':  '西棟0 (BF)',
@@ -19936,8 +20151,17 @@ const PRESET_TOUR_ROUTES = {
         duration: 5500
       },
       {
+        landmarkId: 'north-building',
+        title: '第 5 站 · 北棟地下室防空避難大廳與採光天井',
+        tag: '地下防護',
+        desc: '北棟地下層（標高 -2.50m）配置東西兩座大型防空避難大廳、消防機房、配電室與更衣室，外側設有沉降採光天井走廊與採光罩。',
+        cam: [20.0, 1.2, -22.0],
+        target: [20.0, -1.8, -32.0],
+        duration: 5500
+      },
+      {
         landmarkId: 'west-building',
-        title: '第 5 站 · 西棟育樂樓專科教學中心',
+        title: '第 6 站 · 西棟育樂樓專科教學中心',
         tag: '專科探索',
         desc: '育樂樓 1F 圓柱川堂與自然科學實驗室、音樂教室，西側連接 2 層供餐廚房。',
         cam: [-4.5, 6.2, -2.5],
@@ -19946,7 +20170,7 @@ const PRESET_TOUR_ROUTES = {
       },
       {
         landmarkId: 'sports-field',
-        title: '第 6 站 · 運動場 PU 跑道與司令台',
+        title: '第 7 站 · 運動場 PU 跑道與司令台',
         tag: '體育下課',
         desc: '下課鐘聲迴盪於 200m 全天候藍橘 PU 跑道與彩繪司令台，學生奔向戶外揮灑活力。',
         cam: [-65, 14, 18],
@@ -20627,25 +20851,40 @@ renderer.setAnimationLoop(now => {
       if (walkState.keys.up) {
         camera.position.y += vSpeed;
       } else if (walkState.keys.down) {
-        camera.position.y = Math.max(1.72, camera.position.y - vSpeed);
+        camera.position.y = Math.max(-0.78, camera.position.y - vSpeed);
       } else {
         // Automatic Stair Climbing inside North Building Central Stairwell (⑪–⑫: X from 17.0 to 23.0, Z from -38.5 to -26.5)
         const inStairwell = (camera.position.x >= 17.0 && camera.position.x <= 23.0 && camera.position.z >= -38.5 && camera.position.z <= -26.5);
         if (inStairwell) {
-          // East flight (x > 20.0): goes up from south (Z=-26.5) to north (Z=-35.0)
-          // West flight (x <= 20.0): goes up from north (Z=-35.0) to south (Z=-26.5)
-          const curFloor = Math.floor(Math.max(0, (camera.position.y - 1.72 - 1.25) / 3.6));
-          const floorBaseY = 1.25 + curFloor * 3.6 + 1.72;
-          const isEastUp = camera.position.x > 20.0;
-          if (isEastUp && camera.position.z <= -26.5 && camera.position.z >= -35.0) {
-            const stairProgress = (-26.5 - camera.position.z) / 8.5; // 0 to 1
-            const targetY = floorBaseY + THREE.MathUtils.clamp(stairProgress, 0, 1) * 1.8;
-            camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
-          } else if (!isEastUp && camera.position.z >= -35.0 && camera.position.z <= -26.5) {
-            const stairProgress = (camera.position.z - (-35.0)) / 8.5; // 0 to 1
-            const targetY = floorBaseY + 1.8 + THREE.MathUtils.clamp(stairProgress, 0, 1) * 1.8;
-            camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
+          // Downward flight to Basement on west run (x <= 20.0, z from -26.0 to -32.5, y < 3.20)
+          if (camera.position.x <= 20.0 && camera.position.y < 3.20 && camera.position.z >= -32.5 && camera.position.z <= -26.0) {
+            const bfProg = (-26.0 - camera.position.z) / 6.0; // 0 at 1F (z=-26.0), 1 at BF (z=-32.0)
+            const targetY = THREE.MathUtils.lerp(2.97, -0.78, THREE.MathUtils.clamp(bfProg, 0, 1));
+            camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
+          } else {
+            // East flight (x > 20.0): goes up from south (Z=-26.5) to north (Z=-35.0)
+            // West flight (x <= 20.0): goes up from north (Z=-35.0) to south (Z=-26.5)
+            const curFloor = Math.floor(Math.max(0, (camera.position.y - 1.72 - 1.25) / 3.6));
+            const floorBaseY = 1.25 + curFloor * 3.6 + 1.72;
+            const isEastUp = camera.position.x > 20.0;
+            if (isEastUp && camera.position.z <= -26.5 && camera.position.z >= -35.0) {
+              const stairProgress = (-26.5 - camera.position.z) / 8.5; // 0 to 1
+              const targetY = floorBaseY + THREE.MathUtils.clamp(stairProgress, 0, 1) * 1.8;
+              camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
+            } else if (!isEastUp && camera.position.z >= -35.0 && camera.position.z <= -26.5) {
+              const stairProgress = (camera.position.z - (-35.0)) / 8.5; // 0 to 1
+              const targetY = floorBaseY + 1.8 + THREE.MathUtils.clamp(stairProgress, 0, 1) * 1.8;
+              camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
+            }
           }
+        }
+        // Stepped Garden Planters descent to Basement South Lightwell (X: -26.5..-17.5 & 32.0..43.0, Z: -21.65..-19.15)
+        const inSteppedPlanter = (camera.position.z >= -21.65 && camera.position.z <= -19.15 &&
+          ((camera.position.x >= -26.5 && camera.position.x <= -17.5) || (camera.position.x >= 32.0 && camera.position.x <= 43.0)));
+        if (inSteppedPlanter) {
+          const pProg = (camera.position.z - (-19.25)) / (-2.40); // 0 at south ground, 1 at sunken lightwell
+          const targetY = THREE.MathUtils.lerp(1.72, -0.78, THREE.MathUtils.clamp(pProg, 0, 1));
+          camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
         }
         // Automatic Stair Climbing inside West Building North Staircase (東面上樓：X from -26.80 to -32.15, Z from -16.05 to -14.19)
         const inWestNorthStair = (camera.position.x >= -32.25 && camera.position.x <= -26.70 && camera.position.z >= -16.05 && camera.position.z <= -14.19);
@@ -20667,7 +20906,7 @@ renderer.setAnimationLoop(now => {
         camera.position.y += vSpeed;
         updateWalkCameraTarget();
       } else if (walkState.keys.down) {
-        camera.position.y = Math.max(1.72, camera.position.y - vSpeed);
+        camera.position.y = Math.max(-0.78, camera.position.y - vSpeed);
         updateWalkCameraTarget();
       }
     }
