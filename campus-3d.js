@@ -11392,11 +11392,31 @@ function makeTrenchGrateTexture() {
         // (b) 【2F/3F 後走廊北延段】(x = -34.13m ~ -38.11m, z = -14.192m ~ -17.85m，無縫銜接西棟後走廊)
         addBox(g, westCorW + 0.08, 0.26, stairBayD, whiteTileMat, westCorCx, fy - 0.13, stairBayCz);
         addBox(g, westCorW, 0.02, stairBayD - 0.08, stairLandingTerrazzo, westCorCx, fy + 0.01, stairBayCz);
-        // 後走廊西側外緣白色磁磚矮牆 + 天藍色金屬欄杆 (迎入西向跑道側天光，還原 Photo 1 梯頂明亮端景！)
-        const paraH = 1.06;
-        addBox(g, 0.24, paraH, stairBayD, whiteTileMat, xWest + 0.14, fy + paraH / 2, stairBayCz);
-        addBox(g, 0.045, 0.045, stairBayD, skyBlueRailMat, xWest + 0.14, fy + paraH + 0.22, stairBayCz);
-        addBox(g, 0.035, 0.035, stairBayD, skyBlueRailMat, xWest + 0.14, fy + paraH + 0.11, stairBayCz);
+        
+        // 操場側（西向 x = xWest）依據 20261110_160131.jpg 與 20261110_160152.jpg 實景重構為連續二丁掛白磁磚外牆：
+        if (fl === 2) {
+          // 2F: 白色二丁掛磁磚連續外牆 + 4格採光窗（無縫銜接西棟 2F 與廚房增建 2F 連續立面）
+          addBox(g, 0.26, 1.15, stairBayD, whiteTileMat, xWest + 0.14, fy + 1.15 / 2, stairBayCz);
+          addBox(g, 0.26, fh - 2.60, stairBayD, whiteTileMat, xWest + 0.14, fy + 2.60 + (fh - 2.60) / 2, stairBayCz);
+          const pierD = (stairBayD - 2.35) / 2;
+          addBox(g, 0.26, 1.45, pierD, whiteTileMat, xWest + 0.14, fy + 1.15 + 1.45 / 2, zStairSouth - pierD / 2);
+          addBox(g, 0.26, 1.45, pierD, whiteTileMat, xWest + 0.14, fy + 1.15 + 1.45 / 2, zStairNorth + pierD / 2);
+          const w2F_Stair = addMesh(g, new THREE.PlaneGeometry(2.35, 1.40), winFrost4Mat, xWest - 0.02, fy + 1.15 + 1.40 / 2, stairBayCz, false);
+          w2F_Stair.rotation.y = -Math.PI / 2;
+          addBox(g, 0.08, 1.45, 2.40, darkMetalMat, xWest + 0.01, fy + 1.15 + 1.45 / 2, stairBayCz);
+        } else {
+          // 3F: 白色二丁掛磁磚外牆 + 延續西棟 3F 全線淺綠色水平遮陽百葉與採光窗
+          addBox(g, 0.26, 1.15, stairBayD, whiteTileMat, xWest + 0.14, fy + 1.15 / 2, stairBayCz);
+          addBox(g, 0.26, fh - 2.95, stairBayD, whiteTileMat, xWest + 0.14, fy + 2.95 + (fh - 2.95) / 2, stairBayCz);
+          for (let lv = 0; lv < 5; lv++) {
+            const ly = fy + 1.35 + lv * 0.38;
+            const louver = addBox(g, 0.42, 0.04, stairBayD - 0.08, greenLouverMat, xWest - 0.08, ly, stairBayCz);
+            louver.rotation.z = -0.22;
+          }
+          const w3F_Stair = addMesh(g, new THREE.PlaneGeometry(2.35, 1.50), win4x3Mat, xWest + 0.04, fy + 1.15 + 1.50 / 2, stairBayCz, false);
+          w3F_Stair.rotation.y = -Math.PI / 2;
+          addBox(g, 0.08, 1.55, 2.40, darkMetalMat, xWest + 0.05, fy + 1.15 + 1.55 / 2, stairBayCz);
+        }
         addBox(g, 0.46, fh - 0.20, 0.46, colTileMat, xWest + 0.23, fy + (fh - 0.20) / 2, zStairNorth + 0.23);
         addBox(g, 0.42, fh - 0.20, 0.42, colTileMat, xCoreWest,    fy + (fh - 0.20) / 2, zStairNorth + 0.21);
         // 梯頂通往後走廊之門洞過梁 (Portal Lintel at x = xCoreWest seen at top of stairs in Photo 1)
@@ -11444,12 +11464,24 @@ function makeTrenchGrateTexture() {
 
       // 5. 【1F 後走廊北延段與廚房防盜鐵捲門】(x = -34.13m ~ -38.11m, z = -14.192m ~ -17.85m · Photo 2 左側背景鐵捲門)
       addBox(g, westCorW, y1F, stairBayD, corridorSlabMat, westCorCx, y1F / 2, stairBayCz);
+
+      // 【1F 操場側二丁掛白磁磚實體連續外牆】(100% 依據實景相片 20261110_160131.jpg 與 20261110_160152.jpg：徹底消除紅框處穿透空洞)
+      // 底部紅褐色磁磚柱腳/踢腳 (高度 0.90m)
+      addBox(g, 0.28, 0.90, stairBayD, dadoBrickMat, xWest + 0.14, y1F + 0.45, stairBayCz);
+      // 實體白磁磚外牆身 (高至 2F 梁底)
+      addBox(g, 0.26, h1F - 0.90, stairBayD, whiteTileMat, xWest + 0.14, y1F + 0.90 + (h1F - 0.90) / 2, stairBayCz);
+      // 操場側外牆橫向 3 格金屬排窗 (依據 20261110_160152.jpg 實景：中段橫向排窗)
+      const w1F_Stair = addMesh(g, new THREE.PlaneGeometry(1.65, 0.62), winStripMat, xWest - 0.02, y1F + 2.15, stairBayCz, false);
+      w1F_Stair.rotation.y = -Math.PI / 2;
+      addBox(g, 0.08, 0.70, 1.72, darkMetalMat, xWest + 0.01, y1F + 2.15, stairBayCz);
+
       addBox(g, 0.48, h1F - 0.20, 0.48, colTileMat, xWest + 0.26, y1F + (h1F - 0.20) / 2, zStairNorth + 0.24);
       addBox(g, 0.52, 0.90, 0.52, dadoBrickMat,     xWest + 0.26, y1F + 0.45,              zStairNorth + 0.24);
       // 1F 梯底下方與後走廊北端（z = zStairNorth = -17.85m）大型金屬鐵捲門 (Photo 2 左下角清晰可見之鐵捲門！)
       addBox(g, 2.50, 2.65, 0.08, shutterMat, westCorCx + 0.35, y1F + 1.325, zStairNorth + 0.08);
-      // 3F 與廚房交界北牆 (z = zStairNorth = -17.85m, y = kH ~ yRF)
-      addBox(g, totalW, yRF - 8.12 + 0.20, 0.24, whiteTileMat, (xWest + xEast) / 2, 8.12 + (yRF - 8.12) / 2, zStairNorth);
+      // 3F 與廚房交界北端封閉山牆 (z = zStairNorth = -17.85m, y = kH ~ yRF + parapetH)
+      const nGableH = (yRF + parapetH) - kH;
+      addBox(g, totalW + 0.16, nGableH, 0.26, whiteTileMat, (xWest + xEast) / 2, kH + nGableH / 2, zStairNorth);
 
       // 6. 【3F 頂板與屋頂女兒牆梁框】(y = yRF = 11.30m · Photo 2 右上角白色二丁掛門框壓頂)
       addBox(g, totalW + 0.08, 0.26, stairBayD, whiteTileMat, (xWest + xEast) / 2, yRF - 0.13, stairBayCz);
@@ -11486,6 +11518,8 @@ function makeTrenchGrateTexture() {
     addBox(g, kW, kH, kD, kitchenTileMat, kCx, kH / 2, kCz);
     addBox(g, kW + 0.24, 0.22, kD + 0.24, whiteTileMat, kCx, kH + 0.05, kCz);
     addBox(g, kW + 0.12, 0.14, kD + 0.12, colTileMat,   kCx, kH + 0.20, kCz);
+    // 西向操場立面延續 0.90m 高紅褐色磁磚踢腳 (依據 20261110_160152.jpg 連續外觀)
+    addBox(g, 0.28, 0.90, kD, dadoBrickMat, kWestX + 0.14, y1F + 0.45, kCz);
 
     // B. 紅色框線範圍：【西北側突出建物區】 (Red-Boxed NW Wing · 1F 穿廊 + 2F 實體房間)
     const nw2FH = nwRoofH - y2F;
