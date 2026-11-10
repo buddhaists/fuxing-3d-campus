@@ -22,7 +22,9 @@ window.addEventListener('unhandledrejection', e => {
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#faf8f2">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>復</text></svg>">
 <link rel="preload" as="image" href="./assets/campus_overview_preview.webp" type="image/webp">
+<link rel="preload" as="script" href="./campus-ui.js">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=Noto+Serif+TC:wght@500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
@@ -209,6 +211,38 @@ document.addEventListener('click', function(e) {
   @keyframes previewGlow {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
+  }
+  .preview-engine-status {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    background: rgba(250, 248, 242, 0.92);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 999px;
+    box-shadow: 0 4px 18px rgba(37, 61, 55, 0.12), inset 0 0 0 1px rgba(37, 61, 55, 0.1);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    z-index: 3;
+    pointer-events: none;
+    user-select: none;
+    transition: opacity 0.3s;
+  }
+  .preview-pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #315b4e;
+    animation: previewDotPulse 1.4s infinite ease-in-out;
+  }
+  @keyframes previewDotPulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1.2); }
   }
   #plan {
     z-index: 4;
@@ -1917,6 +1951,10 @@ document.addEventListener('click', function(e) {
         <img src="./assets/campus_overview_preview.jpg" alt="校園鳥瞰預覽" class="campus-preview-img" fetchpriority="high" decoding="sync">
       </picture>
       <div class="campus-preview-shimmer"></div>
+      <div id="preview-engine-status" class="preview-engine-status">
+        <span class="preview-pulse-dot" aria-hidden="true"></span>
+        <span class="preview-status-text">三維高精模型正在就緒...</span>
+      </div>
     </div>
     <div class="scene-labels" id="sceneLabels" data-light="day"></div>
     <svg id="plan" viewBox="-135 -70 275 165" role="img" aria-label="屏東縣復興國小 115學年度平面配置圖" hidden></svg>
@@ -2567,6 +2605,7 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script src="./vendor/qrcode.min.js"></script>
-<script type="module" src="./campus-3d.js?v=2.2"></script>
+<script src="./campus-ui.js"></script>
+<script type="module" src="./campus-3d.js?v=2.3"></script>
 </body>
 </html>
