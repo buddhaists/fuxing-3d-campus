@@ -1,7 +1,7 @@
 // 屏東縣屏東市復興國小 3D 數位校園 (Service Worker)
-// Version: fuxing-3d-campus-v2.3
+// Version: fuxing-3d-campus-v2.4.0
 
-const CACHE_NAME = 'fuxing-3d-campus-v2.3';
+const CACHE_NAME = 'fuxing-3d-campus-v2.4.0';
 
 // 核心極速快取清單 (App Shell + 3D 引擎 + 1:1 2.5D 高清預覽底圖 + 核心平面圖 + 離線 QR Code)
 const PRECACHE_ASSETS = [
@@ -35,6 +35,7 @@ self.addEventListener('activate', event => {
       return Promise.all(
         keys.map(key => {
           if (key !== CACHE_NAME) {
+            console.log('[SW] Purging outdated cache:', key);
             return caches.delete(key);
           }
         })
@@ -52,24 +53,31 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // index.html 採 Stale-While-Revalidate 策略（確保隨時取得最新版本，同時 0ms 讀取本機快取）
-  if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
+  // 1. 核心程式碼 (index.html, campus-ui.js, campus-3d.js 及帶版本號請求) 採 Network-First 策略：
+  // 優先向網路獲取最新程式碼與 3D 模型；若網路失敗或離線時，則自快取還原
+  if (
+    url.pathname.endsWith('/index.html') ||
+    url.pathname.endsWith('/') ||
+    url.pathname.endsWith('campus-3d.js') ||
+    url.pathname.endsWith('campus-ui.js') ||
+    url.pathname.endsWith('sw.js') ||
+    url.search.includes('v=')
+  ) {
     event.respondWith(
-      caches.open(CACHE_NAME).then(async cache => {
-        const cached = await cache.match(req);
-        const fetchPromise = fetch(req).then(networkRes => {
-          if (networkRes && networkRes.status === 200) {
-            cache.put(req, networkRes.clone());
-          }
-          return networkRes;
-        }).catch(() => cached);
-        return cached || fetchPromise;
-      })
+      fetch(req).then(networkRes => {
+        if (networkRes && networkRes.status === 200) {
+          const resClone = networkRes.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(req, resClone);
+          });
+        }
+        return networkRes;
+      }).catch(() => caches.match(req))
     );
     return;
   }
 
-  // 靜態資源（vendor, assets, tex）採 Cache-First 策略，大幅消除重複下載
+  // 2. 第三方靜態函式庫與大型圖像 (vendor, assets, plans, webp) 採 Cache-First 策略
   event.respondWith(
     caches.match(req).then(cached => {
       if (cached) return cached;
