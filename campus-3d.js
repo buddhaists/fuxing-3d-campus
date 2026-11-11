@@ -18406,6 +18406,201 @@ plan3DOverlayGroup.add(planRooms3DGroup, planPaths3DGroup, planImg3DGroup);
 plan3DOverlayGroup.visible = false;
 scene.add(plan3DOverlayGroup);
 
+// ==========================================
+// GSES 3D 360 Spot Beacon in Courtyard Garden
+// ==========================================
+const panoBeaconGroup = new THREE.Group();
+panoBeaconGroup.position.set(0, 2.2, 0);
+
+const beaconCoreGeo = new THREE.SphereGeometry(0.85, 16, 16);
+const beaconCoreMat = new THREE.MeshBasicMaterial({ color: 0xef5350 });
+const beaconCoreMesh = new THREE.Mesh(beaconCoreGeo, beaconCoreMat);
+beaconCoreMesh.userData = { is360Spot: true, spotId: 'courtyard-360' };
+panoBeaconGroup.add(beaconCoreMesh);
+
+const beaconRingGeo = new THREE.RingGeometry(0.9, 1.45, 32);
+beaconRingGeo.rotateX(-Math.PI / 2);
+const beaconRingMat = new THREE.MeshBasicMaterial({
+  color: 0xef5350,
+  side: THREE.DoubleSide,
+  transparent: true,
+  opacity: 0.85
+});
+const beaconRingMesh = new THREE.Mesh(beaconRingGeo, beaconRingMat);
+beaconRingMesh.userData = { is360Spot: true, spotId: 'courtyard-360' };
+panoBeaconGroup.add(beaconRingMesh);
+
+panoBeaconGroup.userData = { is360Spot: true, spotId: 'courtyard-360' };
+scene.add(panoBeaconGroup);
+window.__panoBeaconGroup = panoBeaconGroup;
+window.__beaconRingMesh = beaconRingMesh;
+window.__beaconRingMat = beaconRingMat;
+
+// ==========================================
+// 360° Panorama Viewer Engine (GSES / WebGL)
+// ==========================================
+let panoRenderer = null;
+let panoScene = null;
+let panoCamera = null;
+let panoMesh = null;
+let panoAnimId = null;
+let panoAutoRotate = true;
+let panoLon = 90, panoLat = 0;
+let panoTargetLon = 90, panoTargetLat = 0;
+let panoIsInteracting = false;
+let panoDownX = 0, panoDownY = 0, panoDownLon = 0, panoDownLat = 0;
+
+function initPanoViewer() {
+  const host = document.getElementById('panoHost');
+  if (!host || panoRenderer) return;
+
+  panoScene = new THREE.Scene();
+  panoCamera = new THREE.PerspectiveCamera(75, host.clientWidth / host.clientHeight, 0.1, 1100);
+
+  const sphereGeo = new THREE.SphereGeometry(500, 60, 40);
+  sphereGeo.scale(-1, 1, 1);
+  const sphereMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+  panoMesh = new THREE.Mesh(sphereGeo, sphereMat);
+  panoScene.add(panoMesh);
+
+  panoRenderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  panoRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  panoRenderer.setSize(host.clientWidth, host.clientHeight);
+  host.appendChild(panoRenderer.domElement);
+
+  host.addEventListener('pointerdown', e => {
+    panoIsInteracting = true;
+    panoDownX = e.clientX;
+    panoDownY = e.clientY;
+    panoDownLon = panoTargetLon;
+    panoDownLat = panoTargetLat;
+  });
+
+  window.addEventListener('pointermove', e => {
+    if (!panoIsInteracting) return;
+    panoTargetLon = (panoDownX - e.clientX) * 0.18 + panoDownLon;
+    panoTargetLat = (e.clientY - panoDownY) * 0.18 + panoDownLat;
+    panoTargetLat = Math.max(-85, Math.min(85, panoTargetLat));
+  });
+
+  window.addEventListener('pointerup', () => { panoIsInteracting = false; });
+  window.addEventListener('pointercancel', () => { panoIsInteracting = false; });
+
+  host.addEventListener('wheel', e => {
+    e.preventDefault();
+    panoCamera.fov = Math.max(35, Math.min(95, panoCamera.fov + e.deltaY * 0.05));
+    panoCamera.updateProjectionMatrix();
+  }, { passive: false });
+
+  window.addEventListener('resize', () => {
+    if (!host || !panoRenderer || !panoCamera) return;
+    panoCamera.aspect = host.clientWidth / host.clientHeight;
+    panoCamera.updateProjectionMatrix();
+    panoRenderer.setSize(host.clientWidth, host.clientHeight);
+  });
+
+  document.getElementById('panoCloseBtn')?.addEventListener('click', closePano);
+  document.getElementById('panoResetView')?.addEventListener('click', () => {
+    panoTargetLon = 90;
+    panoTargetLat = 0;
+    panoCamera.fov = 75;
+    panoCamera.updateProjectionMatrix();
+  });
+  document.getElementById('panoRotateToggle')?.addEventListener('click', e => {
+    panoAutoRotate = !panoAutoRotate;
+    e.currentTarget.classList.toggle('is-active', panoAutoRotate);
+  });
+  document.getElementById('panoZoomIn')?.addEventListener('click', () => {
+    panoCamera.fov = Math.max(35, panoCamera.fov - 10);
+    panoCamera.updateProjectionMatrix();
+  });
+  document.getElementById('panoZoomOut')?.addEventListener('click', () => {
+    panoCamera.fov = Math.min(95, panoCamera.fov + 10);
+    panoCamera.updateProjectionMatrix();
+  });
+}
+
+function panoRenderLoop() {
+  if (document.getElementById('pano-wrap')?.hidden) return;
+  panoAnimId = requestAnimationFrame(panoRenderLoop);
+
+  if (panoAutoRotate && !panoIsInteracting) {
+    panoTargetLon += 0.085;
+  }
+
+  panoLon += (panoTargetLon - panoLon) * 0.12;
+  panoLat += (panoTargetLat - panoLat) * 0.12;
+
+  const phi = THREE.MathUtils.degToRad(90 - panoLat);
+  const theta = THREE.MathUtils.degToRad(panoLon);
+
+  const target = new THREE.Vector3(
+    500 * Math.sin(phi) * Math.cos(theta),
+    500 * Math.cos(phi),
+    500 * Math.sin(phi) * Math.sin(theta)
+  );
+
+  panoCamera.lookAt(target);
+  panoRenderer.render(panoScene, panoCamera);
+}
+
+function openPano(spotId = 'courtyard-360') {
+  const wrap = document.getElementById('pano-wrap');
+  const loading = document.getElementById('panoLoading');
+  if (!wrap) return;
+
+  initPanoViewer();
+  wrap.hidden = false;
+  if (loading) loading.style.display = 'flex';
+
+  const spot = (window.CAMPUS_360_SPOTS || []).find(s => s.id === spotId) || {
+    name: '中庭花園與愛悅樓前廣場',
+    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g=w4096',
+    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,100.12h,92.02t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98X_pAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g%3Dw900-h600-k-no-pi-2.02112549397485-ya100.12206414212982-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D'
+  };
+
+  const titleEl = document.getElementById('panoTitle');
+  if (titleEl) titleEl.textContent = spot.name;
+  const extEl = document.getElementById('panoExternalBtn');
+  if (extEl && spot.externalUrl) extEl.href = spot.externalUrl;
+
+  const texLoader = new THREE.TextureLoader();
+  texLoader.crossOrigin = 'anonymous';
+  texLoader.load(spot.panoUrl, texture => {
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.minFilter = THREE.LinearFilter;
+    if (panoMesh) {
+      panoMesh.material.map = texture;
+      panoMesh.material.needsUpdate = true;
+    }
+    if (loading) loading.style.display = 'none';
+  }, undefined, () => {
+    texLoader.load('./tex/courtyard_panorama.jpg', fallbackTex => {
+      fallbackTex.colorSpace = THREE.SRGBColorSpace;
+      if (panoMesh) {
+        panoMesh.material.map = fallbackTex;
+        panoMesh.material.needsUpdate = true;
+      }
+      if (loading) loading.style.display = 'none';
+    });
+  });
+
+  if (!panoAnimId) panoRenderLoop();
+  showToast(`已進入 360° 實景環景：${spot.name}`);
+}
+
+function closePano() {
+  const wrap = document.getElementById('pano-wrap');
+  if (wrap) wrap.hidden = true;
+  if (panoAnimId) {
+    cancelAnimationFrame(panoAnimId);
+    panoAnimId = null;
+  }
+}
+
+window.__openPano = openPano;
+window.__closePano = closePano;
+
 const walkState = {
   active: false,
   yaw: 0,
@@ -19377,12 +19572,21 @@ function renderDetailCard(lm, activeFloor = '1F') {
   document.getElementById('detail-summary').textContent = lm.summary;
 
   const roomCount = Object.values(lm.rooms || {}).flat().length;
+  const is360Related = ['north-building', 'courtyard-plaza', 'east-building', 'south-building'].includes(lm.id);
   document.getElementById('detail-tags').innerHTML = `
     <span class="detail-tag seal">編號 ${lm.index}</span>
     <span class="detail-tag">${lm.floors}</span>
     <span class="detail-tag">${lm.height}</span>
     ${roomCount ? `<span class="detail-tag">${roomCount} 間教室處室</span>` : ''}
+    ${is360Related ? `<button type="button" class="detail-tag" id="detail360Btn3d" style="background:var(--seal);color:#fff;cursor:pointer;border-color:var(--seal);font-weight:700">🌐 進入 360° 實景</button>` : ''}
   `;
+  if (is360Related) {
+    setTimeout(() => {
+      document.getElementById('detail360Btn3d')?.addEventListener('click', () => {
+        openPano('courtyard-360');
+      });
+    }, 0);
+  }
 
   // Update viewpoints active state & dynamic visibility
   document.querySelectorAll('#viewpoints-bar button').forEach(btn => {
@@ -21170,9 +21374,14 @@ renderer.domElement.addEventListener('pointerup', e => {
     }
   }
 
-  const hits = raycaster.intersectObjects(clickableGroups, true);
+  const targetClickables = clickableGroups.concat([window.__panoBeaconGroup].filter(Boolean));
+  const hits = raycaster.intersectObjects(targetClickables, true);
   if (hits.length > 0) {
     let obj = hits[0].object;
+    if (obj.userData?.is360Spot || obj.parent?.userData?.is360Spot) {
+      openPano(obj.userData?.spotId || obj.parent?.userData?.spotId || 'courtyard-360');
+      return;
+    }
     while (obj && !obj.userData.landmarkId) obj = obj.parent;
     if (obj && obj.userData.landmarkId) {
       selectLandmark(obj.userData.landmarkId, 'manual');
@@ -21223,6 +21432,10 @@ window.addEventListener('keydown', e => {
       document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
       return;
     }
+    if (!document.getElementById('pano-wrap')?.hidden) {
+      closePano();
+      return;
+    }
     if (walkState.active) { exitWalkMode(); return; }
     if (isIsolated) { setIsolationMode(false); return; }
     if (!detailEl.hidden) { detailEl.hidden = true; setDetailCompact(false); return; }
@@ -21243,6 +21456,12 @@ window.addEventListener('keydown', e => {
   // First-person walking keys
   if (walkState.active) {
     const k = e.key.toLowerCase();
+    const distTo360 = Math.hypot(camera.position.x - 0, camera.position.z - 0);
+    if (k === 'e' && distTo360 < 6.5) {
+      e.preventDefault();
+      openPano('courtyard-360');
+      return;
+    }
     if (e.code === 'Space') {
       e.preventDefault();
       if (activeRoutePoints3D.length > 1) toggleRouteTravel();
@@ -21505,6 +21724,16 @@ renderer.setAnimationLoop(now => {
   // Dynamic Level of Detail (LOD) update across buildings
   updateLODs();
 
+  // Proximity prompt for 360 Spot in Walk Mode
+  if (walkState.active) {
+    const distTo360 = Math.hypot(camera.position.x - 0, camera.position.z - 0);
+    const walk360El = document.getElementById('walk360Prompt');
+    if (walk360El) walk360El.hidden = (distTo360 >= 6.5);
+  } else {
+    const walk360El = document.getElementById('walk360Prompt');
+    if (walk360El && !walk360El.hidden) walk360El.hidden = true;
+  }
+
   // 1) Collision-Aware First-Person Ground Walk Movement (`PKU-3D FirstPerson.move` substepping)
   if (walkState.active && !routeWalkActive) {
     const speed = (walkState.keys.sprint ? 16.0 : 8.2) * dtSec;
@@ -21746,10 +21975,20 @@ renderer.setAnimationLoop(now => {
     posAttr.needsUpdate = true;
   }
 
-  // Update Compass Rotation
+  // Update Compass Rotation (Original + GSES Floating Compass)
   const azimuth = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z);
+  const compassDeg = (azimuth * 180 / Math.PI).toFixed(1);
   const compassSvg = document.getElementById('compassSvg');
-  if (compassSvg) compassSvg.style.transform = `rotate(${(azimuth * 180 / Math.PI).toFixed(1)}deg)`;
+  if (compassSvg) compassSvg.style.transform = `rotate(${compassDeg}deg)`;
+  const gsesNeedle = document.getElementById('gsesCompassNeedle');
+  if (gsesNeedle) gsesNeedle.style.transform = `rotate(${compassDeg}deg)`;
+
+  // Animate 360 Spot Beacon Ring Pulse
+  if (window.__beaconRingMesh) {
+    const pulseT = (now * 0.0028) % 1;
+    window.__beaconRingMesh.scale.setScalar(1 + pulseT * 2.2);
+    if (window.__beaconRingMat) window.__beaconRingMat.opacity = Math.max(0, 0.9 * (1 - pulseT));
+  }
 
   // Periodically refresh Minimap camera cone
   if (now - lastMinimapUpdate > 90) {
@@ -21858,7 +22097,11 @@ function onFirst3DFrameReady() {
       selectLandmark,
       focusClassroom,
       fitPrecinct,
-      flyTo
+      flyTo,
+      startTour,
+      stopTour,
+      openPano,
+      closePano
     });
   }
   const shell = document.getElementById('campus-preview-shell');

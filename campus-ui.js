@@ -814,6 +814,24 @@ window.X = X;
 window.Z = Z;
 window.LANDMARKS = LANDMARKS;
 
+let activeGsesTab = 'spots'; // 'spots' | 'buildings' | 'classrooms'
+
+const CAMPUS_360_SPOTS = [
+  {
+    id: 'courtyard-360',
+    name: '中庭花園與愛悅樓前廣場',
+    group: '核心校園地標',
+    bldg: 'north-building',
+    floor: '1F',
+    pos: [0, 2.5, 0],
+    thumb: './tex/courtyard_panorama.jpg',
+    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g=w4096',
+    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,100.12h,92.02t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98X_pAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g%3Dw900-h600-k-no-pi-2.02112549397485-ya100.12206414212982-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
+    desc: '屏東市復興國小中庭生態度假花園、愛悅樓鮮紅大圓洞鏤空立面與幾何花磚廣場實景，四周環繞綠樹花木與教學大樓。'
+  }
+];
+window.CAMPUS_360_SPOTS = CAMPUS_360_SPOTS;
+
 const FEATURED_IDS = [
   'north-building', 'east-building', 'south-building', 'west-building',
   'new-building', 'courtyard-plaza', 'breezeway-hub', 'playground-zone',
@@ -952,6 +970,86 @@ function renderPlacesList() {
   if (!placesListEl || !searchInputEl) return;
   const q = searchInputEl.value.trim().toLowerCase();
   placesListEl.innerHTML = '';
+
+  // 1. Tab: 360 Panorama Spots (GSES Style)
+  if (activeGsesTab === 'spots') {
+    const filtersEl = document.getElementById('category-filters');
+    const precinctEl = document.getElementById('precinct-bar');
+    if (filtersEl) filtersEl.style.display = 'none';
+    if (precinctEl) precinctEl.style.display = 'none';
+
+    const spots = q ? CAMPUS_360_SPOTS.filter(s => s.name.toLowerCase().includes(q) || s.desc.toLowerCase().includes(q)) : CAMPUS_360_SPOTS;
+    spots.forEach(s => {
+      const btn = document.createElement('button');
+      btn.className = 'spot-item';
+      btn.dataset.spotId = s.id;
+      btn.innerHTML = `
+        <img class="spot-thumb" src="${s.thumb}" alt="${s.name}" onerror="this.src='./assets/campus_overview_preview.jpg'"/>
+        <div class="spot-meta">
+          <div class="spot-title">
+            <span class="tab-dot"></span>
+            <span>${s.name}</span>
+          </div>
+          <div class="spot-sub">${s.desc}</div>
+        </div>
+        <span class="spot-badge">進入 360° ↗</span>
+      `;
+      btn.addEventListener('click', () => {
+        if (window.__campusBridge) {
+          window.__campusBridge.openPano(s.id);
+        } else if (window.__openPano) {
+          window.__openPano(s.id);
+        }
+      });
+      placesListEl.appendChild(btn);
+    });
+    const rc = document.getElementById('result-count');
+    if (rc) rc.textContent = `${spots.length} 處 360° 實景拍攝點`;
+    return;
+  }
+
+  // 2. Tab: Main Buildings (GSES Style)
+  if (activeGsesTab === 'buildings') {
+    const filtersEl = document.getElementById('category-filters');
+    const precinctEl = document.getElementById('precinct-bar');
+    if (filtersEl) filtersEl.style.display = 'none';
+    if (precinctEl) precinctEl.style.display = 'none';
+
+    const mainBuildings = LANDMARKS.filter(l => ['north-building', 'south-building', 'west-building', 'east-building', 'new-building', 'courtyard-plaza'].includes(l.id));
+    const bldgs = q ? mainBuildings.filter(b => b.name.toLowerCase().includes(q) || b.enName.toLowerCase().includes(q)) : mainBuildings;
+    bldgs.forEach(lm => {
+      const roomCount = Object.values(lm.rooms || {}).flat().length;
+      const btn = document.createElement('button');
+      btn.className = 'place-item' + (selectedId === lm.id ? ' is-selected' : '');
+      btn.dataset.id = lm.id;
+      btn.innerHTML = `
+        <span class="place-number">${lm.index}</span>
+        <span>
+          <strong class="place-title">${lm.name}</strong>
+          <small class="place-sub">${lm.enName}${roomCount ? ` · ${roomCount} 間教室處室` : ''}</small>
+        </span>
+        <span class="place-tag">${lm.category ? lm.category.slice(0, 4) : '主體建築'}</span>
+      `;
+      btn.addEventListener('click', () => {
+        selectLandmark(lm.id, 'manual');
+        if (window.innerWidth <= 820 || window.innerHeight <= 640) {
+          setCatalogOpen(false);
+          const d = document.getElementById('detail');
+          if (d) d.hidden = false;
+        }
+      });
+      placesListEl.appendChild(btn);
+    });
+    const rc = document.getElementById('result-count');
+    if (rc) rc.textContent = `${bldgs.length} 棟主體建築大樓`;
+    return;
+  }
+
+  // 3. Tab: Classrooms & Facilities (Show category filters & precinct bar)
+  const filtersEl = document.getElementById('category-filters');
+  const precinctEl = document.getElementById('precinct-bar');
+  if (filtersEl) filtersEl.style.display = '';
+  if (precinctEl) precinctEl.style.display = '';
 
   if (!q) {
     if (activeFilter === 'featured') {
@@ -1225,13 +1323,22 @@ function renderDetailCard(lm, activeFloor = '1F') {
   if (sumEl) sumEl.textContent = lm.summary;
 
   const roomCount = Object.values(lm.rooms || {}).flat().length;
+  const is360Related = ['north-building', 'courtyard-plaza', 'east-building', 'south-building'].includes(lm.id);
   if (tagsEl) {
     tagsEl.innerHTML = `
       <span class="detail-tag seal">編號 ${lm.index}</span>
       <span class="detail-tag">${lm.floors}</span>
       <span class="detail-tag">${lm.height}</span>
       ${roomCount ? `<span class="detail-tag">${roomCount} 間教室處室</span>` : ''}
+      ${is360Related ? `<button type="button" class="detail-tag" id="detail360Btn" style="background:var(--seal);color:#fff;cursor:pointer;border-color:var(--seal);font-weight:700">🌐 進入 360° 實景</button>` : ''}
     `;
+    if (is360Related) {
+      setTimeout(() => {
+        document.getElementById('detail360Btn')?.addEventListener('click', () => {
+          window.__campusBridge.openPano('courtyard-360');
+        });
+      }, 0);
+    }
   }
 
   // Viewpoint buttons active state
@@ -1376,6 +1483,22 @@ window.__campusBridge = {
       const p = PRECINCT_PRESETS[key] || {};
       showToast(`已選取片區：${p.label || key}（3D 校園同步載入中...）`);
     }
+  },
+  openPano: function(id = 'courtyard-360') {
+    if (this.is3dReady && this.engine && this.engine.openPano) {
+      this.engine.openPano(id);
+    } else if (window.__openPano) {
+      window.__openPano(id);
+    } else {
+      showToast('正在喚醒 360° 全景檢視引擎...');
+    }
+  },
+  closePano: function() {
+    if (this.is3dReady && this.engine && this.engine.closePano) {
+      this.engine.closePano();
+    } else if (window.__closePano) {
+      window.__closePano();
+    }
   }
 };
 
@@ -1389,6 +1512,56 @@ function initImmediateUI() {
   if (searchInputEl) {
     searchInputEl.addEventListener('input', () => renderPlacesList());
   }
+
+  // GSES 3-Tab Switching
+  document.querySelectorAll('.gses-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      activeGsesTab = tab.dataset.gsesTab;
+      document.querySelectorAll('.gses-tab').forEach(t => t.classList.toggle('is-active', t === tab));
+      renderPlacesList();
+    });
+  });
+
+  // GSES Top-Right Dynamic Compass
+  document.getElementById('gses-compass')?.addEventListener('click', () => {
+    document.getElementById('compassBtn')?.click();
+  });
+
+  // GSES Floating Bottom Dock Handlers
+  document.querySelectorAll('#gses-dock [data-gses-floor]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const fl = btn.dataset.gsesFloor;
+      document.querySelectorAll('#gses-dock [data-gses-floor]').forEach(b => b.classList.toggle('is-active', b === btn));
+      const planFloorBtn = document.querySelector(`.plan-floor-btn[data-plan-floor="${fl}"]`);
+      if (planFloorBtn) planFloorBtn.click();
+      showToast(`已切換樓層視角：${fl === 'ALL' ? '全校' : fl}`);
+    });
+  });
+
+  document.getElementById('dockTourBtn')?.addEventListener('click', () => {
+    document.getElementById('startTourBtn')?.click();
+  });
+
+  document.getElementById('dock360Btn')?.addEventListener('click', () => {
+    window.__campusBridge.openPano('courtyard-360');
+  });
+
+  document.getElementById('dockLightBtn')?.addEventListener('click', () => {
+    const envBtn = document.getElementById('environment-open');
+    if (envBtn) envBtn.click();
+  });
+
+  document.getElementById('dockWalkBtn')?.addEventListener('click', () => {
+    document.getElementById('walk-start')?.click();
+  });
+
+  document.getElementById('dockHomeBtn')?.addEventListener('click', () => {
+    document.getElementById('resetHomeBtn')?.click();
+  });
+
+  document.getElementById('walk360Prompt')?.addEventListener('click', () => {
+    window.__campusBridge.openPano('courtyard-360');
+  });
 
   document.querySelectorAll('#category-filters .chip').forEach(chip => {
     chip.addEventListener('click', () => {

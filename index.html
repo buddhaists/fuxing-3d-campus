@@ -2049,6 +2049,405 @@ document.addEventListener('click', function(e) {
     .precinct-pill { height: 22px; font-size: 10.5px; }
     .place-list { min-height: 100px; }
   }
+
+  /* ==========================================================================
+     GSES Modern Floating Glass UI & 360 Panorama Subsystem
+     ========================================================================== */
+  .gses-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--line);
+    background: var(--wash);
+    padding: 4px 6px 0;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .gses-tab {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    background: none;
+    border: none;
+    border-bottom: 2.5px solid transparent;
+    padding: 8px 6px 7px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-radius: 6px 6px 0 0;
+    transition: all 0.18s ease;
+  }
+  .gses-tab:hover {
+    color: var(--ink);
+    background: rgba(0, 0, 0, 0.03);
+  }
+  .gses-tab.is-active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: var(--paper-glass);
+  }
+  .tab-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--seal);
+    display: inline-block;
+    box-shadow: 0 0 0 2px rgba(146, 60, 50, 0.2);
+    animation: pulseDot 1.8s infinite;
+  }
+  @keyframes pulseDot {
+    0% { transform: scale(0.9); opacity: 0.8; }
+    50% { transform: scale(1.3); opacity: 1; }
+    100% { transform: scale(0.9); opacity: 0.8; }
+  }
+
+  /* Floating Dynamic Compass */
+  .gses-compass {
+    position: fixed;
+    top: calc(64px + env(safe-area-inset-top, 0px));
+    right: max(16px, env(safe-area-inset-right, 0px));
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--paper-glass);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+    z-index: 920;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+  }
+  .gses-compass:hover {
+    transform: scale(1.08);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--accent);
+  }
+  .gses-compass svg {
+    transform-origin: center center;
+    transition: transform 0.08s linear;
+  }
+
+  /* Floating Bottom Dock */
+  .gses-dock {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    background: var(--paper-glass);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    z-index: 920;
+    max-width: calc(100vw - 24px);
+    box-sizing: border-box;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .dock-floors {
+    display: inline-flex;
+    gap: 3px;
+    background: var(--wash);
+    padding: 2px 3px;
+    border-radius: 8px;
+    border: 1px solid var(--line-soft);
+  }
+  .dock-btn {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+    transition: all 0.16s ease;
+    white-space: nowrap;
+  }
+  .dock-btn:hover {
+    background: var(--wash-hover);
+    color: var(--accent);
+  }
+  .dock-btn.is-active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(47, 107, 79, 0.3);
+  }
+  .dock-sep {
+    width: 1px;
+    height: 20px;
+    background: var(--line);
+    margin: 0 4px;
+  }
+
+  /* 360 Panorama Viewer Overlay */
+  .pano-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+  }
+  .pano-wrap[hidden] {
+    display: none !important;
+  }
+  .pano-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    padding: 12px 18px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 75%, transparent 100%);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: #fff;
+  }
+  .pano-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .pano-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ef5350;
+    box-shadow: 0 0 10px #ef5350;
+    animation: pulseDot 1.6s infinite;
+  }
+  .pano-badge {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(239, 83, 80, 0.25);
+    color: #ff8a80;
+    border: 1px solid rgba(239, 83, 80, 0.4);
+  }
+  .pano-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .pano-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .pano-ext-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    backdrop-filter: blur(8px);
+    transition: all 0.18s ease;
+  }
+  .pano-ext-btn:hover {
+    background: rgba(255,255,255,0.32);
+    border-color: #fff;
+  }
+  .pano-close-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 14px;
+    border-radius: 8px;
+    background: #ef5350;
+    border: none;
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.18s ease;
+  }
+  .pano-close-btn:hover {
+    background: #d32f2f;
+    transform: scale(1.03);
+  }
+  .pano-host {
+    position: absolute;
+    inset: 0;
+    cursor: grab;
+    touch-action: none;
+  }
+  .pano-host:active {
+    cursor: grabbing;
+  }
+  .pano-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #111b24;
+    color: #fff;
+    gap: 14px;
+    font-size: 14px;
+    z-index: 5;
+  }
+  .pano-spinner {
+    width: 42px;
+    height: 42px;
+    border: 3.5px solid rgba(255,255,255,0.2);
+    border-top-color: #ef5350;
+    border-radius: 50%;
+    animation: spin 0.85s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .pano-dock {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: rgba(18, 24, 21, 0.85);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 12px;
+    backdrop-filter: blur(12px);
+    color: #e6ece7;
+    font-size: 12px;
+  }
+  .pano-ctrl-pill {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.16s ease;
+  }
+  .pano-ctrl-pill:hover, .pano-ctrl-pill.is-active {
+    background: #2f6b4f;
+    border-color: #2f6b4f;
+  }
+  .pano-tip {
+    margin-left: 6px;
+    color: rgba(255,255,255,0.7);
+    font-size: 11px;
+  }
+
+  /* Walk mode prompt */
+  .walk-360-prompt {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #c4452f;
+    color: #fff;
+    border: 2px solid #fff;
+    box-shadow: 0 4px 18px rgba(196, 69, 47, 0.45);
+    border-radius: 999px;
+    padding: 9px 18px;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    z-index: 930;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    animation: bouncePrompt 2s infinite ease-in-out;
+  }
+  .walk-360-prompt[hidden] {
+    display: none !important;
+  }
+  .walk-360-pin {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 6px #fff;
+  }
+  @keyframes bouncePrompt {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(-6px); }
+  }
+
+  /* 360 Spot List Item in Drawer */
+  .spot-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    background: var(--paper-glass);
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.18s ease;
+  }
+  .spot-item:hover {
+    background: var(--wash-hover);
+    border-color: var(--seal);
+    transform: translateY(-1px);
+  }
+  .spot-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex: none;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+  .spot-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .spot-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.3;
+  }
+  .spot-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .spot-badge {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 3px 6px;
+    border-radius: 4px;
+    background: var(--seal-soft);
+    color: var(--seal);
+    flex: none;
+  }
 </style>
 </head>
 <body>
@@ -2153,6 +2552,19 @@ document.addEventListener('click', function(e) {
         <button id="catalog-collapse" class="catalog-collapse" type="button" aria-label="收起地點目錄">收起</button>
       </div>
       <p class="lede">循著愛悅樓、彩繪長廊與回字花磚中庭，走進屏東縣復興國小。</p>
+    </div>
+
+    <!-- GSES 3-Tab Categorized Switcher -->
+    <div class="gses-tabs" role="tablist" id="gsesTabs" aria-label="空間目錄分類">
+      <button type="button" class="gses-tab is-active" data-gses-tab="spots" id="tabSpots">
+        <span class="tab-dot"></span> 360 實景
+      </button>
+      <button type="button" class="gses-tab" data-gses-tab="buildings" id="tabBuildings">
+        🏛 建築大樓
+      </button>
+      <button type="button" class="gses-tab" data-gses-tab="classrooms" id="tabClassrooms">
+        🏫 處室設施
+      </button>
     </div>
 
     <label class="search" for="searchInput">
@@ -2725,10 +3137,73 @@ document.addEventListener('click', function(e) {
     </div>
     <button id="onboardingDismiss" type="button" class="onboarding-dismiss-btn">知道了</button>
   </div>
+
+  <!-- GSES Top-Right Dynamic Floating 3D Compass -->
+  <button id="gses-compass" class="gses-compass" type="button" title="點擊指北針平滑對齊正北 (North Up)">
+    <svg viewBox="0 0 40 40" width="34" height="34" id="gsesCompassNeedle">
+      <circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.25"/>
+      <polygon points="20,5 24,20 20,17 16,20" fill="var(--seal)"/>
+      <polygon points="20,35 24,20 20,23 16,20" fill="var(--muted)" opacity="0.6"/>
+      <text x="20" y="4" text-anchor="middle" font-size="6.5" font-weight="bold" fill="var(--seal)">N</text>
+    </svg>
+  </button>
+
+  <!-- Walk Mode Near 360 Pin Prompt -->
+  <button id="walk360Prompt" class="walk-360-prompt" type="button" hidden>
+    <span class="walk-360-pin"></span>
+    <span id="walk360Text">進入 360° 實景：中庭花園（按 E）</span>
+  </button>
+
+  <!-- GSES Floating Bottom Dock -->
+  <nav id="gses-dock" class="gses-dock" aria-label="校園快捷控制塢">
+    <div class="dock-floors" role="group" aria-label="樓層切換">
+      <button type="button" class="dock-btn is-active" data-gses-floor="ALL" data-plan-floor="ALL">全部</button>
+      <button type="button" class="dock-btn" data-gses-floor="1F" data-plan-floor="1F">1F</button>
+      <button type="button" class="dock-btn" data-gses-floor="2F" data-plan-floor="2F">2F</button>
+      <button type="button" class="dock-btn" data-gses-floor="3F" data-plan-floor="3F">3F</button>
+      <button type="button" class="dock-btn" data-gses-floor="B1" data-plan-floor="B1">B1</button>
+    </div>
+    <div class="dock-sep"></div>
+    <button type="button" class="dock-btn" id="dockTourBtn" title="一鍵校園自動導覽巡禮">▶ 導覽</button>
+    <button type="button" class="dock-btn" id="dock360Btn" title="360° 沉浸式實景環景">🌐 360° 實景</button>
+    <button type="button" class="dock-btn" id="dockLightBtn" title="光影與生活">🌗 光影</button>
+    <button type="button" class="dock-btn" id="dockWalkBtn" title="第一人稱地面漫步">🚶 漫遊</button>
+    <button type="button" class="dock-btn" id="dockHomeBtn" title="返回全校鳥瞰">🏠 全景</button>
+  </nav>
+</div>
+
+<!-- GSES 360 Panorama Viewer Overlay -->
+<div id="pano-wrap" class="pano-wrap" hidden>
+  <div class="pano-header">
+    <div class="pano-brand">
+      <span class="pano-dot"></span>
+      <span class="pano-badge">360° 沉浸實景</span>
+      <h2 id="panoTitle">中庭花園與愛悅樓前廣場</h2>
+    </div>
+    <div class="pano-actions">
+      <a id="panoExternalBtn" href="https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,100.12h,92.02t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98X_pAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g%3Dw900-h600-k-no-pi-2.02112549397485-ya100.12206414212982-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D" target="_blank" rel="noopener" class="pano-ext-btn">
+        <span>Google 街景全螢幕 ↗</span>
+      </a>
+      <button id="panoCloseBtn" class="pano-close-btn" type="button" aria-label="關閉環景">✕ 返回 3D 校園</button>
+    </div>
+  </div>
+  <div id="panoHost" class="pano-host">
+    <div id="panoLoading" class="pano-loading">
+      <div class="pano-spinner"></div>
+      <p>正在串流加載 360° 高解析實景環景照片...</p>
+    </div>
+  </div>
+  <div class="pano-dock">
+    <button id="panoRotateToggle" type="button" class="pano-ctrl-pill is-active">⟳ 自動旋轉</button>
+    <button id="panoResetView" type="button" class="pano-ctrl-pill">⌂ 重置方向</button>
+    <button id="panoZoomIn" type="button" class="pano-ctrl-pill" title="放大視角">+</button>
+    <button id="panoZoomOut" type="button" class="pano-ctrl-pill" title="縮小視角">−</button>
+    <span class="pano-tip">滑鼠拖曳 / 雙指滑動環顧四周 · 滾輪縮放</span>
+  </div>
 </div>
 
 <script src="./vendor/qrcode.min.js"></script>
-<script src="./campus-ui.js?v=2.6.0"></script>
-<script type="module" src="./campus-3d.js?v=2.6.0"></script>
+<script src="./campus-ui.js?v=2.7.0"></script>
+<script type="module" src="./campus-3d.js?v=2.7.0"></script>
 </body>
 </html>
