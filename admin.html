@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>復興國小 360° 地景標示與實景管理工作台 (Visual 360 CMS Studio)</title>
+  <link rel="icon" href="./assets/plans/1f.jpg" type="image/jpeg">
+  <style>
+    :root {
+      --bg-dark: #0f1715;
+      --bg-panel: #16221e;
+      --bg-card: #1c2b26;
+      --bg-card-hover: #233630;
+      --border: rgba(255, 255, 255, 0.12);
+      --border-focus: #10b981;
+      --accent: #10b981;
+      --accent-hover: #059669;
+      --accent-glow: rgba(16, 185, 129, 0.35);
+      --gold: #facc15;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --text: #f0fdf4;
+      --text-muted: #94a3b8;
+      --header-h: 56px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      background: var(--bg-dark);
+      color: var(--text);
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Navigation Header */
+    .admin-header {
+      height: var(--header-h);
+      background: #111a17;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      gap: 12px;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+    .admin-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .admin-brand-badge {
+      background: linear-gradient(135deg, #10b981, #047857);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.05em;
+    }
+    .admin-brand h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .admin-stat-chip {
+      font-size: 12px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 20px;
+      color: #a7f3d0;
+      font-weight: 600;
+    }
+    .admin-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.16s ease;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+    .btn-danger:hover {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+
+    /* Main Dual-Column Layout */
+    .admin-main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Left Panel: Spot List & CRUD Form */
+    .admin-sidebar {
+      width: 440px;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+      z-index: 20;
+    }
+    .sidebar-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #a7f3d0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 10px 14px 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .filter-bar {
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.15);
+    }
+    .search-input {
+      width: 100%;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      color: #fff;
+      font-size: 12.5px;
+      outline: none;
+    }
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+    .floor-tabs {
+      display: flex;
+      gap: 4px;
+    }
+    .floor-tab {
+      flex: 1;
+      padding: 5px 0;
+      text-align: center;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text-muted);
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .floor-tab:hover { color: #fff; background: rgba(255,255,255,0.12); }
+    .floor-tab.is-active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* Spot Cards Scroll List */
+    .spot-list {
+      flex: 1;
+      max-height: 280px;
+      overflow-y: auto;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.08);
+    }
+    .spot-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .spot-card:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(255,255,255,0.22);
+      transform: translateX(2px);
+    }
+    .spot-card.is-active {
+      background: #1e3a2e;
+      border-color: var(--accent);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
+    }
+    .spot-card-thumb {
+      width: 44px;
+      height: 32px;
+      border-radius: 4px;
+      object-fit: cover;
+      background: #000;
+      flex-shrink: 0;
+    }
+    .spot-card-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .spot-card-name {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .spot-card-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .spot-card-coords {
+      font-size: 10.5px;
+      color: #6ee7b7;
+      font-family: monospace;
+    }
+
+    /* CRUD Form Scroll Container */
+    .form-scroll-pane {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 14px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .form-label {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+    }
+    .form-hint {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 400;
+    }
+    .form-control {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      color: #fff;
+      font-size: 12.5px;
+      outline: none;
+      transition: border 0.15s ease;
+      width: 100%;
+    }
+    .form-control:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 6px var(--accent-glow);
+    }
+    .form-row {
+      display: flex;
+      gap: 8px;
+    }
+    .form-row > * { flex: 1; }
+
+    /* Smart Parser Banner */
+    .smart-parser-box {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.05));
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .smart-parser-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #34d399;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Right Panel: Viewport & Preview Studio */
+    .admin-stage {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      background: #090e0c;
+    }
+    .stage-nav {
+      height: 44px;
+      background: #111a17;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 10;
+    }
+    .stage-tabs {
+      display: flex;
+      gap: 6px;
+    }
+    .stage-tab-btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .stage-tab-btn:hover {
+      color: #fff;
+      background: rgba(255,255,255,0.06);
+    }
+    .stage-tab-btn.is-active {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: var(--accent);
+      color: #6ee7b7;
+    }
+
+    /* Tab Panes */
+    .tab-content {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    .tab-pane {
+      position: absolute;
+      inset: 0;
+      display: none;
+    }
+    .tab-pane.is-active {
+      display: flex;
+    }
+
+    /* 3D Viewport Pane */
+    #tab3d {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    #threeCanvasHost {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      inset: 0;
+    }
+    .viewport-overlay {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .viewport-overlay > * { pointer-events: auto; }
+    .hud-badge {
+      background: rgba(15, 23, 21, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      backdrop-filter: blur(8px);
+      font-size: 12px;
+    }
+    .hud-coords {
+      font-family: monospace;
+      color: var(--gold);
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    /* Floating Stepper Control Pad */
+    .stepper-hud {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      z-index: 5;
+      background: rgba(15, 23, 21, 0.88);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    .stepper-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #a7f3d0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .stepper-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 38px);
+      grid-gap: 6px;
+      justify-content: center;
+    }
+    .stepper-btn {
+      width: 38px;
+      height: 36px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.14s ease;
+    }
+    .stepper-btn:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      transform: scale(1.05);
+    }
+    .stepper-unit-row {
+      display: flex;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .stepper-unit-btn {
+      flex: 1;
+      font-size: 10.5px;
+      padding: 3px 0;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .stepper-unit-btn.is-active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    /* 2.5D Plan Pane */
+    #tabPlan {
+      display: none;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      background: #0d1412;
+      position: relative;
+    }
+    .plan-toolbar {
+      padding: 8px 14px;
+      background: #111a17;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+    }
+    .plan-canvas-wrap {
+      flex: 1;
+      overflow: auto;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #060908;
+      cursor: crosshair;
+    }
+    .plan-img-container {
+      position: relative;
+      display: inline-block;
+      user-select: none;
+    }
+    .plan-bg-img {
+      display: block;
+      max-width: 100%;
+      max-height: calc(100vh - 140px);
+      object-fit: contain;
+    }
+    .plan-pin-marker {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #10b981;
+      border: 2.5px solid #fff;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 800;
+      color: #fff;
+      transition: all 0.15s ease;
+    }
+    .plan-pin-marker.is-active {
+      background: #facc15;
+      border-color: #000;
+      box-shadow: 0 0 16px #facc15;
+      z-index: 10;
+      transform: translate(-50%, -50%) scale(1.35);
+    }
+
+    /* 360 Live Preview Pane */
+    #tabPreview {
+      display: none;
+      width: 100%;
+      height: 100%;
+      position: relative;
+      background: #000;
+    }
+    .preview-header-bar {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      right: 14px;
+      z-index: 20;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+    }
+    .preview-header-bar > * { pointer-events: auto; }
+    .preview-mode-switch {
+      display: inline-flex;
+      background: rgba(15, 23, 21, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
+      backdrop-filter: blur(8px);
+    }
+    .preview-mode-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.8);
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .preview-mode-btn.is-active {
+      background: var(--accent);
+      color: #fff;
+    }
+    #previewIframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      z-index: 2;
+      background: #000;
+    }
+    #previewWebglCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* Login Modal Overlay */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(14px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-card {
+      background: #16221e;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      border-radius: 14px;
+      padding: 24px 28px;
+      width: 380px;
+      max-width: 90vw;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.7);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      text-align: center;
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    /* Toast Notification */
+    .admin-toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: rgba(16, 185, 129, 0.95);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 700;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 10000;
+      pointer-events: none;
+      opacity: 0;
+    }
+    .admin-toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.js",
+      "three/addons/": "./vendor/three/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <!-- Top Action Header -->
+  <header class="admin-header">
+    <div class="admin-brand">
+      <span class="admin-brand-badge">CMS STUDIO</span>
+      <h1>復興國小 360° 實景管理工作台</h1>
+      <span class="admin-stat-chip" id="spotCountChip">景點總數：46 處</span>
+    </div>
+    <div class="admin-tools">
+      <button class="btn btn-primary" id="btnCreateSpot">➕ 新增景點</button>
+      <button class="btn" id="btnSaveLocal" title="保存所有修改至瀏覽器儲存區，前台立即同步生效">💾 本地生效</button>
+      <button class="btn" id="btnExportJson" title="匯出 spots.json 檔案">📤 匯出 JSON</button>
+      <button class="btn" id="btnCopyCode" title="複製 campus-ui.js 替換代碼">📋 複製代碼</button>
+      <button class="btn" id="btnImportJson" title="從外部 JSON 檔案匯入">📥 匯入</button>
+      <button class="btn btn-danger" id="btnResetDefault" title="還原官方 46 處景點原廠預設">🔄 原廠重置</button>
+      <a href="./index.html" target="_blank" class="btn" title="在新分頁開啟 3D 校園前台">🌐 前台預覽 ↗</a>
+      <button class="btn" id="btnLockAuth">🔒 鎖定</button>
+    </div>
+  </header>
+
+  <!-- Main Workspace Layout -->
+  <div class="admin-main">
+    
+    <!-- Left Panel: Spots Filter, Cards & CRUD Form -->
+    <aside class="admin-sidebar">
+      <div class="filter-bar">
+        <input type="text" class="search-input" id="searchSpotInput" placeholder="🔍 搜尋景點名稱、分類、序號或編號...">
+        <div class="floor-tabs">
+          <button class="floor-tab is-active" data-filter-floor="ALL">全部</button>
+          <button class="floor-tab" data-filter-floor="1F">1F</button>
+          <button class="floor-tab" data-filter-floor="2F">2F</button>
+          <button class="floor-tab" data-filter-floor="3F">3F</button>
+          <button class="floor-tab" data-filter-floor="BF">BF</button>
+        </div>
+      </div>
+
+      <!-- Spot Cards List -->
+      <div class="spot-list" id="spotCardsContainer"></div>
+
+      <div class="sidebar-section-title">
+        <span>360 景點編輯表單</span>
+        <span id="activeSpotIdLabel" style="color:var(--gold);font-family:monospace;">#spot-12</span>
+      </div>
+
+      <!-- CRUD Form Pane -->
+      <div class="form-scroll-pane">
+
+        <!-- Google Maps Smart Parser Tool -->
+        <div class="smart-parser-box">
+          <div class="smart-parser-title">
+            <span>⚡ Google 地圖 360 街景分享網址一鍵解析</span>
+          </div>
+          <div class="form-group">
+            <input type="text" class="form-control" id="smartUrlInput" placeholder="在此貼上 Google Maps 360 分享網址 (https://maps.app.goo.gl/... 或 google.com/maps/place/...)">
+          </div>
+          <button type="button" class="btn btn-primary" id="btnExecuteSmartParse" style="justify-content:center;">
+            ⚡ 一鍵智慧解析並自動填入
+          </button>
+        </div>
+
+        <!-- Basic Spot Info -->
+        <div class="form-row">
+          <div class="form-group" style="flex:0.8;">
+            <label class="form-label">編號 (ID)</label>
+            <input type="text" class="form-control" id="fId" readonly style="color:var(--text-muted);background:rgba(0,0,0,0.6);">
+          </div>
+          <div class="form-group" style="flex:0.6;">
+            <label class="form-label">序號 (Num)</label>
+            <input type="number" class="form-control" id="fNum">
+          </div>
+          <div class="form-group" style="flex:0.8;">
+            <label class="form-label">樓層</label>
+            <select class="form-control" id="fFloor">
+              <option value="1F">1F</option>
+              <option value="2F">2F</option>
+              <option value="3F">3F</option>
+              <option value="BF">BF</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">景點名稱 (Name)</label>
+          <input type="text" class="form-control" id="fName" placeholder="例如：復興路正門口與通學步道">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">區域分組 (Group)</label>
+          <select class="form-control" id="fGroup">
+            <option value="校門與戶外前庭">校門與戶外前庭</option>
+            <option value="南棟仁愛樓">南棟仁愛樓</option>
+            <option value="北棟信義樓">北棟信義樓</option>
+            <option value="東棟和平樓">東棟和平樓</option>
+            <option value="西棟忠孝樓">西棟忠孝樓</option>
+            <option value="新大樓愛悅樓">新大樓愛悅樓</option>
+            <option value="中庭與綠色花園">中庭與綠色花園</option>
+            <option value="操場球場與遊戲區">操場球場與遊戲區</option>
+            <option value="幼兒園與附設區">幼兒園與附設區</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">簡介說明 (Description)</label>
+          <textarea class="form-control" id="fDesc" rows="2" placeholder="景點環境或歷史描述..."></textarea>
+        </div>
+
+        <!-- 3D Coordinates -->
+        <div class="form-group">
+          <label class="form-label">
+            <span>3D 世界坐標 (X, Y, Z)</span>
+            <span class="form-hint">右側 3D 點擊地面可自動更新</span>
+          </label>
+          <div class="form-row">
+            <input type="number" step="0.05" class="form-control" id="fX" placeholder="X (左右)">
+            <input type="number" step="0.05" class="form-control" id="fY" placeholder="Y (高度)">
+            <input type="number" step="0.05" class="form-control" id="fZ" placeholder="Z (前後)">
+          </div>
+        </div>
+
+        <!-- 2.5D Coordinates -->
+        <div class="form-group">
+          <label class="form-label">
+            <span>2.5D 平面像素 (PX, PY)</span>
+            <span class="form-hint">右側平面圖點擊可自動更新</span>
+          </label>
+          <div class="form-row">
+            <input type="number" class="form-control" id="fPx" placeholder="PX (像素 X)">
+            <input type="number" class="form-control" id="fPy" placeholder="PY (像素 Y)">
+          </div>
+        </div>
+
+        <!-- Media URLs -->
+        <div class="form-group">
+          <label class="form-label">縮圖網址 (Thumb URL)</label>
+          <input type="url" class="form-control" id="fThumb" placeholder="https://...">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">360 全景大圖 (Pano Image URL / 原色紋理)</label>
+          <input type="url" class="form-control" id="fPanoUrl" placeholder="https://...=w2048">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Google 街景嵌入網址 (Embed URL / 原生街景直載)</label>
+          <input type="url" class="form-control" id="fEmbedUrl" placeholder="https://maps.google.com/maps?layer=c&...&output=svembed">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Google 地圖外部全螢幕網址 (External URL)</label>
+          <input type="url" class="form-control" id="fExternalUrl" placeholder="https://www.google.com/maps/place/...">
+        </div>
+
+        <!-- Form Actions -->
+        <div class="form-row" style="margin-top:8px;">
+          <button type="button" class="btn btn-primary" id="btnSaveSpotForm">💾 儲存景點變更</button>
+          <button type="button" class="btn" id="btnCloneSpot">📋 複製景點</button>
+          <button type="button" class="btn btn-danger" id="btnDeleteSpot">🗑️ 刪除景點</button>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- Right Panel: Viewport & Preview Studio -->
+    <main class="admin-stage">
+      
+      <!-- Stage Nav Tabs -->
+      <nav class="stage-nav">
+        <div class="stage-tabs">
+          <button class="stage-tab-btn is-active" data-stage-tab="tab3d">🎯 3D 視覺地面拾取</button>
+          <button class="stage-tab-btn" data-stage-tab="tabPlan">🗺️ 2.5D 平面圖校準</button>
+          <button class="stage-tab-btn" data-stage-tab="tabPreview">🌐 360 實景原色預覽</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">
+          提示：滑鼠左鍵旋轉 · 右鍵平移 · 滾輪縮放
+        </div>
+      </nav>
+
+      <div class="tab-content">
+
+        <!-- Tab 1: 3D Viewport -->
+        <div class="tab-pane is-active" id="tab3d">
+          <div id="threeCanvasHost"></div>
+
+          <!-- HUD Info -->
+          <div class="viewport-overlay">
+            <div class="hud-badge">
+              <div>校準中景點：<strong id="hudSpotName" style="color:#6ee7b7;">復興路正門口</strong></div>
+              <div class="hud-coords" id="hudCoordsDisplay">X: 106.08, Y: 2.20, Z: -5.20</div>
+            </div>
+            <button class="btn btn-primary" id="btnToggleRaycastPick" style="width:fit-content;">
+              🎯 點擊地面定位模式：<span id="pickModeStatus">開啟中</span>
+            </button>
+          </div>
+
+          <!-- Stepper Compass -->
+          <div class="stepper-hud">
+            <div class="stepper-title">
+              <span>方向盤微調步進</span>
+              <button class="btn" id="btnCenterCamera" style="padding:2px 6px;font-size:11px;">⌂ 居中</button>
+            </div>
+            <div class="stepper-grid">
+              <div></div>
+              <button class="stepper-btn" id="stepZMinus" title="向後 (-Z)">↑</button>
+              <div></div>
+              <button class="stepper-btn" id="stepXMinus" title="向左 (-X)">←</button>
+              <button class="stepper-btn" id="stepResetY" title="重置 Y 高度" style="font-size:11px;">2.2</button>
+              <button class="stepper-btn" id="stepXPlus" title="向右 (+X)">→</button>
+              <div></div>
+              <button class="stepper-btn" id="stepZPlus" title="向前 (+Z)">↓</button>
+              <div></div>
+            </div>
+            <div class="form-row">
+              <button class="btn" id="stepYPlus" style="flex:1;justify-content:center;padding:4px 0;font-size:11.5px;">▲ 升高 (+Y)</button>
+              <button class="btn" id="stepYMinus" style="flex:1;justify-content:center;padding:4px 0;font-size:11.5px;">▼ 降低 (-Y)</button>
+            </div>
+            <div class="stepper-unit-row">
+              <button class="stepper-unit-btn" data-step-unit="0.1">0.1m</button>
+              <button class="stepper-unit-btn is-active" data-step-unit="0.5">0.5m</button>
+              <button class="stepper-unit-btn" data-step-unit="1.0">1.0m</button>
+              <button class="stepper-unit-btn" data-step-unit="2.0">2.0m</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: 2.5D Plan Viewport -->
+        <div class="tab-pane" id="tabPlan">
+          <div class="plan-toolbar">
+            <span>選擇校正樓層圖：</span>
+            <div class="floor-tabs" style="width:240px;">
+              <button class="floor-tab is-active" data-plan-floor="1F">1F</button>
+              <button class="floor-tab" data-plan-floor="2F">2F</button>
+              <button class="floor-tab" data-plan-floor="3F">3F</button>
+              <button class="floor-tab" data-plan-floor="BF">BF</button>
+            </div>
+            <span style="color:#6ee7b7;margin-left:auto;">點選圖面上任一處，直接將 PX、PY 寫入目前景點</span>
+          </div>
+          <div class="plan-canvas-wrap" id="planCanvasWrap">
+            <div class="plan-img-container" id="planImgContainer">
+              <img id="planBgImg" class="plan-bg-img" src="./assets/plans/1f.jpg" alt="樓層平面圖">
+              <div id="planPinsLayer"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: 360 Live Preview Viewport -->
+        <div class="tab-pane" id="tabPreview">
+          <div class="preview-header-bar">
+            <div class="preview-mode-switch">
+              <button class="preview-mode-btn is-active" id="prevModeStreetBtn">🌐 Google 原生街景</button>
+              <button class="preview-mode-btn" id="prevModeWebglBtn">🎨 3D 原色全景球</button>
+            </div>
+            <span style="font-size:12px;background:rgba(0,0,0,0.7);padding:4px 10px;border-radius:20px;">
+              實景檢驗視窗 · 支援視角拖曳與地面漫步
+            </span>
+          </div>
+          <iframe id="previewIframe" src="" allowfullscreen loading="lazy" allow="accelerometer; gyroscope; magnetometer; fullscreen"></iframe>
+          <div id="previewWebglCanvas" style="display:none;"></div>
+        </div>
+
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Login Modal Overlay -->
+  <div class="modal-backdrop" id="adminAuthModal" style="display:none;">
+    <div class="modal-card">
+      <div class="admin-brand-badge" style="width:fit-content;margin:0 auto;">CMS AUTH GUARD</div>
+      <h2 class="modal-title">復興國小 360 管理工作台</h2>
+      <p style="font-size:12.5px;color:var(--text-muted);">
+        請輸入管理員存取密碼以解鎖地景標示與 360 實景編輯權限：
+      </p>
+      <input type="password" class="form-control" id="authPasswordInput" placeholder="預設密碼: fuxing360" style="text-align:center;font-size:14px;letter-spacing:0.1em;">
+      <button class="btn btn-primary" id="btnSubmitAuth" style="justify-content:center;padding:9px 0;font-size:14px;">
+        🔓 解鎖進入後台
+      </button>
+      <div id="authErrorMsg" style="font-size:11.5px;color:#f87171;display:none;">密碼錯誤，請重新輸入！</div>
+    </div>
+  </div>
+
+  <!-- Hidden File Input for JSON import -->
+  <input type="file" id="jsonFileInput" accept=".json" style="display:none;">
+
+  <!-- Toast -->
+  <div class="admin-toast" id="adminToast">保存成功！</div>
+
+  <!-- Scripts -->
+  <script src="./campus-ui.js"></script>
+  <script type="module" src="./admin.js"></script>
+</body>
+</html>

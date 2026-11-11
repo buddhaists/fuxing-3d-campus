@@ -18952,6 +18952,8 @@ function openPano(spotId = 'spot-10') {
   if (titleEl) titleEl.textContent = `${spot.name} · ${spot.group}`;
   const extEl = document.getElementById('panoExternalBtn');
   if (extEl && (spot.externalUrl || spot.embedUrl)) extEl.href = spot.externalUrl || spot.embedUrl;
+  const adminBtn = document.getElementById('panoAdminBtn');
+  if (adminBtn) adminBtn.href = `./admin.html?spot=${spot.id}`;
 
   updatePanoHotspots(spot);
 
