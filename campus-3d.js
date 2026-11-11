@@ -18673,7 +18673,7 @@ function initPanoViewer() {
 
   const sphereGeo = new THREE.SphereGeometry(500, 60, 40);
   sphereGeo.scale(-1, 1, 1);
-  const sphereMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+  const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.FrontSide });
   panoMesh = new THREE.Mesh(sphereGeo, sphereMat);
   panoScene.add(panoMesh);
 
@@ -18683,6 +18683,8 @@ function initPanoViewer() {
   panoRenderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   panoRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   panoRenderer.setSize(w, h);
+  panoRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  panoRenderer.toneMapping = THREE.NoToneMapping;
   panoRenderer.domElement.className = 'pano-canvas-layer';
   panoRenderer.domElement.style.position = 'absolute';
   panoRenderer.domElement.style.inset = '0';
@@ -18793,6 +18795,9 @@ function setPanoMode(mode) {
     if (panoRenderer?.domElement) {
       panoRenderer.domElement.style.zIndex = '3';
     }
+    if (panoMesh) {
+      panoMesh.material.color.setHex(0xffffff);
+    }
     if (tip) tip.textContent = '3D WebGL 全景球 · 滑鼠拖曳 / 雙指滑動環顧四周 · 滾輪縮放';
     updatePanoSize();
     if (currentSpotData) {
@@ -18804,6 +18809,7 @@ function setPanoMode(mode) {
 
 function loadWebGlPano(spot) {
   if (!panoMesh) return;
+  const loading = document.getElementById('panoLoading');
   const texLoader = new THREE.TextureLoader();
   texLoader.crossOrigin = 'anonymous';
   const targetUrl = spot.panoUrl || spot.thumb;
@@ -18812,16 +18818,26 @@ function loadWebGlPano(spot) {
   texLoader.load(targetUrl, texture => {
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
     if (panoMesh) {
+      panoMesh.material.color.setHex(0xffffff);
       panoMesh.material.map = texture;
       panoMesh.material.needsUpdate = true;
+    }
+    if (loading && panoMode === 'webgl') {
+      loading.style.display = 'none';
     }
   }, undefined, () => {
     texLoader.load(spot.thumb || './tex/courtyard_panorama.jpg', fallbackTex => {
       fallbackTex.colorSpace = THREE.SRGBColorSpace;
       if (panoMesh) {
+        panoMesh.material.color.setHex(0xffffff);
         panoMesh.material.map = fallbackTex;
         panoMesh.material.needsUpdate = true;
+      }
+      if (loading && panoMode === 'webgl') {
+        loading.style.display = 'none';
       }
     });
   });
