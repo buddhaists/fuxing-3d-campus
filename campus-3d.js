@@ -2667,7 +2667,7 @@ function makeShelterSignTexture(text = '防空避難設備') {
 }
 
 // ---- 01 北棟（愛悅樓） (`buildNorth` — 1:1 Precision from `正向立面圖`, `背向立面圖`, `地下層平面圖` & `1F/2F/3F 平面圖`) ----
-{
+function buildNorthBuilding() {
   const g = new THREE.Group();
   g.userData = { landmarkId: 'north-building' };
   const northDetailGroup = new THREE.Group();
@@ -6332,7 +6332,7 @@ function makeShelterSignTexture(text = '防空避難設備') {
 }
 
 // ---- 05 東棟（彩繪行政大樓） & 07 穿堂 (`buildEast` — 依據郭慶隆結構技師事務所 A2-1～A3-4 耐震補強測繪圖、東向立面彩繪設計圖與現場實景照片 1:1 精緻建模) ----
-{
+function buildEastBuilding() {
   const g = new THREE.Group();
   g.userData = { landmarkId: 'east-building' };
   const eastDetailGroup = new THREE.Group();
@@ -9354,7 +9354,7 @@ function makeCourtyardConcentricBrickTexture() {
 
 
 // ---- 02 南棟（興學樓） (`buildSouth` — 依據建築平面圖/立面圖與現場實景照片 1:1 精緻建模：含左右雙側通往中庭之樓梯) ----
-{
+function buildSouthBuilding() {
   const g = new THREE.Group();
   g.userData = { landmarkId: 'south-building' };
 
@@ -10649,7 +10649,7 @@ function makeTrenchGrateTexture() {
   return tex;
 }
 
-{
+function buildWestBuilding() {
   const g = new THREE.Group();
   g.userData = { landmarkId: 'west-building' };
 
@@ -12314,7 +12314,7 @@ function makeTerracottaTilePatternTexture() {
 }
 
 // ---- 04 新棟（復興非營利幼兒園） (`buildNew` — 1:1 Floor Plan & Photo-Accurate Build) ----
-{
+function buildNewBuilding() {
   const g = new THREE.Group();
   g.userData = { landmarkId: 'new-building' };
 
@@ -14026,7 +14026,7 @@ function makeTerracottaTilePatternTexture() {
 }
 
 // ---- 08 PU環形運動場, 09 籃球/排球場, 10 司令台 (`sports` layer — 100% Inside Rear Wall with Wide Campus Lawn Buffer Zone) ----
-{
+function buildSportsLayer() {
   // 08 Sports Track (`PU環形運動場` — 依據 135014.jpg、135021.jpg、135221.jpg 實景精細建模：
   // 6 跑道紅 PU、白色標線、外環平整水泥通學步道、內場草皮、跳遠專用紅橡膠助跑道、木質起跳板、長條跳遠沙坑、螢光橘色交通錐與排水溝格柵)
   const tg = new THREE.Group();
@@ -15237,7 +15237,7 @@ function makeRedNoticeTexture() {
 }
 
 // ---- 12 復興路正門與車棚區 (`main-gate` — 依《東棟前庭平面圖》與 Google 街景 1~3 實景精確建模) ----
-{
+function buildMainGateLayer() {
   const mg = new THREE.Group();
   mg.userData = { landmarkId: 'main-gate' };
 
@@ -17307,7 +17307,7 @@ function makeRedNoticeTexture() {
 }
 
 // ---- 17 東側門與馬賽克拼貼彩繪圍牆 (`east-gate` — 依 forecourt_east_gate_mosaic.jpg 1:1 精緻建模) ----
-{
+function buildEastGate() {
   const eg = new THREE.Group();
   eg.userData = { landmarkId: 'east-gate' };
   const gx = X(955); // 115.18
@@ -17616,7 +17616,7 @@ function makeRedNoticeTexture() {
 }
 
 // ---- 19 北側大車棚與停車區 (`carport` — 藍色浪板單層鋼構大車棚與北側柏油車道) ----
-{
+function buildNorthCarport() {
   const cp = new THREE.Group();
   cp.userData = { landmarkId: 'carport' };
 
@@ -17750,7 +17750,7 @@ function makeRedNoticeTexture() {
 }
 
 // ---- 20 前庭北側有機農場與食農教育園區 (`organic-farm` — 依 forecourt_organic_farm.jpg 1:1 精緻建模) ----
-{
+function buildOrganicFarm() {
   const ofg = new THREE.Group();
   ofg.userData = { landmarkId: 'organic-farm' };
 
@@ -17968,7 +17968,7 @@ function makeRedNoticeTexture() {
 }
 
 // ---- 21 東北角環保場與資源回收區 (`recycling-depot`) ----
-{
+function buildRecyclingDepot() {
   const rdg = new THREE.Group();
   rdg.userData = { landmarkId: 'recycling-depot' };
   const rx = X(922), rz = Z(42);
@@ -18075,6 +18075,8 @@ function addTree(x, z, scale = 1, species = 'broad') {
 
 let seed = 19;
 const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const streetLightBulbs = [];
+function buildLandscapeAndLighting() {
 // 依最新實景照片：前庭北側大草坪與有機農場已配置 1:1 專屬百年大榕樹、圓錐灌木、三腳支架景觀樹、附生鳥巢蕨小葉欖仁與斜幹榕樹，僅於南側前庭邊界保留背景椰子樹
 [
   [X(780), Z(305), 1.05], [X(845), Z(315), 1.0],  [X(915), Z(310), 0.95]  // 南側前庭花園背景椰子
@@ -18223,7 +18225,7 @@ const commuterWalkwayTrees = [
 commuterWalkwayTrees.forEach(([px, py, sc, sp]) => addTree(X(px), Z(py), sc, sp));
 
 // Campus & Commuter Walkway Night Streetlights (Warm glowing orbs & poles along pathways & exterior commuter walkway)
-const streetLightBulbs = [];
+// (streetLightBulbs declared at module scope)
 const streetLightCoords = [
   // (依指示移除前庭迎賓大道兩側突兀立柱路燈，保持車道開闊視野)
   [X(690), Z(155)], [X(575), Z(155)], [X(465), Z(155)],
@@ -18239,6 +18241,15 @@ streetLightCoords.forEach(([lx, lz]) => {
   bulb.visible = false;
   streetLightBulbs.push(bulb);
 });
+}
+
+function buildCampusContext() {
+  buildEastGate();
+  buildNorthCarport();
+  buildOrganicFarm();
+  buildRecyclingDepot();
+  buildLandscapeAndLighting();
+}
 
 // ---- Animated 3D Articulated Campus Pedestrians (`校園師生行人`, PKU-3D `pedestrians-v46.js` style) ----
 const pedestriansGroup = new THREE.Group();
@@ -22016,3 +22027,105 @@ window.scene = scene;
 window.getActiveViewMode = () => activeViewMode;
 window.getSelectedId = () => selectedId;
 window.openQrShareModal = openQrShareModal;
+
+// ============================================================================
+// PROGRESSIVE TIME-SLICED 3D SCENE BUILDER (v2.6.0)
+// ============================================================================
+function findBuildingIdForRoom(roomCode) {
+  if (!roomCode) return null;
+  for (const lm of LANDMARKS) {
+    for (const rms of Object.values(lm.rooms || {})) {
+      if (rms.some(r => r.code === roomCode)) return lm.id;
+    }
+  }
+  return null;
+}
+
+const ALL_BUILD_TASKS = [
+  { id: 'north-building', name: '愛悅樓（北棟）', fn: buildNorthBuilding, pct: 75 },
+  { id: 'east-building', name: '彩繪行政大樓（東棟）', fn: buildEastBuilding, pct: 82 },
+  { id: 'south-building', name: '興學樓（南棟）', fn: buildSouthBuilding, pct: 88 },
+  { id: 'west-building', name: '專科大樓（西棟）', fn: buildWestBuilding, pct: 93 },
+  { id: 'new-building', name: '幼兒園（新棟）', fn: buildNewBuilding, pct: 96 },
+  { id: 'sports-track', name: '運動場與司令台', fn: buildSportsLayer, pct: 98 },
+  { id: 'main-gate', name: '校門與前庭車棚', fn: buildMainGateLayer, pct: 99 },
+  { id: 'campus-context', name: '校園林蔭與環境設施', fn: buildCampusContext, pct: 100 }
+];
+
+function runChunkedSceneBuild() {
+  const params = new URLSearchParams(window.location.search);
+  const targetBldg = params.get('bldg') || params.get('landmark') || params.get('place') || findBuildingIdForRoom(params.get('room')) || 'north-building';
+
+  // 1. Find priority task based on URL or default to North Building
+  let priorityTask = ALL_BUILD_TASKS.find(t => t.id === targetBldg);
+  if (!priorityTask) {
+    if (['ball-courts', 'command-stage'].includes(targetBldg)) {
+      priorityTask = ALL_BUILD_TASKS.find(t => t.id === 'sports-track');
+    } else {
+      priorityTask = ALL_BUILD_TASKS[0]; // default to north-building
+    }
+  }
+
+  // 2. Build priority building synchronously in Frame 0 (< 30ms)
+  try {
+    priorityTask.fn();
+  } catch (err) {
+    console.error(`[Build] Failed to build priority task ${priorityTask.id}:`, err);
+  }
+
+  if (window.__updateProgress) {
+    window.__updateProgress(75, `${priorityTask.name}就緒，正在呈現校園...`);
+  }
+
+  // 3. Immediately trigger first 3D render & dismiss splash card
+  requestRender(60);
+  renderer.render(scene, camera);
+  if (!window.__hasFirst3DRender) {
+    window.__hasFirst3DRender = true;
+    onFirst3DFrameReady();
+  }
+
+  // 4. Queue remaining tasks progressively using requestAnimationFrame
+  const remainingTasks = ALL_BUILD_TASKS.filter(t => t !== priorityTask);
+  let taskIdx = 0;
+
+  function executeNextChunk() {
+    if (taskIdx >= remainingTasks.length) {
+      if (window.__updateProgress) {
+        window.__updateProgress(100, '3D 校園全景構建完成');
+      }
+      requestRender(30);
+      console.log('[Campus3D] Progressive time-sliced 3D build completed (v2.6.0)');
+      return;
+    }
+
+    const task = remainingTasks[taskIdx++];
+    try {
+      task.fn();
+    } catch (err) {
+      console.error(`[Build] Failed to build task ${task.id}:`, err);
+    }
+
+    if (window.__updateProgress) {
+      window.__updateProgress(task.pct, `正在構建${task.name}...`);
+    }
+    requestRender(25);
+
+    // Yield to the browser main thread before building the next chunk
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(executeNextChunk);
+    } else {
+      setTimeout(executeNextChunk, 16);
+    }
+  }
+
+  // Start background streaming on next animation frame
+  if (window.requestAnimationFrame) {
+    window.requestAnimationFrame(executeNextChunk);
+  } else {
+    setTimeout(executeNextChunk, 16);
+  }
+}
+
+// Kick off progressive time-sliced scene construction
+runChunkedSceneBuild();

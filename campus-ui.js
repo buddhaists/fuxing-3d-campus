@@ -1470,6 +1470,9 @@ function initImmediateUI() {
 
   // Initial render of places list (Instant 0.01s FCP / TTI)
   renderPlacesList();
+  if (typeof window !== 'undefined' && window.__updateProgress) {
+    window.__updateProgress(45, '校園空間與地標目錄就緒...');
+  }
 
   // Parse Startup URL parameters
   try {
