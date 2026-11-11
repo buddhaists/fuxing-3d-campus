@@ -17647,22 +17647,100 @@ function makeRedNoticeTexture() {
   const cp = new THREE.Group();
   cp.userData = { landmarkId: 'carport' };
 
-  // 北側東西向貫通柏油車道 (由東側門 x=115.2 經有機農場南緣直通北側大車棚 x=-21.3)
+  // -------------------------------------------------------------------------
+  // 【學校北側全線東西貫通車道通道】(東側門 x=+115.18m 經大車棚直通西側後門 x=-118.56m，全長 233.7m)
+  // 依實景照片 20261110_135208.jpg (東段柏油、標線、大車棚) 與 20261110_135221.jpg (西段水泥混凝土、伸縮縫、路緣石與林蔭綠廊)
+  // -------------------------------------------------------------------------
+
+  // 【A. 東段柏油車道】(x = -21.32m 至 x = +115.18m，寬 6.4m，中心 z = -43.5m)
   const driveMinX = X(430), driveMaxX = X(955), driveCx = (driveMinX + driveMaxX) / 2;
   const driveZ = -43.5, driveW = 6.4;
-  addBox(layerGroups.roads, driveMaxX - driveMinX, 0.10, driveW, asphaltMat, driveCx, 0.05, driveZ, false);
-  // 車道南緣紅磚路緣石 (照片 2、3 草坪北緣與車道交界紅磚緣石)
-  addBox(layerGroups.roads, 64.0, 0.15, 0.28, new THREE.MeshStandardMaterial({ color: 0xa8584c, roughness: 0.85 }), 82.5, 0.075, driveZ + driveW / 2, false);
+  const eastRoadLen = driveMaxX - driveMinX; // 136.5m
+  addBox(layerGroups.roads, eastRoadLen, 0.10, driveW, asphaltMat, driveCx, 0.05, driveZ, false);
 
-  // 實景照片 20261110_135208.jpg：柏油車道路面白色直行/指示標線箭頭
-  [-12.0, 18.0, 48.0, 78.0].forEach(ax => {
+  // 車道南緣紅磚路緣石 (照片 2、3 草坪北緣與車道交界紅磚緣石，x = 50.0m 至 115.0m)
+  addBox(layerGroups.roads, 65.0, 0.15, 0.28, new THREE.MeshStandardMaterial({ color: 0xa8584c, roughness: 0.85 }), 82.5, 0.075, driveZ + driveW / 2, false);
+  // 車道南緣白色路面邊線 (Solid White Edge Line)
+  addBox(layerGroups.roads, eastRoadLen, 0.012, 0.15, lineWhiteMat, driveCx, 0.052, driveZ + driveW / 2 - 0.15, false);
+  // 車道北緣停放區劃分白線
+  addBox(layerGroups.roads, eastRoadLen, 0.012, 0.15, lineWhiteMat, driveCx, 0.052, driveZ - driveW / 2 + 0.15, false);
+
+  // 實景照片 20261110_135208.jpg：柏油車道路面白色直行/指示標線箭頭 (東向車流)
+  [-12.0, 18.0, 48.0, 78.0, 102.0].forEach(ax => {
     // 箭頭桿身
-    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.055, driveZ, false);
+    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.055, driveZ + 0.9, false);
     // 箭頭頭部 (指向東向 +X)
-    const arrowHead = addMesh(layerGroups.roads, new THREE.ConeGeometry(0.65, 1.25, 3), lineWhiteMat, ax + 1.5, 0.056, driveZ, false);
+    const arrowHead = addMesh(layerGroups.roads, new THREE.ConeGeometry(0.65, 1.25, 3), lineWhiteMat, ax + 1.5, 0.056, driveZ + 0.9, false);
     arrowHead.rotation.x = -Math.PI / 2;
     arrowHead.rotation.z = -Math.PI / 2;
   });
+
+  // 西向車流地面箭頭標線 (指向西向 -X，西行出入動線)
+  [2.0, 32.0, 62.0, 92.0].forEach(ax => {
+    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.055, driveZ - 0.9, false);
+    const arrowHead = addMesh(layerGroups.roads, new THREE.ConeGeometry(0.65, 1.25, 3), lineWhiteMat, ax - 1.5, 0.056, driveZ - 0.9, false);
+    arrowHead.rotation.x = -Math.PI / 2;
+    arrowHead.rotation.z = Math.PI / 2;
+  });
+
+  // 車道中央白色虛線分隔標線 (Dashed center guide lines)
+  for (let lx = driveMinX + 4.0; lx < driveMaxX - 4.0; lx += 6.0) {
+    addBox(layerGroups.roads, 3.2, 0.012, 0.12, lineWhiteMat, lx, 0.052, driveZ, false);
+  }
+
+  // 【B. 中段過渡車道】(x = -21.32m 至 x = -38.0m，微斜過渡通過北棟西端與電梯/廁所北側)
+  const transX1 = driveMinX, transX2 = -38.0;
+  const transZ1 = driveZ, transZ2 = -40.15;
+  const transCx = (transX1 + transX2) / 2;
+  const transCz = (transZ1 + transZ2) / 2;
+  const transDx = transX2 - transX1; // -16.68m
+  const transDz = transZ2 - transZ1; // +3.35m
+  const transLen = Math.hypot(transDx, transDz); // 17.01m
+  const transAng = Math.atan2(transDz, -transDx);
+  {
+    const transGrp = new THREE.Group();
+    transGrp.position.set(transCx, 0.05, transCz);
+    transGrp.rotation.y = transAng;
+    addBox(transGrp, transLen, 0.10, 5.8, asphaltMat, 0, 0, 0, false);
+    layerGroups.roads.add(transGrp);
+  }
+
+  // 【C. 西段平整水泥混凝土車道】(x = -38.0m 至 x = -118.56m 直通後門，寬 5.2m，中心 z = -40.15m)
+  // 實景照片 20261110_135221.jpg：淺灰平整水泥路面、橫向伸縮割縫、水泥路緣石、綠意草坪緩衝帶
+  const westRoadX1 = -38.0, westRoadX2 = X(56); // -118.56m
+  const westRoadLen = Math.abs(westRoadX2 - westRoadX1); // 80.56m
+  const westRoadCx = (westRoadX1 + westRoadX2) / 2; // -78.28m
+  const westRoadZ = -40.15, westRoadW = 5.2;
+
+  const concreteRoadMat = new THREE.MeshStandardMaterial({ color: 0xd6d3cc, roughness: 0.88 }); // 平整淺灰刷紋水泥
+  const jointSeamMat    = new THREE.MeshStandardMaterial({ color: 0x3d4147, roughness: 0.95 }); // 瀝青填縫伸縮縫
+  const curbMat         = new THREE.MeshStandardMaterial({ color: 0xc8c5be, roughness: 0.78 }); // 水泥路緣石
+  const lawnBufferMat   = new THREE.MeshStandardMaterial({ color: 0x5e9146, roughness: 0.92 }); // 車道與跑道間草坪緩衝帶
+
+  // 水泥混凝土路面主體 (高出地表 0.055m，避免與底層 z-fight)
+  addBox(layerGroups.roads, westRoadLen, 0.10, westRoadW, concreteRoadMat, westRoadCx, 0.055, westRoadZ, false);
+
+  // 橫向伸縮縫 (Transverse Contraction Joints，實景照片 20261110_135221.jpg 每 4.5m 規律切縫)
+  for (let jx = westRoadX1 - 4.5; jx > westRoadX2 + 1.0; jx -= 4.5) {
+    addBox(layerGroups.roads, 0.045, 0.012, westRoadW - 0.08, jointSeamMat, jx, 0.061, westRoadZ, false);
+  }
+  // 縱向中央切縫 (Longitudinal Centerline Joint)
+  addBox(layerGroups.roads, westRoadLen, 0.010, 0.035, jointSeamMat, westRoadCx, 0.060, westRoadZ, false);
+
+  // 南側與北側水泥路緣石 (Curbs，高出路面 0.08m，寬 0.22m)
+  const southCurbZ = westRoadZ + westRoadW / 2 + 0.11; // -37.44m
+  const northCurbZ = westRoadZ - westRoadW / 2 - 0.11; // -42.86m
+  addBox(layerGroups.roads, westRoadLen, 0.16, 0.22, curbMat, westRoadCx, 0.085, southCurbZ, false);
+  addBox(layerGroups.roads, westRoadLen, 0.16, 0.22, curbMat, westRoadCx, 0.085, northCurbZ, false);
+
+  // 車道南緣與運動場外圍人行步道之間的綠意草坪緩衝帶 (Lawn Buffer Strip，照片 135221.jpg 實景)
+  // 由南側路緣石 z=-37.33m 延伸至跑道外圍步道邊緣 z=-35.0m，寬度約 2.33m
+  const lawnBufferZ = (southCurbZ + 0.11 + -35.0) / 2; // -36.16m
+  const lawnBufferW = Math.abs(-35.0 - (southCurbZ + 0.11)); // 2.33m
+  addBox(layerGroups.roads, westRoadLen + 2.0, 0.08, lawnBufferW, lawnBufferMat, westRoadCx, 0.045, lawnBufferZ, false);
+
+  // 【車道西端與西側學校後門平順交會區】(西側後門鋪面交界引導)
+  addBox(layerGroups.roads, 4.0, 0.09, 6.8, concreteRoadMat, westRoadX2 + 2.0, 0.052, -39.0, false);
 
   // 藍色浪板單層鋼構大車棚 (實景相片 135208.jpg 天藍色烤漆方管鋼架柱梁、深藍浪板屋頂與停放機車汽車)
   const sw = (705 - 430) * S, sd = 22 * S, scx = X((430 + 705) / 2), scz = Z(42);
@@ -18136,6 +18214,30 @@ treeZones.forEach(([x1, y1, x2, y2, count, defaultType]) => {
     if (tx > 66.0 && tx < 122.0 && tz > -14.0 && tz < 14.0) continue;
     addTree(tx, tz, 0.78 + rnd() * 0.48, sp);
   }
+});
+
+// =========================================================================
+// 實景照片 20261110_135221.jpg 學校北側貫通車道西段與運動場間林蔭綠廊喬木
+// 沿水泥混凝土車道南側草坪緩衝帶 (z ≈ -36.16m) 整齊排列高挑遮蔭喬木，眺望跑道與司令台
+// =========================================================================
+const northDrivewayShadeTrees = [
+  // 南側草坪緩衝帶 (車道與跑道之間，高挑透光闊葉遮蔭喬木)：
+  [-34.0, -36.16, 0.98, 'broad'],
+  [-46.0, -36.16, 1.02, 'broad'],
+  [-58.0, -36.16, 0.96, 'broad'],
+  [-70.0, -36.16, 1.00, 'broad'],
+  [-82.0, -36.16, 0.95, 'broad'],
+  [-94.0, -36.16, 1.04, 'broad'],
+  [-106.0, -36.16, 0.92, 'broad'],
+  // 北側校園北界圍牆內側綠帶：
+  [-40.0, -47.0, 1.05, 'broad'],
+  [-55.0, -47.0, 1.02, 'broad'],
+  [-72.0, -47.0, 1.08, 'broad'],
+  [-88.0, -47.0, 0.98, 'broad'],
+  [-102.0, -47.0, 1.04, 'broad']
+];
+northDrivewayShadeTrees.forEach(([tx, tz, sc, sp]) => {
+  addTree(tx, tz, sc, sp);
 });
 
 // Exterior Commuter Walkway Buffer Street Trees (`圍牆外通學步道緩衝帶行道樹`, positioned outside `V0(56,22)->V6(56,328)->V5(180,480)->V4(405,392)`)
@@ -19758,7 +19860,11 @@ const ROUTE_NODES = {
   'track-east':      [382, 235],
   'sports-track':    [294, 255],
   'command-stage':   [192, 268],
-  'ball-courts':     [145, 205]
+  'ball-courts':     [145, 205],
+  'east-gate':       [955, 73],
+  'carport':         [568, 73],
+  'driveway-mid':    [370, 85],
+  'west-back-gate':  [56, 90]
 };
 
 const ROUTE_EDGES = [
@@ -19788,7 +19894,14 @@ const ROUTE_EDGES = [
   ['track-east', 'sports-track'],
   ['sports-track', 'command-stage'],
   ['command-stage', 'ball-courts'],
-  ['sports-track', 'ball-courts']
+  ['sports-track', 'ball-courts'],
+  ['east-gate', 'carport'],
+  ['carport', 'driveway-mid'],
+  ['driveway-mid', 'west-back-gate'],
+  ['east-gate', 'front-plaza'],
+  ['carport', 'north-building'],
+  ['driveway-mid', 'sports-track'],
+  ['west-back-gate', 'ball-courts']
 ];
 
 function findShortestRoute(startId, endId) {
