@@ -2813,6 +2813,7 @@ function makeShelterSignTexture(text = '防空避難設備') {
   const railAzureMat = new THREE.MeshStandardMaterial({ color: 0x1870c9, roughness: 0.38, metalness: 0.2 }); // 1F Rear outdoor deck blue railing
   const outdoorConcreteMat = new THREE.MeshStandardMaterial({ color: 0xa4a29a, roughness: 0.95 }); // 1F Rear outdoor concrete stair & wing wall
   const pipePvcMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f6, roughness: 0.35 }); // 白色 PVC 落水管 (全北棟共用)
+  const alcoveWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf7f7f5, roughness: 0.55 }); // 戶外階梯與玄關白牆 (全北棟共用)
 
   // Poly Haven CC0 PBR maps (embedded as data-URIs in tex/pbr_data.js so WebGL never hits file:// CORS limits)
   function applyPBR(mat, base, rx, ry) {
@@ -3253,8 +3254,7 @@ function makeShelterSignTexture(text = '防空避難設備') {
     const toiletYellowMat  = new THREE.MeshStandardMaterial({ color: 0xf5c914, roughness: 0.50 });
     const toiletRedMat     = new THREE.MeshStandardMaterial({ color: 0xd81c42, roughness: 0.50 });
     const stTreadMat       = new THREE.MeshStandardMaterial({ color: 0xb5b3ad, roughness: 0.85 });
-    // pipePvcMat is declared at North Building root scope
-    const alcoveWhiteMat   = new THREE.MeshStandardMaterial({ color: 0xf7f7f5, roughness: 0.55 });
+    // pipePvcMat and alcoveWhiteMat are declared at North Building root scope
     const alarmOrangeMat   = new THREE.MeshStandardMaterial({ color: 0xe65100, roughness: 0.40 });
 
     // 1) 3 層樓主體長方體量體 (1F 西側入口處預留真實內凹玄關門洞 Alcove Recess)
