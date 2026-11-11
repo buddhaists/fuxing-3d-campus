@@ -4148,146 +4148,111 @@ function makeShelterSignTexture(text = '防空避難設備') {
     }
 
     // ==========================================================================
-    // 3) 北棟西側後走廊通往 3F 造型樓梯（實景照片 20261030_084800 ~ 085133 完美 1:1 復原）：
-    //    【實景相片精確比對與建築幾何重構】：
-    //    1. 地面戶外過渡台階 (Ground Transition Steps & Railings per Photo 2 & 3):
-    //       - 8 階踏步（自中央造型柱基座向西緩步上行至 1F 門廊平台 Y=1.25m）。
-    //       - 北側護牆為平整淺灰粉光水泥實心護牆（依實景照片 ground_crop.jpg，非鋸齒瓷磚，而是平直乾淨的水泥粉光護壁）。
-    //       - 墨綠色鋼管安全扶手：斜向主扶手、副扶手，每兩階設垂直欄杆立柱，1F 平台北緣設水平雙橫桿安全欄杆。
-    //    2. 1F 門廊、梯下透空採光開口與消防栓箱 (1F Portal & Under-Stair Void Wall per Photo 2):
-    //       - 1F 平台直通後走廊之敞開門洞通道（淨寬 1.35m，淨高 2.55m）。
-    //       - 西側靠廁所大樓轉角為墨綠色背牆、底部藍色踢腳，壁掛鮮紅「消防栓/滅火器箱」(Fire Cabinet) 與垂直白色落水管。
-    //       - 梯下開口（梯段 1 下方）：設有標誌性長方形透光透風開口洞（寬 0.96m、高 0.82m，附暖白石材窗台，可透過洞口看見後方走廊與地坪光影）。
-    //    3. 中央垂直結構造型主柱 (Central Monumental Column Pier, CAD C6):
-    //       - 位於 Bay ②–③ 中偏東處（centerColX = b2L + 2.85m，距軸線 ② 西端 2.85m、距軸線 ③ 東端 1.64m）。
-    //       - 寬度 0.96m、進深 0.52m，全高 13.50m 貫穿至屋頂，四面滿貼細緻白色方格二丁掛瓷磚。
-    //       - 雙階外凸柱基基石（下階 0.16m 白瓷磚、上階 0.10m 暖白石材收邊）。
-    //       - 柱面實景設施：建物標示牌 (Y~1.6m)、雙鏡頭監控攝影機 + 橙色感知器 (Y~2.1m)、深灰戶外投光燈 (Y~2.9m)。
-    //       - 柱頂暖白石材收頭與避雷針/無線電放射狀防攀天線針。
-    //    4. 經典三層垂直齊平「懸挑式方盒平台」(3-Tier Cantilevered Projecting Box Landings per Photo 2 & 4):
-    //       - 2F、3F 與屋頂層西端平台緊貼廁所大樓，向北懸挑突出 0.85m！
-    //       - 寬度 1.35m，進深 2.40m，三層方盒在垂直線上 100% 齊平對齊！
-    //       - 三面滿貼白色瓷磚實心女兒牆（高 1.05m），頂部暖白壓頂石。
-    //       - 方盒底板與天花板粉刷鵝黃色，裝設懸挑結構托樑、白管線、日光燈具與 2F 底部監控攝影機。
-    //       - 屋頂方盒頂部裝設金屬防攀爬鐵絲網與尖銳刺針。
-    //    5. 西側雙跑交錯剪刀式梯段 (West Zig-Zag Scissor Flights per Photo 2 & 4):
-    //       - 梯段 1（1F -> 1.5F）：自 1F 西端向東上升 (+X) 至中央柱 1.5F 休息平台。
-    //       - 梯段 2（1.5F -> 2F）：自中央柱 1.5F 轉向西上升 (-X) 直通 2F 懸挑方盒東側面女兒牆接頭。
-    //       - 梯段 3（2F -> 2.5F）：自 2F 懸挑方盒向東上升 (+X) 至中央柱 2.5F 休息平台。
-    //       - 梯段 4（2.5F -> 3F）：自中央柱 2.5F 轉向西上升 (-X) 直通 3F 懸挑方盒東側面女兒牆接頭。
-    //       - 梯段 5（3F -> 屋頂）：自 3F 懸挑方盒向東上升 (+X) 直達屋頂層平台。
-    //       - 所有梯段外側均為實心白瓷磚斜女兒牆（厚 0.18m、高 1.05m，斜向壓頂石材），底面粉刷暖鵝黃色。
-    //    6. 東側幾何平衡斜女兒牆與抗震斜撐 (East Balancing Balustrades & Structural Bracing per Photo 2 & 3):
-    //       - 位於中央柱東側至軸線 ③ 柱之間（跨度 ~1.16m）：
-    //       - 1F 白色瓷磚實心基座女兒牆。
-    //       - 1.5F 至 2F、2F 至 2.5F、2.5F 至 3F、3F 至屋頂之幾何平衡斜女兒牆與休息平台。
-    //       - 後走廊頂棚之混凝土斜向結構框架（依相片 stair_east_crop.jpg）。
-    //       - 軸線 ③ 教室後外牆 1F/2F/3F 三組分離式冷氣室外機（白色機殼、黑風扇罩、鍍鋅支架、冷媒管線）。
-    //       - 樓梯前側種植兩株姿態蒼勁的大樹（依實景照片 4 084911.jpg）。
+    // 3) 北棟西側後走廊通往 3F 造型樓梯（CAD 1F 平面圖 & 實景照片 1~5 完美 1:1 復原）：
+    //    【雙跑剪刀梯真實結構 · 南北雙梯段 1:1 精確構建】：
+    //    - 北跑 (Outer Flight, 靠車道)：地面 9 階水泥戶外階梯 (東往西上) + 梯段 2 (1.5F->2F) + 梯段 4 (2.5F->3F)
+    //      配階梯狀平整白水泥護牆 + 墨綠色雙橫桿鋼管扶手 (實景照片 1「方位東往西」100% 還原！)
+    //    - 南跑 (Inner Flight, 靠後走廊)：梯段 1 (1F->1.5F, 西往東上) + 梯段 3 (2F->2.5F) + 梯段 5 (3F->屋頂)
+    //      面向後走廊配方形採光通風開口洞與起步倒角白磚墩 (實景照片 4 還原！)
+    //    - 兩跑分界中牆：梯底設有標誌性白色矮台與「梯下三角形穿透開口」(實景照片 1)
+    //    - 西端懸挑方盒平台 (2F/3F/屋頂)：滿貼白二丁掛瓷磚、北向大敞開通風開口洞、頂部過樑與天花日光燈
+    //    - 中央造型主柱：貫穿全樓層，配雙階外凸柱基、建物銘牌、雙鏡頭監控、投光燈與避雷天線針
     // ==========================================================================
-    {
-      const zStOuter   = zb - 1.55;                          // 樓梯主體北外牆線 (~ -35.71m)
-      const zBoxNorth  = zStOuter - 0.85;                    // 2F/3F 突出方盒平台北外緣 (~ -36.56m，向北懸挑 0.85m)
-      const centerColX = b2L + 2.85;                         // 中央造型主柱中心 X (~ -28.06m)
-      const colW       = 0.96;                               // 中央主柱寬 0.96m
-      const colD       = 0.52;                               // 中央主柱深 0.52m
-      const colCz      = zStOuter + colD / 2;                // 中央主柱中心 Z
-      const colLeftX   = centerColX - colW / 2;              // 中央主柱西側邊緣 (~ -28.54m)
-      const colRightX  = centerColX + colW / 2;              // 中央主柱東側邊緣 (~ -27.58m)
-      const stWallH    = baseH + 3 * FH + 1.45;              // 樓梯主柱總高 ~ 13.50m
+{
+      // 1. 基本跨度與幾何基準 (CAD 1F 平面圖 & 實景照片 1~5 精準對位)
+      const b2L = ax(2), b2R = ax(3), b2W = b2R - b2L;     // Bay ②–③ 淨跨 4.50m
+      const boxW = 1.35;                                   // 西端方盒平台淨寬 1.35m
+      const boxEastX = b2L + boxW;                         // ~ -30.79m (懸挑方盒東緣 / 1F 門廊交界)
+      const centerColX = -28.20;                           // 中央造型主柱中心 X
+      const colW = 0.82, colD = 0.70;                      // 中央主柱尺寸 0.82m × 0.70m
+      const colLeftX = centerColX - colW / 2;              // ~ -28.61m (梯段東端起訖點)
+      const colRightX = centerColX + colW / 2;             // ~ -27.79m
+      const runW = colLeftX - boxEastX;                    // 梯段淨水平跨度 ~ 2.18m
+      const eastSpanW = Math.max(0.20, b2R - colRightX);   // 東側靠軸線 ③ 柱之結構縫隙
+      const halfH = FH / 2;                                // 半層樓高 1.80m
+      const stWallH = baseH + 3 * FH + 1.45;               // 中央主柱全高 13.50m
 
-      const boxW       = 1.35;                               // 西端懸挑方盒寬度 1.35m
-      const boxEastX   = b2L + boxW;                         // 懸挑方盒東側邊緣 (~ -29.56m)
-      const runW       = colLeftX - boxEastX;                // 西側梯段淨跨 ~ 1.02m
-      const eastSpanW  = b2R - colRightX;                    // 東側幾何跨度 ~ 1.16m
-      const halfH      = FH / 2;                             // 半層高度 1.80m
+      const slopeAngW = Math.atan2(halfH, runW);           // 梯段坡度角 ~ 39.5°
+      const slopeLenW = Math.hypot(runW, halfH);           // 梯段斜邊長 ~ 2.83m
+      const balH = 1.05;                                   // 女兒牆高度 1.05m
+      const balThick = 0.16;                               // 女兒牆厚度 0.16m
+      const nSteps = 9;                                    // 梯級數 9 階
 
-      const slopeAngW  = Math.atan2(halfH, runW);            // 西側梯段傾角
-      const slopeLenW  = Math.hypot(runW, halfH);
-      const slopeAngE  = Math.atan2(halfH, eastSpanW);       // 東側幾何傾角
-      const slopeLenE  = Math.hypot(eastSpanW, halfH);
-
-      const balH       = 1.05;                               // 女兒牆高度 1.05m
-      const balThick   = 0.18;                               // 女兒牆厚度 0.18m
-      const balZ       = zStOuter + balThick / 2;            // 主梯段女兒牆中心 Z
-      const flightD    = 1.20;                               // 梯段踏步深度 1.20m
-      const flightCz   = zb - flightD / 2 - 0.15;            // 梯段踏步中心 Z
-      const nSteps     = 10;                                 // 梯級數 10 階
+      // 2. 南北雙跑梯段進深分割 (Z-axis Cross-Section):
+      //    南跑 (Inner Flight): 緊鄰 1F 後走廊外牆 (zb)，東向上行 (+X)
+      //    中隔牆 (Mid Divider Wall): 兩跑間之白瓷磚分界矮牆，含梯下三角形穿透洞口 (Photo 1)
+      //    北跑 (Outer Flight): 緊鄰北側車道，西向上行 (-X)，含地面 9 階水泥戶外踏步
+      //    北外護牆 (North Cheek Wall): 階梯狀平整白護牆 + 墨綠鋼管扶手 (Photo 1 & 5)
+      const flightInnerW = 1.20;                           // 南跑寬度 1.20m
+      const flightInnerCz = zb - 0.65;                     // 南跑踏步中心 Z (~ -39.36m)
+      const midWallZ = zb - 1.25;                          // 兩跑分界中牆中心 Z (~ -39.96m)
+      const flightOuterW = 1.25;                           // 北跑寬度 1.25m
+      const flightOuterCz = zb - 1.925;                    // 北跑踏步中心 Z (~ -40.63m)
+      const railZ = zb - 2.55;                             // 北側護牆/扶手中心 Z (~ -41.26m)
+      const zBoxNorth = railZ - 0.15;                      // 2F/3F 懸挑方盒北外外緣 (~ -41.41m)
+      const boxD = Math.abs(zBoxNorth - zb);               // 方盒總進深 ~ 2.70m
+      const boxCz = (zb + zBoxNorth) / 2;                  // 方盒中心 Z
 
       // -----------------------------------------------------------
-      // A. 中央垂直造型主柱 (Central Monumental Column Pier, CAD C6)
-      //    照片 1~3 實景：全貼白色方格二丁掛瓷磚、雙階外凸柱基石、完整電器設施
+      // A. 中央垂直結構造型主柱 (Central Monumental Column Pier, CAD C6)
       // -----------------------------------------------------------
-      // 1) 主柱柱身
-      addBox(g, colW, stWallH, colD, whiteTileFine, centerColX, stWallH / 2, colCz);
+      // 1) 主柱柱身 (全貼白色二丁掛瓷磚)
+      addBox(g, colW, stWallH, colD, whiteTileFine, centerColX, stWallH / 2, midWallZ);
       // 2) 柱基座雙階外凸基石 (Plinth Base per Photo 2 & 3)
-      addBox(g, colW + 0.18, 0.16, colD + 0.18, whiteTileFine, centerColX, 0.08, colCz);
-      addBox(g, colW + 0.10, 0.10, colD + 0.10, warmCreamMat, centerColX, 0.21, colCz);
+      addBox(g, colW + 0.18, 0.16, colD + 0.18, whiteTileFine, centerColX, 0.08, midWallZ);
+      addBox(g, colW + 0.10, 0.10, colD + 0.10, warmCreamMat, centerColX, 0.21, midWallZ);
       // 3) 柱頂暖白石材收邊
-      addBox(g, colW + 0.08, 0.14, colD + 0.08, warmCreamMat, centerColX, stWallH + 0.07, colCz);
-      // 4) 柱頂防攀避雷針/無線電天線陣列 (Lightning Rod / Antenna Spikes per Photo 2)
-      addBox(g, 0.035, 1.15, 0.035, steelPostMat, centerColX, stWallH + 0.70, colCz);
+      addBox(g, colW + 0.08, 0.14, colD + 0.08, warmCreamMat, centerColX, stWallH + 0.07, midWallZ);
+      // 4) 柱頂避雷針/無線電天線陣列 (Lightning Rod / Antenna Spikes per Photo 2)
+      addBox(g, 0.035, 1.15, 0.035, steelPostMat, centerColX, stWallH + 0.70, midWallZ);
       for (let ang = 0; ang < Math.PI * 2; ang += Math.PI / 2) {
-        const spike = addBox(g, 0.018, 0.45, 0.018, steelPostMat, centerColX + Math.cos(ang) * 0.14, stWallH + 0.95, colCz + Math.sin(ang) * 0.14);
+        const spike = addBox(g, 0.018, 0.45, 0.018, steelPostMat, centerColX + Math.cos(ang) * 0.14, stWallH + 0.95, midWallZ + Math.sin(ang) * 0.14);
         spike.rotation.z = Math.cos(ang) * 0.35;
         spike.rotation.x = Math.sin(ang) * 0.35;
       }
-
-      // 5) 柱面實景專屬設施（依實景照片 20261030_084822 精確配置）：
-      // 建物標示牌 (Y~1.6m)
-      addBox(g, 0.28, 0.38, 0.04, panelPureWhite, centerColX, baseH + 0.35, zStOuter - 0.02);
-      addBox(g, 0.22, 0.30, 0.045, ironGrilleMat, centerColX, baseH + 0.35, zStOuter - 0.025);
-      // 雙鏡頭監控攝影機 + 橙色感知器 (Y~2.1m)
-      addBox(g, 0.18, 0.14, 0.12, panelPureWhite, centerColX, baseH + 0.85, zStOuter - 0.06);
-      addBox(g, 0.06, 0.08, 0.13, new THREE.MeshStandardMaterial({ color: 0xe65100, roughness: 0.3 }), centerColX, baseH + 0.80, zStOuter - 0.07);
-      // 深灰戶外壁掛投光燈 (Y~2.9m)
-      addBox(g, 0.26, 0.18, 0.16, steelPostMat, centerColX, baseH + 1.68, zStOuter - 0.08);
-      addBox(g, 0.22, 0.14, 0.02, new THREE.MeshBasicMaterial({ color: 0xfffaea }), centerColX, baseH + 1.68, zStOuter - 0.17);
+      // 5) 柱面實景專屬設施 (建物標示牌、攝影機、投光燈)
+      addBox(g, 0.28, 0.38, 0.04, panelPureWhite, centerColX, baseH + 0.35, railZ + 0.30);
+      addBox(g, 0.22, 0.30, 0.045, ironGrilleMat, centerColX, baseH + 0.35, railZ + 0.295);
+      addBox(g, 0.18, 0.14, 0.12, panelPureWhite, centerColX, baseH + 0.85, railZ + 0.26);
+      addBox(g, 0.06, 0.08, 0.13, new THREE.MeshStandardMaterial({ color: 0xe65100, roughness: 0.3 }), centerColX, baseH + 0.80, railZ + 0.25);
+      addBox(g, 0.26, 0.18, 0.16, steelPostMat, centerColX, baseH + 1.68, railZ + 0.24);
+      addBox(g, 0.22, 0.14, 0.02, new THREE.MeshBasicMaterial({ color: 0xfffaea }), centerColX, baseH + 1.68, railZ + 0.15);
 
       // -----------------------------------------------------------
-      // B. 東側結構柱 (East Axis ③ Column Pier, CAD G2a)
-      // -----------------------------------------------------------
-      addBox(g, 0.45, stWallH, 0.45, whiteTileFine, b2R - 0.225, stWallH / 2, colCz);
-
-      // -----------------------------------------------------------
-      // C. 1F 地面戶外過渡階梯與墨綠色安全扶手 (Ground Transition Steps per Photo 1, 3, 5)
-      //    實景精確特徵：9 階踏步自地面上升至 1F 門廊平台，北側配平整階梯狀白水泥護牆與墨綠鋼管雙橫桿扶手
+      // B. 1F 地面戶外過渡階梯與墨綠色安全扶手 (Photo 1「方位東往西」實景 100% 重現！)
+      //    9 階踏步自地面東側 (colLeftX) 向西緩步上行至 1F 門廊平台 (boxEastX)
+      //    北側設階梯狀平整白水泥護牆 + 墨綠色雙橫桿鋼管扶手 (端部圓弧向下收頭、5 根立柱)
       // -----------------------------------------------------------
       {
         const gStCount = 9;
-        const gStRun = 1.62;                                 // 戶外階梯水平總跨度 ~1.62m
-        const gTread = gStRun / gStCount;                    // 每階深 ~0.18m
-        const gRise  = baseH / gStCount;                     // 每階高 ~0.1389m
-        const gStWidthZ = 1.35;                              // 台階淨寬 1.35m
-        const gStCz = zStOuter + gStWidthZ / 2;
-        const stepStartX = boxEastX + gStRun;                // 階梯起步端 X (~ -27.94m，鄰近造型主柱基座)
+        const gTread = runW / gStCount;                      // 每階深 ~0.242m
+        const gRise = baseH / gStCount;                      // 每階高 ~0.1389m
 
-        // 1) 9 階水泥踏步本體與洗石子防滑踏面
+        // 1) 9 階水泥踏步本體與洗石子防滑踏面 (在北跑 flightOuterCz 上，自東向西上升)
         for (let s = 0; s < gStCount; s++) {
-          const sx = stepStartX - (s + 0.5) * gTread;
+          const sx = colLeftX - (s + 0.5) * gTread;
           const stepH = (s + 1) * gRise;
-          addBox(g, gTread + 0.02, stepH, gStWidthZ, mats.slab, sx, stepH / 2, gStCz);
-          addBox(g, gTread + 0.02, 0.025, gStWidthZ, stTreadMat, sx, stepH - 0.0125, gStCz);
+          addBox(g, gTread + 0.02, stepH, flightOuterW, mats.slab, sx, stepH / 2, flightOuterCz);
+          addBox(g, gTread + 0.02, 0.025, flightOuterW, stTreadMat, sx, stepH - 0.0125, flightOuterCz);
 
-          // 北側階梯狀平整白水泥護牆 (Stepped White Cheek Wall per Photo 1, 3, 5)
+          // 北側階梯狀平整白水泥護牆 (Stepped White Cheek Wall per Photo 1 & 5)
           const cheekH = stepH + 0.32;
-          addBox(g, gTread + 0.02, cheekH, 0.12, alcoveWhiteMat, sx, cheekH / 2, zStOuter + 0.04);
+          addBox(g, gTread + 0.02, cheekH, 0.14, alcoveWhiteMat, sx, cheekH / 2, railZ);
         }
 
-        // 2) 階梯北側墨綠色鋼管雙橫桿安全扶手 (Weathered Dark Green Tubular Handrails per Photo 1 & 5)
-        const railStartX = stepStartX;
+        // 2) 墨綠色鋼管雙橫桿安全扶手 (Weathered Dark Green Tubular Handrails per Photo 1 & 5)
+        const railStartX = colLeftX;
         const railEndX   = boxEastX;
         const railSpanX  = railStartX - railEndX;
         const railLen    = Math.hypot(railSpanX, baseH);
         const railAng    = Math.atan2(baseH, railSpanX);
         const railMidX   = (railStartX + railEndX) / 2;
         const railMidY   = baseH / 2 + 0.32 + 0.52;
-        const railZ      = zStOuter + 0.04;
 
-        // 傾斜主扶手管 (西高東低，頂部末端向下彎弧圓角收頭)
+        // 傾斜主扶手管 (西高東低)
         const mainRail = addBox(g, railLen + 0.08, 0.045, 0.045, appleGreenMat, railMidX, railMidY, railZ);
         mainRail.rotation.z = -railAng;
-        // 起步端向下彎垂收頭管 (Downward round curl terminal at bottom step)
+        // 起步端向下彎垂圓管收頭 (Downward curl terminal at bottom step)
         addBox(g, 0.045, 0.18, 0.045, appleGreenMat, railStartX + 0.04, 0.32 + 0.44, railZ);
 
         // 中層平行副扶手管 (Mid Rail)
@@ -4307,94 +4272,99 @@ function makeShelterSignTexture(text = '防空避難設備') {
         const pRailH = 0.88;
         const pRailW = boxW;
         const pRailCx = b2L + boxW / 2;
-        addBox(g, pRailW, 0.045, 0.045, appleGreenMat, pRailCx, baseH + pRailH, zStOuter + 0.04);
-        addBox(g, pRailW, 0.032, 0.032, appleGreenMat, pRailCx, baseH + pRailH * 0.52, zStOuter + 0.04);
-        addBox(g, 0.04, pRailH, 0.04, appleGreenMat, boxEastX - 0.04, baseH + pRailH / 2, zStOuter + 0.04);
-        addBox(g, 0.04, pRailH, 0.04, appleGreenMat, b2L + 0.04, baseH + pRailH / 2, zStOuter + 0.04);
+        addBox(g, pRailW, 0.045, 0.045, appleGreenMat, pRailCx, baseH + pRailH, railZ);
+        addBox(g, pRailW, 0.032, 0.032, appleGreenMat, pRailCx, baseH + pRailH * 0.52, railZ);
+        addBox(g, 0.04, pRailH, 0.04, appleGreenMat, boxEastX - 0.04, baseH + pRailH / 2, railZ);
+        addBox(g, 0.04, pRailH, 0.04, appleGreenMat, b2L + 0.04, baseH + pRailH / 2, railZ);
       }
 
       // -----------------------------------------------------------
-      // D. 1F 門廊、梯下透空採光開口、消防栓箱與後走廊內側斜向白磚隔牆 (Photo 1, 4, 5)
+      // C. 1F 西端門廊平台與設施 (1F West Landing Portal per Photo 1 & 5)
+      //    Y = baseH = 1.25m，跨越 [b2L, boxEastX]，進深覆蓋南北兩跑 [zb, railZ]
       // -----------------------------------------------------------
       {
-        // 1) 1F 西端門廊平台 (Y = baseH = 1.25m，跨越 [b2L, boxEastX])
         const land1FW = boxW;
         const land1FCx = b2L + boxW / 2;
-        const land1FD = Math.abs(zStOuter - zb) + 0.20;
-        const land1FCz = (zb + zStOuter) / 2;
-        addBox(g, land1FW, 0.22, land1FD, corridorFloorMat, land1FCx, baseH - 0.11, land1FCz);
-        addBox(g, land1FW, baseH - 0.22, land1FD, warmCreamMat, land1FCx, (baseH - 0.22) / 2, land1FCz);
+        // 磨石子地坪與支撐基座
+        addBox(g, land1FW, 0.22, boxD, corridorFloorMat, land1FCx, baseH - 0.11, boxCz);
+        addBox(g, land1FW, baseH - 0.22, boxD, warmCreamMat, land1FCx, (baseH - 0.22) / 2, boxCz);
 
-        // 2) 1F 通向後走廊之開敞門洞通道與過樑 (Open Walkthrough Portal into Rear Corridor)
+        // 通向 1F 後走廊之開敞門洞通道與過樑
         const portalH = 2.55;
         addBox(g, boxW, FH - portalH, 0.22, whiteTileFine, land1FCx, baseH + portalH + (FH - portalH) / 2, zb + 0.11);
 
-        // 3) 右側靠廁所大樓轉角墨綠色背牆、藍色踢腳 (Green Accent Wall per Photo 2 & 5)
-        const greenW = 0.55, greenH = FH;
-        const greenX = b2L - 0.25;
-        addBox(g, greenW, greenH, 0.24, appleGreenMat, greenX, baseH + greenH / 2, zb + 0.12);
-        // 底部藍色踢腳飾帶
-        addBox(g, greenW, 0.32, 0.26, featureBlueMat, greenX, baseH + 0.16, zb + 0.12);
-        // 綠牆內嵌檢修蓋板 (Access panel per Photo 5)
-        addBox(g, 0.38, 0.45, 0.02, new THREE.MeshStandardMaterial({ color: 0x336b3f, roughness: 0.6 }), greenX + 0.05, baseH + 0.75, zb + 0.25);
+        // 西側迎面廁所大樓翠綠色背牆、深藍色踢腳飾帶 (Photo 1 & 5 實景！)
+        const greenW = 0.24, greenH = FH, greenD = boxD;
+        const greenX = b2L + greenW / 2;
+        addBox(g, greenW, greenH, greenD, appleGreenMat, greenX, baseH + greenH / 2, boxCz);
+        // 底部深藍色踢腳飾帶
+        addBox(g, greenW + 0.02, 0.32, greenD + 0.02, featureBlueMat, greenX, baseH + 0.16, boxCz);
+        // 綠牆檢修蓋板 (Access panel per Photo 5)
+        addBox(g, 0.02, 0.45, 0.38, new THREE.MeshStandardMaterial({ color: 0x336b3f, roughness: 0.6 }), greenX + greenW / 2 + 0.01, baseH + 0.75, flightOuterCz);
 
-        // 4) 鮮紅橘色壁掛「消防栓/滅火器箱」(Red Fire Cabinet per Photo 2)
-        const fireW = 0.50, fireH = 0.75, fireD = 0.18;
-        addBox(g, fireW, fireH, fireD, fireHydrantMat, greenX, baseH + 1.25, zb + 0.22);
-        addBox(g, fireW * 0.75, fireH * 0.45, 0.02, panelPureWhite, greenX, baseH + 1.25, zb + 0.22 + fireD / 2 + 0.01);
+        // 鮮紅色壁掛「消防栓/滅火器箱」(Red Fire Cabinet per Photo 2 & 5)
+        const fireW = 0.18, fireH = 0.75, fireD = 0.50;
+        addBox(g, fireW, fireH, fireD, fireHydrantMat, greenX + greenW / 2 + fireW / 2, baseH + 1.25, flightInnerCz);
+        addBox(g, 0.02, fireH * 0.45, fireD * 0.75, panelPureWhite, greenX + greenW / 2 + fireW + 0.01, baseH + 1.25, flightInnerCz);
 
-        // 5) 建築接縫垂直白色 PVC 落水管 (Vertical White Downpipe per Photo 2 & 5)
-        addBox(g, 0.09, stWallH, 0.09, pipePvcMat, b2L - 0.50, stWallH / 2, zb + 0.15);
-        addBox(g, 0.10, 0.10, 0.18, pipePvcMat, b2L - 0.50, baseH + 0.20, zb + 0.22);
-
-        // 6) 梯段 1 下方標誌性「梯下透空採光穿透開口」(Under-Stair Void per Photo 1 & 5)
-        //    實景幾何：底座設白瓷磚矮台與壓頂，東臨主柱、上方為斜梯底板，人站在外側可穿透看見走廊與地坪光影！
-        const voidW = runW - 0.08;                           // 開口寬 ~0.94m
-        const voidSillY = 0.38;                              // 矮台窗台高 0.38m
-        const voidCx = (boxEastX + colLeftX) / 2;
-        addBox(g, voidW, voidSillY, 0.20, whiteTileFine, voidCx, voidSillY / 2, balZ);
-        addBox(g, voidW + 0.06, 0.04, 0.24, warmCreamMat, voidCx, voidSillY + 0.02, balZ);
-        // 西側邊緣支撐垂直白瓷磚側壁墩 (West pier framing the opening)
-        addBox(g, 0.18, baseH - voidSillY, 0.22, whiteTileFine, boxEastX + 0.09, voidSillY + (baseH - voidSillY) / 2, balZ);
-
-        // 7) 1F 後走廊內側斜向白磚隔牆與方形採光通風開孔洞 (Photo 4 實景 1:1 還原！)
-        //    位於梯段 1 南側（後走廊北緣），設有隨梯爬升之白瓷磚斜護牆、方形通風洞口與起步倒角白磚墩
-        {
-          const corrWallZ = zb + 0.09;                       // 後走廊北緣分界線
-          const pierW = 0.34, pierH = 1.08;
-          // 起步倒角白磚墩 (Starting chamfered newel pier at west landing)
-          addBox(g, pierW, pierH, 0.22, whiteTileFine, boxEastX + pierW / 2, baseH + pierH / 2, corrWallZ);
-          addBox(g, pierW + 0.04, 0.05, 0.26, warmCreamMat, boxEastX + pierW / 2, baseH + pierH + 0.025, corrWallZ);
-
-          // 隨階梯向上傾斜之白瓷磚斜護牆 (Sloped Inner Balustrade Wall along 1F corridor)
-          const inSlopeLen = slopeLenW - pierW * 0.8;
-          const inSlopeMidX = (boxEastX + pierW + colLeftX) / 2;
-          const inSlopeMidY = baseH + halfH / 2 + 0.45;
-          const inBalMesh = addBox(g, inSlopeLen, 0.92, 0.16, whiteTileFine, inSlopeMidX, inSlopeMidY, corrWallZ);
-          inBalMesh.rotation.z = slopeAngW;
-          const inCopMesh = addBox(g, inSlopeLen + 0.06, 0.045, 0.20, warmCreamMat, inSlopeMidX, inSlopeMidY + 0.48, corrWallZ);
-          inCopMesh.rotation.z = slopeAngW;
-
-          // 護牆中央「方形採光通風開口洞」(Rectangular Cutout Window per Photo 4)
-          // 實景照片 4 中，自走廊可透過斜牆中段方形窗口看穿樓梯踏步與戶外綠蔭
-          const cutW = 0.82, cutH = 0.62;
-          const cutX = inSlopeMidX;
-          const cutY = inSlopeMidY;
-          // 開口窗台暖白收邊
-          addBox(g, cutW + 0.06, 0.04, 0.20, warmCreamMat, cutX, cutY - cutH / 2, corrWallZ);
-          addBox(g, cutW + 0.06, 0.04, 0.20, warmCreamMat, cutX, cutY + cutH / 2, corrWallZ);
-          addBox(g, 0.04, cutH, 0.20, warmCreamMat, cutX - cutW / 2, cutY, corrWallZ);
-          addBox(g, 0.04, cutH, 0.20, warmCreamMat, cutX + cutW / 2, cutY, corrWallZ);
-        }
+        // 建築接縫垂直白色 PVC 落水管 (Vertical White Downpipe per Photo 1 & 5)
+        addBox(g, 0.09, stWallH, 0.09, pipePvcMat, b2L + 0.18, stWallH / 2, railZ + 0.18);
+        addBox(g, 0.10, 0.18, 0.10, pipePvcMat, b2L + 0.18, baseH + 0.20, railZ + 0.25);
       }
 
       // -----------------------------------------------------------
-      // E. 西側雙跑交錯剪刀式造型梯段 (West Zig-Zag Scissor Stair Flights per Photo 1 & 2)
-      //    嚴格 1:1 復原實景相片之現代雕塑幾何感之字形斜女兒牆！
+      // D. 南北雙跑分界中隔牆與「梯下透空穿透開口」(Photo 1 實景 1:1 重現！)
+      //    位於 Z = midWallZ，隔開南跑與北跑
+      //    在 9 階踏步左側，梯段 1 底座設有標誌性白色矮台與「三角形/長方形透空開口洞」
+      // -----------------------------------------------------------
+      {
+        const voidW = runW - 0.20;
+        const voidSillY = 0.38;                              // 矮台窗台高 0.38m
+        const voidCx = (boxEastX + colLeftX) / 2;
+        // 窗台基座與暖白壓頂
+        addBox(g, voidW, voidSillY, 0.16, whiteTileFine, voidCx, voidSillY / 2, midWallZ);
+        addBox(g, voidW + 0.06, 0.04, 0.20, warmCreamMat, voidCx, voidSillY + 0.02, midWallZ);
+        // 西端與東端支撐垂直白瓷磚門墩
+        addBox(g, 0.20, baseH - voidSillY, 0.16, whiteTileFine, boxEastX + 0.10, voidSillY + (baseH - voidSillY) / 2, midWallZ);
+        addBox(g, 0.20, baseH - voidSillY, 0.16, whiteTileFine, colLeftX - 0.10, voidSillY + (baseH - voidSillY) / 2, midWallZ);
+      }
+
+      // -----------------------------------------------------------
+      // E. 1F 後走廊內側斜向白磚隔牆與方形採光通風開孔洞 (Photo 4 實景 1:1 還原！)
+      //    位於梯段 1 南側 (Z = zb + 0.09)，面向 1F 後走廊
+      // -----------------------------------------------------------
+      {
+        const corrWallZ = zb + 0.09;                         // 後走廊北緣分界線
+        const pierW = 0.34, pierH = 1.08;
+        // 起步倒角白磚墩 (Starting chamfered newel pier at west landing per Photo 4)
+        addBox(g, pierW, pierH, 0.22, whiteTileFine, boxEastX + pierW / 2, baseH + pierH / 2, corrWallZ);
+        addBox(g, pierW + 0.04, 0.05, 0.26, warmCreamMat, boxEastX + pierW / 2, baseH + pierH + 0.025, corrWallZ);
+
+        // 隨階梯向上傾斜之白瓷磚斜護牆 (Sloped Inner Balustrade Wall along 1F corridor)
+        const inSlopeLen = slopeLenW - pierW * 0.8;
+        const inSlopeMidX = (boxEastX + pierW + colLeftX) / 2;
+        const inSlopeMidY = baseH + halfH / 2 + 0.45;
+        const inBalMesh = addBox(g, inSlopeLen, 0.92, 0.16, whiteTileFine, inSlopeMidX, inSlopeMidY, corrWallZ);
+        inBalMesh.rotation.z = slopeAngW;
+        const inCopMesh = addBox(g, inSlopeLen + 0.06, 0.045, 0.20, warmCreamMat, inSlopeMidX, inSlopeMidY + 0.48, corrWallZ);
+        inCopMesh.rotation.z = slopeAngW;
+
+        // 護牆中央「方形採光通風開口洞」(Rectangular Cutout Window per Photo 4)
+        const cutW = 0.82, cutH = 0.62;
+        const cutX = inSlopeMidX;
+        const cutY = inSlopeMidY;
+        addBox(g, cutW + 0.06, 0.04, 0.20, warmCreamMat, cutX, cutY - cutH / 2, corrWallZ);
+        addBox(g, cutW + 0.06, 0.04, 0.20, warmCreamMat, cutX, cutY + cutH / 2, corrWallZ);
+        addBox(g, 0.04, cutH, 0.20, warmCreamMat, cutX - cutW / 2, cutY, corrWallZ);
+        addBox(g, 0.04, cutH, 0.20, warmCreamMat, cutX + cutW / 2, cutY, corrWallZ);
+      }
+
+      // -----------------------------------------------------------
+      // F. 雙跑剪刀梯梯段 (Double-Flight Scissor Flights per CAD 1F Plan & Photos 1~3)
       // -----------------------------------------------------------
       const midW = (boxEastX + colLeftX) / 2;
 
-      // --- 梯段 1 (1F -> 1.5F 中間休息平台，自西向東上升 +X) ---
+      // --- 梯段 1 (1F -> 1.5F 南跑，自西向東上升 +X) ---
       {
         const fyStart = baseH;                               // 1.25m
         const fyEnd   = baseH + halfH;                       // 3.05m
@@ -4405,31 +4375,34 @@ function makeShelterSignTexture(text = '防空避難設備') {
         for (let s = 0; s < nSteps; s++) {
           const sx = boxEastX + (s + 0.5) * stepDX;
           const sy = fyStart + (s + 0.5) * stepDY;
-          addBox(g, stepDX + 0.02, 0.18, flightD, mats.slab, sx, sy, flightCz);
-          addBox(g, stepDX + 0.02, 0.025, flightD, stTreadMat, sx, sy + 0.09 + 0.0125, flightCz);
+          addBox(g, stepDX + 0.02, 0.18, flightInnerW, mats.slab, sx, sy, flightInnerCz);
+          addBox(g, stepDX + 0.02, 0.025, flightInnerW, stTreadMat, sx, sy + 0.09 + 0.0125, flightInnerCz);
         }
         // 梯段鵝黃色斜底板
-        const soffit1 = addBox(g, slopeLenW, 0.16, flightD, warmCreamMat, midW, midY1 - 0.16, flightCz);
+        const soffit1 = addBox(g, slopeLenW, 0.14, flightInnerW, warmCreamMat, midW, midY1 - 0.16, flightInnerCz);
         soffit1.rotation.z = slopeAngW;
 
-        // 北側實心白色瓷磚斜女兒牆 (Solid White-Tiled Balustrade)
-        const balMesh1 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY1 + balH / 2, balZ);
+        // 北側隔牆女兒牆 (Z = midWallZ)
+        const balMesh1 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY1 + balH / 2, midWallZ);
         balMesh1.rotation.z = slopeAngW;
-        const cop1 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY1 + balH + 0.025, balZ);
+        const cop1 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY1 + balH + 0.025, midWallZ);
         cop1.rotation.z = slopeAngW;
       }
 
-      // --- 1.5F 中央柱西側中間休息平台 (West 1.5F Mid-Landing at Y = 3.05m) ---
+      // --- 1.5F 中央柱西側轉向休息平台 (West 1.5F Mid-Landing at Y = 3.05m) ---
       {
         const fyMid1 = baseH + halfH;                        // 3.05m
-        const landW = 0.82;
-        const landCx = colLeftX - landW / 2 + 0.08;
-        addBox(g, landW, 0.22, flightD + 0.25, corridorFloorMat, landCx, fyMid1 - 0.11, flightCz - 0.10);
-        addBox(g, landW, balH, balThick, whiteTileFine, landCx, fyMid1 + balH / 2, balZ);
-        addBox(g, landW + 0.04, 0.05, balThick + 0.04, warmCreamMat, landCx, fyMid1 + balH + 0.025, balZ);
+        const landW = 1.15;
+        const landCx = colLeftX - landW / 2 + 0.12;
+        // 跨越南北兩跑，方便 180° 轉折
+        const landD = Math.abs(railZ - zb);
+        const landCz = (zb + railZ) / 2;
+        addBox(g, landW, 0.22, landD, corridorFloorMat, landCx, fyMid1 - 0.11, landCz);
+        addBox(g, landW, balH, balThick, whiteTileFine, landCx, fyMid1 + balH / 2, railZ);
+        addBox(g, landW + 0.04, 0.05, balThick + 0.04, warmCreamMat, landCx, fyMid1 + balH + 0.025, railZ);
       }
 
-      // --- 梯段 2 (1.5F -> 2F 西側懸挑方盒平台，自東向西上升 -X) ---
+      // --- 梯段 2 (1.5F -> 2F 北跑，自東向西上升 -X，位於 9 階踏步正上方！Photo 1 實景！) ---
       {
         const fyStart = baseH + halfH;                       // 3.05m
         const fyEnd   = baseH + FH;                          // 4.85m
@@ -4440,19 +4413,21 @@ function makeShelterSignTexture(text = '防空避難設備') {
         for (let s = 0; s < nSteps; s++) {
           const sx = colLeftX - (s + 0.5) * stepDX;
           const sy = fyStart + (s + 0.5) * stepDY;
-          addBox(g, stepDX + 0.02, 0.18, flightD, mats.slab, sx, sy, flightCz);
-          addBox(g, stepDX + 0.02, 0.025, flightD, stTreadMat, sx, sy + 0.09 + 0.0125, flightCz);
+          addBox(g, stepDX + 0.02, 0.18, flightOuterW, mats.slab, sx, sy, flightOuterCz);
+          addBox(g, stepDX + 0.02, 0.025, flightOuterW, stTreadMat, sx, sy + 0.09 + 0.0125, flightOuterCz);
         }
-        const soffit2 = addBox(g, slopeLenW, 0.16, flightD, warmCreamMat, midW, midY2 - 0.16, flightCz);
+        // 梯段鵝黃色斜底板 (Photo 1 仰視清晰可見此天花底板)
+        const soffit2 = addBox(g, slopeLenW, 0.16, flightOuterW, warmCreamMat, midW, midY2 - 0.16, flightOuterCz);
         soffit2.rotation.z = -slopeAngW;
 
-        const balMesh2 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY2 + balH / 2, balZ);
+        // 北側實心白色瓷磚斜女兒牆 (Photo 2 實景)
+        const balMesh2 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY2 + balH / 2, railZ);
         balMesh2.rotation.z = -slopeAngW;
-        const cop2 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY2 + balH + 0.025, balZ);
+        const cop2 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY2 + balH + 0.025, railZ);
         cop2.rotation.z = -slopeAngW;
       }
 
-      // --- 梯段 3 (2F -> 2.5F 中間休息平台，自西向東上升 +X) ---
+      // --- 梯段 3 (2F -> 2.5F 南跑，自西向東上升 +X) ---
       {
         const fyStart = baseH + FH;                          // 4.85m
         const fyEnd   = baseH + FH + halfH;                  // 6.65m
@@ -4463,29 +4438,31 @@ function makeShelterSignTexture(text = '防空避難設備') {
         for (let s = 0; s < nSteps; s++) {
           const sx = boxEastX + (s + 0.5) * stepDX;
           const sy = fyStart + (s + 0.5) * stepDY;
-          addBox(g, stepDX + 0.02, 0.18, flightD, mats.slab, sx, sy, flightCz);
-          addBox(g, stepDX + 0.02, 0.025, flightD, stTreadMat, sx, sy + 0.09 + 0.0125, flightCz);
+          addBox(g, stepDX + 0.02, 0.18, flightInnerW, mats.slab, sx, sy, flightInnerCz);
+          addBox(g, stepDX + 0.02, 0.025, flightInnerW, stTreadMat, sx, sy + 0.09 + 0.0125, flightInnerCz);
         }
-        const soffit3 = addBox(g, slopeLenW, 0.16, flightD, warmCreamMat, midW, midY3 - 0.16, flightCz);
+        const soffit3 = addBox(g, slopeLenW, 0.14, flightInnerW, warmCreamMat, midW, midY3 - 0.16, flightInnerCz);
         soffit3.rotation.z = slopeAngW;
 
-        const balMesh3 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY3 + balH / 2, balZ);
+        const balMesh3 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY3 + balH / 2, midWallZ);
         balMesh3.rotation.z = slopeAngW;
-        const cop3 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY3 + balH + 0.025, balZ);
+        const cop3 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY3 + balH + 0.025, midWallZ);
         cop3.rotation.z = slopeAngW;
       }
 
-      // --- 2.5F 中央柱西側中間休息平台 (West 2.5F Mid-Landing at Y = 6.65m) ---
+      // --- 2.5F 中央柱西側轉向休息平台 (West 2.5F Mid-Landing at Y = 6.65m) ---
       {
         const fyMid2 = baseH + FH + halfH;                   // 6.65m
-        const landW = 0.82;
-        const landCx = colLeftX - landW / 2 + 0.08;
-        addBox(g, landW, 0.22, flightD + 0.25, corridorFloorMat, landCx, fyMid2 - 0.11, flightCz - 0.10);
-        addBox(g, landW, balH, balThick, whiteTileFine, landCx, fyMid2 + balH / 2, balZ);
-        addBox(g, landW + 0.04, 0.05, balThick + 0.04, warmCreamMat, landCx, fyMid2 + balH + 0.025, balZ);
+        const landW = 1.15;
+        const landCx = colLeftX - landW / 2 + 0.12;
+        const landD = Math.abs(railZ - zb);
+        const landCz = (zb + railZ) / 2;
+        addBox(g, landW, 0.22, landD, corridorFloorMat, landCx, fyMid2 - 0.11, landCz);
+        addBox(g, landW, balH, balThick, whiteTileFine, landCx, fyMid2 + balH / 2, railZ);
+        addBox(g, landW + 0.04, 0.05, balThick + 0.04, warmCreamMat, landCx, fyMid2 + balH + 0.025, railZ);
       }
 
-      // --- 梯段 4 (2.5F -> 3F 西側懸挑方盒平台，自東向西上升 -X) ---
+      // --- 梯段 4 (2.5F -> 3F 北跑，自東向西上升 -X) ---
       {
         const fyStart = baseH + FH + halfH;                  // 6.65m
         const fyEnd   = baseH + 2 * FH;                      // 8.45m
@@ -4496,19 +4473,19 @@ function makeShelterSignTexture(text = '防空避難設備') {
         for (let s = 0; s < nSteps; s++) {
           const sx = colLeftX - (s + 0.5) * stepDX;
           const sy = fyStart + (s + 0.5) * stepDY;
-          addBox(g, stepDX + 0.02, 0.18, flightD, mats.slab, sx, sy, flightCz);
-          addBox(g, stepDX + 0.02, 0.025, flightD, stTreadMat, sx, sy + 0.09 + 0.0125, flightCz);
+          addBox(g, stepDX + 0.02, 0.18, flightOuterW, mats.slab, sx, sy, flightOuterCz);
+          addBox(g, stepDX + 0.02, 0.025, flightOuterW, stTreadMat, sx, sy + 0.09 + 0.0125, flightOuterCz);
         }
-        const soffit4 = addBox(g, slopeLenW, 0.16, flightD, warmCreamMat, midW, midY4 - 0.16, flightCz);
+        const soffit4 = addBox(g, slopeLenW, 0.16, flightOuterW, warmCreamMat, midW, midY4 - 0.16, flightOuterCz);
         soffit4.rotation.z = -slopeAngW;
 
-        const balMesh4 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY4 + balH / 2, balZ);
+        const balMesh4 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY4 + balH / 2, railZ);
         balMesh4.rotation.z = -slopeAngW;
-        const cop4 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY4 + balH + 0.025, balZ);
+        const cop4 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY4 + balH + 0.025, railZ);
         cop4.rotation.z = -slopeAngW;
       }
 
-      // --- 梯段 5 (3F -> 屋頂層女兒牆，自西向東上升 +X) ---
+      // --- 梯段 5 (3F -> 屋頂層女兒牆 南跑，自西向東上升 +X) ---
       {
         const fyStart = baseH + 2 * FH;                      // 8.45m
         const fyEnd   = baseH + 3 * FH;                      // 12.05m
@@ -4519,27 +4496,24 @@ function makeShelterSignTexture(text = '防空避難設備') {
         for (let s = 0; s < nSteps; s++) {
           const sx = boxEastX + (s + 0.5) * stepDX;
           const sy = fyStart + (s + 0.5) * stepDY;
-          addBox(g, stepDX + 0.02, 0.18, flightD, mats.slab, sx, sy, flightCz);
-          addBox(g, stepDX + 0.02, 0.025, flightD, stTreadMat, sx, sy + 0.09 + 0.0125, flightCz);
+          addBox(g, stepDX + 0.02, 0.18, flightInnerW, mats.slab, sx, sy, flightInnerCz);
+          addBox(g, stepDX + 0.02, 0.025, flightInnerW, stTreadMat, sx, sy + 0.09 + 0.0125, flightInnerCz);
         }
-        const soffit5 = addBox(g, slopeLenW, 0.16, flightD, warmCreamMat, midW, midY5 - 0.16, flightCz);
+        const soffit5 = addBox(g, slopeLenW, 0.14, flightInnerW, warmCreamMat, midW, midY5 - 0.16, flightInnerCz);
         soffit5.rotation.z = slopeAngW;
 
-        const balMesh5 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY5 + balH / 2, balZ);
+        const balMesh5 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY5 + balH / 2, midWallZ);
         balMesh5.rotation.z = slopeAngW;
-        const cop5 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY5 + balH + 0.025, balZ);
+        const cop5 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY5 + balH + 0.025, midWallZ);
         cop5.rotation.z = slopeAngW;
       }
 
       // -----------------------------------------------------------
-      // F. 經典三層垂直齊平「懸挑式方盒開放式平台」(3-Tier Cantilevered Projecting Open Box Landings per Photo 1 & 2)
-      //    特徵：2F、3F 與屋頂西側平台向北懸挑突出 0.85m！北向設全開敞通風採光洞口、天花日光燈照明與頂部過樑
+      // G. 經典三層垂直齊平「懸挑式方盒開放式平台」(Photo 1, 2, 3 實景！)
+      //    2F、3F 與屋頂西側平台緊貼廁所大樓，向北懸挑超出北外牆！
+      //    北向設全開敞通風採光洞口、頂部白瓷磚過樑、天花日光燈照明
       // -----------------------------------------------------------
       const boxCx = b2L + boxW / 2;
-      const boxD  = Math.abs(zBoxNorth - zb);                // 深度 ~ 2.40m
-      const boxCz = (zb + zBoxNorth) / 2;
-      const cheekD = Math.abs(zBoxNorth - zStOuter);         // 懸挑面進深 0.85m
-      const cheekCz = (zBoxNorth + zStOuter) / 2;
 
       [
         { fl: 1, fy: baseH + FH, isRoof: false },            // 2F 方盒平台 (Y = 4.85m)
@@ -4551,57 +4525,53 @@ function makeShelterSignTexture(text = '防空避難設備') {
         // 1) 方盒磨石子樓地板與懸挑底板
         addBox(g, boxW + 0.06, 0.24, boxD + 0.06, corridorFloorMat, boxCx, fy - 0.12, boxCz);
         addBox(g, boxW, 0.10, boxD, warmCreamMat, boxCx, fy - 0.20, boxCz);
-        // 懸挑結構托樑 (Cantilever Support Beam per Photo 2)
+        // 懸挑結構托樑
         addBox(g, 0.24, 0.32, boxD - 0.25, warmCreamMat, boxEastX - 0.14, fy - 0.36, boxCz);
 
-        // 2) 懸挑天花板底部實景設施 (Soffit Fixtures per Photo 1 & 2)
+        // 2) 懸挑天花板底部實景設施
         if (fl === 1) {
-          // 2F 底部（1F 門廊頂板）：防潮日光燈具 + 白色 PVC 管線 + 轉角 CCTV 監控攝影機
-          addBox(g, 0.18, 0.06, 1.15, lightFixtureMat, boxCx, fy - 0.26, cheekCz);
+          addBox(g, 0.18, 0.06, 1.15, lightFixtureMat, boxCx, fy - 0.26, flightOuterCz);
           addBox(g, 0.04, 0.04, boxD - 0.30, pipePvcMat, b2L + 0.12, fy - 0.25, boxCz);
           addBox(g, 0.12, 0.10, 0.12, panelPureWhite, b2L + 0.18, fy - 0.30, zBoxNorth + 0.25);
         } else if (fl === 2) {
-          // 3F 底部（2F 方盒天花板）：鵝黃天花板 + 防潮日光燈具 + 電氣線管
           addBox(g, boxW, 0.08, boxD, warmCreamMat, boxCx, fy - 0.20, boxCz);
-          addBox(g, 0.18, 0.06, 1.15, lightFixtureMat, boxCx, fy - 0.26, cheekCz);
+          addBox(g, 0.18, 0.06, 1.15, lightFixtureMat, boxCx, fy - 0.26, flightOuterCz);
           addBox(g, 0.035, 0.035, boxD - 0.30, pipePvcMat, b2L + 0.12, fy - 0.25, boxCz);
         } else {
-          // 屋頂層底部（3F 方盒天花板）：鵝黃天花板 + 防潮日光燈具
           addBox(g, boxW, 0.08, boxD, warmCreamMat, boxCx, fy - 0.20, boxCz);
-          addBox(g, 0.18, 0.06, 1.15, lightFixtureMat, boxCx, fy - 0.26, cheekCz);
+          addBox(g, 0.18, 0.06, 1.15, lightFixtureMat, boxCx, fy - 0.26, flightOuterCz);
         }
 
         // 3) 北正面滿貼白色瓷磚實心女兒牆 (0 ~ hBal)
         addBox(g, boxW, hBal, balThick, whiteTileFine, boxCx, fy + hBal / 2, zBoxNorth + balThick / 2);
         addBox(g, boxW + 0.04, 0.05, balThick + 0.04, warmCreamMat, boxCx, fy + hBal + 0.025, zBoxNorth + balThick / 2);
 
-        // 4) 2F/3F 方盒上層「全開敞式矩形通風採光大洞口」與頂部瓷磚過樑 (Photo 1 實景！)
+        // 4) 2F/3F 方盒上層「全開敞式矩形通風採光大洞口」與頂部過樑 (Photo 1 實景！)
         if (!isRoof) {
           const lintelH = 0.45;
           const lintelY = fy + FH - lintelH / 2;
-          // 頂部白瓷磚過樑 (Header Lintel Beam)
           addBox(g, boxW, lintelH, balThick, whiteTileFine, boxCx, lintelY, zBoxNorth + balThick / 2);
           addBox(g, boxW + 0.04, 0.04, balThick + 0.04, warmCreamMat, boxCx, fy + FH - lintelH - 0.02, zBoxNorth + balThick / 2);
 
-          // 東西兩側小邊柱 (Corner Piers framing the open aperture)
           const pierW_box = 0.18;
           const openH = FH - hBal - lintelH;
           const openMidY = fy + hBal + openH / 2;
           addBox(g, pierW_box, openH, balThick, whiteTileFine, b2L + pierW_box / 2, openMidY, zBoxNorth + balThick / 2);
           addBox(g, pierW_box, openH, balThick, whiteTileFine, boxEastX - pierW_box / 2, openMidY, zBoxNorth + balThick / 2);
 
-          // 方盒頂部天花板 (Ceiling Slab of the Box Landing)
           addBox(g, boxW + 0.06, 0.22, boxD + 0.06, warmCreamMat, boxCx, fy + FH - 0.11, boxCz);
         }
 
-        // 5) 東側面懸挑白瓷磚女兒牆 (East Cantilever Parapet: 精確銜接西側斜梯段 balZ)
+        // 5) 東側面懸挑白瓷磚女兒牆 (East Cantilever Parapet: 精確銜接西側斜梯段 railZ)
+        const cheekD = Math.abs(zBoxNorth - railZ);
+        const cheekCz = (zBoxNorth + railZ) / 2;
         addBox(g, balThick, hBal, cheekD, whiteTileFine, boxEastX - balThick / 2, fy + hBal / 2, cheekCz);
         addBox(g, balThick + 0.04, 0.05, cheekD + 0.04, warmCreamMat, boxEastX - balThick / 2, fy + hBal + 0.025, cheekCz);
 
-        // 6) 西側白瓷磚端牆（緊密結合廁所大樓）
-        addBox(g, balThick, hBal, cheekD, whiteTileFine, b2L + balThick / 2, fy + hBal / 2, cheekCz);
+        // 6) 西側白瓷磚端牆（結合廁所大樓）
+        addBox(g, balThick, hBal, boxD, whiteTileFine, b2L + balThick / 2, fy + hBal / 2, boxCz);
 
-        // 7) 屋頂層頂部金屬防攀爬鐵絲圍網與刺針 (Roof Security Spikes per Photo 1 & 2)
+        // 7) 屋頂層頂部金屬防攀爬鐵絲圍網與刺針 (Photo 1 & 2)
         if (isRoof) {
           const fenceH = 0.55;
           addBox(g, boxW, 0.03, 0.03, ironGrilleMat, boxCx, fy + hBal + fenceH, zBoxNorth + balThick / 2);
@@ -4613,106 +4583,95 @@ function makeShelterSignTexture(text = '防空避難設備') {
       });
 
       // -----------------------------------------------------------
-      // G. 東側幾何平衡斜女兒牆與抗震斜撐 (East Balancing Balustrades & Structural Bracing per Photo 2 & 3)
-      //    位於 [colRightX, b2R]，幾何反向對稱呼應，構成經典剪刀梯 V 形立面！
+      // H. 東側幾何平衡斜女兒牆與抗震斜撐 (Photo 2 & 3 實景)
       // -----------------------------------------------------------
       const eastMidX = (colRightX + b2R) / 2;
 
-      // 1) 1F 地面白色瓷磚實心基座女兒牆 (Solid White-Tiled Wainscot)
+      // 1) 1F 地面白色瓷磚實心基座女兒牆
       const wallH1F = baseH + 1.25;
-      addBox(g, eastSpanW, wallH1F, 0.20, whiteTileFine, eastMidX, wallH1F / 2, balZ);
-      addBox(g, eastSpanW + 0.04, 0.05, 0.24, warmCreamMat, eastMidX, wallH1F + 0.025, balZ);
+      addBox(g, eastSpanW, wallH1F, 0.20, whiteTileFine, eastMidX, wallH1F / 2, railZ);
+      addBox(g, eastSpanW + 0.04, 0.05, 0.24, warmCreamMat, eastMidX, wallH1F + 0.025, railZ);
 
       // 2) 1.5F -> 2F 東側幾何平衡斜女兒牆 (向東上升 +X)
       {
-        const fy1 = baseH + halfH;                           // 3.05m
-        const fy2 = baseH + FH;                              // 4.85m
+        const fy1 = baseH + halfH;
+        const fy2 = baseH + FH;
         const midYE1 = (fy1 + fy2) / 2;
-        const balMeshE1 = addBox(g, slopeLenE + 0.08, balH, balThick, whiteTileFine, eastMidX, midYE1 + balH / 2, balZ);
-        balMeshE1.rotation.z = slopeAngE;
-        const copE1 = addBox(g, slopeLenE + 0.12, 0.05, balThick + 0.04, warmCreamMat, eastMidX, midYE1 + balH + 0.025, balZ);
-        copE1.rotation.z = slopeAngE;
-        const soffitE1 = addBox(g, slopeLenE, 0.14, flightD, warmCreamMat, eastMidX, midYE1 - 0.16, flightCz);
-        soffitE1.rotation.z = slopeAngE;
+        const balMeshE1 = addBox(g, Math.hypot(eastSpanW, halfH) + 0.08, balH, balThick, whiteTileFine, eastMidX, midYE1 + balH / 2, railZ);
+        balMeshE1.rotation.z = Math.atan2(halfH, eastSpanW);
+        const copE1 = addBox(g, Math.hypot(eastSpanW, halfH) + 0.12, 0.05, balThick + 0.04, warmCreamMat, eastMidX, midYE1 + balH + 0.025, railZ);
+        copE1.rotation.z = Math.atan2(halfH, eastSpanW);
       }
 
-      // 2F 東側軸線 ③ 休息平台 (East 2F Landing Platform at Axis ③)
+      // 3) 2F 東側休息平台
       {
         const fy2F = baseH + FH;
-        const landW = 0.85;
-        const landCx = b2R - landW / 2;
-        addBox(g, landW, 0.22, flightD + 0.25, corridorFloorMat, landCx, fy2F - 0.11, flightCz - 0.10);
-        addBox(g, landW, balH, balThick, whiteTileFine, landCx, fy2F + balH / 2, balZ);
-        addBox(g, landW + 0.04, 0.05, balThick + 0.04, warmCreamMat, landCx, fy2F + balH + 0.025, balZ);
+        addBox(g, eastSpanW, 0.22, flightInnerW, corridorFloorMat, eastMidX, fy2F - 0.11, flightInnerCz);
+        addBox(g, eastSpanW, balH, balThick, whiteTileFine, eastMidX, fy2F + balH / 2, railZ);
+        addBox(g, eastSpanW + 0.04, 0.05, balThick + 0.04, warmCreamMat, eastMidX, fy2F + balH + 0.025, railZ);
       }
 
-      // 3) 2F -> 2.5F 東側幾何平衡斜女兒牆 (向西上升 -X)
+      // 4) 2F -> 2.5F 東側幾何平衡斜女兒牆 (向西上升 -X)
       {
-        const fy1 = baseH + FH;                              // 4.85m
-        const fy2 = baseH + FH + halfH;                      // 6.65m
+        const fy1 = baseH + FH;
+        const fy2 = baseH + FH + halfH;
         const midYE2 = (fy1 + fy2) / 2;
-        const balMeshE2 = addBox(g, slopeLenE + 0.08, balH, balThick, whiteTileFine, eastMidX, midYE2 + balH / 2, balZ);
-        balMeshE2.rotation.z = -slopeAngE;
-        const copE2 = addBox(g, slopeLenE + 0.12, 0.05, balThick + 0.04, warmCreamMat, eastMidX, midYE2 + balH + 0.025, balZ);
-        copE2.rotation.z = -slopeAngE;
-        const soffitE2 = addBox(g, slopeLenE, 0.14, flightD, warmCreamMat, eastMidX, midYE2 - 0.16, flightCz);
-        soffitE2.rotation.z = -slopeAngE;
+        const balMeshE2 = addBox(g, Math.hypot(eastSpanW, halfH) + 0.08, balH, balThick, whiteTileFine, eastMidX, midYE2 + balH / 2, railZ);
+        balMeshE2.rotation.z = -Math.atan2(halfH, eastSpanW);
+        const copE2 = addBox(g, Math.hypot(eastSpanW, halfH) + 0.12, 0.05, balThick + 0.04, warmCreamMat, eastMidX, midYE2 + balH + 0.025, railZ);
+        copE2.rotation.z = -Math.atan2(halfH, eastSpanW);
       }
 
-      // 4) 2.5F -> 3F 東側幾何平衡斜女兒牆 (向東上升 +X)
+      // 5) 2.5F -> 3F 東側幾何平衡斜女兒牆 (向東上升 +X)
       {
-        const fy1 = baseH + FH + halfH;                      // 6.65m
-        const fy2 = baseH + 2 * FH;                          // 8.45m
+        const fy1 = baseH + FH + halfH;
+        const fy2 = baseH + 2 * FH;
         const midYE3 = (fy1 + fy2) / 2;
-        const balMeshE3 = addBox(g, slopeLenE + 0.08, balH, balThick, whiteTileFine, eastMidX, midYE3 + balH / 2, balZ);
-        balMeshE3.rotation.z = slopeAngE;
-        const copE3 = addBox(g, slopeLenE + 0.12, 0.05, balThick + 0.04, warmCreamMat, eastMidX, midYE3 + balH + 0.025, balZ);
-        copE3.rotation.z = slopeAngE;
-        const soffitE3 = addBox(g, slopeLenE, 0.14, flightD, warmCreamMat, eastMidX, midYE3 - 0.16, flightCz);
-        soffitE3.rotation.z = slopeAngE;
+        const balMeshE3 = addBox(g, Math.hypot(eastSpanW, halfH) + 0.08, balH, balThick, whiteTileFine, eastMidX, midYE3 + balH / 2, railZ);
+        balMeshE3.rotation.z = Math.atan2(halfH, eastSpanW);
+        const copE3 = addBox(g, Math.hypot(eastSpanW, halfH) + 0.12, 0.05, balThick + 0.04, warmCreamMat, eastMidX, midYE3 + balH + 0.025, railZ);
+        copE3.rotation.z = Math.atan2(halfH, eastSpanW);
       }
 
-      // 3F 東側軸線 ③ 休息平台 (East 3F Landing Platform at Axis ③)
+      // 6) 3F 東側休息平台
       {
         const fy3F = baseH + 2 * FH;
-        const landW = 0.85;
-        const landCx = b2R - landW / 2;
-        addBox(g, landW, 0.22, flightD + 0.25, corridorFloorMat, landCx, fy3F - 0.11, flightCz - 0.10);
-        addBox(g, landW, balH, balThick, whiteTileFine, landCx, fy3F + balH / 2, balZ);
-        addBox(g, landW + 0.04, 0.05, balThick + 0.04, warmCreamMat, landCx, fy3F + balH + 0.025, balZ);
+        addBox(g, eastSpanW, 0.22, flightInnerW, corridorFloorMat, eastMidX, fy3F - 0.11, flightInnerCz);
+        addBox(g, eastSpanW, balH, balThick, whiteTileFine, eastMidX, fy3F + balH / 2, railZ);
+        addBox(g, eastSpanW + 0.04, 0.05, balThick + 0.04, warmCreamMat, eastMidX, fy3F + balH + 0.025, railZ);
       }
 
-      // 5) 3F -> 屋頂層東側斜女兒牆 (向西上升 -X)
+      // 7) 3F -> 屋頂層東側斜女兒牆 (向西上升 -X)
       {
-        const fy1 = baseH + 2 * FH;                          // 8.45m
-        const fy2 = baseH + 3 * FH;                          // 12.05m
+        const fy1 = baseH + 2 * FH;
+        const fy2 = baseH + 3 * FH;
         const midYE4 = (fy1 + fy2) / 2;
-        const balMeshE4 = addBox(g, slopeLenE + 0.08, balH, balThick, whiteTileFine, eastMidX, midYE4 + balH / 2, balZ);
-        balMeshE4.rotation.z = -slopeAngE;
-        const copE4 = addBox(g, slopeLenE + 0.12, 0.05, balThick + 0.04, warmCreamMat, eastMidX, midYE4 + balH + 0.025, balZ);
-        copE4.rotation.z = -slopeAngE;
+        const balMeshE4 = addBox(g, Math.hypot(eastSpanW, halfH) + 0.08, balH, balThick, whiteTileFine, eastMidX, midYE4 + balH / 2, railZ);
+        balMeshE4.rotation.z = -Math.atan2(halfH, eastSpanW);
+        const copE4 = addBox(g, Math.hypot(eastSpanW, halfH) + 0.12, 0.05, balThick + 0.04, warmCreamMat, eastMidX, midYE4 + balH + 0.025, railZ);
+        copE4.rotation.z = -Math.atan2(halfH, eastSpanW);
       }
 
-      // 6) 東側屋頂層女兒牆與防攀鐵絲圍網
+      // 8) 屋頂層女兒牆與防攀鐵絲圍網
       {
-        const rfY = baseH + 3 * FH;                          // 12.05m
+        const rfY = baseH + 3 * FH;
         const rfH = 1.35;
-        addBox(g, eastSpanW + 0.20, rfH, balThick, whiteTileFine, eastMidX, rfY + rfH / 2, balZ);
-        addBox(g, eastSpanW + 0.24, 0.06, balThick + 0.04, warmCreamMat, eastMidX, rfY + rfH + 0.03, balZ);
+        addBox(g, eastSpanW + 0.20, rfH, balThick, whiteTileFine, eastMidX, rfY + rfH / 2, railZ);
+        addBox(g, eastSpanW + 0.24, 0.06, balThick + 0.04, warmCreamMat, eastMidX, rfY + rfH + 0.03, railZ);
 
         const fenceH = 0.55;
-        addBox(g, eastSpanW, 0.03, 0.03, ironGrilleMat, eastMidX, rfY + rfH + fenceH, balZ);
-        for (let sp = 0; sp < 6; sp++) {
-          const spX = colRightX + (sp + 0.5) * (eastSpanW / 6);
-          addBox(g, 0.02, fenceH, 0.02, ironGrilleMat, spX, rfY + rfH + fenceH / 2, balZ);
+        addBox(g, eastSpanW, 0.03, 0.03, ironGrilleMat, eastMidX, rfY + rfH + fenceH, railZ);
+        for (let sp = 0; sp < 4; sp++) {
+          const spX = colRightX + (sp + 0.5) * (eastSpanW / 4);
+          addBox(g, 0.02, fenceH, 0.02, ironGrilleMat, spX, rfY + rfH + fenceH / 2, railZ);
         }
       }
 
-      // 7) 後走廊後側 RC 抗震斜向結構托樑 (RC Structural Diagonal Braces per Photo 2 stair_east_crop.jpg)
+      // 9) 後走廊後側 RC 抗震斜向結構托樑 (Photo 2 實景)
       [0, 1, 2].forEach(k => {
         const fy = baseH + k * FH;
-        const braceLen = Math.hypot(eastSpanW, FH * 0.45);
-        const braceAng = Math.atan2(FH * 0.45, eastSpanW);
+        const braceLen = Math.hypot(eastSpanW + 0.6, FH * 0.45);
+        const braceAng = Math.atan2(FH * 0.45, eastSpanW + 0.6);
         const bMesh = addBox(g, braceLen, 0.20, 0.20, warmCreamMat, eastMidX, fy + FH * 0.70, zb + 0.15);
         bMesh.rotation.z = (k % 2 === 0 ? 1 : -1) * braceAng;
       });
@@ -4908,8 +4867,8 @@ function makeShelterSignTexture(text = '防空避難設備') {
           }
         };
 
-        addStairTree(-27.8, -38.4, 5.2, 3.2); // 樹 1 (遮蔭樓梯與入口台階)
-        addStairTree(-25.5, -38.6, 5.8, 3.6); // 樹 2 (遮蔭採光井雨遮)
+        addStairTree(-27.5, -42.2, 5.2, 3.2); // 樹 1 (遮蔭樓梯與入口台階，立於車道緣石)
+        addStairTree(-24.8, -42.4, 5.8, 3.6); // 樹 2 (遮蔭採光井雨遮，立於車道緣石)
       }
 
       // -----------------------------------------------------------
@@ -17830,27 +17789,27 @@ function makeRedNoticeTexture() {
 
   // 【B. 中段過渡車道】(x = -21.32m 至 x = -38.0m，微斜過渡通過北棟西端與電梯/廁所北側)
   const transX1 = driveMinX, transX2 = -38.0;
-  const transZ1 = driveZ, transZ2 = -40.15;
+  const transZ1 = driveZ, transZ2 = -44.5;
   const transCx = (transX1 + transX2) / 2;
   const transCz = (transZ1 + transZ2) / 2;
-  const transDx = transX2 - transX1; // -16.68m
-  const transDz = transZ2 - transZ1; // +3.35m
-  const transLen = Math.hypot(transDx, transDz); // 17.01m
+  const transDx = transX2 - transX1;
+  const transDz = transZ2 - transZ1;
+  const transLen = Math.hypot(transDx, transDz);
   const transAng = Math.atan2(transDz, -transDx);
   {
     const transGrp = new THREE.Group();
     transGrp.position.set(transCx, 0.05, transCz);
     transGrp.rotation.y = transAng;
-    addBox(transGrp, transLen, 0.10, 5.8, asphaltMat, 0, 0, 0, false);
+    addBox(transGrp, transLen, 0.10, 5.0, asphaltMat, 0, 0, 0, false);
     layerGroups.roads.add(transGrp);
   }
 
-  // 【C. 西段平整水泥混凝土車道】(x = -38.0m 至 x = -118.56m 直通後門，寬 5.2m，中心 z = -40.15m)
+  // 【C. 西段平整水泥混凝土車道】(x = -38.0m 至 x = -118.56m 直通後門，寬 4.8m，中心 z = -44.5m，北側貫通車道)
   // 實景照片 20261110_135221.jpg：淺灰平整水泥路面、橫向伸縮割縫、水泥路緣石、綠意草坪緩衝帶
   const westRoadX1 = -38.0, westRoadX2 = X(56); // -118.56m
   const westRoadLen = Math.abs(westRoadX2 - westRoadX1); // 80.56m
   const westRoadCx = (westRoadX1 + westRoadX2) / 2; // -78.28m
-  const westRoadZ = -40.15, westRoadW = 5.2;
+  const westRoadZ = -44.5, westRoadW = 4.8;
 
   const concreteRoadMat = new THREE.MeshStandardMaterial({ color: 0xd6d3cc, roughness: 0.88 }); // 平整淺灰刷紋水泥
   const jointSeamMat    = new THREE.MeshStandardMaterial({ color: 0x3d4147, roughness: 0.95 }); // 瀝青填縫伸縮縫
@@ -18362,7 +18321,7 @@ treeZones.forEach(([x1, y1, x2, y2, count, defaultType]) => {
 // =========================================================================
 const northDrivewayShadeTrees = [
   // 南側草坪緩衝帶 (車道與跑道之間，高挑透光闊葉遮蔭喬木)：
-  [-34.0, -36.16, 0.98, 'broad'],
+  [-46.0, -42.0, 1.02, 'broad'],
   [-46.0, -36.16, 1.02, 'broad'],
   [-58.0, -36.16, 0.96, 'broad'],
   [-70.0, -36.16, 1.00, 'broad'],
