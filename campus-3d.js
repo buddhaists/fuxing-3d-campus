@@ -18407,34 +18407,144 @@ plan3DOverlayGroup.visible = false;
 scene.add(plan3DOverlayGroup);
 
 // ==========================================
-// GSES 3D 360 Spot Beacon in Courtyard Garden
+// GSES 3D 360 Spot Beacon Network (46 Spots)
 // ==========================================
-const panoBeaconGroup = new THREE.Group();
-panoBeaconGroup.position.set(0, 2.2, 0);
+const panoBeaconsGroup = new THREE.Group();
+const panoBeaconMeshes = [];
 
-const beaconCoreGeo = new THREE.SphereGeometry(0.85, 16, 16);
-const beaconCoreMat = new THREE.MeshBasicMaterial({ color: 0xef5350 });
-const beaconCoreMesh = new THREE.Mesh(beaconCoreGeo, beaconCoreMat);
-beaconCoreMesh.userData = { is360Spot: true, spotId: 'courtyard-360' };
-panoBeaconGroup.add(beaconCoreMesh);
+const pinSphereGeo = new THREE.SphereGeometry(0.72, 16, 16);
+const pinConeGeo = new THREE.ConeGeometry(0.72, 1.4, 16);
+pinConeGeo.rotateX(Math.PI);
+pinConeGeo.translate(0, 0.7, 0);
 
-const beaconRingGeo = new THREE.RingGeometry(0.9, 1.45, 32);
-beaconRingGeo.rotateX(-Math.PI / 2);
-const beaconRingMat = new THREE.MeshBasicMaterial({
-  color: 0xef5350,
-  side: THREE.DoubleSide,
-  transparent: true,
-  opacity: 0.85
-});
-const beaconRingMesh = new THREE.Mesh(beaconRingGeo, beaconRingMat);
-beaconRingMesh.userData = { is360Spot: true, spotId: 'courtyard-360' };
-panoBeaconGroup.add(beaconRingMesh);
+const pinCoreGeo = new THREE.SphereGeometry(0.3, 12, 12);
+const pinCoreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
-panoBeaconGroup.userData = { is360Spot: true, spotId: 'courtyard-360' };
-scene.add(panoBeaconGroup);
-window.__panoBeaconGroup = panoBeaconGroup;
-window.__beaconRingMesh = beaconRingMesh;
-window.__beaconRingMat = beaconRingMat;
+const pinRingGeo = new THREE.RingGeometry(0.65, 1.35, 32);
+pinRingGeo.rotateX(-Math.PI / 2);
+
+function init360SpotBeacons() {
+  const spots = window.CAMPUS_360_SPOTS || [];
+  spots.forEach((s, idx) => {
+    const pinGroup = new THREE.Group();
+    pinGroup.position.set(s.x, s.y, s.z);
+
+    const mat = new THREE.MeshLambertMaterial({
+      color: 0xef5350,
+      emissive: 0x220505
+    });
+
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xef5350,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.8
+    });
+
+    const sphereMesh = new THREE.Mesh(pinSphereGeo, mat);
+    sphereMesh.position.y = 1.4;
+    pinGroup.add(sphereMesh);
+
+    const coneMesh = new THREE.Mesh(pinConeGeo, mat);
+    pinGroup.add(coneMesh);
+
+    const coreMesh = new THREE.Mesh(pinCoreGeo, pinCoreMat);
+    coreMesh.position.y = 1.45;
+    pinGroup.add(coreMesh);
+
+    const ringMesh = new THREE.Mesh(pinRingGeo, ringMat);
+    ringMesh.position.y = 0.05;
+    pinGroup.add(ringMesh);
+
+    pinGroup.userData = {
+      is360Spot: true,
+      spotId: s.id,
+      floor: s.floor || '1F',
+      mat: mat,
+      ringMat: ringMat,
+      ringMesh: ringMesh,
+      baseY: s.y,
+      baseIdx: idx
+    };
+
+    sphereMesh.userData = { is360Spot: true, spotId: s.id };
+    coneMesh.userData = { is360Spot: true, spotId: s.id };
+    coreMesh.userData = { is360Spot: true, spotId: s.id };
+    ringMesh.userData = { is360Spot: true, spotId: s.id };
+
+    panoBeaconsGroup.add(pinGroup);
+    panoBeaconMeshes.push(pinGroup);
+  });
+
+  scene.add(panoBeaconsGroup);
+  window.__panoBeaconsGroup = panoBeaconsGroup;
+  window.__panoBeaconGroup = panoBeaconsGroup; // fallback compatibility
+}
+
+init360SpotBeacons();
+
+function updateBeaconHighlight(targetSpotId) {
+  panoBeaconMeshes.forEach(pin => {
+    const isTarget = (pin.userData.spotId === targetSpotId);
+    const pinFloor = pin.userData.floor;
+    
+    let floorVisible = true;
+    if (activePlanFloor && activePlanFloor !== 'ALL') {
+      floorVisible = (pinFloor === activePlanFloor);
+    }
+    pin.visible = floorVisible;
+
+    if (isTarget) {
+      pin.userData.mat.color.setHex(0x10b981);
+      pin.userData.mat.emissive.setHex(0x052e16);
+      pin.userData.ringMat.color.setHex(0x10b981);
+      pin.userData.ringMat.opacity = 0.95;
+      pin.scale.set(1.35, 1.35, 1.35);
+    } else {
+      pin.userData.mat.color.setHex(0xef5350);
+      pin.userData.mat.emissive.setHex(0x220505);
+      pin.userData.ringMat.color.setHex(0xef5350);
+      pin.userData.ringMat.opacity = 0.8;
+      pin.scale.set(1.0, 1.0, 1.0);
+    }
+  });
+  requestRender(80);
+}
+window.__updateBeaconHighlight = updateBeaconHighlight;
+
+function select360Spot(spotId, origin = 'manual') {
+  if (walkState.active) exitWalkMode();
+  stopTour(false);
+
+  const spot = (window.CAMPUS_360_SPOTS || []).find(s => s.id === spotId || (spotId === 'courtyard-360' && s.id === 'spot-10')) || (window.CAMPUS_360_SPOTS || [])[0];
+  if (!spot) return;
+
+  if (window.__campusBridge) {
+    window.__campusBridge.activeSpotId = spot.id;
+  }
+
+  updateBeaconHighlight(spot.id);
+
+  const detailEl = document.getElementById('detail');
+  if (detailEl && !detailEl.hidden) detailEl.hidden = true;
+
+  if (window.showSpotCard) {
+    window.showSpotCard(spot.id);
+  }
+
+  document.querySelectorAll('.spot-item').forEach(el => {
+    el.classList.toggle('is-selected', el.dataset.spotId === spot.id);
+  });
+
+  const eyePos = [spot.x + 8.5, spot.y + 13.5, spot.z + 17.5];
+  const lookPos = [spot.x, spot.y + 0.8, spot.z];
+  flyTo(eyePos, lookPos, 850);
+
+  if (origin === 'manual' || origin === '3d') {
+    showToast(`已定位至 360° 景點：${spot.name}`);
+  }
+}
+window.__select360Spot3D = select360Spot;
 
 // ==========================================
 // 360° Panorama Viewer Engine (GSES / WebGL)
@@ -18449,6 +18559,9 @@ let panoLon = 90, panoLat = 0;
 let panoTargetLon = 90, panoTargetLat = 0;
 let panoIsInteracting = false;
 let panoDownX = 0, panoDownY = 0, panoDownLon = 0, panoDownLat = 0;
+let panoHotspotsGroup = null;
+const panoRaycaster = new THREE.Raycaster();
+const panoMouse = new THREE.Vector2();
 
 function initPanoViewer() {
   const host = document.getElementById('panoHost');
@@ -18463,13 +18576,19 @@ function initPanoViewer() {
   panoMesh = new THREE.Mesh(sphereGeo, sphereMat);
   panoScene.add(panoMesh);
 
+  panoHotspotsGroup = new THREE.Group();
+  panoScene.add(panoHotspotsGroup);
+
   panoRenderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   panoRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   panoRenderer.setSize(host.clientWidth, host.clientHeight);
   host.appendChild(panoRenderer.domElement);
 
+  let isPanoDrag = false;
+
   host.addEventListener('pointerdown', e => {
     panoIsInteracting = true;
+    isPanoDrag = false;
     panoDownX = e.clientX;
     panoDownY = e.clientY;
     panoDownLon = panoTargetLon;
@@ -18478,12 +18597,33 @@ function initPanoViewer() {
 
   window.addEventListener('pointermove', e => {
     if (!panoIsInteracting) return;
+    const dx = e.clientX - panoDownX;
+    const dy = e.clientY - panoDownY;
+    if (Math.hypot(dx, dy) > 5) isPanoDrag = true;
     panoTargetLon = (panoDownX - e.clientX) * 0.18 + panoDownLon;
     panoTargetLat = (e.clientY - panoDownY) * 0.18 + panoDownLat;
     panoTargetLat = Math.max(-85, Math.min(85, panoTargetLat));
   });
 
-  window.addEventListener('pointerup', () => { panoIsInteracting = false; });
+  window.addEventListener('pointerup', e => {
+    if (panoIsInteracting && !isPanoDrag && panoHotspotsGroup) {
+      // Hotspot click test inside panorama
+      const rect = host.getBoundingClientRect();
+      panoMouse.x = ((e.clientX - rect.left) / host.clientWidth) * 2 - 1;
+      panoMouse.y = -((e.clientY - rect.top) / host.clientHeight) * 2 + 1;
+      panoRaycaster.setFromCamera(panoMouse, panoCamera);
+      const hits = panoRaycaster.intersectObjects(panoHotspotsGroup.children, true);
+      if (hits.length > 0) {
+        let h = hits[0].object;
+        while (h && !h.userData?.spotId && h.parent) h = h.parent;
+        if (h && h.userData?.spotId) {
+          openPano(h.userData.spotId);
+        }
+      }
+    }
+    panoIsInteracting = false;
+  });
+
   window.addEventListener('pointercancel', () => { panoIsInteracting = false; });
 
   host.addEventListener('wheel', e => {
@@ -18520,6 +18660,51 @@ function initPanoViewer() {
   });
 }
 
+function updatePanoHotspots(currentSpot) {
+  if (!panoHotspotsGroup) return;
+  while (panoHotspotsGroup.children.length > 0) {
+    const c = panoHotspotsGroup.children.pop();
+    if (c.geometry) c.geometry.dispose();
+  }
+
+  const adjSpots = (currentSpot.adjacentSpotIds || []).map(id => (window.CAMPUS_360_SPOTS || []).find(s => s.id === id)).filter(Boolean);
+  const arrowGeo = new THREE.ConeGeometry(9, 22, 16);
+  arrowGeo.rotateX(Math.PI / 2);
+
+  adjSpots.forEach(adj => {
+    const dx = adj.x - currentSpot.x;
+    const dz = adj.z - currentSpot.z;
+    const angle = Math.atan2(dz, dx);
+
+    const dist = 180;
+    const x = dist * Math.cos(angle);
+    const z = dist * Math.sin(angle);
+    const y = -80;
+
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x10b981,
+      transparent: true,
+      opacity: 0.85,
+      depthTest: false
+    });
+    const arrow = new THREE.Mesh(arrowGeo, mat);
+    arrow.position.set(x, y, z);
+    arrow.lookAt(x * 1.5, y, z * 1.5);
+    arrow.userData = { isPanoHotspot: true, spotId: adj.id, spotName: adj.name };
+
+    // Ring base under arrow
+    const rGeo = new THREE.RingGeometry(6, 12, 16);
+    rGeo.rotateX(-Math.PI / 2);
+    const rMat = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.6, depthTest: false, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(rGeo, rMat);
+    ring.position.set(x, y - 8, z);
+    ring.userData = { isPanoHotspot: true, spotId: adj.id };
+
+    panoHotspotsGroup.add(arrow);
+    panoHotspotsGroup.add(ring);
+  });
+}
+
 function panoRenderLoop() {
   if (document.getElementById('pano-wrap')?.hidden) return;
   panoAnimId = requestAnimationFrame(panoRenderLoop);
@@ -18541,10 +18726,20 @@ function panoRenderLoop() {
   );
 
   panoCamera.lookAt(target);
+
+  if (panoHotspotsGroup) {
+    const t = performance.now() * 0.003;
+    panoHotspotsGroup.children.forEach(c => {
+      if (c.geometry && c.geometry.type === 'ConeGeometry') {
+        c.position.y = -80 + Math.sin(t * 2) * 3;
+      }
+    });
+  }
+
   panoRenderer.render(panoScene, panoCamera);
 }
 
-function openPano(spotId = 'courtyard-360') {
+function openPano(spotId = 'spot-10') {
   const wrap = document.getElementById('pano-wrap');
   const loading = document.getElementById('panoLoading');
   if (!wrap) return;
@@ -18553,16 +18748,43 @@ function openPano(spotId = 'courtyard-360') {
   wrap.hidden = false;
   if (loading) loading.style.display = 'flex';
 
-  const spot = (window.CAMPUS_360_SPOTS || []).find(s => s.id === spotId) || {
-    name: '中庭花園與愛悅樓前廣場',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g=w4096',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,100.12h,92.02t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98X_pAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g%3Dw900-h600-k-no-pi-2.02112549397485-ya100.12206414212982-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D'
-  };
+  const spot = (window.CAMPUS_360_SPOTS || []).find(s => s.id === spotId || (spotId === 'courtyard-360' && s.id === 'spot-10')) || (window.CAMPUS_360_SPOTS || [])[0];
+
+  if (window.__campusBridge) {
+    window.__campusBridge.activeSpotId = spot.id;
+  }
+  updateBeaconHighlight(spot.id);
 
   const titleEl = document.getElementById('panoTitle');
-  if (titleEl) titleEl.textContent = spot.name;
+  if (titleEl) titleEl.textContent = `${spot.name} · ${spot.group}`;
   const extEl = document.getElementById('panoExternalBtn');
   if (extEl && spot.externalUrl) extEl.href = spot.externalUrl;
+
+  updatePanoHotspots(spot);
+
+  // Update Bottom Adjacency Chips Navigation
+  const adjBar = document.getElementById('panoAdjBar');
+  const adjChips = document.getElementById('panoAdjChips');
+  if (adjBar && adjChips) {
+    adjChips.innerHTML = '';
+    const adjSpots = (spot.adjacentSpotIds || []).map(id => (window.CAMPUS_360_SPOTS || []).find(s => s.id === id)).filter(Boolean);
+    if (adjSpots.length > 0) {
+      adjSpots.forEach(adj => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pano-adj-btn';
+        btn.innerHTML = `<span>${adj.name}</span> <span>➜</span>`;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openPano(adj.id);
+        });
+        adjChips.appendChild(btn);
+      });
+      adjBar.hidden = false;
+    } else {
+      adjBar.hidden = true;
+    }
+  }
 
   const texLoader = new THREE.TextureLoader();
   texLoader.crossOrigin = 'anonymous';
@@ -18575,7 +18797,7 @@ function openPano(spotId = 'courtyard-360') {
     }
     if (loading) loading.style.display = 'none';
   }, undefined, () => {
-    texLoader.load('./tex/courtyard_panorama.jpg', fallbackTex => {
+    texLoader.load(spot.thumb || './tex/courtyard_panorama.jpg', fallbackTex => {
       fallbackTex.colorSpace = THREE.SRGBColorSpace;
       if (panoMesh) {
         panoMesh.material.map = fallbackTex;
@@ -20866,6 +21088,12 @@ function setFloor(floorKey, options = {}) {
     if (window.renderPlacesList) window.renderPlacesList();
   }
 
+  // 7. 同步 360 景點圖釘樓層能見度
+  if (typeof updateBeaconHighlight === 'function') {
+    const curSpot = (window.__campusBridge && window.__campusBridge.activeSpotId) || null;
+    updateBeaconHighlight(curSpot);
+  }
+
   requestRender(120);
 }
 
@@ -21424,12 +21652,21 @@ renderer.domElement.addEventListener('pointerup', e => {
     }
   }
 
-  const targetClickables = clickableGroups.concat([window.__panoBeaconGroup].filter(Boolean));
+  const targetClickables = clickableGroups.concat([window.__panoBeaconsGroup, window.__panoBeaconGroup].filter(Boolean));
   const hits = raycaster.intersectObjects(targetClickables, true);
   if (hits.length > 0) {
     let obj = hits[0].object;
-    if (obj.userData?.is360Spot || obj.parent?.userData?.is360Spot) {
-      openPano(obj.userData?.spotId || obj.parent?.userData?.spotId || 'courtyard-360');
+    let spotNode = obj;
+    while (spotNode && !spotNode.userData?.is360Spot && spotNode.parent) {
+      spotNode = spotNode.parent;
+    }
+    if (spotNode && spotNode.userData?.is360Spot) {
+      const sId = spotNode.userData.spotId || 'spot-10';
+      if (window.__campusBridge && window.__campusBridge.select360Spot) {
+        window.__campusBridge.select360Spot(sId, '3d');
+      } else if (typeof select360Spot === 'function') {
+        select360Spot(sId, '3d');
+      }
       return;
     }
     while (obj && !obj.userData.landmarkId) obj = obj.parent;
@@ -21506,11 +21743,13 @@ window.addEventListener('keydown', e => {
   // First-person walking keys
   if (walkState.active) {
     const k = e.key.toLowerCase();
-    const distTo360 = Math.hypot(camera.position.x - 0, camera.position.z - 0);
-    if (k === 'e' && distTo360 < 6.5) {
-      e.preventDefault();
-      openPano('courtyard-360');
-      return;
+    if (k === 'e') {
+      const walk360El = document.getElementById('walk360Prompt');
+      if (walk360El && !walk360El.hidden && walk360El.dataset.spotId) {
+        e.preventDefault();
+        openPano(walk360El.dataset.spotId);
+        return;
+      }
     }
     if (e.code === 'Space') {
       e.preventDefault();
@@ -21774,11 +22013,29 @@ renderer.setAnimationLoop(now => {
   // Dynamic Level of Detail (LOD) update across buildings
   updateLODs();
 
-  // Proximity prompt for 360 Spot in Walk Mode
+  // Proximity prompt for 46 360 Spots in Walk Mode
   if (walkState.active) {
-    const distTo360 = Math.hypot(camera.position.x - 0, camera.position.z - 0);
+    let nearestSpot = null;
+    let minDist = Infinity;
+    const spots = window.CAMPUS_360_SPOTS || [];
+    for (let i = 0; i < spots.length; i++) {
+      const s = spots[i];
+      const d = Math.hypot(camera.position.x - s.x, camera.position.z - s.z);
+      if (d < minDist) {
+        minDist = d;
+        nearestSpot = s;
+      }
+    }
     const walk360El = document.getElementById('walk360Prompt');
-    if (walk360El) walk360El.hidden = (distTo360 >= 6.5);
+    if (walk360El) {
+      if (minDist < 6.5 && nearestSpot) {
+        walk360El.hidden = false;
+        walk360El.dataset.spotId = nearestSpot.id;
+        walk360El.innerHTML = `🌐 按 E 進入 360° 實景：<strong>${nearestSpot.name}</strong>`;
+      } else {
+        walk360El.hidden = true;
+      }
+    }
   } else {
     const walk360El = document.getElementById('walk360Prompt');
     if (walk360El && !walk360El.hidden) walk360El.hidden = true;
@@ -22132,6 +22389,19 @@ renderer.setAnimationLoop(now => {
       pin.el.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) translate(-50%, -100%)`;
     });
 
+    // 360 Beacon Ground Ring Pulsing
+    if (panoBeaconMeshes && panoBeaconMeshes.length > 0) {
+      const bt = performance.now() * 0.0035;
+      panoBeaconMeshes.forEach(pin => {
+        if (!pin.visible) return;
+        const ring = pin.userData.ringMesh;
+        if (ring) {
+          const s = 1.0 + 0.16 * Math.sin(bt + pin.userData.baseIdx * 0.35);
+          ring.scale.set(s, s, s);
+        }
+      });
+    }
+
     renderer.render(scene, camera);
     if (!window.__hasFirst3DRender) {
       window.__hasFirst3DRender = true;
@@ -22152,7 +22422,8 @@ function onFirst3DFrameReady() {
       stopTour,
       openPano,
       closePano,
-      setFloor
+      setFloor,
+      select360Spot
     });
   }
   const shell = document.getElementById('campus-preview-shell');
