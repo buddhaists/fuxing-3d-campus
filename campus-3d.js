@@ -4832,44 +4832,8 @@ function makeShelterSignTexture(text = '防空避難設備') {
       }
 
       // -----------------------------------------------------------
-      // J. 樓梯前側車道邊緣高大綠蔭遮蔭樹 (依實景照片 2 與照片 3 精確配置)
+      // J. 依使用者指示（截圖紅框）：移除遮擋北棟西側後走廊樓梯入口與車道視線之樹木，確保樓梯、9階入口階梯與雨遮視線全面通透開闊
       // -----------------------------------------------------------
-      {
-        // 樹 1: 緊鄰樓梯入口階梯與中央主柱北側車道緣石 (X ~ -27.8m, Z ~ -38.4m)
-        // 樹 2: 往東延伸遮蔭北側地下室採光井雨遮 (X ~ -25.5m, Z ~ -38.6m)
-        const treeMatTrunk = new THREE.MeshStandardMaterial({ color: 0x4a3c31, roughness: 0.92 });
-        const treeMatLeafDark = new THREE.MeshStandardMaterial({ color: 0x2d5a27, roughness: 0.78 });
-        const treeMatLeafLight = new THREE.MeshStandardMaterial({ color: 0x3d7b32, roughness: 0.72 });
-
-        const addStairTree = (tx, tz, trunkH, spreadR) => {
-          // 蒼勁樹幹 (扭轉向上至 1F/2F 高度)
-          const trGeo = new THREE.CylinderGeometry(0.18, 0.28, trunkH, 8);
-          const trMesh = addMesh(g, trGeo, treeMatTrunk, tx, trunkH / 2, tz);
-          trMesh.rotation.z = 0.06;
-          // 分枝
-          for (let b = 0; b < 3; b++) {
-            const bAng = (b / 3) * Math.PI * 2 + 0.3;
-            const bLen = 2.4;
-            const bMesh = addMesh(g, new THREE.CylinderGeometry(0.08, 0.14, bLen, 6), treeMatTrunk, tx + Math.cos(bAng) * 0.8, trunkH * 0.82, tz + Math.sin(bAng) * 0.8);
-            bMesh.rotation.y = bAng;
-            bMesh.rotation.z = 0.45;
-          }
-          // 茂密樹冠
-          const nFol = 6;
-          for (let i = 0; i < nFol; i++) {
-            const ang = (i / nFol) * Math.PI * 2;
-            const fx = tx + Math.cos(ang) * (spreadR * 0.55);
-            const fz = tz + Math.sin(ang) * (spreadR * 0.55);
-            const fy = trunkH + 0.8 + (i % 2 === 0 ? 0.6 : -0.4);
-            const folMat = (i % 2 === 0 ? treeMatLeafDark : treeMatLeafLight);
-            const fol = addMesh(g, new THREE.DodecahedronGeometry(spreadR * 0.65, 1), folMat, fx, fy, fz);
-            fol.scale.set(1.15, 0.85, 1.15);
-          }
-        };
-
-        addStairTree(-27.5, -42.2, 5.2, 3.2); // 樹 1 (遮蔭樓梯與入口台階，立於車道緣石)
-        addStairTree(-24.8, -42.4, 5.8, 3.6); // 樹 2 (遮蔭採光井雨遮，立於車道緣石)
-      }
 
       // -----------------------------------------------------------
       // K. 瀝青地面行車白色導向箭頭 (Painted Traffic Road Arrow per Photo 7)
@@ -18316,12 +18280,11 @@ treeZones.forEach(([x1, y1, x2, y2, count, defaultType]) => {
 });
 
 // =========================================================================
-// 實景照片 20261110_135221.jpg 學校北側貫通車道西段與運動場間林蔭綠廊喬木
+// 實景照片 20261110_135221.jpg 運動場與西側走道通道間之林蔭喬木（遠眺跑道與司令台，依指示移除北棟周邊樹木以保持通透）
 // 沿水泥混凝土車道南側草坪緩衝帶 (z ≈ -36.16m) 整齊排列高挑遮蔭喬木，眺望跑道與司令台
 // =========================================================================
 const northDrivewayShadeTrees = [
   // 南側草坪緩衝帶 (車道與跑道之間，高挑透光闊葉遮蔭喬木)：
-  [-46.0, -42.0, 1.02, 'broad'],
   [-46.0, -36.16, 1.02, 'broad'],
   [-58.0, -36.16, 0.96, 'broad'],
   [-70.0, -36.16, 1.00, 'broad'],
@@ -18329,7 +18292,6 @@ const northDrivewayShadeTrees = [
   [-94.0, -36.16, 1.04, 'broad'],
   [-106.0, -36.16, 0.92, 'broad'],
   // 北側校園北界圍牆內側綠帶：
-  [-40.0, -47.0, 1.05, 'broad'],
   [-55.0, -47.0, 1.02, 'broad'],
   [-72.0, -47.0, 1.08, 'broad'],
   [-88.0, -47.0, 0.98, 'broad'],
