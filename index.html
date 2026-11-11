@@ -2301,6 +2301,51 @@ document.addEventListener('click', function(e) {
     background: #d32f2f;
     transform: scale(1.03);
   }
+  .pano-mode-switch {
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 3px;
+    backdrop-filter: blur(8px);
+  }
+  .pano-mode-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    padding: 6px 11px;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+  }
+  .pano-mode-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.18);
+  }
+  .pano-mode-btn.is-active {
+    background: #10b981;
+    color: #fff;
+    box-shadow: 0 1px 6px rgba(16, 185, 129, 0.4);
+  }
+  .pano-iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    z-index: 2;
+    background: #000;
+  }
+  .pano-canvas-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+  }
   .pano-host {
     position: absolute;
     inset: 0;
@@ -4021,36 +4066,41 @@ document.addEventListener('click', function(e) {
     <div class="pano-brand">
       <span class="pano-dot"></span>
       <span class="pano-badge">360° 沉浸實景</span>
-      <h2 id="panoTitle">中庭花園與愛悅樓前廣場</h2>
+      <h2 id="panoTitle">復興國小 360° 實景導覽</h2>
     </div>
     <div class="pano-actions">
-      <a id="panoExternalBtn" href="https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,100.12h,92.02t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98X_pAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g%3Dw900-h600-k-no-pi-2.02112549397485-ya100.12206414212982-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D" target="_blank" rel="noopener" class="pano-ext-btn">
+      <div class="pano-mode-switch" role="group" aria-label="實景呈現模式">
+        <button id="panoModeStreetBtn" class="pano-mode-btn is-active" type="button" title="直接內嵌 Google 原生實景街景（可漫步步進）">🌐 實景街景</button>
+        <button id="panoModeWebGlBtn" class="pano-mode-btn" type="button" title="3D WebGL 沉浸全景球">🎨 全景球</button>
+      </div>
+      <a id="panoExternalBtn" href="https://maps.google.com" target="_blank" rel="noopener" class="pano-ext-btn">
         <span>Google 街景全螢幕 ↗</span>
       </a>
       <button id="panoCloseBtn" class="pano-close-btn" type="button" aria-label="關閉環景">✕ 返回 3D 校園</button>
     </div>
   </div>
   <div id="panoHost" class="pano-host">
-    <div id="panoLoading" class="pano-loading">
+    <iframe id="panoIframe" class="pano-iframe" src="" allowfullscreen loading="lazy" allow="accelerometer; gyroscope; magnetometer; fullscreen"></iframe>
+    <div id="panoLoading" class="pano-loading" style="z-index: 10;">
       <div class="pano-spinner"></div>
-      <p>正在串流加載 360° 高解析實景環景照片...</p>
+      <p id="panoLoadingText">正在載入 360° 實景街景...</p>
     </div>
   </div>
-  <div id="panoAdjBar" class="pano-adj-bar" hidden>
+  <div id="panoAdjBar" class="pano-adj-bar" hidden style="z-index: 12;">
     <span class="pano-adj-label">鄰近景點穿梭：</span>
     <div id="panoAdjChips" class="pano-adj-chips"></div>
   </div>
-  <div class="pano-dock">
+  <div class="pano-dock" id="panoDock" style="z-index: 11;">
     <button id="panoRotateToggle" type="button" class="pano-ctrl-pill is-active">⟳ 自動旋轉</button>
     <button id="panoResetView" type="button" class="pano-ctrl-pill">⌂ 重置方向</button>
     <button id="panoZoomIn" type="button" class="pano-ctrl-pill" title="放大視角">+</button>
     <button id="panoZoomOut" type="button" class="pano-ctrl-pill" title="縮小視角">−</button>
-    <span class="pano-tip">滑鼠拖曳 / 雙指滑動環顧四周 · 滾輪縮放</span>
+    <span class="pano-tip" id="panoTip">Google 原生街景已就緒 · 可在畫面中拖曳視角、縮放或點擊地面箭頭步進漫步</span>
   </div>
 </div>
 
 <script src="./vendor/qrcode.min.js"></script>
-<script src="./campus-ui.js?v=2.8.1"></script>
-<script type="module" src="./campus-3d.js?v=2.8.1"></script>
+<script src="./campus-ui.js?v=2.8.2"></script>
+<script type="module" src="./campus-3d.js?v=2.8.2"></script>
 </body>
 </html>

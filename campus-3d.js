@@ -18631,7 +18631,7 @@ window.__setEditorPickMode3D = setEditorPickMode3D;
 window.__updatePinPosition3D = updatePinPosition3D;
 
 // ==========================================
-// 360° Panorama Viewer Engine (GSES / WebGL)
+// 360° Panorama Viewer Engine (Google Street View & WebGL Dual Mode)
 // ==========================================
 let panoRenderer = null;
 let panoScene = null;
@@ -18644,15 +18644,32 @@ let panoTargetLon = 90, panoTargetLat = 0;
 let panoIsInteracting = false;
 let panoDownX = 0, panoDownY = 0, panoDownLon = 0, panoDownLat = 0;
 let panoHotspotsGroup = null;
+let panoMode = 'street'; // 'street' (Google 原生街景直載) | 'webgl' (Three.js 全景球)
+let currentSpotData = null;
 const panoRaycaster = new THREE.Raycaster();
 const panoMouse = new THREE.Vector2();
+
+function updatePanoSize() {
+  const host = document.getElementById('panoHost');
+  if (!host || !panoRenderer || !panoCamera) return;
+  const w = host.clientWidth || window.innerWidth || 800;
+  const h = host.clientHeight || window.innerHeight || 600;
+  if (w > 0 && h > 0) {
+    panoCamera.aspect = w / h;
+    panoCamera.updateProjectionMatrix();
+    panoRenderer.setSize(w, h);
+  }
+}
 
 function initPanoViewer() {
   const host = document.getElementById('panoHost');
   if (!host || panoRenderer) return;
 
+  const w = host.clientWidth || window.innerWidth || 800;
+  const h = host.clientHeight || window.innerHeight || 600;
+
   panoScene = new THREE.Scene();
-  panoCamera = new THREE.PerspectiveCamera(75, host.clientWidth / host.clientHeight, 0.1, 1100);
+  panoCamera = new THREE.PerspectiveCamera(75, w / h, 0.1, 1100);
 
   const sphereGeo = new THREE.SphereGeometry(500, 60, 40);
   sphereGeo.scale(-1, 1, 1);
@@ -18665,12 +18682,17 @@ function initPanoViewer() {
 
   panoRenderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   panoRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  panoRenderer.setSize(host.clientWidth, host.clientHeight);
+  panoRenderer.setSize(w, h);
+  panoRenderer.domElement.className = 'pano-canvas-layer';
+  panoRenderer.domElement.style.position = 'absolute';
+  panoRenderer.domElement.style.inset = '0';
+  panoRenderer.domElement.style.zIndex = '1';
   host.appendChild(panoRenderer.domElement);
 
   let isPanoDrag = false;
 
   host.addEventListener('pointerdown', e => {
+    if (e.target && e.target.tagName === 'IFRAME') return;
     panoIsInteracting = true;
     isPanoDrag = false;
     panoDownX = e.clientX;
@@ -18691,10 +18713,11 @@ function initPanoViewer() {
 
   window.addEventListener('pointerup', e => {
     if (panoIsInteracting && !isPanoDrag && panoHotspotsGroup) {
-      // Hotspot click test inside panorama
       const rect = host.getBoundingClientRect();
-      panoMouse.x = ((e.clientX - rect.left) / host.clientWidth) * 2 - 1;
-      panoMouse.y = -((e.clientY - rect.top) / host.clientHeight) * 2 + 1;
+      const rw = host.clientWidth || window.innerWidth || 1;
+      const rh = host.clientHeight || window.innerHeight || 1;
+      panoMouse.x = ((e.clientX - rect.left) / rw) * 2 - 1;
+      panoMouse.y = -((e.clientY - rect.top) / rh) * 2 + 1;
       panoRaycaster.setFromCamera(panoMouse, panoCamera);
       const hits = panoRaycaster.intersectObjects(panoHotspotsGroup.children, true);
       if (hits.length > 0) {
@@ -18711,19 +18734,18 @@ function initPanoViewer() {
   window.addEventListener('pointercancel', () => { panoIsInteracting = false; });
 
   host.addEventListener('wheel', e => {
+    if (panoMode === 'street') return;
     e.preventDefault();
     panoCamera.fov = Math.max(35, Math.min(95, panoCamera.fov + e.deltaY * 0.05));
     panoCamera.updateProjectionMatrix();
   }, { passive: false });
 
-  window.addEventListener('resize', () => {
-    if (!host || !panoRenderer || !panoCamera) return;
-    panoCamera.aspect = host.clientWidth / host.clientHeight;
-    panoCamera.updateProjectionMatrix();
-    panoRenderer.setSize(host.clientWidth, host.clientHeight);
-  });
+  window.addEventListener('resize', updatePanoSize);
 
   document.getElementById('panoCloseBtn')?.addEventListener('click', closePano);
+  document.getElementById('panoModeStreetBtn')?.addEventListener('click', () => setPanoMode('street'));
+  document.getElementById('panoModeWebGlBtn')?.addEventListener('click', () => setPanoMode('webgl'));
+
   document.getElementById('panoResetView')?.addEventListener('click', () => {
     panoTargetLon = 90;
     panoTargetLat = 0;
@@ -18741,6 +18763,67 @@ function initPanoViewer() {
   document.getElementById('panoZoomOut')?.addEventListener('click', () => {
     panoCamera.fov = Math.min(95, panoCamera.fov + 10);
     panoCamera.updateProjectionMatrix();
+  });
+}
+
+function setPanoMode(mode) {
+  panoMode = mode;
+  const streetBtn = document.getElementById('panoModeStreetBtn');
+  const webglBtn = document.getElementById('panoModeWebGlBtn');
+  const iframe = document.getElementById('panoIframe');
+  const tip = document.getElementById('panoTip');
+
+  if (streetBtn) streetBtn.classList.toggle('is-active', mode === 'street');
+  if (webglBtn) webglBtn.classList.toggle('is-active', mode === 'webgl');
+
+  if (mode === 'street') {
+    if (iframe) {
+      iframe.style.display = 'block';
+      iframe.style.zIndex = '3';
+    }
+    if (panoRenderer?.domElement) {
+      panoRenderer.domElement.style.zIndex = '1';
+    }
+    if (tip) tip.textContent = 'Google 原生街景已就緒 · 可在畫面中拖曳視角、縮放或點擊地面箭頭步進漫步';
+  } else {
+    if (iframe) {
+      iframe.style.display = 'none';
+      iframe.style.zIndex = '1';
+    }
+    if (panoRenderer?.domElement) {
+      panoRenderer.domElement.style.zIndex = '3';
+    }
+    if (tip) tip.textContent = '3D WebGL 全景球 · 滑鼠拖曳 / 雙指滑動環顧四周 · 滾輪縮放';
+    updatePanoSize();
+    if (currentSpotData) {
+      loadWebGlPano(currentSpotData);
+    }
+    if (!panoAnimId) panoRenderLoop();
+  }
+}
+
+function loadWebGlPano(spot) {
+  if (!panoMesh) return;
+  const texLoader = new THREE.TextureLoader();
+  texLoader.crossOrigin = 'anonymous';
+  const targetUrl = spot.panoUrl || spot.thumb;
+  if (!targetUrl) return;
+
+  texLoader.load(targetUrl, texture => {
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.minFilter = THREE.LinearFilter;
+    if (panoMesh) {
+      panoMesh.material.map = texture;
+      panoMesh.material.needsUpdate = true;
+    }
+  }, undefined, () => {
+    texLoader.load(spot.thumb || './tex/courtyard_panorama.jpg', fallbackTex => {
+      fallbackTex.colorSpace = THREE.SRGBColorSpace;
+      if (panoMesh) {
+        panoMesh.material.map = fallbackTex;
+        panoMesh.material.needsUpdate = true;
+      }
+    });
   });
 }
 
@@ -18826,13 +18909,23 @@ function panoRenderLoop() {
 function openPano(spotId = 'spot-10') {
   const wrap = document.getElementById('pano-wrap');
   const loading = document.getElementById('panoLoading');
+  const iframe = document.getElementById('panoIframe');
   if (!wrap) return;
 
-  initPanoViewer();
+  // 關鍵步驟 1：先行解除隱藏，確保容器具備長寬尺寸
   wrap.hidden = false;
-  if (loading) loading.style.display = 'flex';
+  if (loading) {
+    loading.style.display = 'flex';
+    const textEl = document.getElementById('panoLoadingText');
+    if (textEl) textEl.textContent = '正在載入 360° 實景街景...';
+  }
+
+  // 初始化並更新 WebGL 尺寸
+  initPanoViewer();
+  updatePanoSize();
 
   const spot = (window.CAMPUS_360_SPOTS || []).find(s => s.id === spotId || (spotId === 'courtyard-360' && s.id === 'spot-10')) || (window.CAMPUS_360_SPOTS || [])[0];
+  currentSpotData = spot;
 
   if (window.__campusBridge) {
     window.__campusBridge.activeSpotId = spot.id;
@@ -18842,11 +18935,11 @@ function openPano(spotId = 'spot-10') {
   const titleEl = document.getElementById('panoTitle');
   if (titleEl) titleEl.textContent = `${spot.name} · ${spot.group}`;
   const extEl = document.getElementById('panoExternalBtn');
-  if (extEl && spot.externalUrl) extEl.href = spot.externalUrl;
+  if (extEl && (spot.externalUrl || spot.embedUrl)) extEl.href = spot.externalUrl || spot.embedUrl;
 
   updatePanoHotspots(spot);
 
-  // Update Bottom Adjacency Chips Navigation
+  // 更新下方鄰近景點穿梭導覽列
   const adjBar = document.getElementById('panoAdjBar');
   const adjChips = document.getElementById('panoAdjChips');
   if (adjBar && adjChips) {
@@ -18870,34 +18963,44 @@ function openPano(spotId = 'spot-10') {
     }
   }
 
-  const texLoader = new THREE.TextureLoader();
-  texLoader.crossOrigin = 'anonymous';
-  texLoader.load(spot.panoUrl, texture => {
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.minFilter = THREE.LinearFilter;
-    if (panoMesh) {
-      panoMesh.material.map = texture;
-      panoMesh.material.needsUpdate = true;
-    }
-    if (loading) loading.style.display = 'none';
-  }, undefined, () => {
-    texLoader.load(spot.thumb || './tex/courtyard_panorama.jpg', fallbackTex => {
-      fallbackTex.colorSpace = THREE.SRGBColorSpace;
-      if (panoMesh) {
-        panoMesh.material.map = fallbackTex;
-        panoMesh.material.needsUpdate = true;
+  // 關鍵步驟 2：直接載入 Google 官方街景
+  if (iframe) {
+    const embedUrl = spot.embedUrl || `https://maps.google.com/maps?layer=c&cbll=${spot.latitude || 22.6594591},${spot.longitude || 120.4870018}&panoid=${spot.panoId || ''}&output=svembed`;
+
+    let loaded = false;
+    const hideLoading = () => {
+      if (!loaded && loading) {
+        loaded = true;
+        loading.style.display = 'none';
       }
-      if (loading) loading.style.display = 'none';
-    });
-  });
+    };
+
+    iframe.onload = hideLoading;
+    setTimeout(hideLoading, 1800); // 兜底確保載入遮罩自動隱藏
+
+    if (iframe.src !== embedUrl) {
+      iframe.src = embedUrl;
+    } else {
+      hideLoading();
+    }
+  }
+
+  // 預載 WebGL 全景
+  loadWebGlPano(spot);
+
+  setPanoMode(panoMode);
 
   if (!panoAnimId) panoRenderLoop();
-  showToast(`已進入 360° 實景環景：${spot.name}`);
+  showToast(`已載入 360° 實景：${spot.name}`);
 }
 
 function closePano() {
   const wrap = document.getElementById('pano-wrap');
+  const iframe = document.getElementById('panoIframe');
   if (wrap) wrap.hidden = true;
+  if (iframe) {
+    iframe.src = 'about:blank';
+  }
   if (panoAnimId) {
     cancelAnimationFrame(panoAnimId);
     panoAnimId = null;
@@ -18906,6 +19009,7 @@ function closePano() {
 
 window.__openPano = openPano;
 window.__closePano = closePano;
+
 
 const walkState = {
   active: false,
