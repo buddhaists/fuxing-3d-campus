@@ -18547,6 +18547,90 @@ function select360Spot(spotId, origin = 'manual') {
 window.__select360Spot3D = select360Spot;
 
 // ==========================================
+// 360 Spot Visual Editor 3D Integration
+// ==========================================
+let editorActiveSpotId = null;
+let editorPickMode3D = false;
+
+// 1. Invisible Ground Plane for Precise Raycasting
+const editorPickPlaneGeo = new THREE.PlaneGeometry(1500, 1500);
+editorPickPlaneGeo.rotateX(-Math.PI / 2);
+const editorPickPlane = new THREE.Mesh(
+  editorPickPlaneGeo,
+  new THREE.MeshBasicMaterial({ visible: false })
+);
+editorPickPlane.position.y = 0;
+scene.add(editorPickPlane);
+
+// 2. Highlighting Guiding Beacon (Vertical Light Beam)
+const editorBeaconBeamGeo = new THREE.CylinderGeometry(0.35, 1.2, 28, 16);
+const editorBeaconBeamMat = new THREE.MeshBasicMaterial({
+  color: 0xfacc15,
+  transparent: true,
+  opacity: 0.55,
+  depthWrite: false,
+  side: THREE.DoubleSide
+});
+const editorBeaconBeam = new THREE.Mesh(editorBeaconBeamGeo, editorBeaconBeamMat);
+editorBeaconBeam.position.y = 14;
+editorBeaconBeam.visible = false;
+scene.add(editorBeaconBeam);
+
+// 3. Target Placement Reticle (Follows cursor on ground in pick mode)
+const editorReticleGroup = new THREE.Group();
+editorReticleGroup.visible = false;
+const reticleRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.8, 1.35, 32).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+);
+editorReticleGroup.add(reticleRing);
+scene.add(editorReticleGroup);
+
+function setEditorActiveSpot(spotId) {
+  editorActiveSpotId = spotId;
+  const pin = panoBeaconMeshes.find(p => p.userData.spotId === spotId);
+  if (pin) {
+    editorBeaconBeam.position.set(pin.position.x, pin.position.y + 14, pin.position.z);
+    editorBeaconBeam.visible = true;
+    updateBeaconHighlight(spotId);
+    flyTo([pin.position.x + 8.5, pin.position.y + 13.5, pin.position.z + 17.5], [pin.position.x, pin.position.y + 0.8, pin.position.z], 750);
+  }
+}
+
+function clearEditorActiveSpot() {
+  editorActiveSpotId = null;
+  editorBeaconBeam.visible = false;
+  editorReticleGroup.visible = false;
+  setEditorPickMode3D(false);
+  requestRender(60);
+}
+
+function setEditorPickMode3D(active) {
+  editorPickMode3D = active;
+  editorReticleGroup.visible = active;
+  renderer.domElement.style.cursor = active ? 'crosshair' : 'default';
+  if (controls) controls.enabled = !active;
+  requestRender(60);
+}
+
+function updatePinPosition3D(spotId, x, y, z, floor) {
+  const pin = panoBeaconMeshes.find(p => p.userData.spotId === spotId);
+  if (pin) {
+    pin.position.set(x, y, z);
+    if (floor) pin.userData.floor = floor;
+    if (editorBeaconBeam.visible && editorActiveSpotId === spotId) {
+      editorBeaconBeam.position.set(x, y + 14, z);
+    }
+    requestRender(60);
+  }
+}
+
+window.__setEditorActiveSpot = setEditorActiveSpot;
+window.__clearEditorActiveSpot = clearEditorActiveSpot;
+window.__setEditorPickMode3D = setEditorPickMode3D;
+window.__updatePinPosition3D = updatePinPosition3D;
+
+// ==========================================
 // 360° Panorama Viewer Engine (GSES / WebGL)
 // ==========================================
 let panoRenderer = null;
@@ -21633,11 +21717,35 @@ renderer.domElement.addEventListener('pointerdown', e => {
   }
 });
 
+renderer.domElement.addEventListener('pointermove', e => {
+  if (!editorPickMode3D) return;
+  pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointer, camera);
+  const pickHits = raycaster.intersectObject(editorPickPlane);
+  if (pickHits.length > 0) {
+    editorReticleGroup.position.set(pickHits[0].point.x, 0.1, pickHits[0].point.z);
+    editorReticleGroup.visible = true;
+    requestRender(15);
+  }
+});
+
 renderer.domElement.addEventListener('pointerup', e => {
   if (walkState.active) return;
   if (!downXY || Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]) > 5) return;
   pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
+
+  // Pick on Map Mode in Spot Editor
+  if (editorPickMode3D) {
+    const pickHits = raycaster.intersectObject(editorPickPlane);
+    if (pickHits.length > 0) {
+      const p = pickHits[0].point;
+      if (window.__onEditorPointPicked) {
+        window.__onEditorPointPicked(p.x, p.z);
+      }
+      return;
+    }
+  }
 
   // In 3D Plan mode, check 3D classroom slabs first so clicking any room selects that exact classroom
   if (activeMode === 'plan' && planRooms3DGroup.children.length > 0) {
@@ -21662,6 +21770,15 @@ renderer.domElement.addEventListener('pointerup', e => {
     }
     if (spotNode && spotNode.userData?.is360Spot) {
       const sId = spotNode.userData.spotId || 'spot-10';
+      const panel = document.getElementById('spotEditorPanel');
+      if (panel && !panel.hidden) {
+        const selectEl = document.getElementById('editorSpotSelect');
+        if (selectEl) {
+          selectEl.value = sId;
+          selectEl.dispatchEvent(new Event('change'));
+        }
+        return;
+      }
       if (window.__campusBridge && window.__campusBridge.select360Spot) {
         window.__campusBridge.select360Spot(sId, '3d');
       } else if (typeof select360Spot === 'function') {

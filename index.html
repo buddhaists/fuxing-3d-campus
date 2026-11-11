@@ -2696,6 +2696,377 @@ document.addEventListener('click', function(e) {
     box-shadow: 0 0 10px rgba(46, 125, 50, 0.25);
   }
 
+  /* 360 Spot Visual Editor Panel */
+  .spot-editor-panel {
+    position: fixed;
+    top: 72px;
+    right: 20px;
+    width: 380px;
+    max-width: calc(100vw - 40px);
+    max-height: calc(100vh - 110px);
+    overflow-y: auto;
+    z-index: 105;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(24px) saturate(190%);
+    -webkit-backdrop-filter: blur(24px) saturate(190%);
+    border: 2px solid #2f6b4f;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25), 0 0 16px rgba(47, 107, 79, 0.2);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: slideInSpotCard 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    color: #1a221d;
+  }
+  .spot-editor-panel[hidden] {
+    display: none !important;
+  }
+  .editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+    padding-bottom: 10px;
+  }
+  .editor-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .editor-icon {
+    font-size: 18px;
+  }
+  .editor-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 800;
+    color: #1a3826;
+  }
+  .editor-close-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.12);
+    background: #f5f5f5;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #666;
+    transition: all 0.15s ease;
+  }
+  .editor-close-btn:hover {
+    background: #ef5350;
+    color: #fff;
+    border-color: #ef5350;
+  }
+  .editor-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .editor-field label {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #334e3d;
+  }
+  .editor-select {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1.5px solid #c2d9cb;
+    background: #fafffc;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1a3826;
+    outline: none;
+    cursor: pointer;
+    transition: border 0.15s ease;
+  }
+  .editor-select:focus {
+    border-color: #2f6b4f;
+    box-shadow: 0 0 0 3px rgba(47, 107, 79, 0.15);
+  }
+  .editor-spot-preview {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    background: #f1f7f3;
+    border-radius: 10px;
+    border: 1px solid #d8e8dc;
+  }
+  .editor-thumb {
+    width: 64px;
+    height: 48px;
+    border-radius: 6px;
+    object-fit: cover;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+  .editor-spot-meta {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  .editor-spot-meta strong {
+    font-size: 13.5px;
+    color: #132118;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .editor-group-tag {
+    font-size: 11px;
+    font-weight: 700;
+    color: #2f6b4f;
+  }
+  .editor-coords-text {
+    font-size: 11px;
+    font-family: monospace;
+    color: #b45309;
+    font-weight: 700;
+  }
+  .editor-pick-mode-box {
+    background: #eef8f2;
+    border: 1.5px dashed #2f6b4f;
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .editor-btn-pick {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 8px;
+    background: #2f6b4f;
+    border: none;
+    color: #fff;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.16s ease;
+  }
+  .editor-btn-pick:hover {
+    background: #23553e;
+    transform: translateY(-1px);
+  }
+  .editor-btn-pick.is-active {
+    background: #ef4444;
+    animation: pulseRed 1.2s infinite;
+  }
+  @keyframes pulseRed {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  }
+  .editor-hint {
+    font-size: 11.5px;
+    color: #4b6354;
+    line-height: 1.4;
+  }
+  .editor-stepper-box {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: #f8faf9;
+    border: 1px solid #e1ebe4;
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .editor-stepper-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #2c4234;
+  }
+  .editor-floor-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #555;
+  }
+  .editor-floor-btn {
+    flex: 1;
+    padding: 5px 6px;
+    border-radius: 6px;
+    background: #fff;
+    border: 1px solid #ccd8d0;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #2c4234;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .editor-floor-btn:hover, .editor-floor-btn.is-active {
+    background: #2f6b4f;
+    color: #fff;
+    border-color: #2f6b4f;
+  }
+  .editor-dpad-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin: 4px 0;
+  }
+  .editor-dpad-btn {
+    padding: 8px 4px;
+    border-radius: 6px;
+    background: #fff;
+    border: 1px solid #ccd8d0;
+    font-size: 12px;
+    font-weight: 700;
+    color: #1e3a2b;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+  }
+  .editor-dpad-btn:hover {
+    background: #eaf3ed;
+    border-color: #2f6b4f;
+    transform: translateY(-1px);
+  }
+  .editor-dpad-btn.center-focus {
+    background: #e0f2fe;
+    border-color: #7dd3fc;
+    color: #0369a1;
+  }
+  .editor-dpad-btn.center-focus:hover {
+    background: #0284c7;
+    color: #fff;
+    border-color: #0284c7;
+  }
+  .editor-micro-steps {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 4px;
+  }
+  .editor-micro-btn {
+    padding: 4px 2px;
+    border-radius: 5px;
+    background: #f1f4f2;
+    border: 1px solid #d5ded8;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #334e3d;
+    cursor: pointer;
+  }
+  .editor-micro-btn:hover {
+    background: #dbeef2;
+    border-color: #0284c7;
+    color: #0284c7;
+  }
+  .editor-actions-box {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid rgba(0,0,0,0.08);
+    padding-top: 8px;
+  }
+  .editor-save-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: #166534;
+    font-weight: 600;
+  }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #16a34a;
+    box-shadow: 0 0 6px #16a34a;
+  }
+  .editor-action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .editor-act-btn {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .editor-act-btn.primary {
+    background: #0284c7;
+    color: #fff;
+  }
+  .editor-act-btn.primary:hover {
+    background: #0369a1;
+  }
+  .editor-act-btn.secondary {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+  }
+  .editor-act-btn.secondary:hover {
+    background: #e2e8f0;
+  }
+  .editor-act-btn.danger {
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    color: #be123c;
+  }
+  .editor-act-btn.danger:hover {
+    background: #ffe4e6;
+  }
+  .open-spot-editor-btn {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #edf7f0;
+    border: 1.5px dashed #2f6b4f;
+    color: #1e5c3c;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .open-spot-editor-btn:hover {
+    background: #2f6b4f;
+    color: #fff;
+    border-style: solid;
+  }
+  .gses-btn-edit {
+    padding: 10px 10px;
+    border-radius: 10px;
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+  .gses-btn-edit:hover {
+    background: #fde68a;
+    color: #78350f;
+  }
+
   /* Walk mode prompt */
   .walk-360-prompt {
     position: fixed;
@@ -2911,6 +3282,12 @@ document.addEventListener('click', function(e) {
       <kbd>/</kbd>
     </label>
 
+    <div id="spotEditorBar" class="spot-editor-bar" style="margin-top:8px">
+      <button type="button" id="openSpotEditorBtn" class="open-spot-editor-btn">
+        🛠️ 進入 360° 景點視覺化校準模式
+      </button>
+    </div>
+
     <div class="filters" id="category-filters" role="tablist" aria-label="空間分類">
       <button type="button" class="chip is-active" data-filter="featured">精選</button>
       <button type="button" class="chip" data-filter="班級">班級</button>
@@ -3003,9 +3380,106 @@ document.addEventListener('click', function(e) {
         <span class="pano-sphere-icon">🌐</span>
         <span>進入 360° 實景</span>
       </button>
+      <button type="button" id="gsesSpotEditBtn" class="gses-btn-edit" title="在 3D 校園中校準此景點座標">
+        ✏️ 校準位置
+      </button>
       <a id="gsesSpotMapsBtn" href="#" target="_blank" rel="noopener" class="gses-btn-maps" title="在 Google 地圖中開啟">
         街景 ↗
       </a>
+    </div>
+  </aside>
+
+  <!-- 360 Spot Visual Editor Modal / Floater -->
+  <aside id="spotEditorPanel" class="spot-editor-panel" aria-label="360° 景點座標視覺化校準器" hidden>
+    <div class="editor-header">
+      <div class="editor-title-wrap">
+        <span class="editor-icon">🛠️</span>
+        <h3 class="editor-title">360° 景點座標視覺化校準器</h3>
+      </div>
+      <button type="button" id="spotEditorCloseBtn" class="editor-close-btn" aria-label="關閉編輯器">✕</button>
+    </div>
+
+    <div class="editor-body">
+      <!-- 選擇要校準的景點 -->
+      <div class="editor-field">
+        <label for="editorSpotSelect">當前校準景點：</label>
+        <select id="editorSpotSelect" class="editor-select"></select>
+      </div>
+
+      <!-- 當前景點資訊預覽 -->
+      <div class="editor-spot-preview">
+        <img id="editorSpotThumb" src="./assets/campus_overview_preview.jpg" alt="縮圖" class="editor-thumb" />
+        <div class="editor-spot-meta">
+          <strong id="editorSpotName">景點名稱</strong>
+          <span id="editorSpotGroupTag" class="editor-group-tag">主題分區</span>
+          <span id="editorSpotCoordsText" class="editor-coords-text">X: 0.0, Y: 2.2, Z: 0.0</span>
+        </div>
+      </div>
+
+      <!-- 核心操作按鈕：點擊地圖落點模式 -->
+      <div class="editor-pick-mode-box">
+        <button type="button" id="editorPickOnMapBtn" class="editor-btn-pick">
+          <span class="pick-icon">🎯</span>
+          <span id="editorPickBtnText">啟用「點擊地圖落點」模式</span>
+        </button>
+        <div class="editor-hint">點選按鈕後，滑鼠在 3D 校園地圖上任一處點擊，圖釘將即時定位至該處！</div>
+      </div>
+
+      <!-- 精細微調控制項 -->
+      <div class="editor-stepper-box">
+        <div class="editor-stepper-title">精準微調 (公尺)：</div>
+        
+        <!-- 樓層高度快捷按鈕 -->
+        <div class="editor-floor-row">
+          <span>樓層/高度：</span>
+          <button type="button" class="editor-floor-btn" data-editor-floor="1F" data-y="2.2">1F (2.2m)</button>
+          <button type="button" class="editor-floor-btn" data-editor-floor="2F" data-y="6.8">2F (6.8m)</button>
+          <button type="button" class="editor-floor-btn" data-editor-floor="3F" data-y="11.2">3F (11.2m)</button>
+        </div>
+
+        <!-- X 軸與 Z 軸方向控制盤 -->
+        <div class="editor-dpad-grid">
+          <div></div>
+          <button type="button" class="editor-dpad-btn" id="dpadNorth" title="向北移動 1 公尺 (Z-)">▲ 北 -1m</button>
+          <div></div>
+
+          <button type="button" class="editor-dpad-btn" id="dpadWest" title="向西移動 1 公尺 (X-)">◀ 西 -1m</button>
+          <button type="button" class="editor-dpad-btn center-focus" id="dpadFocus" title="將相機對焦到此景點">📍 對焦</button>
+          <button type="button" class="editor-dpad-btn" id="dpadEast" title="向東移動 1 公尺 (X+)">東 +1m ▶</button>
+
+          <div></div>
+          <button type="button" class="editor-dpad-btn" id="dpadSouth" title="向南移動 1 公尺 (Z+)">▼ 南 +1m</button>
+          <div></div>
+        </div>
+
+        <!-- 微量微調 0.2m -->
+        <div class="editor-micro-steps">
+          <button type="button" class="editor-micro-btn" id="stepWestMicro">◀ 西 0.2m</button>
+          <button type="button" class="editor-micro-btn" id="stepEastMicro">東 0.2m ▶</button>
+          <button type="button" class="editor-micro-btn" id="stepNorthMicro">▲ 北 0.2m</button>
+          <button type="button" class="editor-micro-btn" id="stepSouthMicro">▼ 南 0.2m</button>
+        </div>
+      </div>
+
+      <!-- 儲存狀態與匯出工具 -->
+      <div class="editor-actions-box">
+        <div class="editor-save-status">
+          <span class="status-dot"></span>
+          <span id="editorSaveStatusText">變更已即時自動存於本地瀏覽器</span>
+        </div>
+        
+        <div class="editor-action-buttons">
+          <button type="button" id="editorCopyJsonBtn" class="editor-act-btn primary" title="複製全校 46 處最新座標 JSON，可直接傳送給我們套用">
+            📋 複製最新 JSON 數據
+          </button>
+          <button type="button" id="editorExportJsonBtn" class="editor-act-btn secondary" title="下載成 JSON 檔案">
+            💾 匯出 JSON 檔
+          </button>
+          <button type="button" id="editorResetBtn" class="editor-act-btn danger" title="清除自訂設定，還原為初始座標">
+            🔄 還原初始座標
+          </button>
+        </div>
+      </div>
     </div>
   </aside>
 
@@ -3576,7 +4050,7 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script src="./vendor/qrcode.min.js"></script>
-<script src="./campus-ui.js?v=2.8.0"></script>
-<script type="module" src="./campus-3d.js?v=2.8.0"></script>
+<script src="./campus-ui.js?v=2.8.1"></script>
+<script type="module" src="./campus-3d.js?v=2.8.1"></script>
 </body>
 </html>

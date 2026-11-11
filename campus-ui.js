@@ -1510,6 +1510,33 @@ const CAMPUS_360_SPOTS = [
 ];
 window.CAMPUS_360_SPOTS = CAMPUS_360_SPOTS;
 
+// Load user-customized 360 spot coordinates from localStorage
+(function loadCustomSpotOverrides() {
+  try {
+    const raw = localStorage.getItem('fuxing_360_spots_custom');
+    if (raw) {
+      const overrides = JSON.parse(raw);
+      if (Array.isArray(overrides)) {
+        overrides.forEach(ov => {
+          const s = CAMPUS_360_SPOTS.find(item => item.id === ov.id);
+          if (s) {
+            if (ov.x !== undefined) s.x = ov.x;
+            if (ov.y !== undefined) s.y = ov.y;
+            if (ov.z !== undefined) s.z = ov.z;
+            if (ov.px !== undefined) s.px = ov.px;
+            if (ov.py !== undefined) s.py = ov.py;
+            if (ov.floor !== undefined) s.floor = ov.floor;
+            s.pos = [s.x, s.y, s.z];
+          }
+        });
+        console.log(`[SpotEditor] Loaded ${overrides.length} custom spot coordinates from localStorage.`);
+      }
+    }
+  } catch (e) {
+    console.warn('[SpotEditor] Error loading custom spot overrides', e);
+  }
+})();
+
 const FEATURED_IDS = [
   'north-building', 'east-building', 'south-building', 'west-building',
   'new-building', 'courtyard-plaza', 'breezeway-hub', 'playground-zone',
@@ -2232,6 +2259,216 @@ function hideSpotCard() {
 window.showSpotCard = showSpotCard;
 window.hideSpotCard = hideSpotCard;
 
+
+// ==========================================
+// 360 Spot Visual Editor Controller
+// ==========================================
+let editingSpotId = 'spot-10';
+let editorPickMode = false;
+
+function openSpotEditor(spotId = null) {
+  const panel = document.getElementById('spotEditorPanel');
+  if (!panel) return;
+
+  const targetId = spotId || (window.__campusBridge && window.__campusBridge.activeSpotId) || editingSpotId || 'spot-10';
+  editingSpotId = targetId;
+
+  const gsesCard = document.getElementById('gsesSpotCard');
+  if (gsesCard) gsesCard.hidden = true;
+  const detailEl = document.getElementById('detail');
+  if (detailEl) detailEl.hidden = true;
+
+  const selectEl = document.getElementById('editorSpotSelect');
+  if (selectEl) {
+    selectEl.innerHTML = '';
+    CAMPUS_360_SPOTS.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = `#${s.num} ${s.name} (${s.floor || '1F'})`;
+      opt.selected = (s.id === targetId);
+      selectEl.appendChild(opt);
+    });
+  }
+
+  updateEditorDisplay();
+  panel.hidden = false;
+
+  if (window.__setEditorActiveSpot) {
+    window.__setEditorActiveSpot(targetId);
+  }
+  showToast(`已進入座標編輯模式：正在校準 #${editingSpotId}`);
+}
+
+function closeSpotEditor() {
+  const panel = document.getElementById('spotEditorPanel');
+  if (panel) panel.hidden = true;
+  setEditorPickMode(false);
+  if (window.__clearEditorActiveSpot) {
+    window.__clearEditorActiveSpot();
+  }
+}
+
+function updateEditorDisplay() {
+  const s = CAMPUS_360_SPOTS.find(item => item.id === editingSpotId);
+  if (!s) return;
+
+  const nameEl = document.getElementById('editorSpotName');
+  const groupEl = document.getElementById('editorSpotGroupTag');
+  const coordsEl = document.getElementById('editorSpotCoordsText');
+  const thumbEl = document.getElementById('editorSpotThumb');
+
+  if (nameEl) nameEl.textContent = `#${s.num} ${s.name}`;
+  if (groupEl) groupEl.textContent = `${s.group} · ${s.floor || '1F'}`;
+  if (coordsEl) coordsEl.textContent = `X: ${s.x.toFixed(2)}, Y: ${s.y.toFixed(2)}, Z: ${s.z.toFixed(2)} (px: ${s.px}, py: ${s.py})`;
+  if (thumbEl) {
+    thumbEl.src = s.thumb;
+    thumbEl.onerror = () => { thumbEl.src = './assets/campus_overview_preview.jpg'; };
+  }
+
+  document.querySelectorAll('[data-editor-floor]').forEach(btn => {
+    btn.classList.toggle('is-active', btn.dataset.editorFloor === s.floor);
+  });
+}
+
+function setEditorPickMode(active) {
+  editorPickMode = active;
+  const btn = document.getElementById('editorPickOnMapBtn');
+  const txt = document.getElementById('editorPickBtnText');
+  if (btn) btn.classList.toggle('is-active', editorPickMode);
+  if (txt) txt.textContent = editorPickMode ? '🎯 「點擊地圖落點」中（請在 3D 地圖上點擊）' : '啟用「點擊地圖落點」模式';
+  if (window.__setEditorPickMode3D) {
+    window.__setEditorPickMode3D(editorPickMode);
+  }
+}
+
+function moveCurrentSpot(dx, dz, newY = null, newFloor = null) {
+  const s = CAMPUS_360_SPOTS.find(item => item.id === editingSpotId);
+  if (!s) return;
+
+  s.x = Math.round((s.x + dx) * 100) / 100;
+  s.z = Math.round((s.z + dz) * 100) / 100;
+  if (newY !== null) s.y = newY;
+  if (newFloor !== null) s.floor = newFloor;
+
+  s.px = Math.round(s.x / 0.26 + 512);
+  s.py = Math.round(s.z / 0.26 + 240);
+  s.pos = [s.x, s.y, s.z];
+
+  saveCustomSpots();
+  updateEditorDisplay();
+
+  if (window.__updatePinPosition3D) {
+    window.__updatePinPosition3D(s.id, s.x, s.y, s.z, s.floor);
+  }
+}
+
+function setSpotPositionAbsolute(x, z, y = null, floor = null) {
+  const s = CAMPUS_360_SPOTS.find(item => item.id === editingSpotId);
+  if (!s) return;
+
+  s.x = Math.round(x * 100) / 100;
+  s.z = Math.round(z * 100) / 100;
+  if (y !== null) s.y = Math.round(y * 100) / 100;
+  if (floor !== null) s.floor = floor;
+
+  s.px = Math.round(s.x / 0.26 + 512);
+  s.py = Math.round(s.z / 0.26 + 240);
+  s.pos = [s.x, s.y, s.z];
+
+  saveCustomSpots();
+  updateEditorDisplay();
+
+  if (window.__updatePinPosition3D) {
+    window.__updatePinPosition3D(s.id, s.x, s.y, s.z, s.floor);
+  }
+  showToast(`已更新 #${s.num} ${s.name} 座標：(${s.x}, ${s.z})`);
+}
+
+window.__onEditorPointPicked = function(x, z, y) {
+  setSpotPositionAbsolute(x, z);
+  setEditorPickMode(false);
+};
+
+function saveCustomSpots() {
+  const overrides = CAMPUS_360_SPOTS.map(s => ({
+    id: s.id,
+    num: s.num,
+    name: s.name,
+    group: s.group,
+    floor: s.floor,
+    x: s.x,
+    y: s.y,
+    z: s.z,
+    px: s.px,
+    py: s.py
+  }));
+  try {
+    localStorage.setItem('fuxing_360_spots_custom', JSON.stringify(overrides));
+    const statusEl = document.getElementById('editorSaveStatusText');
+    if (statusEl) {
+      statusEl.textContent = `已即時存於本地 (${new Date().toLocaleTimeString()})`;
+    }
+  } catch (e) {
+    console.warn('Storage save failed', e);
+  }
+}
+
+function exportCustomSpotsJson() {
+  const overrides = CAMPUS_360_SPOTS.map(s => ({
+    id: s.id,
+    num: s.num,
+    name: s.name,
+    group: s.group,
+    floor: s.floor,
+    x: s.x,
+    y: s.y,
+    z: s.z,
+    px: s.px,
+    py: s.py
+  }));
+  const jsonStr = JSON.stringify(overrides, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `fuxing_360_spots_custom_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('已匯出最新 46 處景點自訂座標 JSON 檔案！');
+}
+
+function copyCustomSpotsJson() {
+  const overrides = CAMPUS_360_SPOTS.map(s => ({
+    id: s.id,
+    num: s.num,
+    name: s.name,
+    group: s.group,
+    floor: s.floor,
+    x: s.x,
+    y: s.y,
+    z: s.z,
+    px: s.px,
+    py: s.py
+  }));
+  const jsonStr = JSON.stringify(overrides, null, 2);
+  navigator.clipboard.writeText(jsonStr).then(() => {
+    showToast('已複製 46 處景點最新座標 JSON 到剪貼簿！可直接貼在對話中更新倉庫代碼。');
+  }).catch(() => {
+    showToast('複製失敗，請使用匯出檔案按鈕。');
+  });
+}
+
+function resetCustomSpots() {
+  if (confirm('確定要清除所有本地自訂座標，還原回初始設定嗎？')) {
+    localStorage.removeItem('fuxing_360_spots_custom');
+    showToast('已清除本地自訂座標，正在重新載入網頁...');
+    setTimeout(() => location.reload(), 500);
+  }
+}
+
+window.openSpotEditor = openSpotEditor;
+window.closeSpotEditor = closeSpotEditor;
+
 // Global Bridge connecting instant UI to deferred 3D engine
 window.__campusBridge = {
   is3dReady: false,
@@ -2363,6 +2600,8 @@ function initImmediateUI() {
     tab.addEventListener('click', () => {
       activeGsesTab = tab.dataset.gsesTab;
       document.querySelectorAll('.gses-tab').forEach(t => t.classList.toggle('is-active', t === tab));
+      const editorBar = document.getElementById('spotEditorBar');
+      if (editorBar) editorBar.style.display = (activeGsesTab === 'spots') ? 'block' : 'none';
       renderPlacesList();
     });
   });
@@ -2394,6 +2633,61 @@ function initImmediateUI() {
   document.getElementById('gsesSpotClose')?.addEventListener('click', () => {
     hideSpotCard();
   });
+
+  // Spot Visual Editor Bindings
+  document.getElementById('openSpotEditorBtn')?.addEventListener('click', () => {
+    openSpotEditor();
+  });
+
+  document.getElementById('spotEditorCloseBtn')?.addEventListener('click', () => {
+    closeSpotEditor();
+  });
+
+  document.getElementById('gsesSpotEditBtn')?.addEventListener('click', () => {
+    const sId = (window.__campusBridge && window.__campusBridge.activeSpotId) || 'spot-10';
+    openSpotEditor(sId);
+  });
+
+  document.getElementById('editorSpotSelect')?.addEventListener('change', e => {
+    editingSpotId = e.target.value;
+    updateEditorDisplay();
+    if (window.__setEditorActiveSpot) {
+      window.__setEditorActiveSpot(editingSpotId);
+    }
+  });
+
+  document.getElementById('editorPickOnMapBtn')?.addEventListener('click', () => {
+    setEditorPickMode(!editorPickMode);
+  });
+
+  // D-Pad Steppers
+  document.getElementById('dpadNorth')?.addEventListener('click', () => moveCurrentSpot(0, -1.0));
+  document.getElementById('dpadSouth')?.addEventListener('click', () => moveCurrentSpot(0, 1.0));
+  document.getElementById('dpadWest')?.addEventListener('click', () => moveCurrentSpot(-1.0, 0));
+  document.getElementById('dpadEast')?.addEventListener('click', () => moveCurrentSpot(1.0, 0));
+  document.getElementById('dpadFocus')?.addEventListener('click', () => {
+    if (window.__setEditorActiveSpot) window.__setEditorActiveSpot(editingSpotId);
+  });
+
+  // Micro Steppers (0.2m)
+  document.getElementById('stepNorthMicro')?.addEventListener('click', () => moveCurrentSpot(0, -0.2));
+  document.getElementById('stepSouthMicro')?.addEventListener('click', () => moveCurrentSpot(0, 0.2));
+  document.getElementById('stepWestMicro')?.addEventListener('click', () => moveCurrentSpot(-0.2, 0));
+  document.getElementById('stepEastMicro')?.addEventListener('click', () => moveCurrentSpot(0.2, 0));
+
+  // Floor buttons
+  document.querySelectorAll('[data-editor-floor]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const fl = btn.dataset.editorFloor;
+      const yVal = parseFloat(btn.dataset.y);
+      moveCurrentSpot(0, 0, yVal, fl);
+    });
+  });
+
+  // Storage and export buttons
+  document.getElementById('editorCopyJsonBtn')?.addEventListener('click', copyCustomSpotsJson);
+  document.getElementById('editorExportJsonBtn')?.addEventListener('click', exportCustomSpotsJson);
+  document.getElementById('editorResetBtn')?.addEventListener('click', resetCustomSpots);
 
   document.getElementById('dockLightBtn')?.addEventListener('click', () => {
     const envBtn = document.getElementById('environment-open');
