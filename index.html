@@ -24,7 +24,7 @@ window.addEventListener('unhandledrejection', e => {
 <meta name="theme-color" content="#faf8f2">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>復</text></svg>">
 <link rel="preload" as="image" href="./assets/campus_overview_preview.webp" type="image/webp">
-<link rel="preload" as="script" href="./campus-ui.js?v=2.5.1">
+<link rel="preload" as="script" href="./campus-ui.js?v=2.5.2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=Noto+Serif+TC:wght@500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
@@ -32,12 +32,12 @@ window.addEventListener('unhandledrejection', e => {
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('DOMContentLoaded', () => {
-    navigator.serviceWorker.register('./sw.js?v=2.5.1').then(reg => {
+    navigator.serviceWorker.register('./sw.js?v=2.5.2').then(reg => {
       reg.update();
     }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!sessionStorage.getItem('__sw_refreshed_v251')) {
-        sessionStorage.setItem('__sw_refreshed_v251', '1');
+      if (!sessionStorage.getItem('__sw_refreshed_v252')) {
+        sessionStorage.setItem('__sw_refreshed_v252', '1');
         window.location.reload();
       }
     });
@@ -2615,7 +2615,7 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script src="./vendor/qrcode.min.js"></script>
-<script src="./campus-ui.js?v=2.5.1"></script>
-<script type="module" src="./campus-3d.js?v=2.5.1"></script>
+<script src="./campus-ui.js?v=2.5.2"></script>
+<script type="module" src="./campus-3d.js?v=2.5.2"></script>
 </body>
 </html>
