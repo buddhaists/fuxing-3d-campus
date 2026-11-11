@@ -19524,7 +19524,7 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
     // In 3D Plan Cutaway Mode: switch floor if needed and fly top-down camera above the selected landmark/room
     if (highlightRoomCode && initialFloor && ['1F', '2F', '3F', 'B1'].includes(initialFloor)) {
       activePlanFloor = initialFloor;
-      document.querySelectorAll('[data-plan-floor]').forEach(b => b.classList.toggle('is-active', b.dataset.planFloor === activePlanFloor));
+      syncFloorButtons(activePlanFloor);
     }
     const [x1, y1, x2, y2] = lm.pxBounds;
     const cx = X((x1 + x2) / 2), cz = Z((y1 + y2) / 2);
@@ -19547,7 +19547,7 @@ function focusClassroom(lm, floorKey, rm, worldPos) {
   activePlanFloor = floorKey;
   updateUrlParams(lm.id, floorKey, rm.code);
   requestRender(80);
-  document.querySelectorAll('[data-plan-floor]').forEach(b => b.classList.toggle('is-active', b.dataset.planFloor === floorKey));
+  syncFloorButtons(floorKey);
   roomPinElements.forEach(p => p.el.classList.toggle('active-room', p.code === rm.code));
   activeViewMode = 'oblique';
   updateToolButtons();
@@ -19622,10 +19622,8 @@ function renderDetailCard(lm, activeFloor = '1F') {
     `;
     floorsEl.querySelectorAll('[data-floor]').forEach(fBtn => {
       fBtn.addEventListener('click', () => {
-        activePlanFloor = fBtn.dataset.floor;
-        document.querySelectorAll('[data-plan-floor]').forEach(b => b.classList.toggle('is-active', b.dataset.planFloor === activePlanFloor));
+        setFloor(fBtn.dataset.floor, { silentCamera: true });
         renderDetailCard(lm, fBtn.dataset.floor);
-        renderPlanSvg();
       });
     });
     floorsEl.querySelectorAll('[data-rcode]').forEach(rBtn => {
@@ -20571,7 +20569,7 @@ function renderExtensionDirectory() {
       const fl = btn.dataset.floor;
       const rcode = btn.dataset.rcode;
       activePlanFloor = fl;
-      document.querySelectorAll('[data-plan-floor]').forEach(b => b.classList.toggle('is-active', b.dataset.planFloor === fl));
+      syncFloorButtons(fl);
       selectLandmark(pid, 'manual', fl, rcode);
     });
   });
@@ -20771,6 +20769,7 @@ function switchViewMode(mode) {
     isTopView = true;
     updateToolButtons();
     camera.clearViewOffset();
+    syncFloorButtons(activePlanFloor);
     renderPlanSvg();
     const cfg = OFFICIAL_PLAN_CONFIG[activePlanFloor] || OFFICIAL_PLAN_CONFIG['1F'];
     flyTo([8, cfg.camY, 0.4], [8, cfg.slabY, 0], 650);
@@ -20779,6 +20778,7 @@ function switchViewMode(mode) {
   } else {
     isTopView = false;
     updateToolButtons();
+    syncFloorButtons('ALL');
     if (!isIsolated) layerGroups.vegetation.visible = layerState.vegetation;
     renderPlanSvg();
     document.getElementById('view-hint').textContent = '左鍵旋轉 · 右鍵平移 · 滾輪縮放 · 雙擊建築快速對焦 · 點擊查看教室';
@@ -20809,23 +20809,73 @@ document.querySelectorAll('#modes .mode[data-mode]').forEach(btn => {
   btn.addEventListener('click', () => switchViewMode(btn.dataset.mode));
 });
 
-// 3D Floor Cutaway Toolbar Controls (`ALL`/`1F`/`2F`/`3F`/`B1` Floor Switcher & Layer Checkboxes)
-document.querySelectorAll('[data-plan-floor]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    activePlanFloor = btn.dataset.planFloor;
-    followingPedestrianIdx = -1;
-    document.querySelectorAll('[data-plan-floor]').forEach(b => b.classList.toggle('is-active', b === btn));
-    if (selectedId) {
-      const lm = LANDMARKS.find(l => l.id === selectedId);
-      if (lm) renderDetailCard(lm, activePlanFloor === 'ALL' ? '1F' : activePlanFloor);
-    }
+function syncFloorButtons(targetKey) {
+  const norm = (targetKey === 'BF') ? 'B1' : targetKey;
+  document.querySelectorAll('[data-plan-floor], [data-gses-floor]').forEach(b => {
+    const val = b.dataset.planFloor || b.dataset.gsesFloor;
+    const bNorm = (val === 'BF') ? 'B1' : val;
+    b.classList.toggle('is-active', bNorm === norm);
+  });
+}
+
+function setFloor(floorKey, options = {}) {
+  const normFloor = (floorKey === 'BF') ? 'B1' : floorKey;
+  const targetFloor = OFFICIAL_PLAN_CONFIG[normFloor] ? normFloor : 'ALL';
+  activePlanFloor = targetFloor;
+  followingPedestrianIdx = -1;
+
+  // 1. 同步全站所有樓層切換按鈕高亮狀態（頂部工具列與底部 Dock）
+  syncFloorButtons(targetFloor);
+
+  // 2. 若在 3D 校園視角且點擊特定樓層，平滑切換至 3D 剖切平面模式
+  if (activeMode !== 'plan' && targetFloor !== 'ALL') {
+    switchViewMode('plan');
+  } else {
     renderPlanSvg();
-    const cfg = OFFICIAL_PLAN_CONFIG[activePlanFloor] || OFFICIAL_PLAN_CONFIG['1F'];
+  }
+
+  // 3. 更新建築資訊卡片
+  if (selectedId) {
+    const lm = LANDMARKS.find(l => l.id === selectedId);
+    if (lm) renderDetailCard(lm, targetFloor === 'ALL' ? '1F' : targetFloor);
+  }
+
+  // 4. 平滑飛行至該樓層鏡頭高度
+  if (!options.silentCamera) {
+    const cfg = OFFICIAL_PLAN_CONFIG[targetFloor] || OFFICIAL_PLAN_CONFIG['1F'];
     const curTargetX = THREE.MathUtils.clamp(controls.target.x, -45, 55);
     const curTargetZ = THREE.MathUtils.clamp(controls.target.z, -25, 25);
     flyTo([curTargetX, cfg.camY, curTargetZ + 0.4], [curTargetX, cfg.slabY, curTargetZ], 520);
-    const floorLabel = { 'ALL': '全校總覽 (完整屋頂與各棟教室)', '1F': '1F 壹層平面剖切', '2F': '2F 貳層平面剖切', '3F': '3F 參層平面剖切', 'B1': 'BF 地下層防空避難室剖切' }[activePlanFloor];
+  }
+
+  // 5. 提示訊息
+  if (!options.silentToast) {
+    const floorLabel = {
+      'ALL': '全校總覽 (完整屋頂與各棟教室)',
+      '1F': '1F 壹層平面剖切',
+      '2F': '2F 貳層平面剖切',
+      '3F': '3F 參層平面剖切',
+      'B1': 'BF 地下層防空避難室剖切'
+    }[targetFloor] || targetFloor;
     showToast(`已切換至：${floorLabel}`);
+  }
+
+  // 6. 同步全局橋接器與左側清單
+  if (window.__campusBridge) {
+    window.__campusBridge.activeFloor = targetFloor;
+    if (window.renderPlacesList) window.renderPlacesList();
+  }
+
+  requestRender(120);
+}
+
+window.setFloor = setFloor;
+
+// 3D Floor Cutaway Toolbar Controls (`ALL`/`1F`/`2F`/`3F`/`B1` Floor Switcher)
+document.querySelectorAll('[data-plan-floor]').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    setFloor(btn.dataset.planFloor);
   });
 });
 
@@ -22101,7 +22151,8 @@ function onFirst3DFrameReady() {
       startTour,
       stopTour,
       openPano,
-      closePano
+      closePano,
+      setFloor
     });
   }
   const shell = document.getElementById('campus-preview-shell');

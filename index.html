@@ -2034,6 +2034,15 @@ document.addEventListener('click', function(e) {
     .controls-grid { grid-template-columns: 1fr; }
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
     .plan-toolbar { top: 62px; flex-wrap: wrap; width: 92vw; justify-content: center; }
+    .gses-dock {
+      bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+      padding: 4px 6px;
+      gap: 2px;
+    }
+    .dock-btn {
+      padding: 4px 7px;
+      font-size: 11px;
+    }
   }
 
   @media (max-height: 640px) and (min-width: 821px) {
@@ -2137,7 +2146,7 @@ document.addEventListener('click', function(e) {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(44px + env(safe-area-inset-bottom, 0px));
     background: var(--paper-glass);
     border: 1px solid var(--line);
     box-shadow: var(--shadow-lg);
@@ -2173,15 +2182,21 @@ document.addEventListener('click', function(e) {
     cursor: pointer;
     transition: all 0.16s ease;
     white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
   }
   .dock-btn:hover {
     background: var(--wash-hover);
     color: var(--accent);
   }
+  .dock-btn:active {
+    transform: scale(0.95);
+  }
   .dock-btn.is-active {
     background: var(--accent);
     color: #fff;
-    box-shadow: 0 2px 6px rgba(47, 107, 79, 0.3);
+    box-shadow: 0 2px 6px rgba(47, 107, 79, 0.35);
   }
   .dock-sep {
     width: 1px;
@@ -3157,11 +3172,11 @@ document.addEventListener('click', function(e) {
   <!-- GSES Floating Bottom Dock -->
   <nav id="gses-dock" class="gses-dock" aria-label="校園快捷控制塢">
     <div class="dock-floors" role="group" aria-label="樓層切換">
-      <button type="button" class="dock-btn is-active" data-gses-floor="ALL" data-plan-floor="ALL">全部</button>
-      <button type="button" class="dock-btn" data-gses-floor="1F" data-plan-floor="1F">1F</button>
-      <button type="button" class="dock-btn" data-gses-floor="2F" data-plan-floor="2F">2F</button>
-      <button type="button" class="dock-btn" data-gses-floor="3F" data-plan-floor="3F">3F</button>
-      <button type="button" class="dock-btn" data-gses-floor="B1" data-plan-floor="B1">B1</button>
+      <button type="button" class="dock-btn is-active" data-gses-floor="ALL" title="全校總覽 (完整建築與屋頂)">全部</button>
+      <button type="button" class="dock-btn" data-gses-floor="1F" title="1F 壹層平面剖切">1F</button>
+      <button type="button" class="dock-btn" data-gses-floor="2F" title="2F 貳層平面剖切">2F</button>
+      <button type="button" class="dock-btn" data-gses-floor="3F" title="3F 參層平面剖切">3F</button>
+      <button type="button" class="dock-btn" data-gses-floor="B1" title="BF 地下層防空避難室剖切">BF</button>
     </div>
     <div class="dock-sep"></div>
     <button type="button" class="dock-btn" id="dockTourBtn" title="一鍵校園自動導覽巡禮">▶ 導覽</button>
@@ -3203,7 +3218,7 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script src="./vendor/qrcode.min.js"></script>
-<script src="./campus-ui.js?v=2.7.0"></script>
-<script type="module" src="./campus-3d.js?v=2.7.0"></script>
+<script src="./campus-ui.js?v=2.7.1"></script>
+<script type="module" src="./campus-3d.js?v=2.7.1"></script>
 </body>
 </html>

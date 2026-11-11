@@ -1112,8 +1112,10 @@ function renderPlacesList() {
 
     const matchingLms = LANDMARKS.filter(lm => getLandmarkCategories(lm).includes(activeFilter));
     const matchingRooms = [];
+    const curActiveFloor = (window.__campusBridge && window.__campusBridge.activeFloor) ? window.__campusBridge.activeFloor : null;
     LANDMARKS.forEach(lm => {
       Object.entries(lm.rooms || {}).forEach(([fl, arr]) => {
+        if (curActiveFloor && curActiveFloor !== 'ALL' && fl !== curActiveFloor) return;
         arr.forEach(rm => {
           const cat = getRoomCategory(rm, lm);
           if (cat === activeFilter || (activeFilter === '運動' && ['41', '44'].includes(rm.code))) {
@@ -1438,6 +1440,8 @@ window.__campusBridge = {
   is3dReady: false,
   engine: null,
   pendingSelection: null,
+  pendingFloor: null,
+  activeFloor: 'ALL',
   on3dReady: function(engine) {
     this.is3dReady = true;
     this.engine = engine;
@@ -1451,6 +1455,32 @@ window.__campusBridge = {
       this.pendingSelection = null;
       engine.selectLandmark(s.id, s.origin, s.floor, s.roomCode, s.viewpoint);
     }
+    if (this.pendingFloor) {
+      const f = this.pendingFloor;
+      this.pendingFloor = null;
+      if (engine.setFloor) engine.setFloor(f);
+      else if (window.setFloor) window.setFloor(f);
+    }
+  },
+  setFloor: function(floorKey) {
+    const norm = (floorKey === 'BF') ? 'B1' : floorKey;
+    this.activeFloor = norm;
+    // 立即響應視覺回饋（高亮當前按鈕）
+    document.querySelectorAll('[data-plan-floor], [data-gses-floor]').forEach(b => {
+      const v = b.dataset.planFloor || b.dataset.gsesFloor;
+      const bNorm = (v === 'BF') ? 'B1' : v;
+      b.classList.toggle('is-active', bNorm === norm);
+    });
+    if (this.is3dReady && this.engine && this.engine.setFloor) {
+      this.engine.setFloor(norm);
+    } else if (window.setFloor) {
+      window.setFloor(norm);
+    } else {
+      this.pendingFloor = norm;
+      const flLabel = norm === 'ALL' ? '全校總覽' : (norm === 'B1' ? 'BF 地下層' : norm);
+      showToast(`已切換至：${flLabel}（3D 校園同步載入中...）`);
+    }
+    renderPlacesList();
   },
   selectLandmark: function(id, origin = 'manual', initialFloor = '1F', highlightRoomCode = null, initialViewpoint = null) {
     updateSelectionUI(id, initialFloor, highlightRoomCode);
@@ -1505,6 +1535,8 @@ window.__campusBridge = {
 window.selectLandmark = window.__campusBridge.selectLandmark.bind(window.__campusBridge);
 window.focusClassroom = window.__campusBridge.focusClassroom.bind(window.__campusBridge);
 window.fitPrecinct = window.__campusBridge.fitPrecinct.bind(window.__campusBridge);
+window.setFloor = window.__campusBridge.setFloor.bind(window.__campusBridge);
+window.renderPlacesList = renderPlacesList;
 
 // Setup Immediate UI Event Listeners on DOMContentLoaded
 function initImmediateUI() {
@@ -1529,12 +1561,11 @@ function initImmediateUI() {
 
   // GSES Floating Bottom Dock Handlers
   document.querySelectorAll('#gses-dock [data-gses-floor]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const fl = btn.dataset.gsesFloor;
-      document.querySelectorAll('#gses-dock [data-gses-floor]').forEach(b => b.classList.toggle('is-active', b === btn));
-      const planFloorBtn = document.querySelector(`.plan-floor-btn[data-plan-floor="${fl}"]`);
-      if (planFloorBtn) planFloorBtn.click();
-      showToast(`已切換樓層視角：${fl === 'ALL' ? '全校' : fl}`);
+      window.__campusBridge.setFloor(fl);
     });
   });
 
