@@ -1699,29 +1699,25 @@ window.CAMPUS_360_SPOTS = CAMPUS_360_SPOTS;
   try {
     const raw = localStorage.getItem('fuxing_360_spots_custom');
     if (raw) {
-      const customSpots = JSON.parse(raw);
-      if (Array.isArray(customSpots) && customSpots.length > 0) {
-        if (customSpots[0].name && customSpots[0].id) {
-          CAMPUS_360_SPOTS.length = 0;
-          customSpots.forEach(s => {
-            if (!s.pos) s.pos = [s.x || 0, s.y || 2.2, s.z || 0];
-            CAMPUS_360_SPOTS.push(s);
-          });
-          console.log(`[CMS] Full synchronization: loaded ${CAMPUS_360_SPOTS.length} custom spots from localStorage.`);
-          return;
-        }
-        customSpots.forEach(ov => {
+      const overrides = JSON.parse(raw);
+      if (Array.isArray(overrides)) {
+        overrides.forEach(ov => {
           const s = CAMPUS_360_SPOTS.find(item => item.id === ov.id);
           if (s) {
-            Object.assign(s, ov);
+            if (ov.x !== undefined) s.x = ov.x;
+            if (ov.y !== undefined) s.y = ov.y;
+            if (ov.z !== undefined) s.z = ov.z;
+            if (ov.px !== undefined) s.px = ov.px;
+            if (ov.py !== undefined) s.py = ov.py;
+            if (ov.floor !== undefined) s.floor = ov.floor;
             s.pos = [s.x, s.y, s.z];
           }
         });
-        console.log(`[CMS] Loaded ${customSpots.length} spot overrides from localStorage.`);
+        console.log(`[SpotEditor] Loaded ${overrides.length} custom spot coordinates from localStorage.`);
       }
     }
   } catch (e) {
-    console.warn('[CMS] Error loading custom spot overrides', e);
+    console.warn('[SpotEditor] Error loading custom spot overrides', e);
   }
 })();
 
