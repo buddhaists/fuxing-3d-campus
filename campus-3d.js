@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { batchStaticMeshes } from './campus-batch.js?v=2.9.0';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -113,7 +114,7 @@ const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerH
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
   logarithmicDepthBuffer: true,
-  preserveDrawingBuffer: true,
+  // preserveDrawingBuffer 已移除：PNG 匯出前會同步重繪一次，不需保留繪圖緩衝（省下每幀一次全螢幕複製）
   powerPreference: 'high-performance'
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -123,6 +124,13 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// 陰影貼圖按需更新：校園是靜態場景，只有太陽位置、圖層顯示或模型結構改變時才重算陰影
+// （原本每一幀都要把上萬個物件再畫一次到 4096² 陰影貼圖）
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
+let shadowSignature = '';
+function markShadowsDirty() { shadowSignature = ''; }
+window.markShadowsDirty = markShadowsDirty;
 host.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -18377,6 +18385,7 @@ let timeOfDay = 10.5;  // 6.0 to 21.0
 let activeSeason = 'summer';
 let activeWeather = 'clear';
 let activeQuality = 'fine';
+let adaptiveDpr = 1;
 let activeViewMode = 'oblique';
 let isOrbiting = false;
 let isTopView = false;
@@ -18828,6 +18837,7 @@ const walkState = {
   yaw: 0,
   pitch: 0,
   keys: { forward: false, backward: false, left: false, right: false, up: false, down: false, sprint: false },
+  joy: { active: false, x: 0, y: 0 },
   dragging: false,
   lastX: 0,
   lastY: 0,
@@ -20149,25 +20159,32 @@ try {
   if (['smooth', 'auto', 'fine'].includes(savedQ)) activeQuality = savedQ;
 } catch {}
 
+// 畫質預設：smooth（省電）/ auto（依實測 FPS 動態調整解析度）/ fine（最高畫質）
+function qualityDprCap(q) {
+  const dpr = window.devicePixelRatio || 1;
+  if (q === 'smooth') return Math.min(dpr, 1.25) * 0.9;
+  if (q === 'fine') return Math.min(dpr, 2);
+  return Math.min(dpr, isMobileDevice ? 1.5 : 1.65);
+}
+function applyQualityPreset(q) {
+  activeQuality = q;
+  adaptiveDpr = qualityDprCap(q);
+  renderer.setPixelRatio(adaptiveDpr);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  sunLight.castShadow = q !== 'smooth';
+  markShadowsDirty();
+  document.querySelectorAll('[data-quality]').forEach(b => b.classList.toggle('is-active', b.dataset.quality === q));
+  requestRender(30);
+}
 document.querySelectorAll('[data-quality]').forEach(btn => {
-  btn.classList.toggle('is-active', btn.dataset.quality === activeQuality);
   btn.addEventListener('click', () => {
-    activeQuality = btn.dataset.quality;
-    try { localStorage.setItem('fuxing.quality.preset', activeQuality); } catch {}
-    document.querySelectorAll('[data-quality]').forEach(b => b.classList.toggle('is-active', b === btn));
-    if (activeQuality === 'smooth') {
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25) * 0.9);
-      sunLight.castShadow = false;
-    } else if (activeQuality === 'fine') {
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-      sunLight.castShadow = true;
-    } else {
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
-      sunLight.castShadow = true;
-    }
+    try { localStorage.setItem('fuxing.quality.preset', btn.dataset.quality); } catch {}
+    applyQualityPreset(btn.dataset.quality);
     showToast(`繪圖畫質已切換為：${btn.textContent}`);
   });
 });
+// 開啟網頁即套用已儲存（或行動裝置預設）的畫質，而非等使用者點擊才生效
+applyQualityPreset(activeQuality);
 
 // Scene Toggles inside `#environment`
 document.getElementById('toggle-labels').addEventListener('change', e => {
@@ -20600,6 +20617,7 @@ function startWalkMode(startPos = null, lookTarget = null, keepRoute = false) {
 
   document.getElementById('walk-hud').hidden = false;
   document.getElementById('walk-pad').hidden = false;
+  if (walkJoyEl && isCoarsePointer) walkJoyEl.hidden = false;
   document.getElementById('walk-start').classList.add('is-active');
   document.getElementById('view-hint').textContent = '步行模式 · W A S D 或方向鍵移動 · 拖曳畫面環顧四周 · Esc 退出';
   syncWalkHUD();
@@ -20614,6 +20632,7 @@ function exitWalkMode() {
   controls.enabled = true;
   document.getElementById('walk-hud').hidden = true;
   document.getElementById('walk-pad').hidden = true;
+  if (walkJoyEl) { walkJoyEl.hidden = true; resetWalkJoy(); }
   document.getElementById('walk-start').classList.remove('is-active');
   document.getElementById('view-hint').textContent = '左鍵旋轉 · 右鍵平移 · 滾輪縮放 · 點擊建築查看立面與教室';
   syncWalkHUD();
@@ -20661,6 +20680,42 @@ document.getElementById('walk-floor-bf')?.addEventListener('click', () => jumpTo
 document.getElementById('walk-floor-1f')?.addEventListener('click', () => jumpToNorthFloor(1));
 document.getElementById('walk-floor-2f')?.addEventListener('click', () => jumpToNorthFloor(2));
 document.getElementById('walk-floor-3f')?.addEventListener('click', () => jumpToNorthFloor(3));
+
+// ---- 觸控類比搖桿 (#walk-joy)：手機/平板上取代方向鍵，可 360° 任意方向平滑行走 ----
+const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+const walkJoyEl = document.getElementById('walk-joy');
+const walkJoyKnob = document.getElementById('walk-joy-knob');
+function resetWalkJoy() {
+  walkState.joy.active = false; walkState.joy.x = 0; walkState.joy.y = 0;
+  if (walkJoyKnob) walkJoyKnob.style.transform = 'translate(-50%, -50%)';
+}
+if (isCoarsePointer) document.getElementById('walk-pad')?.classList.add('has-joy');
+if (walkJoyEl) {
+  let joyPointer = null;
+  const moveJoy = e => {
+    const r = walkJoyEl.getBoundingClientRect();
+    const R = r.width / 2;
+    let x = (e.clientX - (r.left + R)) / R, y = (e.clientY - (r.top + R)) / R;
+    const m = Math.hypot(x, y);
+    if (m > 1) { x /= m; y /= m; }
+    const dead = Math.hypot(x, y) < 0.12;
+    walkState.joy.x = dead ? 0 : x; walkState.joy.y = dead ? 0 : y;
+    walkJoyKnob.style.transform = `translate(calc(-50% + ${x * R * 0.62}px), calc(-50% + ${y * R * 0.62}px))`;
+    requestRender(10);
+  };
+  walkJoyEl.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    joyPointer = e.pointerId;
+    try { walkJoyEl.setPointerCapture(e.pointerId); } catch {}
+    walkState.joy.active = true;
+    if (routeWalkActive) { routeWalkActive = false; walkState.detachedFromRoute = true; syncWalkHUD(); }
+    moveJoy(e);
+  });
+  walkJoyEl.addEventListener('pointermove', e => { if (e.pointerId === joyPointer) moveJoy(e); });
+  const endJoy = e => { if (e.pointerId === joyPointer) { joyPointer = null; resetWalkJoy(); } };
+  walkJoyEl.addEventListener('pointerup', endJoy);
+  walkJoyEl.addEventListener('pointercancel', endJoy);
+}
 
 // Touch / Mouse D-Pad buttons (`#walk-pad`)
 document.querySelectorAll('#walk-pad button').forEach(btn => {
@@ -21940,7 +21995,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   if (window.innerWidth > 820 && window.innerHeight > 640) setDetailCompact(false);
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(getOptimalDpr());
+  renderer.setPixelRatio(Math.min(getOptimalDpr(), adaptiveDpr || getOptimalDpr()));
   renderer.setSize(window.innerWidth, window.innerHeight);
   requestRender(35);
 });
@@ -21974,7 +22029,62 @@ function isLabelBlocked(sx, sy, bw, bh, panelRects, occupiedBoxes, isPriority = 
   return false;
 }
 
-renderer.setAnimationLoop(now => {
+// ---- 陰影貼圖按需更新：以「太陽位置 + 各群組可見性 + 模型數量」作為簽章，變動才重算 ----
+function updateShadowMapIfNeeded() {
+  if (!renderer.shadowMap.enabled) return;
+  const sp = sunLight.position;
+  let sig = `${sunLight.castShadow ? 1 : 0}|${sp.x.toFixed(1)},${sp.y.toFixed(1)},${sp.z.toFixed(1)}|`;
+  for (const g of Object.values(layerGroups)) sig += (g.visible ? '1' : '0') + g.children.length + ',';
+  for (let i = 0; i < clickableGroups.length; i++) sig += clickableGroups[i].visible ? '1' : '0';
+  sig += '|';
+  for (let i = 0; i < LOD_REGISTRY.length; i++) sig += LOD_REGISTRY[i].detailGroup.visible ? '1' : '0';
+  sig += plan3DOverlayGroup.visible ? '|p1' : '|p0';
+  if (sig !== shadowSignature) {
+    shadowSignature = sig;
+    renderer.shadowMap.needsUpdate = true;
+  }
+}
+
+// ---- 效能監測 + 自動畫質（動態解析度）：連續動畫期間 FPS 過低就降解析度，充裕時再逐步回升 ----
+const perfState = { last: 0, frames: 0, acc: 0, low: 0, high: 0 };
+function perfMonitorTick(now) {
+  const dt = now - perfState.last;
+  perfState.last = now;
+  if (dt <= 0 || dt > 120) return;           // 只統計「連續渲染」中的幀（按需渲染的單幀不計）
+  perfState.frames++; perfState.acc += dt;
+  if (perfState.acc < 1000) return;
+  const fps = (perfState.frames * 1000) / perfState.acc;
+  perfState.frames = 0; perfState.acc = 0;
+  const info = renderer.info.render;
+  window.__perf = { fps: Math.round(fps), calls: info.calls, triangles: info.triangles, dpr: +renderer.getPixelRatio().toFixed(2) };
+  const statEl = document.getElementById('perfStats');
+  if (statEl) statEl.textContent = `${info.calls} draw calls · ${(info.triangles / 1000).toFixed(0)}k 三角面 · 解析度 ×${renderer.getPixelRatio().toFixed(2)}`;
+  if (activeQuality !== 'auto') return;
+  const cap = qualityDprCap('auto');
+  if (fps < 40) { perfState.low++; perfState.high = 0; } else if (fps > 56) { perfState.high++; perfState.low = 0; } else { perfState.low = perfState.high = 0; }
+  if (perfState.low >= 2 && adaptiveDpr > 0.75) {
+    adaptiveDpr = Math.max(0.75, adaptiveDpr - 0.2); perfState.low = 0;
+    renderer.setPixelRatio(adaptiveDpr); renderer.setSize(window.innerWidth, window.innerHeight);
+  } else if (perfState.high >= 3 && adaptiveDpr < cap) {
+    adaptiveDpr = Math.min(cap, adaptiveDpr + 0.1); perfState.high = 0;
+    renderer.setPixelRatio(adaptiveDpr); renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+}
+
+// 分頁切到背景時完全停止渲染迴圈（省電、避免手機發燙），回到前景再恢復
+let mainLoopFn = null;
+document.addEventListener('visibilitychange', () => {
+  if (!mainLoopFn) return;
+  if (document.hidden) {
+    renderer.setAnimationLoop(null);
+  } else {
+    lastFrameTime = performance.now();
+    renderer.setAnimationLoop(mainLoopFn);
+    requestRender(20);
+  }
+});
+
+renderer.setAnimationLoop(mainLoopFn = now => {
   const dt = Math.min(100, now - lastFrameTime);
   const dtSec = dt * 0.001;
   lastFrameTime = now;
@@ -22031,7 +22141,10 @@ renderer.setAnimationLoop(now => {
       if (minDist < 6.5 && nearestSpot) {
         walk360El.hidden = false;
         walk360El.dataset.spotId = nearestSpot.id;
-        walk360El.innerHTML = `🌐 按 E 進入 360° 實景：<strong>${nearestSpot.name}</strong>`;
+        if (walk360El.dataset.renderedSpot !== nearestSpot.id) {
+          walk360El.dataset.renderedSpot = nearestSpot.id;   // 只在最近地點改變時才改寫 DOM，避免每幀重排
+          walk360El.innerHTML = `🌐 ${isCoarsePointer ? '點此' : '按 E '}進入 360° 實景：<strong>${nearestSpot.name}</strong>`;
+        }
       } else {
         walk360El.hidden = true;
       }
@@ -22051,10 +22164,16 @@ renderer.setAnimationLoop(now => {
     if (walkState.keys.backward) { moveX -= fwdX; moveZ -= fwdZ; }
     if (walkState.keys.right) { moveX += rightX; moveZ += rightZ; }
     if (walkState.keys.left) { moveX -= rightX; moveZ -= rightZ; }
+    // 觸控類比搖桿：推得越遠走得越快（參考 gses-campus-3d 的 #joy 設計）
+    if (walkState.joy.active) {
+      moveX += fwdX * -walkState.joy.y + rightX * walkState.joy.x;
+      moveZ += fwdZ * -walkState.joy.y + rightZ * walkState.joy.x;
+    }
     const len = Math.hypot(moveX, moveZ);
     if (len > 0.001) {
-      const dx = (moveX / len) * speed;
-      const dz = (moveZ / len) * speed;
+      const mag = Math.min(1, len);
+      const dx = (moveX / len) * speed * mag;
+      const dz = (moveZ / len) * speed * mag;
       const curX = camera.position.x, curZ = camera.position.z;
       // Check full step, or slide along X / Z axis (`PKU-3D FirstPerson.move` line 63)
       if (isWalkPointAllowed(curX + dx, curZ + dz)) {
@@ -22402,7 +22521,9 @@ renderer.setAnimationLoop(now => {
       });
     }
 
+    updateShadowMapIfNeeded();
     renderer.render(scene, camera);
+    perfMonitorTick(now);
     if (!window.__hasFirst3DRender) {
       window.__hasFirst3DRender = true;
       onFirst3DFrameReady();
@@ -22617,6 +22738,26 @@ const ALL_BUILD_TASKS = [
   { id: 'campus-context', name: '校園林蔭與環境設施', fn: buildCampusContext, pct: 100 }
 ];
 
+// ---- 靜態幾何合批：每棟建築構建完成即合併 (draw call 降一個數量級) ----
+window.__batchStats = { batches: 0, ms: 0 };
+function runStaticBatching(label) {
+  if (new URLSearchParams(window.location.search).has('nobatch')) return;
+  try {
+    const exclude = [
+      pedestriansGroup, weatherGroup, route3DGroup, plan3DOverlayGroup, selectionOutlineGroup,
+      ...streetLightBulbs,
+      ...((window.__campusFlags || []).map(f => f.mesh))
+    ];
+    const r = batchStaticMeshes(Object.values(layerGroups), { exclude });
+    const st = window.__batchStats;
+    st.batches += r.batches; st.ms += r.ms;
+    st.last = { label, ...r };
+    markShadowsDirty();
+  } catch (err) {
+    console.warn('[Batch] static batching skipped:', err);
+  }
+}
+
 function runChunkedSceneBuild() {
   const params = new URLSearchParams(window.location.search);
   const targetBldg = params.get('bldg') || params.get('landmark') || params.get('place') || findBuildingIdForRoom(params.get('room')) || 'north-building';
@@ -22637,6 +22778,7 @@ function runChunkedSceneBuild() {
   } catch (err) {
     console.error(`[Build] Failed to build priority task ${priorityTask.id}:`, err);
   }
+  runStaticBatching(priorityTask.id);
 
   if (window.__updateProgress) {
     window.__updateProgress(75, `${priorityTask.name}就緒，正在呈現校園...`);
@@ -22659,8 +22801,13 @@ function runChunkedSceneBuild() {
       if (window.__updateProgress) {
         window.__updateProgress(100, '3D 校園全景構建完成');
       }
+      // 最後一輪：合併建構期間在各建築函式之外加入的零散物件
+      runStaticBatching('final');
+      pedestriansGroup.traverse(o => { if (o.isMesh) o.castShadow = false; });
+      window.__buildComplete = true;
+      window.dispatchEvent(new CustomEvent('campus-build-complete'));
       requestRender(30);
-      console.log('[Campus3D] Progressive time-sliced 3D build completed (v2.6.0)');
+      console.log('[Campus3D] Progressive time-sliced 3D build completed (v2.9.0)', window.__batchStats);
       return;
     }
 
@@ -22670,6 +22817,7 @@ function runChunkedSceneBuild() {
     } catch (err) {
       console.error(`[Build] Failed to build task ${task.id}:`, err);
     }
+    runStaticBatching(task.id);
 
     if (window.__updateProgress) {
       window.__updateProgress(task.pct, `正在構建${task.name}...`);

@@ -1,7 +1,7 @@
 // 屏東縣屏東市復興國小 3D 數位校園 (Service Worker)
-// Version: fuxing-3d-campus-v2.8.0
+// Version: fuxing-3d-campus-v2.9.0
 
-const CACHE_NAME = 'fuxing-3d-campus-v2.8.0';
+const CACHE_NAME = 'fuxing-3d-campus-v2.9.0';
 
 // 核心極速快取清單 (App Shell + 3D 引擎 + 1:1 2.5D 高清預覽底圖 + 核心平面圖 + 離線 QR Code)
 const PRECACHE_ASSETS = [
@@ -9,6 +9,7 @@ const PRECACHE_ASSETS = [
   './index.html',
   './campus-ui.js',
   './campus-3d.js',
+  './campus-batch.js',
   './vendor/qrcode.min.js',
   './vendor/three/three.module.js',
   './vendor/three/addons/controls/OrbitControls.js',
@@ -75,7 +76,7 @@ self.addEventListener('fetch', event => {
           }
           return networkRes;
         }).catch(() => null);
-        return cachedRes || fetchPromise;
+        return cachedRes || fetchPromise.then(res => res || Response.error());
       })
     );
     return;
