@@ -1,7 +1,12 @@
 // 屏東縣屏東市復興國小 3D 數位校園 (Service Worker)
-// Version: fuxing-3d-campus-v2.8.0
+// Version: fuxing-3d-campus-v2.8.0 (+pano runtime cache)
 
 const CACHE_NAME = 'fuxing-3d-campus-v2.8.0';
+
+// 360° 全景圖（Google 圖片）執行期快取：看過的景點離線也能開，最多保留 PANO_CACHE_MAX 張
+const PANO_CACHE = 'fuxing-pano-runtime-v1';
+const PANO_CACHE_MAX = 30;
+const PANO_HOSTS = ['lh3.googleusercontent.com'];
 
 // 核心極速快取清單 (App Shell + 3D 引擎 + 1:1 2.5D 高清預覽底圖 + 核心平面圖 + 離線 QR Code)
 const PRECACHE_ASSETS = [
@@ -34,7 +39,7 @@ self.addEventListener('activate', event => {
     caches.keys().then(keys => {
       return Promise.all(
         keys.map(key => {
-          if (key !== CACHE_NAME) {
+          if (key !== CACHE_NAME && key !== PANO_CACHE) {
             console.log('[SW] Purging outdated cache:', key);
             return caches.delete(key);
           }
@@ -47,6 +52,27 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const req = event.request;
   const url = new URL(req.url);
+
+  // 360° 全景圖：Cache-First，僅快取 CORS 成功的 200 回應，超過上限淘汰最舊
+  if (req.method === 'GET' && PANO_HOSTS.includes(url.hostname) && req.mode === 'cors') {
+    event.respondWith(
+      caches.open(PANO_CACHE).then(cache =>
+        cache.match(req).then(hit => {
+          if (hit) return hit;
+          return fetch(req).then(res => {
+            if (res && res.ok && res.type === 'cors') {
+              cache.put(req, res.clone()).then(() => cache.keys()).then(keys => {
+                const extra = keys.length - PANO_CACHE_MAX;
+                return Promise.all(keys.slice(0, Math.max(0, extra)).map(k => cache.delete(k)));
+              }).catch(() => {});
+            }
+            return res;
+          });
+        })
+      )
+    );
+    return;
+  }
 
   // 僅處理同源 GET 請求
   if (req.method !== 'GET' || url.origin !== location.origin) {

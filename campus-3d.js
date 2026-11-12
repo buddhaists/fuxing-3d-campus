@@ -18664,7 +18664,8 @@ function updatePanoHotspots(currentSpot) {
   if (!panoHotspotsGroup) return;
   while (panoHotspotsGroup.children.length > 0) {
     const c = panoHotspotsGroup.children.pop();
-    if (c.geometry) c.geometry.dispose();
+    if (c.userData && c.userData.ownGeo && c.geometry) c.geometry.dispose();
+    if (c.material) c.material.dispose();
   }
 
   const adjSpots = (currentSpot.adjacentSpotIds || []).map(id => (window.CAMPUS_360_SPOTS || []).find(s => s.id === id)).filter(Boolean);
@@ -18690,7 +18691,7 @@ function updatePanoHotspots(currentSpot) {
     const arrow = new THREE.Mesh(arrowGeo, mat);
     arrow.position.set(x, y, z);
     arrow.lookAt(x * 1.5, y, z * 1.5);
-    arrow.userData = { isPanoHotspot: true, spotId: adj.id, spotName: adj.name };
+    arrow.userData = { isPanoHotspot: true, spotId: adj.id, spotName: adj.name, ownGeo: true };
 
     // Ring base under arrow
     const rGeo = new THREE.RingGeometry(6, 12, 16);
@@ -18698,15 +18699,16 @@ function updatePanoHotspots(currentSpot) {
     const rMat = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.6, depthTest: false, side: THREE.DoubleSide });
     const ring = new THREE.Mesh(rGeo, rMat);
     ring.position.set(x, y - 8, z);
-    ring.userData = { isPanoHotspot: true, spotId: adj.id };
+    ring.userData = { isPanoHotspot: true, spotId: adj.id, ownGeo: true };
 
     panoHotspotsGroup.add(arrow);
     panoHotspotsGroup.add(ring);
   });
 }
 
+const _panoTarget = new THREE.Vector3();
 function panoRenderLoop() {
-  if (document.getElementById('pano-wrap')?.hidden) return;
+  if (document.getElementById('pano-wrap')?.hidden) { panoAnimId = null; return; }
   panoAnimId = requestAnimationFrame(panoRenderLoop);
 
   if (panoAutoRotate && !panoIsInteracting) {
@@ -18719,13 +18721,13 @@ function panoRenderLoop() {
   const phi = THREE.MathUtils.degToRad(90 - panoLat);
   const theta = THREE.MathUtils.degToRad(panoLon);
 
-  const target = new THREE.Vector3(
+  _panoTarget.set(
     500 * Math.sin(phi) * Math.cos(theta),
     500 * Math.cos(phi),
     500 * Math.sin(phi) * Math.sin(theta)
   );
 
-  panoCamera.lookAt(target);
+  panoCamera.lookAt(_panoTarget);
 
   if (panoHotspotsGroup) {
     const t = performance.now() * 0.003;
@@ -18739,14 +18741,156 @@ function panoRenderLoop() {
   panoRenderer.render(panoScene, panoCamera);
 }
 
-function openPano(spotId = 'spot-10') {
+
+// ------------------------------------------
+// Pano texture loader: LRU cache + thumb-first + adjacent preload
+// ------------------------------------------
+const PANO_CACHE_MAX = 6;
+const panoTexCache = new Map();      // url -> THREE.Texture (LRU, most recent last)
+const panoThumbCache = new Map();    // url -> THREE.Texture (small, kept)
+const panoInflight = new Map();      // url -> Promise<Texture>
+let panoCurrentUrl = null;
+let panoLoadToken = 0;
+const panoSeenIds = new Set();
+
+function panoTexLoad(url) {
+  if (panoInflight.has(url)) return panoInflight.get(url);
+  const p = new Promise((resolve, reject) => {
+    const loader = new THREE.TextureLoader();
+    loader.crossOrigin = 'anonymous';
+    loader.load(url, tex => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.minFilter = THREE.LinearFilter;
+      tex.generateMipmaps = false;
+      resolve(tex);
+    }, undefined, err => reject(err || new Error('pano load failed')));
+  }).finally(() => panoInflight.delete(url));
+  panoInflight.set(url, p);
+  return p;
+}
+
+function panoCacheGet(url) {
+  const t = panoTexCache.get(url);
+  if (t) { panoTexCache.delete(url); panoTexCache.set(url, t); }
+  return t;
+}
+
+function panoCachePut(url, tex) {
+  panoTexCache.set(url, tex);
+  while (panoTexCache.size > PANO_CACHE_MAX) {
+    const [oldUrl, oldTex] = panoTexCache.entries().next().value;
+    if (oldUrl === panoCurrentUrl) {      // never dispose the texture on screen
+      panoTexCache.delete(oldUrl); panoTexCache.set(oldUrl, oldTex);
+      if (panoTexCache.size <= 1) break;
+      continue;
+    }
+    panoTexCache.delete(oldUrl);
+    oldTex.dispose();
+  }
+}
+
+function applyPanoTexture(tex, fade) {
+  if (!panoMesh) return;
+  panoMesh.material.map = tex;
+  panoMesh.material.color.setHex(0xffffff);
+  panoMesh.material.needsUpdate = true;
+  if (fade && panoRenderer) {
+    const el = panoRenderer.domElement;
+    el.classList.remove('pano-fade-in');
+    void el.offsetWidth;
+    el.classList.add('pano-fade-in');
+  }
+}
+
+function showPanoError(spot, token) {
+  if (token !== panoLoadToken) return;
+  const loading = document.getElementById('panoLoading');
+  if (loading) loading.style.display = 'none';
+  const errEl = document.getElementById('panoError');
+  if (!errEl) return;
+  const name = document.getElementById('panoErrorName');
+  if (name) name.textContent = spot.name;
+  const link = document.getElementById('panoErrorExternal');
+  if (link) {
+    if (spot.externalUrl) { link.href = spot.externalUrl; link.hidden = false; } else link.hidden = true;
+  }
+  const retry = document.getElementById('panoErrorRetry');
+  if (retry) retry.onclick = () => openPano(spot.id, true);
+  errEl.hidden = false;
+}
+
+function loadPanoForSpot(spot, forceReload) {
+  const token = ++panoLoadToken;
+  const loading = document.getElementById('panoLoading');
+  const full = spot.panoUrl;
+  panoCurrentUrl = full;
+  if (forceReload) {
+    const old = panoTexCache.get(full);
+    if (old) { panoTexCache.delete(full); old.dispose(); }
+  }
+
+  const cached = panoCacheGet(full);
+  if (cached) {
+    applyPanoTexture(cached, false);
+    if (loading) loading.style.display = 'none';
+    panoSeenIds.add(spot.id);
+    preloadAdjacentPanos(spot);
+    return;
+  }
+
+  // Show loading overlay only when no preview is available
+  const thumbCached = spot.thumb && panoThumbCache.get(spot.thumb);
+  if (thumbCached) {
+    applyPanoTexture(thumbCached, false);
+    if (loading) loading.style.display = 'none';
+  } else {
+    if (loading) loading.style.display = 'flex';
+    if (panoMesh) { panoMesh.material.map = null; panoMesh.material.color.setHex(0x111111); panoMesh.material.needsUpdate = true; }
+    if (spot.thumb && spot.thumb !== full) {
+      panoTexLoad(spot.thumb).then(t => {
+        panoThumbCache.set(spot.thumb, t);
+        if (token !== panoLoadToken || panoTexCache.has(full)) return;
+        applyPanoTexture(t, false);
+        if (loading) loading.style.display = 'none';
+      }).catch(() => {});
+    }
+  }
+
+  panoTexLoad(full).then(tex => {
+    panoCachePut(full, tex);
+    if (token !== panoLoadToken) return;
+    applyPanoTexture(tex, true);
+    if (loading) loading.style.display = 'none';
+    panoSeenIds.add(spot.id);
+    window.dispatchEvent(new CustomEvent('pano-seen', { detail: { id: spot.id } }));
+    preloadAdjacentPanos(spot);
+  }).catch(() => showPanoError(spot, token));
+}
+
+function preloadAdjacentPanos(spot) {
+  const all = window.CAMPUS_360_SPOTS || [];
+  const ids = (spot.adjacentSpotIds || []).slice(0, 3);
+  const run = () => ids.forEach(id => {
+    const adj = all.find(s => s.id === id);
+    if (!adj || panoTexCache.has(adj.panoUrl)) return;
+    panoTexLoad(adj.panoUrl).then(t => {
+      if (panoTexCache.has(adj.panoUrl)) { t.dispose(); return; }
+      panoCachePut(adj.panoUrl, t);
+    }).catch(() => {});
+  });
+  (window.requestIdleCallback || (f => setTimeout(f, 600)))(run, { timeout: 2500 });
+}
+window.__panoSeenIds = panoSeenIds;
+
+function openPano(spotId = 'spot-10', forceReload = false) {
   const wrap = document.getElementById('pano-wrap');
   const loading = document.getElementById('panoLoading');
   if (!wrap) return;
 
   initPanoViewer();
   wrap.hidden = false;
-  if (loading) loading.style.display = 'flex';
+  const errEl = document.getElementById('panoError');
+  if (errEl) errEl.hidden = true;
 
   const spot = (window.CAMPUS_360_SPOTS || []).find(s => s.id === spotId || (spotId === 'courtyard-360' && s.id === 'spot-10')) || (window.CAMPUS_360_SPOTS || [])[0];
 
@@ -18786,26 +18930,7 @@ function openPano(spotId = 'spot-10') {
     }
   }
 
-  const texLoader = new THREE.TextureLoader();
-  texLoader.crossOrigin = 'anonymous';
-  texLoader.load(spot.panoUrl, texture => {
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.minFilter = THREE.LinearFilter;
-    if (panoMesh) {
-      panoMesh.material.map = texture;
-      panoMesh.material.needsUpdate = true;
-    }
-    if (loading) loading.style.display = 'none';
-  }, undefined, () => {
-    texLoader.load(spot.thumb || './tex/courtyard_panorama.jpg', fallbackTex => {
-      fallbackTex.colorSpace = THREE.SRGBColorSpace;
-      if (panoMesh) {
-        panoMesh.material.map = fallbackTex;
-        panoMesh.material.needsUpdate = true;
-      }
-      if (loading) loading.style.display = 'none';
-    });
-  });
+  loadPanoForSpot(spot, forceReload);
 
   if (!panoAnimId) panoRenderLoop();
   showToast(`已進入 360° 實景環景：${spot.name}`);

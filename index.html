@@ -2334,6 +2334,19 @@ document.addEventListener('click', function(e) {
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
+  .pano-host canvas.pano-fade-in { animation: panoFadeIn 0.45s ease-out; }
+  @keyframes panoFadeIn { from { opacity: 0.35; } to { opacity: 1; } }
+  .pano-error {
+    position: absolute; inset: 0; z-index: 6;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(17,27,36,0.72); color: #fff; padding: 16px;
+  }
+  .pano-error[hidden] { display: none; }
+  .pano-error-card { max-width: 360px; text-align: center; display: flex; flex-direction: column; gap: 8px; }
+  .pano-error-card p { margin: 0; font-size: 13px; opacity: 0.85; }
+  .pano-error-hint { opacity: 0.65 !important; }
+  .pano-error-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+  .pano-error-actions a { text-decoration: none; display: inline-flex; align-items: center; }
   .pano-dock {
     position: absolute;
     bottom: 20px;
@@ -3560,6 +3573,17 @@ document.addEventListener('click', function(e) {
     <div id="panoLoading" class="pano-loading">
       <div class="pano-spinner"></div>
       <p>正在串流加載 360° 高解析實景環景照片...</p>
+    </div>
+    <div id="panoError" class="pano-error" hidden role="alert">
+      <div class="pano-error-card">
+        <strong>此景點的環景暫時無法載入</strong>
+        <p id="panoErrorName"></p>
+        <p class="pano-error-hint">可能是網路不穩，或來源圖片暫時無法存取。</p>
+        <div class="pano-error-actions">
+          <button id="panoErrorRetry" type="button" class="pano-ctrl-pill is-active">↻ 重試</button>
+          <a id="panoErrorExternal" class="pano-ctrl-pill" href="#" target="_blank" rel="noopener">在 Google 地圖開啟 ↗</a>
+        </div>
+      </div>
     </div>
   </div>
   <div id="panoAdjBar" class="pano-adj-bar" hidden>
