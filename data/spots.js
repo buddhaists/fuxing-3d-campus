@@ -716,27 +716,6 @@ window.CAMPUS_360_SPOTS = [
     ]
   },
   {
-    "id": "spot-7",
-    "num": 7,
-    "name": "戶外綜合球場",
-    "group": "操場球場與遊戲區",
-    "floor": "1F",
-    "px": 163.77,
-    "py": 156.73,
-    "x": -90.54,
-    "y": 2.2,
-    "z": -21.65,
-    "thumb": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U8XkWJN9QDH8eN44-6AHMAjMckRkCmWmHEQdVcPDuKbjqPJfAnDPMVFbrMH_3K_5mhTlh7ECrFoAp4KEhsQJqQ-1ftFDeGT469o1voOsVZXTaRX20rUktWP1ff8Q_RnexQMmR4ooA=w400-h250-k-no",
-    "panoUrl": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U8XkWJN9QDH8eN44-6AHMAjMckRkCmWmHEQdVcPDuKbjqPJfAnDPMVFbrMH_3K_5mhTlh7ECrFoAp4KEhsQJqQ-1ftFDeGT469o1voOsVZXTaRX20rUktWP1ff8Q_RnexQMmR4ooA=w2048",
-    "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,80h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XJ4gE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U8XkWJN9QDH8eN44-6AHMAjMckRkCmWmHEQdVcPDuKbjqPJfAnDPMVFbrMH_3K_5mhTlh7ECrFoAp4KEhsQJqQ-1ftFDeGT469o1voOsVZXTaRX20rUktWP1ff8Q_RnexQMmR4ooA%3Dw900-h600-k-no-pi-20-ya80-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
-    "desc": "標準彩繪戶外綜合球場，可進行籃球、排球等多項體育競技活動。",
-    "adjacentSpotIds": [
-      "spot-42",
-      "spot-25",
-      "spot-11"
-    ]
-  },
-  {
     "id": "spot-8",
     "num": 8,
     "name": "操場司令台與旗桿廣場",
@@ -773,7 +752,6 @@ window.CAMPUS_360_SPOTS = [
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94mpnwE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9SpP7j7WBkgdNugndzaAhWK5s6qduQz0t3CAlKabUTtxX1o-9yLc1vlLiNTH8tAVwNMYIuSR_xqYq0h7uzbo_Evy6QNt_W7ZnBMDYQq8ry3LX21_-QZAC-YvQWTHzekfGmDM8b-yg%3Dw900-h600-k-no-pi0-ya239-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
     "desc": "綠樹環抱下的活力籃球場，標準籃框與優質地面防滑塗層。",
     "adjacentSpotIds": [
-      "spot-7",
       "spot-8",
       "spot-11"
     ]
@@ -796,8 +774,7 @@ window.CAMPUS_360_SPOTS = [
     "adjacentSpotIds": [
       "spot-8",
       "spot-18",
-      "spot-42",
-      "spot-7"
+      "spot-42"
     ]
   },
   {
@@ -837,7 +814,6 @@ window.CAMPUS_360_SPOTS = [
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH9_HTbg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U8hGJj5Ma8amrSFxPeUVXklM7ppZOpUDu3Fepywr4XT0ICIYksmUIrFRY6zEvxzii49hKiEiAUQN5n9nL32AM66RLWzhDp95ZSef26ILIe6mCN6sJjJ3dj7kacQ1wz2fP00F51S%3Dw900-h600-k-no-pi0-ya359-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
     "desc": "深受小朋友喜愛的安全共融遊具、攀爬架與彩色溜滑梯園地。",
     "adjacentSpotIds": [
-      "spot-7",
       "spot-26",
       "spot-2"
     ]
@@ -858,8 +834,7 @@ window.CAMPUS_360_SPOTS = [
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,300h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XJogE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-SggcFQVr7pLGyaZY_dowp8h0jwuiMP8S2CIU55v8LYonUFP4XtWsmaQA8ipCkp51uQoBymxuVajk6As6_sh-8aDN--Wu4PC5y2H5AbYOelCywGEAayg26oSOBltrrf2Myz0a7dg%3Dw900-h600-k-no-pi-10-ya300-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
     "desc": "北側綠能遮陽自行車停車棚與校園原生植物生態觀察區。",
     "adjacentSpotIds": [
-      "spot-25",
-      "spot-7"
+      "spot-25"
     ]
   },
   {
