@@ -1,7 +1,7 @@
 // 屏東縣屏東市復興國小 3D 數位校園 (Service Worker)
-// Version: fuxing-3d-campus-v2.9.1
+// Version: fuxing-3d-campus-v2.10.0
 
-const CACHE_NAME = 'fuxing-3d-campus-v2.9.1';
+const CACHE_NAME = 'fuxing-3d-campus-v2.10.0';
 
 // 核心極速快取清單 (App Shell + 3D 引擎 + 1:1 2.5D 高清預覽底圖 + 核心平面圖 + 離線 QR Code)
 const PRECACHE_ASSETS = [
@@ -10,6 +10,7 @@ const PRECACHE_ASSETS = [
   './campus-ui.js',
   './campus-3d.js',
   './campus-batch.js',
+  './data/spots.js',
   './vendor/qrcode.min.js',
   './vendor/three/three.module.js',
   './vendor/three/addons/controls/OrbitControls.js',
@@ -51,6 +52,23 @@ self.addEventListener('fetch', event => {
 
   // 僅處理同源 GET 請求
   if (req.method !== 'GET' || url.origin !== location.origin) {
+    return;
+  }
+
+  // 管理頁永遠走網路（不快取），避免管理者用到舊版管理頁
+  if (url.pathname.endsWith('/admin.html')) return;
+
+  // 0. 景點資料 (data/) 採 Network-First：管理頁發布後，訪客下一次開啟即取得最新資料；離線時才用快取
+  if (url.pathname.includes('/data/')) {
+    event.respondWith(
+      fetch(req, { cache: 'no-cache' }).then(networkRes => {
+        if (networkRes && networkRes.status === 200) {
+          const resClone = networkRes.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(req, resClone));
+        }
+        return networkRes;
+      }).catch(() => caches.match(req).then(r => r || Response.error()))
+    );
     return;
   }
 

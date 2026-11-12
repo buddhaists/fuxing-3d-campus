@@ -44,6 +44,36 @@
    - 照片載入順序改為：自架 `pano/<景點代號>.jpg` → Google 地圖相片網址 → 縮圖；全部失敗時顯示說明與「在 Google 地圖觀看」按鈕，不再整片黑。
    - **建議將 46 張 360° 照片放入 `pano/` 資料夾自架**（Google 相片網址會過期且禁止跨站讀取），檔名與規格見 [`pano/README.md`](pano/README.md)。
 
+9. **v2.10.0 360° 實景管理頁 (`admin.html`)**
+   - 景點資料獨立為 `data/spots.js`，網站與管理頁共用同一份資料。
+   - 在校園俯視圖上**拖曳紅點**調整位置、點地圖**新增**景點、編輯名稱／區域／樓層／說明／鄰近景點、**刪除**景點、**上傳照片**（瀏覽器自動縮為 4096×2048 並產生縮圖）。
+   - 按「儲存並發布」以一個 commit 直接寫入 GitHub，網站約 1～10 分鐘後更新。
+
+---
+
+## 🛠️ 360° 實景管理頁使用說明
+
+網址：`https://<您的帳號>.github.io/<repo>/admin.html`（主網站上沒有連結，請自行加入書籤）
+
+**第一次使用：建立 GitHub 權杖**
+1. GitHub → 右上頭像 → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token
+2. Repository access 選 **Only select repositories**，只勾本網站的 repo
+3. Repository permissions → **Contents：Read and write**（其他權限都不用開）
+4. 回到管理頁按「⚙ GitHub 連線設定」，貼上權杖、確認帳號／repo／分支（GitHub Pages 發布的分支，通常是 `main`），按「連線並載入最新資料」
+
+**日常操作**
+| 想做的事 | 操作 |
+|---|---|
+| 移動標示 | 直接拖曳地圖上的紅點（或在右側輸入 X／Z） |
+| 新增景點 | 按「＋ 新增景點」→ 在地圖上點位置 → 填名稱、選樓層、上傳照片 |
+| 換照片 | 選景點 → 「📷 上傳照片」，選 2:1 的 360° 全景 JPG |
+| 刪除景點 | 選景點 → 「🗑 刪除景點」（照片檔與鄰近引用一併清除） |
+| 發布 | 右上「儲存並發布」，所有修改合成一次發布 |
+
+- 清單上的 ⚠ 表示該景點還沒有自架照片（仍用 Google 網址，可能失效）。
+- 發布前都可以按「還原此景點」或重新整理頁面放棄修改。
+- 權杖只存在您的瀏覽器；公用電腦請在設定中取消「記住權杖」，或用完按「清除權杖」。權杖可隨時在 GitHub 撤銷。
+
 ---
 
 ## 🚀 部署到 GitHub Pages (How to Deploy)
@@ -72,6 +102,9 @@ fuxing-3d-campus/
 ├── campus-batch.js   # 靜態幾何合批模組 (v2.9.0)
 ├── campus-ui.js      # 目錄、360° 實景與介面邏輯
 ├── sw.js             # Service Worker 離線快取
+├── admin.html        # 360° 實景管理頁（定位與照片 CRUD，直接發布到 GitHub）
+├── data/spots.js     # 360° 景點資料（由管理頁維護）
+├── pano/             # 自架 360° 照片與縮圖（由管理頁上傳）
 ├── tex/              # 3D 幾何立面材質、彩繪壁畫數據與實景對照圖集 (79 個檔案，約 166 MB)
 ├── .gitignore        # Git 忽略設定
 └── README.md         # 專案介紹與發布指引

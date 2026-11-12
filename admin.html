@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>360° 實景管理</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>復</text></svg>">
+<style>
+  :root {
+    --paper: #faf8f2; --panel: #ffffff; --ink: #253d37; --muted: #6b746f; --line: #ddd8ca;
+    --accent: #315b4e; --seal: #923c32; --warn: #b7791f; --ok: #2f7d4f; --sel: #10b981;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--paper); color: var(--ink); font: 14px/1.5 "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif; display: flex; flex-direction: column; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  header h1 .seal { background: var(--seal); color: #fff; border-radius: 5px; padding: 1px 7px; font-size: 14px; }
+  .spacer { flex: 1; }
+  .btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 7px 12px; font-weight: 600; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { color: var(--seal); border-color: #e3b9b3; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .status { font-size: 13px; color: var(--muted); }
+  .status.ok { color: var(--ok); } .status.err { color: var(--seal); }
+  main { flex: 1; display: grid; grid-template-columns: 270px 1fr 340px; min-height: 0; }
+  aside, section.editor { background: var(--panel); overflow: auto; min-height: 0; }
+  aside { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+  .list-tools { padding: 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .list-tools input { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .summary { font-size: 12px; color: var(--muted); }
+  ul.spots { list-style: none; margin: 0; padding: 4px 0; }
+  ul.spots li { padding: 7px 12px; display: flex; gap: 8px; align-items: center; cursor: pointer; border-left: 3px solid transparent; }
+  ul.spots li:hover { background: #f4f1e8; }
+  ul.spots li.active { background: #e8f3ee; border-left-color: var(--sel); }
+  ul.spots .num { min-width: 26px; height: 22px; border-radius: 11px; background: #ef5350; color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+  ul.spots .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  ul.spots .tag { font-size: 11px; color: var(--muted); }
+  ul.spots .warn { color: var(--warn); font-size: 12px; }
+  ul.spots .dirty { color: var(--seal); font-weight: 700; }
+
+  .map-wrap { position: relative; overflow: hidden; background: #cfdcc9; min-height: 0; }
+  .map-bar { position: absolute; left: 12px; top: 12px; z-index: 5; display: flex; gap: 6px; flex-wrap: wrap; }
+  .map-bar .seg { display: flex; background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .map-bar .seg button { border: 0; background: none; padding: 6px 11px; font-weight: 600; }
+  .map-bar .seg button.on { background: var(--accent); color: #fff; }
+  .map-hint { position: absolute; left: 12px; bottom: 12px; z-index: 5; background: rgba(255,255,255,.92); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+  .map-wrap.adding { cursor: crosshair; }
+  .map-wrap.adding .map-hint { background: var(--seal); color: #fff; }
+  .stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .stage img { display: block; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+  .pin { position: absolute; width: 0; height: 0; }
+  .pin > span { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%) scale(var(--inv, 1)); width: 24px; height: 24px; border-radius: 50%; background: #ef5350; border: 2px solid #fff; color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.35); cursor: grab; touch-action: none; }
+  .pin.f2 > span { background: #3b82c4; } .pin.f3 > span { background: #8a5cc4; }
+  .pin.dim > span { opacity: .28; }
+  .pin.active > span { background: var(--sel); width: 30px; height: 30px; font-size: 11px; z-index: 3; box-shadow: 0 0 0 4px rgba(16,185,129,.35), 0 2px 8px rgba(0,0,0,.4); }
+  .pin.dragging > span { cursor: grabbing; }
+  .pin .label { position: absolute; left: 0; top: 0; transform: translate(-50%, 16px) scale(var(--inv, 1)); transform-origin: 50% -16px; white-space: nowrap; background: rgba(37,61,55,.9); color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; pointer-events: none; }
+
+  section.editor { border-left: 1px solid var(--line); padding: 14px 16px 30px; }
+  .empty { color: var(--muted); padding: 30px 6px; text-align: center; }
+  .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 11px; }
+  .field > label { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .field input, .field select, .field textarea { padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: #fff; width: 100%; }
+  .field textarea { min-height: 64px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .photo { border: 1px dashed var(--line); border-radius: 10px; padding: 10px; background: #fbfaf6; }
+  .photo img { width: 100%; aspect-ratio: 2 / 1; object-fit: cover; border-radius: 6px; background: #e9e6dc; display: block; }
+  .photo .meta { font-size: 12px; color: var(--muted); margin: 6px 0; }
+  .photo .meta.warn { color: var(--warn); }
+  .adj { max-height: 170px; overflow: auto; border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px; background: #fff; }
+  .adj label { display: flex; gap: 6px; align-items: center; font-size: 13px; padding: 2px 0; }
+  .adj input { width: auto !important; flex: none; }
+  .stage.nolabels .pin:not(.active) .label { display: none; }
+  .adj small { color: var(--muted); margin-left: auto; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  h2 { font-size: 16px; margin: 0 0 12px; display: flex; gap: 8px; align-items: center; }
+  h2 code { font-size: 12px; color: var(--muted); font-weight: 400; }
+
+  dialog { border: 0; border-radius: 14px; padding: 22px; width: min(520px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(0,0,0,.35); color: var(--ink); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  dialog h3 { margin: 0 0 10px; }
+  dialog ol { padding-left: 20px; margin: 6px 0 12px; font-size: 13px; }
+  dialog .note { font-size: 12px; color: var(--muted); }
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 9px 16px; border-radius: 9px; z-index: 50; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+  .busy { position: fixed; inset: 0; background: rgba(250,248,242,.75); z-index: 40; display: none; place-items: center; font-weight: 700; }
+  .busy.show { display: grid; }
+
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 220px 55vh auto; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    section.editor { border-left: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="seal">復</span> 360° 實景管理</h1>
+  <span id="repoStatus" class="status">尚未連線 GitHub（唯讀模式）</span>
+  <span class="spacer"></span>
+  <button class="btn" id="settingsBtn" type="button">⚙ GitHub 連線設定</button>
+  <a class="btn" href="./index.html" target="_blank" rel="noopener" style="text-decoration:none">查看網站 ↗</a>
+  <button class="btn primary" id="publishBtn" type="button" disabled>儲存並發布</button>
+</header>
+
+<main>
+  <aside>
+    <div class="list-tools">
+      <input id="search" type="search" placeholder="搜尋景點名稱、區域、代號…">
+      <button class="btn" id="addBtn" type="button">＋ 新增景點（再到地圖上點位置）</button>
+      <div class="summary" id="summary"></div>
+    </div>
+    <ul class="spots" id="list"></ul>
+  </aside>
+
+  <div class="map-wrap" id="mapWrap">
+    <div class="map-bar">
+      <div class="seg" id="floorSeg">
+        <button type="button" data-floor="ALL" class="on">全部</button>
+        <button type="button" data-floor="1F">1F</button>
+        <button type="button" data-floor="2F">2F</button>
+        <button type="button" data-floor="3F">3F</button>
+      </div>
+      <div class="seg">
+        <button type="button" id="zoomIn" title="放大">＋</button>
+        <button type="button" id="zoomOut" title="縮小">－</button>
+        <button type="button" id="zoomFit" title="全校">全校</button>
+      </div>
+      <div class="seg"><button type="button" id="labelsBtn" class="on">名稱</button></div>
+    </div>
+    <div class="stage" id="stage"><img id="mapImg" src="./assets/admin_topdown.jpg" alt="校園俯視圖" width="2120" height="1200"></div>
+    <div class="map-hint" id="mapHint">拖曳紅點移動位置 · 拖曳空白處平移 · 滾輪縮放（放大後顯示名稱）</div>
+  </div>
+
+  <section class="editor" id="editor"><div class="empty">在左側清單或地圖上選一個景點來編輯，<br>或按「＋ 新增景點」。</div></section>
+</main>
+
+<dialog id="settingsDlg">
+  <h3>GitHub 連線設定</h3>
+  <p class="note" style="margin-top:0">管理頁會用這組權杖把修改直接存進 GitHub，網站約 1～10 分鐘後更新。</p>
+  <ol>
+    <li>到 GitHub → Settings → Developer settings → <b>Fine-grained tokens</b> → Generate new token</li>
+    <li>Repository access 選 <b>Only select repositories</b>，只勾這個網站的 repo</li>
+    <li>Permissions → Repository permissions → <b>Contents：Read and write</b>（其他都不用開）</li>
+    <li>產生後複製貼到下方</li>
+  </ol>
+  <div class="field"><label for="tokenIn">存取權杖（Token）</label><input id="tokenIn" type="password" autocomplete="off" placeholder="github_pat_…"></div>
+  <div class="row" style="grid-template-columns:1fr 1fr 90px">
+    <div class="field"><label for="ownerIn">帳號 / 組織</label><input id="ownerIn"></div>
+    <div class="field"><label for="repoIn">Repo 名稱</label><input id="repoIn"></div>
+    <div class="field"><label for="branchIn">分支</label><input id="branchIn"></div>
+  </div>
+  <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="rememberIn" checked> 在這台電腦記住權杖（公用電腦請取消）</label>
+  <p class="note">權杖只存在這個瀏覽器，不會寫進網站或 repo。可隨時在 GitHub 撤銷。</p>
+  <div class="actions">
+    <button class="btn primary" id="saveSettings" type="button">連線並載入最新資料</button>
+    <button class="btn" id="forgetToken" type="button">清除權杖</button>
+    <button class="btn" id="closeSettings" type="button">關閉</button>
+  </div>
+</dialog>
+
+<div class="busy" id="busy"><span id="busyText">處理中…</span></div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+// ============================================================================
+// 復興國小 360° 實景管理頁 — 景點定位與照片的新增 / 查看 / 修改 / 刪除
+// 資料：data/spots.js（window.CAMPUS_360_SPOTS = [...]），照片：pano/<id>.jpg、pano/thumbs/<id>.jpg
+// 儲存：以 GitHub Git Data API 將所有變更合成「一個 commit」直接發布
+// ============================================================================
+const MAP = { X0: -130, Z0: -65, PPM: 8, W: 2120, H: 1200 };           // 與 assets/admin_topdown.jpg 對應
+const FLOOR_Y = { '1F': 2.2, '2F': 6.8, '3F': 11.2 };
+const DATA_PATH = 'data/spots.js';
+const PANO_W = 4096, THUMB_W = 400;
+const LS = { cfg: 'fuxing.admin.cfg', token: 'fuxing.admin.token' };
+const $ = id => document.getElementById(id);
+
+let spots = [];                 // 目前編輯中的資料
+let baseSpotsJson = '';         // 載入時的資料（判斷是否有變更）
+let baseSha = null;             // 載入時 data/spots.js 在 GitHub 的版本
+const pendingPhotos = new Map();// id -> { full: Blob, thumb: Blob, url, w, h }
+const deletedPhotoPaths = new Set();
+let selectedId = null;
+let floorFilter = 'ALL';
+let showLabels = true;
+let addMode = false;
+
+// ---------------- 工具 ----------------
+const toast = (msg, ms = 2600) => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms); };
+const busy = (on, text = '處理中…') => { $('busyText').textContent = text; $('busy').classList.toggle('show', on); };
+const round2 = v => Math.round(v * 100) / 100;
+const toPx = (x, z) => [(x - MAP.X0) * MAP.PPM, (z - MAP.Z0) * MAP.PPM];
+const toWorld = (u, v) => [round2(u / MAP.PPM + MAP.X0), round2(v / MAP.PPM + MAP.Z0)];
+const spotById = id => spots.find(s => s.id === id);
+const hasLocalPhoto = s => pendingPhotos.has(s.id) || (s.localPano && s.localPano.startsWith('./pano/'));
+const bytesToB64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
+const b64ToText = b64 => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, '')), c => c.charCodeAt(0)));
+
+function parseSpotsJs(text) {
+  const start = text.indexOf('[', text.indexOf('CAMPUS_360_SPOTS'));
+  const end = text.lastIndexOf(']');
+  if (start < 0 || end < start) throw new Error('data/spots.js 格式無法辨識');
+  return JSON.parse(text.slice(start, end + 1));
+}
+function buildSpotsJs(list) {
+  const clean = list.map(s => {
+    const o = { ...s };
+    o.px = round2(o.x / 0.26 + 512); o.py = round2(o.z / 0.26 + 240);   // 舊欄位維持與 3D 座標一致
+    return o;
+  });
+  return '// 屏東縣復興國小 360° 實景景點資料（由 admin.html 管理頁維護，請勿手動調整格式）\n'
+    + '// x: 東(+)西(-)  z: 南(+)北(-)  y: 1F=2.2 / 2F=6.8 / 3F=11.2（公尺）\n'
+    + 'window.CAMPUS_360_SPOTS = ' + JSON.stringify(clean, null, 2) + ';\n';
+}
+const isDirty = () => JSON.stringify(spots) !== baseSpotsJson || pendingPhotos.size > 0 || deletedPhotoPaths.size > 0;
+
+// ---------------- GitHub 設定 ----------------
+function loadCfg() {
+  let cfg = {};
+  try { cfg = JSON.parse(localStorage.getItem(LS.cfg) || '{}'); } catch {}
+  let token = '';
+  try { token = sessionStorage.getItem(LS.token) || localStorage.getItem(LS.token) || ''; } catch {}
+  return { owner: cfg.owner || 'buddhaists', repo: cfg.repo || 'fuxing-3d-campus', branch: cfg.branch || 'main', token };
+}
+let cfg = loadCfg();
+
+async function gh(path, opts = {}) {
+  const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}${path}`, {
+    ...opts,
+    headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${cfg.token}`, 'X-GitHub-Api-Version': '2022-11-28', ...(opts.body ? { 'Content-Type': 'application/json' } : {}) }
+  });
+  if (!res.ok) {
+    let msg = `${res.status}`;
+    try { msg += ' ' + (await res.json()).message; } catch {}
+    if (res.status === 401) msg = '權杖無效或已過期（401）';
+    if (res.status === 403 || res.status === 404) msg += '（請確認權杖有此 repo 的 Contents 讀寫權限，且帳號、repo、分支名稱正確）';
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+async function fetchRemoteSpots() {
+  const f = await gh(`/contents/${DATA_PATH}?ref=${encodeURIComponent(cfg.branch)}`);
+  return { sha: f.sha, list: parseSpotsJs(b64ToText(f.content)) };
+}
+
+function setRepoStatus(text, cls = '') { const el = $('repoStatus'); el.textContent = text; el.className = 'status ' + cls; }
+
+async function loadData() {
+  busy(true, '載入景點資料…');
+  try {
+    if (cfg.token) {
+      const { sha, list } = await fetchRemoteSpots();
+      baseSha = sha; spots = list;
+      setRepoStatus(`已連線 ${cfg.owner}/${cfg.repo} · ${cfg.branch}`, 'ok');
+    } else {
+      const res = await fetch(`./${DATA_PATH}?t=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`讀取 ${DATA_PATH} 失敗（${res.status}）`);
+      spots = parseSpotsJs(await res.text()); baseSha = null;
+      setRepoStatus('尚未連線 GitHub（唯讀模式，可試編但無法發布）');
+    }
+    baseSpotsJson = JSON.stringify(spots);
+    pendingPhotos.clear(); deletedPhotoPaths.clear();
+    if (selectedId && !spotById(selectedId)) selectedId = null;
+    renderAll();
+  } catch (err) {
+    setRepoStatus('載入失敗：' + err.message, 'err');
+    toast('載入失敗：' + err.message, 6000);
+  } finally { busy(false); }
+}
+
+// ---------------- 清單 ----------------
+function renderList() {
+  const q = $('search').value.trim().toLowerCase();
+  const ul = $('list'); ul.innerHTML = '';
+  const base = baseSpotsJson ? JSON.parse(baseSpotsJson) : [];
+  const baseMap = new Map(base.map(s => [s.id, JSON.stringify(s)]));
+  const sorted = [...spots].sort((a, b) => a.group.localeCompare(b.group, 'zh-Hant') || a.num - b.num);
+  for (const s of sorted) {
+    if (q && !`${s.name} ${s.group} ${s.id} ${s.num}`.toLowerCase().includes(q)) continue;
+    const li = document.createElement('li');
+    li.className = s.id === selectedId ? 'active' : '';
+    const num = document.createElement('span'); num.className = 'num'; num.textContent = s.num;
+    const name = document.createElement('span'); name.className = 'name'; name.textContent = s.name; name.title = `${s.name}（${s.group}）`;
+    const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = s.floor;
+    li.append(num, name, tag);
+    if (!hasLocalPhoto(s)) { const w = document.createElement('span'); w.className = 'warn'; w.textContent = '⚠'; w.title = '尚無自架照片（仍使用 Google 網址，可能失效）'; li.append(w); }
+    if (baseMap.get(s.id) !== JSON.stringify(s) || pendingPhotos.has(s.id)) { const d = document.createElement('span'); d.className = 'dirty'; d.textContent = '●'; d.title = '尚未發布的修改'; li.append(d); }
+    li.addEventListener('click', () => select(s.id, true));
+    ul.append(li);
+  }
+  const noPhoto = spots.filter(s => !hasLocalPhoto(s)).length;
+  const removed = base.filter(b => !spotById(b.id)).length;
+  $('summary').textContent = `共 ${spots.length} 處 · ⚠ 缺自架照片 ${noPhoto} 處` + (removed ? ` · 待刪除 ${removed} 處` : '');
+  const dirty = isDirty();
+  $('publishBtn').disabled = !dirty || !cfg.token;
+  $('publishBtn').textContent = dirty ? '儲存並發布 ●' : '儲存並發布';
+}
+
+// ---------------- 地圖（平移 / 縮放 / 標示） ----------------
+const view = { s: 0.5, tx: 0, ty: 0 };
+const stage = $('stage'), mapWrap = $('mapWrap');
+function applyView() {
+  stage.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.s})`;
+  stage.style.setProperty('--inv', (1 / view.s).toFixed(4));
+  stage.classList.toggle('nolabels', !showLabels || view.s < 0.8);   // 縮小看全校時隱藏名稱，避免重疊
+}
+function fitView() {
+  const r = mapWrap.getBoundingClientRect();
+  view.s = Math.min(r.width / MAP.W, r.height / MAP.H) * 0.98;
+  view.tx = (r.width - MAP.W * view.s) / 2; view.ty = (r.height - MAP.H * view.s) / 2;
+  applyView();
+}
+function zoomAt(factor, cx, cy) {
+  const ns = Math.min(4, Math.max(0.15, view.s * factor));
+  view.tx = cx - (cx - view.tx) * (ns / view.s); view.ty = cy - (cy - view.ty) * (ns / view.s); view.s = ns;
+  applyView();
+}
+function centerOn(s) {
+  const r = mapWrap.getBoundingClientRect(); const [u, v] = toPx(s.x, s.z);
+  if (view.s < 0.9) view.s = 0.9;
+  view.tx = r.width / 2 - u * view.s; view.ty = r.height / 2 - v * view.s; applyView();
+}
+const clientToStage = (cx, cy) => { const r = mapWrap.getBoundingClientRect(); return [(cx - r.left - view.tx) / view.s, (cy - r.top - view.ty) / view.s]; };
+
+function renderPins() {
+  stage.querySelectorAll('.pin').forEach(p => p.remove());
+  for (const s of spots) {
+    const [u, v] = toPx(s.x, s.z);
+    const pin = document.createElement('div');
+    pin.className = 'pin' + (s.floor === '2F' ? ' f2' : s.floor === '3F' ? ' f3' : '')
+      + (s.id === selectedId ? ' active' : '') + (floorFilter !== 'ALL' && s.floor !== floorFilter ? ' dim' : '');
+    pin.style.left = u + 'px'; pin.style.top = v + 'px';
+    pin.dataset.id = s.id;
+    const dot = document.createElement('span'); dot.textContent = s.num; dot.title = `${s.num}. ${s.name}（${s.floor}）`;
+    pin.append(dot);
+    { const l = document.createElement('div'); l.className = 'label'; l.textContent = s.name; pin.append(l); }
+    if (s.id === selectedId) pin.style.zIndex = 5;
+    stage.append(pin);
+  }
+}
+
+let drag = null;   // { type: 'pan'|'pin', ... }
+mapWrap.addEventListener('pointerdown', e => {
+  if (e.target.closest('.map-bar')) return;
+  const pinEl = e.target.closest('.pin');
+  if (pinEl && !addMode) {
+    const s = spotById(pinEl.dataset.id);
+    if (!s) return;
+    select(s.id, false);
+    const cur = stage.querySelector(`.pin[data-id="${s.id}"]`);
+    drag = { type: 'pin', id: s.id, el: cur, sx: e.clientX, sy: e.clientY, moved: false };
+    cur?.classList.add('dragging');
+  } else {
+    drag = { type: 'pan', sx: e.clientX, sy: e.clientY, tx: view.tx, ty: view.ty, moved: false };
+  }
+  mapWrap.setPointerCapture(e.pointerId);
+});
+mapWrap.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 3) drag.moved = true;
+  if (drag.type === 'pan') { view.tx = drag.tx + e.clientX - drag.sx; view.ty = drag.ty + e.clientY - drag.sy; applyView(); }
+  else if (drag.moved) {
+    const [u, v] = clientToStage(e.clientX, e.clientY);
+    const cu = Math.min(MAP.W, Math.max(0, u)), cv = Math.min(MAP.H, Math.max(0, v));
+    drag.el.style.left = cu + 'px'; drag.el.style.top = cv + 'px';
+    const [x, z] = toWorld(cu, cv); drag.x = x; drag.z = z;
+    const xi = $('f_x'), zi = $('f_z'); if (xi) xi.value = x; if (zi) zi.value = z;
+  }
+});
+mapWrap.addEventListener('pointerup', e => {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.type === 'pin') {
+    d.el?.classList.remove('dragging');
+    if (d.moved && d.x !== undefined) { const s = spotById(d.id); s.x = d.x; s.z = d.z; renderAll(); toast(`已移動「${s.name}」，記得按「儲存並發布」`); }
+  } else if (!d.moved && addMode) {
+    const [u, v] = clientToStage(e.clientX, e.clientY);
+    if (u >= 0 && v >= 0 && u <= MAP.W && v <= MAP.H) createSpotAt(...toWorld(u, v));
+  }
+});
+mapWrap.addEventListener('wheel', e => { e.preventDefault(); const r = mapWrap.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+$('zoomIn').onclick = () => { const r = mapWrap.getBoundingClientRect(); zoomAt(1.3, r.width / 2, r.height / 2); };
+$('zoomOut').onclick = () => { const r = mapWrap.getBoundingClientRect(); zoomAt(1 / 1.3, r.width / 2, r.height / 2); };
+$('zoomFit').onclick = fitView;
+$('labelsBtn').onclick = () => { showLabels = !showLabels; $('labelsBtn').classList.toggle('on', showLabels); applyView(); };
+$('floorSeg').addEventListener('click', e => {
+  const b = e.target.closest('button[data-floor]'); if (!b) return;
+  floorFilter = b.dataset.floor;
+  $('floorSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  renderPins();
+});
+window.addEventListener('resize', () => applyView());
+
+function setAddMode(on) {
+  addMode = on;
+  mapWrap.classList.toggle('adding', on);
+  $('addBtn').textContent = on ? '✕ 取消新增' : '＋ 新增景點（再到地圖上點位置）';
+  $('mapHint').textContent = on ? '請在地圖上點一下新景點的位置（Esc 取消）' : '拖曳紅點移動位置 · 拖曳空白處平移 · 滾輪縮放（放大後顯示名稱）';
+}
+$('addBtn').onclick = () => setAddMode(!addMode);
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && addMode) setAddMode(false); });
+
+function createSpotAt(x, z) {
+  const maxNum = spots.reduce((m, s) => Math.max(m, s.num || 0), 0);
+  let n = maxNum + 1; while (spotById(`spot-${n}`)) n++;
+  const floor = floorFilter === 'ALL' ? '1F' : floorFilter;
+  const sel = spotById(selectedId);
+  const s = {
+    id: `spot-${n}`, num: n, name: `新景點 ${n}`, group: sel ? sel.group : (spots[0]?.group || '校園景點'),
+    floor, x, y: FLOOR_Y[floor], z, thumb: '', panoUrl: '', externalUrl: '', desc: '', adjacentSpotIds: []
+  };
+  spots.push(s);
+  setAddMode(false);
+  select(s.id, false);
+  toast('已新增景點，請填寫名稱並上傳 360° 照片');
+  setTimeout(() => $('f_name')?.select(), 50);
+}
+
+// ---------------- 編輯面板 ----------------
+function select(id, center) {
+  selectedId = id;
+  renderAll();
+  const s = spotById(id);
+  if (s && center) centerOn(s);
+}
+
+function photoSrc(s) {
+  if (pendingPhotos.has(s.id)) return pendingPhotos.get(s.id).url;
+  if (s.localPano) return s.localPano;
+  return s.thumb || '';
+}
+
+function renderEditor() {
+  const ed = $('editor');
+  const s = spotById(selectedId);
+  if (!s) { ed.innerHTML = '<div class="empty">在左側清單或地圖上選一個景點來編輯，<br>或按「＋ 新增景點」。</div>'; return; }
+  const groups = [...new Set(spots.map(x => x.group))];
+  const pend = pendingPhotos.get(s.id);
+  ed.innerHTML = `
+    <h2><span class="num" style="background:#ef5350;color:#fff;border-radius:11px;padding:0 8px;font-size:12px"></span><span id="h_name"></span> <code>${s.id}</code></h2>
+    <div class="field"><label for="f_name">名稱</label><input id="f_name"></div>
+    <div class="field"><label for="f_group">區域</label><input id="f_group" list="groupList"><datalist id="groupList">${groups.map(() => '<option>').join('')}</datalist></div>
+    <div class="row">
+      <div class="field"><label for="f_floor">樓層</label><select id="f_floor"><option>1F</option><option>2F</option><option>3F</option></select></div>
+      <div class="field"><label for="f_x">X（東 +）</label><input id="f_x" type="number" step="0.1"></div>
+      <div class="field"><label for="f_z">Z（南 +）</label><input id="f_z" type="number" step="0.1"></div>
+    </div>
+    <div class="field"><label for="f_desc">說明</label><textarea id="f_desc"></textarea></div>
+    <div class="field"><label>360° 照片</label>
+      <div class="photo">
+        <img id="f_img" alt="360° 照片預覽">
+        <div class="meta" id="f_photoMeta"></div>
+        <input id="f_file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+        <div class="actions" style="margin-top:4px">
+          <button class="btn" type="button" id="f_pick">📷 ${hasLocalPhoto(s) ? '更換照片' : '上傳照片'}</button>
+          ${pend ? '<button class="btn" type="button" id="f_undoPhoto">取消新照片</button>' : ''}
+        </div>
+      </div>
+    </div>
+    <div class="field"><label for="f_ext">Google 地圖連結（選填，照片無法載入時的備用按鈕）</label><input id="f_ext" type="url" placeholder="https://www.google.com/maps/…"></div>
+    <div class="field"><label>鄰近景點（360° 畫面下方的穿梭按鈕，依距離排序）</label><div class="adj" id="f_adj"></div></div>
+    <div class="actions">
+      <button class="btn" type="button" id="f_revert">還原此景點</button>
+      <button class="btn danger" type="button" id="f_delete">🗑 刪除景點</button>
+    </div>`;
+  // 以 textContent / value 填入使用者資料（避免 HTML 注入）
+  ed.querySelector('h2 .num').textContent = s.num;
+  $('h_name').textContent = s.name;
+  $('groupList').querySelectorAll('option').forEach((o, i) => { o.value = groups[i]; });
+  $('f_name').value = s.name; $('f_group').value = s.group; $('f_floor').value = s.floor;
+  $('f_x').value = s.x; $('f_z').value = s.z; $('f_desc').value = s.desc || ''; $('f_ext').value = s.externalUrl || '';
+  const img = $('f_img'); const src = photoSrc(s);
+  if (src) img.src = src; else img.removeAttribute('src');
+  img.onerror = () => { img.removeAttribute('src'); $('f_photoMeta').textContent = '⚠ 目前的照片網址無法讀取，建議上傳自架照片'; $('f_photoMeta').className = 'meta warn'; };
+  const meta = $('f_photoMeta');
+  if (pend) { meta.textContent = `新照片 ${pend.w}×${pend.h}（${(pend.full.size / 1048576).toFixed(1)} MB），發布後生效`; meta.className = 'meta'; }
+  else if (hasLocalPhoto(s)) { meta.textContent = `自架照片：${s.localPano.split('?')[0]}`; meta.className = 'meta'; }
+  else { meta.textContent = '⚠ 尚無自架照片（目前使用 Google 網址，可能過期失效）'; meta.className = 'meta warn'; }
+
+  const bind = (id, key, fn) => $(id).addEventListener('input', e => { fn ? fn(e.target.value) : (s[key] = e.target.value); refreshAfterEdit(); });
+  bind('f_name', 'name', v => { s.name = v; $('h_name').textContent = v; });
+  bind('f_group', 'group');
+  bind('f_desc', 'desc');
+  bind('f_ext', 'externalUrl');
+  $('f_floor').addEventListener('change', e => { s.floor = e.target.value; s.y = FLOOR_Y[s.floor]; refreshAfterEdit(true); });
+  const coord = (id, key) => $(id).addEventListener('change', e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) { s[key] = round2(v); refreshAfterEdit(true); } });
+  coord('f_x', 'x'); coord('f_z', 'z');
+
+  // 鄰近景點：依距離排序，已勾選的置頂
+  const adjBox = $('f_adj');
+  const others = spots.filter(o => o.id !== s.id)
+    .map(o => ({ o, d: Math.hypot(o.x - s.x, o.z - s.z), on: (s.adjacentSpotIds || []).includes(o.id) }))
+    .sort((a, b) => (b.on - a.on) || a.d - b.d);
+  for (const { o, d, on } of others) {
+    const lab = document.createElement('label');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = on;
+    cb.addEventListener('change', () => {
+      const set = new Set(s.adjacentSpotIds || []);
+      cb.checked ? set.add(o.id) : set.delete(o.id);
+      s.adjacentSpotIds = [...set];
+      refreshAfterEdit();
+    });
+    const t = document.createElement('span'); t.textContent = `${o.num}. ${o.name}`;
+    const sm = document.createElement('small'); sm.textContent = `${Math.round(d)} m`;
+    lab.append(cb, t, sm); adjBox.append(lab);
+  }
+
+  $('f_pick').onclick = () => $('f_file').click();
+  $('f_file').onchange = e => { const f = e.target.files[0]; if (f) handlePhoto(s, f); };
+  $('f_undoPhoto')?.addEventListener('click', () => { URL.revokeObjectURL(pend.url); pendingPhotos.delete(s.id); renderAll(); });
+  $('f_revert').onclick = () => {
+    const base = JSON.parse(baseSpotsJson).find(b => b.id === s.id);
+    if (!base) { toast('這是新增的景點，可直接刪除'); return; }
+    Object.keys(s).forEach(k => delete s[k]); Object.assign(s, base);
+    if (pendingPhotos.has(s.id)) { URL.revokeObjectURL(pendingPhotos.get(s.id).url); pendingPhotos.delete(s.id); }
+    renderAll(); toast('已還原為最後發布的內容');
+  };
+  $('f_delete').onclick = () => deleteSpot(s);
+}
+
+let editTimer = null;
+function refreshAfterEdit(pinsToo = false) {
+  if (pinsToo) renderPins();
+  clearTimeout(editTimer); editTimer = setTimeout(() => { renderList(); if (!pinsToo) renderPins(); }, 250);
+}
+
+function deleteSpot(s) {
+  const refs = spots.filter(o => (o.adjacentSpotIds || []).includes(s.id));
+  const msg = `確定要刪除「${s.num}. ${s.name}」嗎？` + (refs.length ? `\n\n也會從 ${refs.length} 個景點的「鄰近景點」中移除。` : '') + (s.localPano ? '\n自架照片檔也會一併刪除。' : '') + '\n\n（按「儲存並發布」之前都還可以重新載入取消）';
+  if (!confirm(msg)) return;
+  spots = spots.filter(o => o !== s);
+  refs.forEach(o => { o.adjacentSpotIds = o.adjacentSpotIds.filter(id => id !== s.id); });
+  if (pendingPhotos.has(s.id)) { URL.revokeObjectURL(pendingPhotos.get(s.id).url); pendingPhotos.delete(s.id); }
+  if (s.localPano && s.localPano.startsWith('./pano/')) {
+    deletedPhotoPaths.add(s.localPano.replace(/^\.\//, '').split('?')[0]);
+    if (s.thumb && s.thumb.startsWith('./pano/')) deletedPhotoPaths.add(s.thumb.replace(/^\.\//, '').split('?')[0]);
+  }
+  selectedId = null;
+  renderAll();
+  toast(`已刪除「${s.name}」，記得按「儲存並發布」`);
+}
+
+// ---------------- 照片處理（瀏覽器內縮圖，上傳前完成） ----------------
+async function handlePhoto(s, file) {
+  busy(true, '處理照片中…');
+  try {
+    const bmp = await createImageBitmap(file);
+    const ratio = bmp.width / bmp.height;
+    if (ratio < 1.9 || ratio > 2.1) {
+      busy(false);
+      if (!confirm(`這張照片是 ${bmp.width}×${bmp.height}（長寬比 ${ratio.toFixed(2)}:1），不是 360° 全景照片的 2:1。\n顯示時可能會變形，仍要使用嗎？`)) { bmp.close(); return; }
+      busy(true, '處理照片中…');
+    }
+    const encode = async (w) => {
+      const h = Math.round(w / 2);
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const ctx = c.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(bmp, 0, 0, w, h);
+      return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('照片編碼失敗')), 'image/jpeg', w > 1000 ? 0.82 : 0.76));
+    };
+    const fw = Math.min(PANO_W, bmp.width - (bmp.width % 2));
+    const full = await encode(fw);
+    const thumb = await encode(THUMB_W);
+    bmp.close();
+    const old = pendingPhotos.get(s.id); if (old) URL.revokeObjectURL(old.url);
+    pendingPhotos.set(s.id, { full, thumb, url: URL.createObjectURL(full), w: fw, h: fw / 2 });
+    renderAll();
+    toast(`照片已處理（${(full.size / 1048576).toFixed(1)} MB），按「儲存並發布」上傳`);
+  } catch (err) {
+    toast('照片處理失敗：' + err.message, 5000);
+  } finally { busy(false); }
+}
+
+// ---------------- 發布：一次 commit 寫入 spots.js + 所有照片 + 刪除檔案 ----------------
+async function publish() {
+  if (!cfg.token) { $('settingsDlg').showModal(); return; }
+  const base = JSON.parse(baseSpotsJson);
+  const added = spots.filter(s => !base.find(b => b.id === s.id)).length;
+  const removed = base.filter(b => !spotById(b.id)).length;
+  const changed = spots.filter(s => { const b = base.find(x => x.id === s.id); return b && JSON.stringify(b) !== JSON.stringify(s); }).length;
+  const summary = [added && `新增 ${added}`, changed && `修改 ${changed}`, removed && `刪除 ${removed}`, pendingPhotos.size && `照片 ${pendingPhotos.size} 張`].filter(Boolean).join('、');
+  if (!confirm(`即將發布到 ${cfg.owner}/${cfg.repo}（${cfg.branch} 分支）：\n${summary || '資料更新'}\n\n網站約 1～10 分鐘後更新。確定發布？`)) return;
+
+  busy(true, '檢查遠端版本…');
+  try {
+    // 1) 衝突檢查：載入後是否有人改過 data/spots.js
+    const remote = await gh(`/contents/${DATA_PATH}?ref=${encodeURIComponent(cfg.branch)}`);
+    if (baseSha && remote.sha !== baseSha) {
+      busy(false);
+      if (!confirm('⚠ 在你編輯期間，GitHub 上的景點資料已被其他人（或另一個分頁）更新。\n\n按「確定」以你目前的內容覆蓋；按「取消」放棄發布（可重新載入後再改）。')) return;
+      busy(true);
+    }
+    const ref = await gh(`/git/ref/heads/${encodeURIComponent(cfg.branch)}`);
+    const headSha = ref.object.sha;
+    const headCommit = await gh(`/git/commits/${headSha}`);
+
+    // 2) 準備照片檔（帶版本參數，避免瀏覽器與 Service Worker 讀到舊照片快取）
+    const ver = Date.now().toString(36);
+    const tree = [];
+    let i = 0;
+    for (const [id, p] of pendingPhotos) {
+      const s = spotById(id); if (!s) continue;
+      i++;
+      busy(true, `上傳照片 ${i} / ${pendingPhotos.size}…`);
+      for (const [path, blob] of [[`pano/${id}.jpg`, p.full], [`pano/thumbs/${id}.jpg`, p.thumb]]) {
+        const b = await gh('/git/blobs', { method: 'POST', body: JSON.stringify({ content: bytesToB64(new Uint8Array(await blob.arrayBuffer())), encoding: 'base64' }) });
+        tree.push({ path, mode: '100644', type: 'blob', sha: b.sha });
+        deletedPhotoPaths.delete(path);
+      }
+      s.localPano = `./pano/${id}.jpg?v=${ver}`;
+      s.thumb = `./pano/thumbs/${id}.jpg?v=${ver}`;
+    }
+    // 3) 景點資料
+    busy(true, '寫入景點資料…');
+    tree.push({ path: DATA_PATH, mode: '100644', type: 'blob', content: buildSpotsJs(spots) });
+    // 4) 刪除的照片（只刪除遠端實際存在的檔案）
+    for (const path of deletedPhotoPaths) {
+      try { await gh(`/contents/${path}?ref=${encodeURIComponent(cfg.branch)}`); tree.push({ path, mode: '100644', type: 'blob', sha: null }); } catch {}
+    }
+    const newTree = await gh('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: headCommit.tree.sha, tree }) });
+    const commit = await gh('/git/commits', { method: 'POST', body: JSON.stringify({
+      message: `admin: 更新 360° 實景景點（${summary || '資料更新'}）`, tree: newTree.sha, parents: [headSha] }) });
+    busy(true, '發布中…');
+    await gh(`/git/refs/heads/${encodeURIComponent(cfg.branch)}`, { method: 'PATCH', body: JSON.stringify({ sha: commit.sha }) });
+
+    pendingPhotos.forEach(p => URL.revokeObjectURL(p.url));
+    await loadData();
+    toast('✓ 發布成功！網站約 1～10 分鐘後更新（必要時按 Ctrl+F5）', 6000);
+  } catch (err) {
+    toast('發布失敗：' + err.message, 8000);
+    setRepoStatus('發布失敗：' + err.message, 'err');
+  } finally { busy(false); }
+}
+$('publishBtn').onclick = publish;
+
+// ---------------- 設定對話框 ----------------
+const dlg = $('settingsDlg');
+$('settingsBtn').onclick = () => {
+  $('tokenIn').value = cfg.token; $('ownerIn').value = cfg.owner; $('repoIn').value = cfg.repo; $('branchIn').value = cfg.branch;
+  dlg.showModal();
+};
+$('closeSettings').onclick = () => dlg.close();
+$('forgetToken').onclick = () => {
+  try { localStorage.removeItem(LS.token); sessionStorage.removeItem(LS.token); } catch {}
+  cfg.token = ''; $('tokenIn').value = ''; toast('已清除權杖'); dlg.close(); loadData();
+};
+$('saveSettings').onclick = async () => {
+  if (isDirty() && !confirm('重新載入會放棄尚未發布的修改，確定嗎？')) return;
+  cfg = { owner: $('ownerIn').value.trim(), repo: $('repoIn').value.trim(), branch: $('branchIn').value.trim() || 'main', token: $('tokenIn').value.trim() };
+  try {
+    localStorage.setItem(LS.cfg, JSON.stringify({ owner: cfg.owner, repo: cfg.repo, branch: cfg.branch }));
+    localStorage.removeItem(LS.token); sessionStorage.removeItem(LS.token);
+    if (cfg.token) ($('rememberIn').checked ? localStorage : sessionStorage).setItem(LS.token, cfg.token);
+  } catch {}
+  dlg.close();
+  await loadData();
+};
+
+window.addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+
+function renderAll() { renderList(); renderPins(); renderEditor(); }
+$('search').addEventListener('input', renderList);
+
+// 啟動
+$('mapImg').addEventListener('load', fitView);
+if ($('mapImg').complete) fitView();
+loadData();
+</script>
+</body>
+</html>
