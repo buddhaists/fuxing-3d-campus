@@ -18546,6 +18546,27 @@ function roofHeightAt(x, z) {
   const i = (r * W + c) * 4;
   return (buf[i] + buf[i + 1] / 255) * 51 / 255;
 }
+// 各棟前走廊方向（校方提供）：東棟→東、北棟→南、南棟→北、西棟→東
+const FRONT_CORRIDOR_DIR = {
+  'east-building': [1, 0],
+  'north-building': [0, 1],
+  'south-building': [0, -1],
+  'west-building': [1, 0]
+};
+function buildingAt(x, z) {
+  let best = null, bestArea = Infinity;
+  for (const id of Object.keys(FRONT_CORRIDOR_DIR)) {
+    const g = landmarkGroupMap.get(id);
+    if (!g) continue;
+    if (!g.userData.__box) g.userData.__box = new THREE.Box3().setFromObject(g);
+    const b = g.userData.__box;
+    if (x >= b.min.x - 0.5 && x <= b.max.x + 0.5 && z >= b.min.z - 0.5 && z <= b.max.z + 0.5) {
+      const area = (b.max.x - b.min.x) * (b.max.z - b.min.z);
+      if (area < bestArea) { bestArea = area; best = id; }
+    }
+  }
+  return best;
+}
 const upperLeaderGroup = new THREE.Group();
 scene.add(upperLeaderGroup);
 function placeUpperFloorBeacons() {
@@ -18557,20 +18578,26 @@ function placeUpperFloorBeacons() {
   for (const s of spots) {
     if (!s.floor || s.floor === '1F' || s.floor === 'BF') continue;
     const floorTop = s.y - 2.3;           // 2F ≈ 4.5 m、3F ≈ 8.9 m：比樓板略低即視為「屋外」
-    delete s.displayX; delete s.displayZ; delete s.outwardX; delete s.outwardZ;
+    delete s.displayX; delete s.displayZ; delete s.outwardX; delete s.outwardZ; delete s.markerBuilding;
     if (roofHeightAt(s.x, s.z) < floorTop) continue;   // 標示本來就在屋外（看得到），維持原位
     let best = null;
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {   // 校舍與走廊皆沿東西／南北軸線
+    const bld = buildingAt(s.x, s.z);
+    const front = bld && FRONT_CORRIDOR_DIR[bld];
+    // 先找所在建築的「前走廊」方向；該方向 16 m 內找不到屋外時，才退回四個方向中最近的一側
+    const dirSets = front ? [[front], [[1, 0], [-1, 0], [0, 1], [0, -1]]] : [[[1, 0], [-1, 0], [0, 1], [0, -1]]];
+    for (const dirs of dirSets) { if (best) break;
+    for (const [dx, dz] of dirs) {
       let clear = 0;
       for (let d = 0.25; d <= 16; d += 0.25) {
         if (roofHeightAt(s.x + dx * d, s.z + dz * d) < floorTop) { if (++clear >= 3) { const dd = d - 0.5; if (!best || dd < best.d) best = { d: dd, dx, dz }; break; } }
         else clear = 0;
       }
     }
+    }
     if (!best) continue;
     const out = best.d + 1.4;             // 走出雨遮外緣後再留 1.4 m
     s.displayX = s.x + best.dx * out; s.displayZ = s.z + best.dz * out;
-    s.outwardX = best.dx; s.outwardZ = best.dz;
+    s.outwardX = best.dx; s.outwardZ = best.dz; s.markerBuilding = bld || null;
     const pin = panoBeaconMeshes.find(p => p.userData.spotId === s.id);
     if (pin) pin.position.set(s.displayX, s.y, s.displayZ);
     const geo = new THREE.BufferGeometry().setFromPoints([
