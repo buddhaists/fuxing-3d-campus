@@ -24,9 +24,7 @@ window.addEventListener('unhandledrejection', e => {
 <meta name="theme-color" content="#faf8f2">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>復</text></svg>">
 <link rel="preload" as="image" href="./assets/campus_overview_preview.webp" type="image/webp">
-<link rel="preload" as="script" href="./campus-ui.js?v=2.10.0">
-<link rel="modulepreload" href="./vendor/three/three.module.js">
-<link rel="modulepreload" href="./campus-3d.js?v=2.10.0">
+<link rel="preload" as="script" href="./campus-ui.js?v=2.10.1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=Noto+Serif+TC:wght@500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
@@ -45,7 +43,7 @@ window.__updateProgress(15, '正在啟動三維校園引擎...');
 if ('serviceWorker' in navigator) {
   window.addEventListener('DOMContentLoaded', () => {
     window.__updateProgress(25, '校園核心樣式就緒...');
-    navigator.serviceWorker.register('./sw.js?v=2.10.0').then(reg => {
+    navigator.serviceWorker.register('./sw.js?v=2.10.1').then(reg => {
       reg.update();
     }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -76,6 +74,9 @@ document.addEventListener('click', function(e) {
   }
 }
 </script>
+<!-- modulepreload 必須放在 importmap 之後，否則瀏覽器會在 import map 生效前解析 "three" 而失敗 -->
+<link rel="modulepreload" href="./vendor/three/three.module.js">
+<link rel="modulepreload" href="./campus-3d.js?v=2.10.1">
 <style>
   /* ==========================================================================
      PKU-3D ("燕园 · 循图，走进燕园") Editorial Design System
@@ -3633,7 +3634,7 @@ document.addEventListener('click', function(e) {
 
 <script src="./vendor/qrcode.min.js"></script>
 <script src="./data/spots.js"></script>
-<script src="./campus-ui.js?v=2.10.0"></script>
-<script type="module" src="./campus-3d.js?v=2.10.0"></script>
+<script src="./campus-ui.js?v=2.10.1"></script>
+<script type="module" src="./campus-3d.js?v=2.10.1"></script>
 </body>
 </html>
