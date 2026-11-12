@@ -24,9 +24,9 @@ window.addEventListener('unhandledrejection', e => {
 <meta name="theme-color" content="#faf8f2">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>復</text></svg>">
 <link rel="preload" as="image" href="./assets/campus_overview_preview.webp" type="image/webp">
-<link rel="preload" as="script" href="./campus-ui.js?v=2.9.0">
+<link rel="preload" as="script" href="./campus-ui.js?v=2.9.1">
 <link rel="modulepreload" href="./vendor/three/three.module.js">
-<link rel="modulepreload" href="./campus-3d.js?v=2.9.0">
+<link rel="modulepreload" href="./campus-3d.js?v=2.9.1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=Noto+Serif+TC:wght@500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
@@ -45,7 +45,7 @@ window.__updateProgress(15, '正在啟動三維校園引擎...');
 if ('serviceWorker' in navigator) {
   window.addEventListener('DOMContentLoaded', () => {
     window.__updateProgress(25, '校園核心樣式就緒...');
-    navigator.serviceWorker.register('./sw.js?v=2.9.0').then(reg => {
+    navigator.serviceWorker.register('./sw.js?v=2.9.1').then(reg => {
       reg.update();
     }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -2332,6 +2332,22 @@ document.addEventListener('click', function(e) {
   .pano-host:active {
     cursor: grabbing;
   }
+  .pano-error {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5;
+    width: min(440px, calc(100vw - 32px)); padding: 22px 24px; border-radius: 14px;
+    background: rgba(250, 248, 242, 0.97); color: #253d37; text-align: center;
+    box-shadow: 0 18px 48px rgba(0,0,0,.45); font-size: 14px; line-height: 1.65;
+  }
+  .pano-error[hidden] { display: none; }
+  .pano-error strong { display: block; font-size: 17px; margin-bottom: 6px; color: #923c32; }
+  .pano-error p { margin: 0 0 14px; color: #4f5a54; }
+  .pano-error-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .pano-error-btn {
+    padding: 9px 14px; border-radius: 8px; border: 1px solid #c9c4b4; background: #fff;
+    color: #253d37; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+  }
+  .pano-error-btn.primary { background: #315b4e; border-color: #315b4e; color: #fff; }
+  .pano-error-btn[hidden] { display: none; }
   .pano-loading {
     position: absolute;
     inset: 0;
@@ -3586,6 +3602,14 @@ document.addEventListener('click', function(e) {
       <div class="pano-spinner"></div>
       <p>正在串流加載 360° 高解析實景環景照片...</p>
     </div>
+    <div id="panoError" class="pano-error" role="alert" hidden>
+      <strong>這張 360° 實景照片目前無法載入</strong>
+      <p>照片原本連結到 Google 地圖的相片網址，該網址可能已過期或不允許其他網站讀取。您仍可在 Google 地圖觀看此處的 360° 實景。</p>
+      <div class="pano-error-actions">
+        <a id="panoErrorLink" class="pano-error-btn primary" href="#" target="_blank" rel="noopener">在 Google 地圖觀看 360° 實景 ↗</a>
+        <button type="button" class="pano-error-btn" onclick="window.__closePano && window.__closePano()">返回 3D 校園</button>
+      </div>
+    </div>
   </div>
   <div id="panoAdjBar" class="pano-adj-bar" hidden>
     <span class="pano-adj-label">鄰近景點穿梭：</span>
@@ -3601,7 +3625,7 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script src="./vendor/qrcode.min.js"></script>
-<script src="./campus-ui.js?v=2.9.0"></script>
-<script type="module" src="./campus-3d.js?v=2.9.0"></script>
+<script src="./campus-ui.js?v=2.9.1"></script>
+<script type="module" src="./campus-3d.js?v=2.9.1"></script>
 </body>
 </html>

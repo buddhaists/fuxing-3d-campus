@@ -18572,6 +18572,16 @@ let panoHotspotsGroup = null;
 const panoRaycaster = new THREE.Raycaster();
 const panoMouse = new THREE.Vector2();
 
+// 環景畫布尺寸與容器同步（容器隱藏時建立會得到 0×0 畫布 → 整片黑）
+function syncPanoSize() {
+  const host = document.getElementById('panoHost');
+  if (!host || !panoRenderer || !panoCamera) return;
+  const w = host.clientWidth || window.innerWidth, h = host.clientHeight || window.innerHeight;
+  panoCamera.aspect = w / h;
+  panoCamera.updateProjectionMatrix();
+  panoRenderer.setSize(w, h);
+}
+
 function initPanoViewer() {
   const host = document.getElementById('panoHost');
   if (!host || panoRenderer) return;
@@ -18748,13 +18758,15 @@ function panoRenderLoop() {
   panoRenderer.render(panoScene, panoCamera);
 }
 
+let panoLoadToken = 0;
 function openPano(spotId = 'spot-10') {
   const wrap = document.getElementById('pano-wrap');
   const loading = document.getElementById('panoLoading');
   if (!wrap) return;
 
+  wrap.hidden = false;                 // 先顯示容器，才能量到正確尺寸
   initPanoViewer();
-  wrap.hidden = false;
+  syncPanoSize();
   if (loading) loading.style.display = 'flex';
 
   const spot = (window.CAMPUS_360_SPOTS || []).find(s => s.id === spotId || (spotId === 'courtyard-360' && s.id === 'spot-10')) || (window.CAMPUS_360_SPOTS || [])[0];
@@ -18795,32 +18807,66 @@ function openPano(spotId = 'spot-10') {
     }
   }
 
+  // ---- 360° 照片載入鏈：自架 ./pano/<spot-id>.jpg → Google 圖源 → 縮圖；全部失敗則顯示說明與 Google 地圖按鈕 ----
+  // Google 地圖照片網址 (lh3.googleusercontent.com/gps-cs-s/…) 為有時效的簽章連結，過期後回 403，
+  // 且未提供 CORS 標頭，WebGL 無法使用 → 以前會整片黑畫面。建議將環景照片放進 repo 的 pano/ 資料夾自架。
+  const loadToken = ++panoLoadToken;
+  const errEl = document.getElementById('panoError');
+  if (errEl) errEl.hidden = true;
+  const candidates = [
+    spot.localPano || `./pano/${spot.id}.jpg`,
+    spot.panoUrl,
+    spot.thumb
+  ].filter((u, i, arr) => u && arr.indexOf(u) === i);
   const texLoader = new THREE.TextureLoader();
   texLoader.crossOrigin = 'anonymous';
-  texLoader.load(spot.panoUrl, texture => {
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.minFilter = THREE.LinearFilter;
-    if (panoMesh) {
-      panoMesh.material.map = texture;
-      panoMesh.material.needsUpdate = true;
+  const tryLoad = idx => {
+    if (loadToken !== panoLoadToken) return;               // 使用者已切換到其他景點
+    if (idx >= candidates.length) {
+      if (panoMesh) { panoMesh.material.map = null; panoMesh.material.color.set(0x111111); panoMesh.material.needsUpdate = true; }
+      if (loading) loading.style.display = 'none';
+      if (errEl) {
+        const link = document.getElementById('panoErrorLink');
+        if (link) {
+          link.href = spot.externalUrl || '#';
+          link.hidden = !spot.externalUrl;
+        }
+        errEl.hidden = false;
+      }
+      console.warn('[Pano] 所有 360° 圖源皆無法載入：', spot.id, candidates);
+      return;
     }
-    if (loading) loading.style.display = 'none';
-  }, undefined, () => {
-    texLoader.load(spot.thumb || './tex/courtyard_panorama.jpg', fallbackTex => {
-      fallbackTex.colorSpace = THREE.SRGBColorSpace;
+    let settled = false;
+    const timer = setTimeout(() => { if (!settled) { settled = true; tryLoad(idx + 1); } }, 15000);
+    texLoader.load(candidates[idx], texture => {
+      if (settled) { texture.dispose(); return; }
+      settled = true; clearTimeout(timer);
+      if (loadToken !== panoLoadToken) { texture.dispose(); return; }
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.minFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
       if (panoMesh) {
-        panoMesh.material.map = fallbackTex;
+        const old = panoMesh.material.map;
+        panoMesh.material.color.set(0xffffff);   // 底色必須為白色，否則照片會被乘暗成黑色
+        panoMesh.material.map = texture;
         panoMesh.material.needsUpdate = true;
+        if (old && old !== texture) old.dispose();
       }
       if (loading) loading.style.display = 'none';
+    }, undefined, () => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      tryLoad(idx + 1);
     });
-  });
+  };
+  tryLoad(0);
 
   if (!panoAnimId) panoRenderLoop();
   showToast(`已進入 360° 實景環景：${spot.name}`);
 }
 
 function closePano() {
+  panoLoadToken++;   // 取消尚未完成的照片載入
   const wrap = document.getElementById('pano-wrap');
   if (wrap) wrap.hidden = true;
   if (panoAnimId) {
