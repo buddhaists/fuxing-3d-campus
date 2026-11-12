@@ -121,7 +121,6 @@ window.CAMPUS_360_SPOTS = [
     "desc": "前庭南側綠蔭花木中的校園藝術雕塑，散發人文藝術氛圍。",
     "adjacentSpotIds": [
       "spot-16",
-      "spot-38",
       "spot-17"
     ]
   },
@@ -144,27 +143,6 @@ window.CAMPUS_360_SPOTS = [
       "spot-37",
       "spot-6",
       "spot-4"
-    ]
-  },
-  {
-    "id": "spot-38",
-    "num": 38,
-    "name": "前庭南側踏石草坪",
-    "group": "校門與戶外前庭",
-    "floor": "1F",
-    "px": 842.08,
-    "py": 224,
-    "x": 85.82,
-    "y": 2.2,
-    "z": -4.16,
-    "thumb": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RBEhfrsjy5TZNWbnD_tO20eO4KrSgwxigZR8d4h-6vN3iri5OMbsZZ-YY7QqamLpto6ef4ZVDNkCqjf3bAnOryKSIiBirL-AbUeM-fkKRnxJANegJxYMPQRfka0anFohvvrfY=w400-h250-k-no",
-    "panoUrl": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RBEhfrsjy5TZNWbnD_tO20eO4KrSgwxigZR8d4h-6vN3iri5OMbsZZ-YY7QqamLpto6ef4ZVDNkCqjf3bAnOryKSIiBirL-AbUeM-fkKRnxJANegJxYMPQRfka0anFohvvrfY=w2048",
-    "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,340h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XgEg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RBEhfrsjy5TZNWbnD_tO20eO4KrSgwxigZR8d4h-6vN3iri5OMbsZZ-YY7QqamLpto6ef4ZVDNkCqjf3bAnOryKSIiBirL-AbUeM-fkKRnxJANegJxYMPQRfka0anFohvvrfY%3Dw900-h600-k-no-pi-20-ya340-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
-    "desc": "前庭綠草如茵的步道與踏石，連接南棟教學區。",
-    "adjacentSpotIds": [
-      "spot-20",
-      "spot-17",
-      "spot-24"
     ]
   },
   {
@@ -206,7 +184,6 @@ window.CAMPUS_360_SPOTS = [
     "desc": "南側通學副門，緊鄰色彩鮮豔的東南側馬賽克藝術拼貼牆。",
     "adjacentSpotIds": [
       "spot-20",
-      "spot-38",
       "spot-24"
     ]
   },
@@ -523,8 +500,7 @@ window.CAMPUS_360_SPOTS = [
     "desc": "東棟一樓特色閱讀廊道，展示「喜閱復興」主題閱讀與藝文展覽。",
     "adjacentSpotIds": [
       "spot-13",
-      "spot-22",
-      "spot-38"
+      "spot-22"
     ]
   },
   {
