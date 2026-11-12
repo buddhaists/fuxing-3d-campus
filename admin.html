@@ -231,6 +231,7 @@ let cfg = loadCfg();
 
 async function gh(path, opts = {}) {
   const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}${path}`, {
+    cache: 'no-store',   // GitHub API 預設快取 60 秒；不關閉會拿到舊版本 → 422 not a fast forward、或載入到發布前的舊資料
     ...opts,
     headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${cfg.token}`, 'X-GitHub-Api-Version': '2022-11-28', ...(opts.body ? { 'Content-Type': 'application/json' } : {}) }
   });
@@ -477,8 +478,8 @@ function renderEditor() {
   $('f_x').value = s.x; $('f_z').value = s.z; $('f_desc').value = s.desc || ''; $('f_ext').value = s.externalUrl || '';
   const img = $('f_img'); const src = photoSrc(s);
   if (src) img.src = src; else img.removeAttribute('src');
-  img.onerror = () => { img.removeAttribute('src'); $('f_photoMeta').textContent = '⚠ 目前的照片網址無法讀取，建議上傳自架照片'; $('f_photoMeta').className = 'meta warn'; };
   const meta = $('f_photoMeta');
+  img.onerror = () => { img.removeAttribute('src'); if (!meta.isConnected) return; meta.textContent = '⚠ 目前的照片網址無法讀取，建議上傳自架照片'; meta.className = 'meta warn'; };
   if (pend) { meta.textContent = `新照片 ${pend.w}×${pend.h}（${(pend.full.size / 1048576).toFixed(1)} MB），發布後生效`; meta.className = 'meta'; }
   else if (hasLocalPhoto(s)) { meta.textContent = `自架照片：${s.localPano.split('?')[0]}`; meta.className = 'meta'; }
   else { meta.textContent = '⚠ 尚無自架照片（目前使用 Google 網址，可能過期失效）'; meta.className = 'meta warn'; }
@@ -596,10 +597,6 @@ async function publish() {
       if (!confirm('⚠ 在你編輯期間，GitHub 上的景點資料已被其他人（或另一個分頁）更新。\n\n按「確定」以你目前的內容覆蓋；按「取消」放棄發布（可重新載入後再改）。')) return;
       busy(true);
     }
-    const ref = await gh(`/git/ref/heads/${encodeURIComponent(cfg.branch)}`);
-    const headSha = ref.object.sha;
-    const headCommit = await gh(`/git/commits/${headSha}`);
-
     // 2) 準備照片檔（帶版本參數，避免瀏覽器與 Service Worker 讀到舊照片快取）
     const ver = Date.now().toString(36);
     const tree = [];
@@ -623,11 +620,23 @@ async function publish() {
     for (const path of deletedPhotoPaths) {
       try { await gh(`/contents/${path}?ref=${encodeURIComponent(cfg.branch)}`); tree.push({ path, mode: '100644', type: 'blob', sha: null }); } catch {}
     }
-    const newTree = await gh('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: headCommit.tree.sha, tree }) });
-    const commit = await gh('/git/commits', { method: 'POST', body: JSON.stringify({
-      message: `admin: 更新 360° 實景景點（${summary || '資料更新'}）`, tree: newTree.sha, parents: [headSha] }) });
-    busy(true, '發布中…');
-    await gh(`/git/refs/heads/${encodeURIComponent(cfg.branch)}`, { method: 'PATCH', body: JSON.stringify({ sha: commit.sha }) });
+    // 5) 以「當下最新」的分支版本為基礎建立 commit；若分支在這期間又前進（422 not a fast forward）則自動重試
+    for (let attempt = 1; ; attempt++) {
+      busy(true, attempt === 1 ? '發布中…' : `分支已更新，重新發布（第 ${attempt} 次）…`);
+      const ref = await gh(`/git/ref/heads/${encodeURIComponent(cfg.branch)}`);
+      const headSha = ref.object.sha;
+      const headCommit = await gh(`/git/commits/${headSha}`);
+      const newTree = await gh('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: headCommit.tree.sha, tree }) });
+      const commit = await gh('/git/commits', { method: 'POST', body: JSON.stringify({
+        message: `admin: 更新 360° 實景景點（${summary || '資料更新'}）`, tree: newTree.sha, parents: [headSha] }) });
+      try {
+        await gh(`/git/refs/heads/${encodeURIComponent(cfg.branch)}`, { method: 'PATCH', body: JSON.stringify({ sha: commit.sha }) });
+        break;
+      } catch (err) {
+        if (attempt < 3 && /fast forward|422/i.test(err.message)) { await new Promise(r => setTimeout(r, 800 * attempt)); continue; }
+        throw err;
+      }
+    }
 
     pendingPhotos.forEach(p => URL.revokeObjectURL(p.url));
     await loadData();
