@@ -18561,9 +18561,18 @@ let panoIsInteracting = false;
 let panoDownX = 0, panoDownY = 0, panoDownLon = 0, panoDownLat = 0;
 let panoHotspotsGroup = null;
 let panoDefaultLon = 90;
+let panoDefaultLat = 0;
 let panoCurrentSpot = null;
 const panoRaycaster = new THREE.Raycaster();
 const panoMouse = new THREE.Vector2();
+
+function panoResize() {
+  const host = document.getElementById('panoHost');
+  if (!host || !panoRenderer || !panoCamera || !host.clientWidth || !host.clientHeight) return;
+  panoCamera.aspect = host.clientWidth / host.clientHeight;
+  panoCamera.updateProjectionMatrix();
+  panoRenderer.setSize(host.clientWidth, host.clientHeight);
+}
 
 function initPanoViewer() {
   const host = document.getElementById('panoHost');
@@ -18649,17 +18658,14 @@ function initPanoViewer() {
     panoCamera.updateProjectionMatrix();
   }, { passive: false });
 
-  window.addEventListener('resize', () => {
-    if (!host || !panoRenderer || !panoCamera) return;
-    panoCamera.aspect = host.clientWidth / host.clientHeight;
-    panoCamera.updateProjectionMatrix();
-    panoRenderer.setSize(host.clientWidth, host.clientHeight);
-  });
+  window.addEventListener('resize', panoResize);
+  document.addEventListener('fullscreenchange', panoResize);
+  document.addEventListener('webkitfullscreenchange', panoResize);
 
   document.getElementById('panoCloseBtn')?.addEventListener('click', closePano);
   document.getElementById('panoResetView')?.addEventListener('click', () => {
     panoTargetLon = panoDefaultLon;
-    panoTargetLat = 0;
+    panoTargetLat = panoDefaultLat;
     panoCamera.fov = 75;
     panoCamera.updateProjectionMatrix();
     panoGyroRebase(true);
@@ -18680,49 +18686,41 @@ function initPanoViewer() {
   });
 }
 
+function makeHotspotTexture(label) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 320;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(16,185,129,0.92)'; g.beginPath(); g.arc(128, 112, 84, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#fff'; g.lineWidth = 8; g.stroke();
+  g.strokeStyle = '#fff'; g.lineWidth = 18; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(84, 138); g.lineTo(128, 86); g.lineTo(172, 138); g.stroke();
+  g.font = '700 30px "Noto Sans TC", sans-serif'; g.textAlign = 'center';
+  const t = label.length > 9 ? label.slice(0, 9) + '…' : label;
+  g.lineWidth = 8; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(t, 128, 262);
+  g.fillStyle = '#fff'; g.fillText(t, 128, 262);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function updatePanoHotspots(currentSpot) {
   if (!panoHotspotsGroup) return;
   while (panoHotspotsGroup.children.length > 0) {
     const c = panoHotspotsGroup.children.pop();
-    if (c.userData && c.userData.ownGeo && c.geometry) c.geometry.dispose();
-    if (c.material) c.material.dispose();
+    if (c.material) { if (c.material.map) c.material.map.dispose(); c.material.dispose(); }
   }
-
-  const adjSpots = (currentSpot.adjacentSpotIds || []).map(id => (window.CAMPUS_360_SPOTS || []).find(s => s.id === id)).filter(Boolean);
-  const arrowGeo = new THREE.ConeGeometry(9, 22, 16);
-  arrowGeo.rotateX(Math.PI / 2);
-
-  adjSpots.forEach(adj => {
-    const dx = adj.x - currentSpot.x;
-    const dz = adj.z - currentSpot.z;
-    const angle = Math.atan2(dz, dx) + THREE.MathUtils.degToRad(currentSpot.yawOffset || 0);
-
-    const dist = 180;
-    const x = dist * Math.cos(angle);
-    const z = dist * Math.sin(angle);
-    const y = -80;
-
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0x10b981,
-      transparent: true,
-      opacity: 0.85,
-      depthTest: false
-    });
-    const arrow = new THREE.Mesh(arrowGeo, mat);
-    arrow.position.set(x, y, z);
-    arrow.lookAt(x * 1.5, y, z * 1.5);
-    arrow.userData = { isPanoHotspot: true, spotId: adj.id, spotName: adj.name, ownGeo: true };
-
-    // Ring base under arrow
-    const rGeo = new THREE.RingGeometry(6, 12, 16);
-    rGeo.rotateX(-Math.PI / 2);
-    const rMat = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.6, depthTest: false, side: THREE.DoubleSide });
-    const ring = new THREE.Mesh(rGeo, rMat);
-    ring.position.set(x, y - 8, z);
-    ring.userData = { isPanoHotspot: true, spotId: adj.id, ownGeo: true };
-
-    panoHotspotsGroup.add(arrow);
-    panoHotspotsGroup.add(ring);
+  const all = window.CAMPUS_360_SPOTS || [];
+  (currentSpot.links || []).forEach(l => {
+    const target = all.find(s => s.id === l.to);
+    if (!target) return;
+    const lon = THREE.MathUtils.degToRad(THREE.MathUtils.radToDeg(l.yaw) - 90);
+    const lat = l.pitch;
+    const R = 300;
+    const mat = new THREE.SpriteMaterial({ map: makeHotspotTexture(target.name), transparent: true, depthTest: false, depthWrite: false });
+    const sp = new THREE.Sprite(mat);
+    sp.position.set(R * Math.cos(lat) * Math.cos(lon), R * Math.sin(lat), R * Math.cos(lat) * Math.sin(lon));
+    sp.scale.set(44, 55, 1);
+    sp.renderOrder = 10;
+    sp.userData = { isPanoHotspot: true, spotId: target.id, spotName: target.name, baseY: sp.position.y };
+    panoHotspotsGroup.add(sp);
   });
 }
 
@@ -18752,8 +18750,8 @@ function panoRenderLoop() {
   if (panoHotspotsGroup) {
     const t = performance.now() * 0.003;
     panoHotspotsGroup.children.forEach(c => {
-      if (c.geometry && c.geometry.type === 'ConeGeometry') {
-        c.position.y = -80 + Math.sin(t * 2) * 3;
+      if (c.userData && c.userData.baseY !== undefined) {
+        c.position.y = c.userData.baseY + Math.sin(t * 2) * 2.5;
       }
     });
   }
@@ -18843,57 +18841,101 @@ function initPanoGyro() {
 window.__setPanoGyro = setPanoGyro;
 
 // ------------------------------------------
-// Pano texture loader: LRU cache + thumb-first + adjacent preload
+// Pano cube loader: tiles from the 360FSPS2026 tour (Marzipano cube tiles)
+//   URL: <PANO_BASE>tiles/<tourId>/<z>/<face>/<row>/<col>.jpg   z=1:512px(1 tile) 2:1024px(2x2) 3:2048px(4x4)
+//   Progressive: L1 (6 req) -> L2 (24 req) -> L3 (96 req, desktop only). LRU cache of cubes, disposed on eviction.
 // ------------------------------------------
 const PANO_CACHE_MAX = 6;
-const panoTexCache = new Map();      // url -> THREE.Texture (LRU, most recent last)
-const panoThumbCache = new Map();    // url -> THREE.Texture (small, kept)
-const panoInflight = new Map();      // url -> Promise<Texture>
-let panoCurrentUrl = null;
+const PANO_FACE_ORDER = ['r', 'l', 'u', 'd', 'b', 'f'];
+// Marzipano's top/bottom faces use the standard cube-net orientation; three.js cube sampling is rotated 180° from it
+// (verified against real tiles: seams with the front/side faces are continuous only with a 180° turn)
+const PANO_FACE_ROT = { u: 2, d: 2 };   // quarter turns (clockwise) applied to a face's canvas   // three.js cube order: +x,-x,+y,-y,+z,-z  (front = -z)
+const panoCubeCache = new Map();     // spotId -> { tex, level }  (most recent last)
+const panoInflight = new Map();      // `${spotId}:${level}` -> Promise<CubeTexture>
+let panoCurrentId = null;
 let panoLoadToken = 0;
 const panoSeenIds = new Set();
 
-function panoTexLoad(url) {
-  if (panoInflight.has(url)) return panoInflight.get(url);
-  const p = new Promise((resolve, reject) => {
-    const loader = new THREE.TextureLoader();
-    loader.crossOrigin = 'anonymous';
-    loader.load(url, tex => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.minFilter = THREE.LinearFilter;
-      tex.generateMipmaps = false;
-      resolve(tex);
-    }, undefined, err => reject(err || new Error('pano load failed')));
-  }).finally(() => panoInflight.delete(url));
-  panoInflight.set(url, p);
+function panoMaxLevel() {
+  const nav = navigator;
+  const lowEnd = (nav.connection && nav.connection.saveData) || (nav.deviceMemory && nav.deviceMemory < 4) ||
+    (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  return lowEnd ? 2 : 3;
+}
+
+function panoLoadTile(url, retries = 2) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.decoding = 'async';
+    img.onload = () => resolve(img);
+    img.onerror = () => {
+      if (retries > 0) setTimeout(() => panoLoadTile(url, retries - 1).then(resolve, reject), 350 * (3 - retries));
+      else reject(new Error('tile failed: ' + url));
+    };
+    img.src = url;
+  });
+}
+
+function panoLoadCube(spot, level) {
+  const key = spot.id + ':' + level;
+  if (panoInflight.has(key)) return panoInflight.get(key);
+  const grid = 1 << (level - 1), TS = 512, size = grid * TS;
+  const base = (window.PANO_BASE || '') + 'tiles/' + spot.tourId + '/' + level + '/';
+  const canvases = PANO_FACE_ORDER.map(() => {
+    const c = document.createElement('canvas'); c.width = c.height = size; return c;
+  });
+  const jobs = [];
+  PANO_FACE_ORDER.forEach((f, fi) => {
+    const ctx = canvases[fi].getContext('2d');
+    const rot = PANO_FACE_ROT[f] || 0;
+    if (rot) { ctx.translate(size / 2, size / 2); ctx.rotate((rot % 4) * Math.PI / 2); ctx.translate(-size / 2, -size / 2); }
+    for (let y = 0; y < grid; y++) for (let x = 0; x < grid; x++) {
+      jobs.push(panoLoadTile(base + f + '/' + y + '/' + x + '.jpg').then(img => ctx.drawImage(img, x * TS, y * TS)));
+    }
+  });
+  const p = Promise.all(jobs).then(() => {
+    const tex = new THREE.CubeTexture(canvases);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.generateMipmaps = false;
+    tex.minFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
+  }).finally(() => panoInflight.delete(key));
+  panoInflight.set(key, p);
   return p;
 }
 
-function panoCacheGet(url) {
-  const t = panoTexCache.get(url);
-  if (t) { panoTexCache.delete(url); panoTexCache.set(url, t); }
-  return t;
+function panoCacheGet(id) {
+  const e = panoCubeCache.get(id);
+  if (e) { panoCubeCache.delete(id); panoCubeCache.set(id, e); }
+  return e;
 }
 
-function panoCachePut(url, tex) {
-  panoTexCache.set(url, tex);
-  while (panoTexCache.size > PANO_CACHE_MAX) {
-    const [oldUrl, oldTex] = panoTexCache.entries().next().value;
-    if (oldUrl === panoCurrentUrl) {      // never dispose the texture on screen
-      panoTexCache.delete(oldUrl); panoTexCache.set(oldUrl, oldTex);
-      if (panoTexCache.size <= 1) break;
+function panoCachePut(id, tex, level) {
+  const old = panoCubeCache.get(id);
+  if (old && old.tex !== tex) {
+    if (panoScene && panoScene.background === old.tex) { /* caller swaps background right after */ }
+    old.tex.dispose();
+  }
+  panoCubeCache.delete(id);
+  panoCubeCache.set(id, { tex, level });
+  while (panoCubeCache.size > PANO_CACHE_MAX) {
+    const [oldId, oldE] = panoCubeCache.entries().next().value;
+    if (oldId === panoCurrentId) {            // never dispose the cube on screen
+      panoCubeCache.delete(oldId); panoCubeCache.set(oldId, oldE);
+      if (panoCubeCache.size <= 1) break;
       continue;
     }
-    panoTexCache.delete(oldUrl);
-    oldTex.dispose();
+    panoCubeCache.delete(oldId);
+    oldE.tex.dispose();
   }
 }
 
-function applyPanoTexture(tex, fade) {
-  if (!panoMesh) return;
-  panoMesh.material.map = tex;
-  panoMesh.material.color.setHex(0xffffff);
-  panoMesh.material.needsUpdate = true;
+function applyPanoCube(tex, fade) {
+  if (!panoScene) return;
+  panoScene.background = tex;
+  if (panoMesh) panoMesh.visible = false;
   if (fade && panoRenderer) {
     const el = panoRenderer.domElement;
     el.classList.remove('pano-fade-in');
@@ -18911,9 +18953,7 @@ function showPanoError(spot, token) {
   const name = document.getElementById('panoErrorName');
   if (name) name.textContent = spot.name;
   const link = document.getElementById('panoErrorExternal');
-  if (link) {
-    if (spot.externalUrl) { link.href = spot.externalUrl; link.hidden = false; } else link.hidden = true;
-  }
+  if (link) { link.href = spot.tourUrl || window.PANO_BASE || '#'; link.hidden = false; }
   const retry = document.getElementById('panoErrorRetry');
   if (retry) retry.onclick = () => openPano(spot.id, true);
   errEl.hidden = false;
@@ -18922,49 +18962,51 @@ function showPanoError(spot, token) {
 function loadPanoForSpot(spot, forceReload) {
   const token = ++panoLoadToken;
   const loading = document.getElementById('panoLoading');
-  const full = spot.panoUrl;
-  panoCurrentUrl = full;
+  const maxLevel = panoMaxLevel();
+
+  // Leaving a level-3 cube: drop it (≈100 MB GPU); neighbours stay at level 2
+  const prev = panoCurrentId && panoCurrentId !== spot.id ? panoCubeCache.get(panoCurrentId) : null;
+  if (prev && prev.level >= 3) { panoCubeCache.delete(panoCurrentId); prev.tex.dispose(); }
+  panoCurrentId = spot.id;
+
   if (forceReload) {
-    const old = panoTexCache.get(full);
-    if (old) { panoTexCache.delete(full); old.dispose(); }
+    const e = panoCubeCache.get(spot.id);
+    if (e) { panoCubeCache.delete(spot.id); e.tex.dispose(); }
   }
 
-  const cached = panoCacheGet(full);
-  if (cached) {
-    applyPanoTexture(cached, false);
+  const have = panoCacheGet(spot.id);
+  if (have) {
+    applyPanoCube(have.tex, false);
     if (loading) loading.style.display = 'none';
     panoSeenIds.add(spot.id);
-    preloadAdjacentPanos(spot);
-    return;
-  }
-
-  // Show loading overlay only when no preview is available
-  const thumbCached = spot.thumb && panoThumbCache.get(spot.thumb);
-  if (thumbCached) {
-    applyPanoTexture(thumbCached, false);
-    if (loading) loading.style.display = 'none';
   } else {
     if (loading) loading.style.display = 'flex';
-    if (panoMesh) { panoMesh.material.map = null; panoMesh.material.color.setHex(0x111111); panoMesh.material.needsUpdate = true; }
-    if (spot.thumb && spot.thumb !== full) {
-      panoTexLoad(spot.thumb).then(t => {
-        panoThumbCache.set(spot.thumb, t);
-        if (token !== panoLoadToken || panoTexCache.has(full)) return;
-        applyPanoTexture(t, false);
-        if (loading) loading.style.display = 'none';
-      }).catch(() => {});
-    }
+    if (panoScene) panoScene.background = new THREE.Color(0x111111);
   }
 
-  panoTexLoad(full).then(tex => {
-    panoCachePut(full, tex);
-    if (token !== panoLoadToken) return;
-    applyPanoTexture(tex, true);
+  const step = (level, fade) => panoLoadCube(spot, level).then(tex => {
+    if (token !== panoLoadToken) { tex.dispose(); return null; }
+    panoCachePut(spot.id, tex, level);
+    applyPanoCube(tex, fade);
     if (loading) loading.style.display = 'none';
-    panoSeenIds.add(spot.id);
-    window.dispatchEvent(new CustomEvent('pano-seen', { detail: { id: spot.id } }));
-    preloadAdjacentPanos(spot);
-  }).catch(() => showPanoError(spot, token));
+    if (!panoSeenIds.has(spot.id)) {
+      panoSeenIds.add(spot.id);
+      window.dispatchEvent(new CustomEvent('pano-seen', { detail: { id: spot.id } }));
+    }
+    return tex;
+  });
+
+  const startLevel = have ? have.level + 1 : 1;
+  let chain = Promise.resolve(true);
+  for (let lv = startLevel; lv <= maxLevel; lv++) {
+    chain = chain.then(ok => ok === null ? null : step(lv, lv > 1 || !!have).then(t => (t ? true : null)));
+  }
+  chain.then(() => { if (token === panoLoadToken) preloadAdjacentPanos(spot); })
+       .catch(() => {
+         const e = panoCubeCache.get(spot.id);
+         if (!e) showPanoError(spot, token);            // nothing to show at all -> error UI
+         else if (token === panoLoadToken) preloadAdjacentPanos(spot);   // low-res already shown; keep it
+       });
 }
 
 function preloadAdjacentPanos(spot) {
@@ -18972,10 +19014,10 @@ function preloadAdjacentPanos(spot) {
   const ids = (spot.adjacentSpotIds || []).slice(0, 3);
   const run = () => ids.forEach(id => {
     const adj = all.find(s => s.id === id);
-    if (!adj || panoTexCache.has(adj.panoUrl)) return;
-    panoTexLoad(adj.panoUrl).then(t => {
-      if (panoTexCache.has(adj.panoUrl)) { t.dispose(); return; }
-      panoCachePut(adj.panoUrl, t);
+    if (!adj || panoCubeCache.has(adj.id)) return;
+    panoLoadCube(adj, 2).then(t => {
+      if (panoCubeCache.has(adj.id)) { t.dispose(); return; }
+      panoCachePut(adj.id, t, 2);
     }).catch(() => {});
   });
   (window.requestIdleCallback || (f => setTimeout(f, 600)))(run, { timeout: 2500 });
@@ -18989,6 +19031,7 @@ function openPano(spotId = 'spot-10', forceReload = false) {
 
   initPanoViewer();
   wrap.hidden = false;
+  panoResize();     // host has size only once visible
   const errEl = document.getElementById('panoError');
   if (errEl) errEl.hidden = true;
 
@@ -19002,17 +19045,16 @@ function openPano(spotId = 'spot-10', forceReload = false) {
   const titleEl = document.getElementById('panoTitle');
   if (titleEl) titleEl.textContent = `${spot.name} · ${spot.group}`;
   const extEl = document.getElementById('panoExternalBtn');
-  if (extEl && spot.externalUrl) extEl.href = spot.externalUrl;
+  if (extEl) extEl.href = spot.tourUrl || window.PANO_BASE || '#';
 
   panoCurrentSpot = spot;
   updatePanoHotspots(spot);
-  // Opening view faces the primary adjacent spot (same bearing the arrow uses)
-  const first = ((spot.adjacentSpotIds || []).map(id => (window.CAMPUS_360_SPOTS || []).find(x => x.id === id)).filter(Boolean))[0];
-  panoDefaultLon = first
-    ? THREE.MathUtils.radToDeg(Math.atan2(first.z - spot.z, first.x - spot.x) + THREE.MathUtils.degToRad(spot.yawOffset || 0))
-    : 90;
+  // Opening view = the tour's own initial view (Marzipano yaw 0 = front face = our lon -90)
+  const iv = spot.view || { yaw: 0, pitch: 0 };
+  panoDefaultLon = THREE.MathUtils.radToDeg(iv.yaw) - 90;
+  panoDefaultLat = THREE.MathUtils.radToDeg(iv.pitch);
   panoLon = panoTargetLon = panoDefaultLon;
-  panoLat = panoTargetLat = 0;
+  panoLat = panoTargetLat = panoDefaultLat;
   panoGyroRebase(true);
 
   // Update Bottom Adjacency Chips Navigation
@@ -22933,3 +22975,4 @@ runChunkedSceneBuild();
 
 // Debug hook (read-only): current pano view angles
 window.__panoDbg = () => ({ lon: +panoTargetLon.toFixed(1), lat: +panoTargetLat.toFixed(1), fov: panoCamera ? panoCamera.fov : null });
+window.__panoSetView = (lon, lat, fov) => { panoLon = panoTargetLon = lon; panoLat = panoTargetLat = lat; if (fov) { panoCamera.fov = fov; panoCamera.updateProjectionMatrix(); } };

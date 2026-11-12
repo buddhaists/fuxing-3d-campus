@@ -3,10 +3,10 @@
 
 const CACHE_NAME = 'fuxing-3d-campus-v2.8.0';
 
-// 360° 全景圖（Google 圖片）執行期快取：看過的景點離線也能開，最多保留 PANO_CACHE_MAX 張
+// 360° 全景分塊圖（buddhaists.github.io/360fsps2026）執行期快取：看過的景點離線也能開，最多保留 PANO_CACHE_MAX 張
 const PANO_CACHE = 'fuxing-pano-runtime-v1';
-const PANO_CACHE_MAX = 30;
-const PANO_HOSTS = ['lh3.googleusercontent.com'];
+const PANO_CACHE_MAX = 600;   // 一個景點 L1+L2 約 30 張小圖，保留約 20 個景點
+const PANO_HOSTS = ['buddhaists.github.io'];
 
 // 核心極速快取清單 (App Shell + 3D 引擎 + 1:1 2.5D 高清預覽底圖 + 核心平面圖 + 離線 QR Code)
 const PRECACHE_ASSETS = [
@@ -54,7 +54,7 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
 
   // 360° 全景圖：Cache-First，僅快取 CORS 成功的 200 回應，超過上限淘汰最舊
-  if (req.method === 'GET' && PANO_HOSTS.includes(url.hostname) && req.mode === 'cors') {
+  if (req.method === 'GET' && PANO_HOSTS.includes(url.hostname) && url.pathname.includes('/360fsps2026/tiles/') && req.mode === 'cors') {
     event.respondWith(
       caches.open(PANO_CACHE).then(cache =>
         cache.match(req).then(hit => {

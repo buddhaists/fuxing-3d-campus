@@ -3021,8 +3021,8 @@ document.addEventListener('click', function(e) {
         <span class="pano-sphere-icon">🌐</span>
         <span>進入 360° 實景</span>
       </button>
-      <a id="gsesSpotMapsBtn" href="#" target="_blank" rel="noopener" class="gses-btn-maps" title="在 Google 地圖中開啟">
-        街景 ↗
+      <a id="gsesSpotMapsBtn" href="#" target="_blank" rel="noopener" class="gses-btn-maps" title="在原 360 導覽網站開啟">
+        原導覽 ↗
       </a>
     </div>
   </aside>
@@ -3568,8 +3568,8 @@ document.addEventListener('click', function(e) {
       <h2 id="panoTitle">中庭花園與愛悅樓前廣場</h2>
     </div>
     <div class="pano-actions">
-      <a id="panoExternalBtn" href="https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,100.12h,92.02t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98X_pAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g%3Dw900-h600-k-no-pi-2.02112549397485-ya100.12206414212982-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D" target="_blank" rel="noopener" class="pano-ext-btn">
-        <span>Google 街景全螢幕 ↗</span>
+      <a id="panoExternalBtn" href="https://buddhaists.github.io/360fsps2026/" target="_blank" rel="noopener" class="pano-ext-btn">
+        <span>原導覽網站 ↗</span>
       </a>
       <button id="panoCloseBtn" class="pano-close-btn" type="button" aria-label="關閉環景">✕ 返回 3D 校園</button>
     </div>
@@ -3583,10 +3583,10 @@ document.addEventListener('click', function(e) {
       <div class="pano-error-card">
         <strong>此景點的環景暫時無法載入</strong>
         <p id="panoErrorName"></p>
-        <p class="pano-error-hint">可能是網路不穩，或來源圖片暫時無法存取。</p>
+        <p class="pano-error-hint">可能是網路不穩，或 360 導覽網站暫時無法存取。</p>
         <div class="pano-error-actions">
           <button id="panoErrorRetry" type="button" class="pano-ctrl-pill is-active">↻ 重試</button>
-          <a id="panoErrorExternal" class="pano-ctrl-pill" href="#" target="_blank" rel="noopener">在 Google 地圖開啟 ↗</a>
+          <a id="panoErrorExternal" class="pano-ctrl-pill" href="#" target="_blank" rel="noopener">在原導覽網站開啟 ↗</a>
         </div>
       </div>
     </div>
@@ -3607,6 +3607,7 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script src="./vendor/qrcode.min.js"></script>
+<script src="./pano-spots.js?v=2.9.0"></script>
 <script src="./campus-ui.js?v=2.8.0"></script>
 <script type="module" src="./campus-3d.js?v=2.8.0"></script>
 </body>

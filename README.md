@@ -67,3 +67,12 @@ fuxing-3d-campus/
 本專案為純前端靜態網頁，無需安裝 Node.js 或建置工具：
 - 使用 VS Code 的 **Live Server** 擴充功能直接點擊 `Go Live` 開啟 `index.html`。
 - 或在終端機執行：`python -m http.server 8000` 並在瀏覽器訪問 `http://localhost:8000`。
+
+## 360° 實景景點維護
+
+- 360° 照片引用自 `https://buddhaists.github.io/360fsps2026/`（Marzipano 立方體分塊圖，`tiles/<景點編號>/<層級>/<面>/<列>/<欄>.jpg`）。
+- 全部景點資料集中在 `pano-spots.js`，**直接改數字即可調整，不需動主程式**：
+  - `x / y / z`：3D 校園中標記位置（公尺）。`provisional: true` 代表座標為暫定值，微調後請改為 `false`。
+  - `group` / `floor` / `name` / `desc`：目錄分組、樓層、名稱、說明。
+  - `tourId`：對應導覽站台 `tiles/` 底下的資料夾名稱；`links`、`view`：來自導覽站台的連結箭頭與起始視角（弧度）。
+- 導覽站台新增或改名景點時，需同步更新 `pano-spots.js`。
