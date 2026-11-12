@@ -2153,6 +2153,13 @@ document.addEventListener('click', function(e) {
     z-index: 920;
     transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
   }
+  /* 右側資訊卡開啟時，指北針移到卡片左側，避免蓋住卡片右上角的關閉鍵 ✕ */
+  body:has(#gsesSpotCard:not([hidden])) .gses-compass { right: calc(min(360px, 100vw - 36px) + 18px + 12px); }
+  body:has(#detail:not([hidden])) .gses-compass { right: calc(332px + 20px + 12px); }
+  @media (max-width: 820px) {
+    body:has(#gsesSpotCard:not([hidden])) .gses-compass,
+    body:has(#detail:not([hidden])) .gses-compass { opacity: 0; pointer-events: none; }
+  }
   .gses-compass:hover {
     transform: scale(1.08);
     box-shadow: var(--shadow-lg);
