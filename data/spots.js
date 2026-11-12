@@ -7,19 +7,18 @@ window.CAMPUS_360_SPOTS = [
     "name": "復興路正門口與通學步道",
     "group": "校門與戶外前庭",
     "floor": "1F",
-    "px": 920,
-    "py": 220,
-    "x": 106.08,
+    "px": 779.54,
+    "py": 321.5,
+    "x": 69.56,
     "y": 2.2,
-    "z": -5.2,
+    "z": 21.19,
     "thumb": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9T8HGWFY3y7d4cHjDdhEkKrKYxQZTkUOw2igH4rnmKNktVGP8kGEnZvSNc5BgqUFChTjDPCao_1Y9bMYfMS76frEo_jGxX-4ubcHYCLZlkardvym0hwE_6iQmnL3sI2Ed8kPWrjWQ=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9T8HGWFY3y7d4cHjDdhEkKrKYxQZTkUOw2igH4rnmKNktVGP8kGEnZvSNc5BgqUFChTjDPCao_1Y9bMYfMS76frEo_jGxX-4ubcHYCLZlkardvym0hwE_6iQmnL3sI2Ed8kPWrjWQ=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,340h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtO6Y4wE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9T8HGWFY3y7d4cHjDdhEkKrKYxQZTkUOw2igH4rnmKNktVGP8kGEnZvSNc5BgqUFChTjDPCao_1Y9bMYfMS76frEo_jGxX-4ubcHYCLZlkardvym0hwE_6iQmnL3sI2Ed8kPWrjWQ%3Dw900-h600-k-no-pi-10-ya339-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
     "desc": "復興路宏偉大門，通學綠色步道與寬闊正門迎賓景觀。",
     "adjacentSpotIds": [
       "spot-41",
-      "spot-37",
-      "spot-44"
+      "spot-37"
     ]
   },
   {
@@ -174,11 +173,11 @@ window.CAMPUS_360_SPOTS = [
     "name": "前庭迎賓廣場停車場",
     "group": "校門與戶外前庭",
     "floor": "1F",
-    "px": 840,
-    "py": 210,
-    "x": 85.28,
+    "px": 965.54,
+    "py": 231.92,
+    "x": 117.92,
     "y": 2.2,
-    "z": -7.8,
+    "z": -2.1,
     "thumb": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-dTHDeoy489xz8mB37IG6oM624QOdTXkXkR9YBNgaacArCL7hXhf18YvtG-BXU6WIWwEYSPVmFXwJiJpVmbQvPtp9czOaz-wzwF85WUtnprtHg5EzCiZwhS7HsAhI5AN6k_z8U=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-dTHDeoy489xz8mB37IG6oM624QOdTXkXkR9YBNgaacArCL7hXhf18YvtG-BXU6WIWwEYSPVmFXwJiJpVmbQvPtp9czOaz-wzwF85WUtnprtHg5EzCiZwhS7HsAhI5AN6k_z8U=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94WceA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-dTHDeoy489xz8mB37IG6oM624QOdTXkXkR9YBNgaacArCL7hXhf18YvtG-BXU6WIWwEYSPVmFXwJiJpVmbQvPtp9czOaz-wzwF85WUtnprtHg5EzCiZwhS7HsAhI5AN6k_z8U%3Dw900-h600-k-no-pi0-ya240-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
@@ -196,11 +195,11 @@ window.CAMPUS_360_SPOTS = [
     "name": "學校新南側門（建興南路42巷）",
     "group": "校門與戶外前庭",
     "floor": "1F",
-    "px": 772,
-    "py": 320,
-    "x": 67.6,
+    "px": 933,
+    "py": 219.19,
+    "x": 109.46,
     "y": 2.2,
-    "z": 20.8,
+    "z": -5.41,
     "thumb": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RfGqFYimyBQLgnNek_OFhP-Z_h_3FGaKdkwKrP2F2PUQCnlRPWTcMUpjqlYS6bIsmSXxf38G3RthgYBMfPdbHrfP2qmN-_QMh1voQZO-QkAotjWCsf11Y1e_gcaV9IsZNhiSk8=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RfGqFYimyBQLgnNek_OFhP-Z_h_3FGaKdkwKrP2F2PUQCnlRPWTcMUpjqlYS6bIsmSXxf38G3RthgYBMfPdbHrfP2qmN-_QMh1voQZO-QkAotjWCsf11Y1e_gcaV9IsZNhiSk8=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,180h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtK71fA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RfGqFYimyBQLgnNek_OFhP-Z_h_3FGaKdkwKrP2F2PUQCnlRPWTcMUpjqlYS6bIsmSXxf38G3RthgYBMfPdbHrfP2qmN-_QMh1voQZO-QkAotjWCsf11Y1e_gcaV9IsZNhiSk8%3Dw900-h600-k-no-pi-20-ya179-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
@@ -945,26 +944,6 @@ window.CAMPUS_360_SPOTS = [
       "spot-5",
       "spot-19",
       "spot-40"
-    ]
-  },
-  {
-    "id": "spot-44",
-    "num": 44,
-    "name": "復興路正門外街景",
-    "group": "操場球場與遊戲區",
-    "floor": "1F",
-    "px": 960,
-    "py": 220,
-    "x": 116.48,
-    "y": 2.2,
-    "z": -5.2,
-    "thumb": "https://streetviewpixels-pa.clients6.google.com/v1/thumbnail?cb_client=w400-h250-k-no",
-    "panoUrl": "https://streetviewpixels-pa.clients6.google.com/v1/thumbnail?cb_client=w2048",
-    "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594542,120.4871331,26a,75y,273.15h,90t/data=!3m7!1e1!3m5!1sgrRYLvc66ZAdibOqzoh3RA!2e0!6shttps:%2F%2Fstreetviewpixels-pa.clients6.google.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D0%26panoid%3DgrRYLvc66ZAdibOqzoh3RA%26yaw%3D273.15198!7i16384!8i8192!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
-    "desc": "復興路正門前開闊馬路與屏東市區街景視角。",
-    "adjacentSpotIds": [
-      "spot-12",
-      "spot-41"
     ]
   }
 ];
