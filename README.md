@@ -25,7 +25,12 @@
 5. **第一人稱地面步行漫遊（Walk Mode）**
    - 鍵盤 `WASD` / 方向鍵行走，滑鼠視線轉向，支援地面碰撞偵測與預設導覽路徑。
 
-6. **漸進式秒開極速架構（Progressive Instant-On & Service Worker PWA）**
+6. **33 處 360° 實景點（Marzipano 環景）**
+   - 環景照片引用自 [復興國小 360 環景網站](https://buddhaists.github.io/360fsps2026/)，以 Marzipano 直接讀取該網站的立方體圖磚（`tiles/<場景ID>/…`），不再使用 Google 街景圖片。
+   - 環景中的箭頭可在相鄰實景點之間穿梭；地點資料（位置、樓層、分區、相鄰點）在 `campus-ui.js` 的 `CAMPUS_360_SPOTS`，`id` 對應 360 網站 `data.js` 的場景 ID。
+   - 想微調實景點在 3D 校園中的位置時，修改該地點的 `px, py`（平面圖像素）與 `x, y, z` 即可。
+
+7. **漸進式秒開極速架構（Progressive Instant-On & Service Worker PWA）**
    - **首畫面 < 30ms 零白屏瞬間呈現**：採用 1:1 精確視角 2.5D 高清預覽疊加層與非阻塞字型排程，開啟網頁瞬間立即可見校園全貌與 UI 目錄。
    - **全面資源解耦與依賴本土化**：Three.js 核心與 OrbitControls 本機收納（告別 unpkg CDN 連線延遲），2.85MB 細部貼圖資料自 `<head>` 移出並於背景空閒時動態串流加載。
    - **使用者預先互動佇列（Pre-interactive Queue）**：首頁載入期間點選任意地標立即標記，3D 引擎就緒後平滑無感淡入切換並自動執行鏡頭飛行。

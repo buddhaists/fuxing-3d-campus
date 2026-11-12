@@ -2310,6 +2310,88 @@ document.addEventListener('click', function(e) {
   .pano-host:active {
     cursor: grabbing;
   }
+  .pano-mz {
+    position: absolute;
+    inset: 0;
+  }
+  .pano-hs-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    transform: translate(-50%, -50%);
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+  }
+  .pano-hs-arrow {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.92);
+    color: #ef5350;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.35);
+    transition: transform 0.18s ease;
+  }
+  .pano-hs-arrow svg { width: 26px; height: 26px; }
+  .pano-hs-link:hover .pano-hs-arrow { transform: scale(1.12); }
+  .pano-hs-name {
+    background: rgba(17,27,36,0.82);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .pano-hs-info {
+    transform: translate(-50%, -50%);
+    max-width: 260px;
+    background: rgba(17,27,36,0.85);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .pano-hs-info-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    font-weight: 600;
+  }
+  .pano-hs-info-head i {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #0284c7;
+    display: grid;
+    place-items: center;
+    font-style: normal;
+    font-size: 12px;
+    flex: none;
+  }
+  .pano-hs-info-body { display: none; padding: 0 10px 8px 38px; line-height: 1.6; }
+  .pano-hs-info.is-open .pano-hs-info-body { display: block; }
+  .pano-fail {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: #111b24;
+    color: #e6ece7;
+    text-align: center;
+    z-index: 6;
+  }
+  .pano-fail > div { max-width: 420px; line-height: 1.7; }
+  .pano-fail-title { font-size: 17px; margin: 0 0 8px; }
+  .pano-fail a { color: #8fd6ae; }
   .pano-loading {
     position: absolute;
     inset: 0;
@@ -3003,8 +3085,8 @@ document.addEventListener('click', function(e) {
         <span class="pano-sphere-icon">🌐</span>
         <span>進入 360° 實景</span>
       </button>
-      <a id="gsesSpotMapsBtn" href="#" target="_blank" rel="noopener" class="gses-btn-maps" title="在 Google 地圖中開啟">
-        街景 ↗
+      <a id="gsesSpotMapsBtn" href="#" target="_blank" rel="noopener" class="gses-btn-maps" title="在復興 360 環景網站開啟">
+        360 網站 ↗
       </a>
     </div>
   </aside>
@@ -3550,8 +3632,8 @@ document.addEventListener('click', function(e) {
       <h2 id="panoTitle">中庭花園與愛悅樓前廣場</h2>
     </div>
     <div class="pano-actions">
-      <a id="panoExternalBtn" href="https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,100.12h,92.02t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98X_pAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g%3Dw900-h600-k-no-pi-2.02112549397485-ya100.12206414212982-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D" target="_blank" rel="noopener" class="pano-ext-btn">
-        <span>Google 街景全螢幕 ↗</span>
+      <a id="panoExternalBtn" href="https://buddhaists.github.io/360fsps2026/" target="_blank" rel="noopener" class="pano-ext-btn">
+        <span>開啟復興 360 環景網站 ↗</span>
       </a>
       <button id="panoCloseBtn" class="pano-close-btn" type="button" aria-label="關閉環景">✕ 返回 3D 校園</button>
     </div>
@@ -3576,7 +3658,8 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script src="./vendor/qrcode.min.js"></script>
-<script src="./campus-ui.js?v=2.8.0"></script>
-<script type="module" src="./campus-3d.js?v=2.8.0"></script>
+<script src="./vendor/marzipano.js"></script>
+<script src="./campus-ui.js?v=2.9.0"></script>
+<script type="module" src="./campus-3d.js?v=2.9.0"></script>
 </body>
 </html>
