@@ -18560,6 +18560,8 @@ let panoTargetLon = 90, panoTargetLat = 0;
 let panoIsInteracting = false;
 let panoDownX = 0, panoDownY = 0, panoDownLon = 0, panoDownLat = 0;
 let panoHotspotsGroup = null;
+let panoDefaultLon = 90;
+let panoCurrentSpot = null;
 const panoRaycaster = new THREE.Raycaster();
 const panoMouse = new THREE.Vector2();
 
@@ -18585,46 +18587,61 @@ function initPanoViewer() {
   host.appendChild(panoRenderer.domElement);
 
   let isPanoDrag = false;
+  const ptrs = new Map();            // pointerId -> {x,y}
+  let pinchStartDist = 0, pinchStartFov = 75;
+  const pinchDist = () => { const [p, q] = [...ptrs.values()]; return Math.hypot(p.x - q.x, p.y - q.y) || 1; };
+  const rebaseDrag = (x, y) => { panoDownX = x; panoDownY = y; panoDownLon = panoTargetLon; panoDownLat = panoTargetLat; };
 
   host.addEventListener('pointerdown', e => {
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { host.setPointerCapture(e.pointerId); } catch (_) {}
     panoIsInteracting = true;
-    isPanoDrag = false;
-    panoDownX = e.clientX;
-    panoDownY = e.clientY;
-    panoDownLon = panoTargetLon;
-    panoDownLat = panoTargetLat;
+    if (ptrs.size === 1) { isPanoDrag = false; rebaseDrag(e.clientX, e.clientY); }
+    else if (ptrs.size === 2) { isPanoDrag = true; pinchStartDist = pinchDist(); pinchStartFov = panoCamera.fov; }
   });
 
-  window.addEventListener('pointermove', e => {
-    if (!panoIsInteracting) return;
+  host.addEventListener('pointermove', e => {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size >= 2) {                                   // pinch zoom
+      panoCamera.fov = Math.max(35, Math.min(95, pinchStartFov * pinchStartDist / pinchDist()));
+      panoCamera.updateProjectionMatrix();
+      return;
+    }
     const dx = e.clientX - panoDownX;
     const dy = e.clientY - panoDownY;
     if (Math.hypot(dx, dy) > 5) isPanoDrag = true;
-    panoTargetLon = (panoDownX - e.clientX) * 0.18 + panoDownLon;
-    panoTargetLat = (e.clientY - panoDownY) * 0.18 + panoDownLat;
-    panoTargetLat = Math.max(-85, Math.min(85, panoTargetLat));
+    const k = 0.18 * (panoCamera.fov / 75);                // finer drag when zoomed in
+    panoTargetLon = (panoDownX - e.clientX) * k + panoDownLon;
+    panoTargetLat = Math.max(-85, Math.min(85, (e.clientY - panoDownY) * k + panoDownLat));
   });
 
-  window.addEventListener('pointerup', e => {
-    if (panoIsInteracting && !isPanoDrag && panoHotspotsGroup) {
-      // Hotspot click test inside panorama
-      const rect = host.getBoundingClientRect();
-      panoMouse.x = ((e.clientX - rect.left) / host.clientWidth) * 2 - 1;
-      panoMouse.y = -((e.clientY - rect.top) / host.clientHeight) * 2 + 1;
-      panoRaycaster.setFromCamera(panoMouse, panoCamera);
-      const hits = panoRaycaster.intersectObjects(panoHotspotsGroup.children, true);
-      if (hits.length > 0) {
-        let h = hits[0].object;
-        while (h && !h.userData?.spotId && h.parent) h = h.parent;
-        if (h && h.userData?.spotId) {
-          openPano(h.userData.spotId);
+  const endPtr = e => {
+    const had = ptrs.delete(e.pointerId);
+    if (!had) return;
+    if (ptrs.size === 1) {                                  // pinch -> drag handover
+      const [r] = [...ptrs.values()]; rebaseDrag(r.x, r.y);
+      return;
+    }
+    if (ptrs.size === 0) {
+      if (e.type === 'pointerup' && !isPanoDrag && panoHotspotsGroup) {
+        const rect = host.getBoundingClientRect();
+        panoMouse.x = ((e.clientX - rect.left) / host.clientWidth) * 2 - 1;
+        panoMouse.y = -((e.clientY - rect.top) / host.clientHeight) * 2 + 1;
+        panoRaycaster.setFromCamera(panoMouse, panoCamera);
+        const hits = panoRaycaster.intersectObjects(panoHotspotsGroup.children, true);
+        if (hits.length > 0) {
+          let h = hits[0].object;
+          while (h && !h.userData?.spotId && h.parent) h = h.parent;
+          if (h && h.userData?.spotId) openPano(h.userData.spotId);
         }
       }
+      panoIsInteracting = false;
+      panoGyroRebase();
     }
-    panoIsInteracting = false;
-  });
-
-  window.addEventListener('pointercancel', () => { panoIsInteracting = false; });
+  };
+  host.addEventListener('pointerup', endPtr);
+  host.addEventListener('pointercancel', endPtr);
 
   host.addEventListener('wheel', e => {
     e.preventDefault();
@@ -18641,11 +18658,14 @@ function initPanoViewer() {
 
   document.getElementById('panoCloseBtn')?.addEventListener('click', closePano);
   document.getElementById('panoResetView')?.addEventListener('click', () => {
-    panoTargetLon = 90;
+    panoTargetLon = panoDefaultLon;
     panoTargetLat = 0;
     panoCamera.fov = 75;
     panoCamera.updateProjectionMatrix();
+    panoGyroRebase(true);
   });
+  initPanoFullscreen();
+  initPanoGyro();
   document.getElementById('panoRotateToggle')?.addEventListener('click', e => {
     panoAutoRotate = !panoAutoRotate;
     e.currentTarget.classList.toggle('is-active', panoAutoRotate);
@@ -18675,7 +18695,7 @@ function updatePanoHotspots(currentSpot) {
   adjSpots.forEach(adj => {
     const dx = adj.x - currentSpot.x;
     const dz = adj.z - currentSpot.z;
-    const angle = Math.atan2(dz, dx);
+    const angle = Math.atan2(dz, dx) + THREE.MathUtils.degToRad(currentSpot.yawOffset || 0);
 
     const dist = 180;
     const x = dist * Math.cos(angle);
@@ -18741,6 +18761,86 @@ function panoRenderLoop() {
   panoRenderer.render(panoScene, panoCamera);
 }
 
+
+
+// ------------------------------------------
+// Fullscreen + Gyroscope (mobile)
+// ------------------------------------------
+const panoGyro = { on: false, lon: 0, lat: 0, offLon: 0, offLat: 0, have: false };
+
+function initPanoFullscreen() {
+  const btn = document.getElementById('panoFullscreenBtn');
+  const wrap = document.getElementById('pano-wrap');
+  if (!btn || !wrap) return;
+  const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
+  if (!req) { btn.hidden = true; return; }       // e.g. iPhone Safari
+  btn.addEventListener('click', () => {
+    const el = document.fullscreenElement || document.webkitFullscreenElement;
+    if (el) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else req.call(wrap);
+  });
+  const sync = () => btn.classList.toggle('is-active', !!(document.fullscreenElement || document.webkitFullscreenElement));
+  document.addEventListener('fullscreenchange', sync);
+  document.addEventListener('webkitfullscreenchange', sync);
+}
+
+const _gQ = new THREE.Quaternion(), _gQ1 = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
+const _gQ0 = new THREE.Quaternion(), _gE = new THREE.Euler(), _gV = new THREE.Vector3(), _gZ = new THREE.Vector3(0, 0, 1);
+
+function panoOnDeviceOrientation(ev) {
+  if (ev.alpha == null || ev.beta == null || ev.gamma == null) return;
+  const D = THREE.MathUtils.degToRad;
+  const orient = D((screen.orientation && screen.orientation.angle) || window.orientation || 0);
+  _gE.set(D(ev.beta), D(ev.alpha), -D(ev.gamma), 'YXZ');
+  _gQ.setFromEuler(_gE).multiply(_gQ1).multiply(_gQ0.setFromAxisAngle(_gZ, -orient));
+  _gV.set(0, 0, -1).applyQuaternion(_gQ);
+  panoGyro.lat = THREE.MathUtils.radToDeg(Math.asin(Math.max(-1, Math.min(1, _gV.y))));
+  panoGyro.lon = THREE.MathUtils.radToDeg(Math.atan2(_gV.z, _gV.x));
+  if (!panoGyro.have) { panoGyro.have = true; panoGyroRebase(true); }
+  if (!panoGyro.on || panoIsInteracting) return;
+  let dl = ((panoGyro.lon + panoGyro.offLon - panoLon + 540) % 360) - 180;
+  panoTargetLon = panoLon + dl;
+  panoTargetLat = Math.max(-85, Math.min(85, panoGyro.lat + panoGyro.offLat));
+}
+
+// Re-anchor so the current view maps to the current device pose (after drag / spot change / reset)
+function panoGyroRebase(useTarget) {
+  if (!panoGyro.on || !panoGyro.have) return;
+  panoGyro.offLon = panoTargetLon - panoGyro.lon;
+  panoGyro.offLat = panoTargetLat - panoGyro.lat;
+}
+
+async function setPanoGyro(enable) {
+  const btn = document.getElementById('panoGyroToggle');
+  if (enable) {
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();   // iOS 13+: must be inside a user gesture
+        if (r !== 'granted') { showToast('未取得動態感測權限，陀螺儀已停用'); return; }
+      }
+    } catch (_) { showToast('無法啟用陀螺儀'); return; }
+    window.addEventListener('deviceorientation', panoOnDeviceOrientation);
+    panoGyro.on = true;
+    panoGyro.have = false;                 // re-anchor on first sample
+    panoAutoRotate = false;
+    document.getElementById('panoRotateToggle')?.classList.remove('is-active');
+  } else {
+    window.removeEventListener('deviceorientation', panoOnDeviceOrientation);
+    panoGyro.on = false;
+  }
+  btn?.classList.toggle('is-active', panoGyro.on);
+  if (btn) btn.textContent = panoGyro.on ? '◎ 陀螺儀：開' : '◎ 陀螺儀';
+}
+
+function initPanoGyro() {
+  const btn = document.getElementById('panoGyroToggle');
+  if (!btn) return;
+  const capable = typeof DeviceOrientationEvent !== 'undefined' &&
+    (window.matchMedia('(pointer: coarse)').matches || typeof DeviceOrientationEvent.requestPermission === 'function');
+  if (!capable) { btn.hidden = true; return; }
+  btn.addEventListener('click', () => setPanoGyro(!panoGyro.on));
+}
+window.__setPanoGyro = setPanoGyro;
 
 // ------------------------------------------
 // Pano texture loader: LRU cache + thumb-first + adjacent preload
@@ -18904,7 +19004,16 @@ function openPano(spotId = 'spot-10', forceReload = false) {
   const extEl = document.getElementById('panoExternalBtn');
   if (extEl && spot.externalUrl) extEl.href = spot.externalUrl;
 
+  panoCurrentSpot = spot;
   updatePanoHotspots(spot);
+  // Opening view faces the primary adjacent spot (same bearing the arrow uses)
+  const first = ((spot.adjacentSpotIds || []).map(id => (window.CAMPUS_360_SPOTS || []).find(x => x.id === id)).filter(Boolean))[0];
+  panoDefaultLon = first
+    ? THREE.MathUtils.radToDeg(Math.atan2(first.z - spot.z, first.x - spot.x) + THREE.MathUtils.degToRad(spot.yawOffset || 0))
+    : 90;
+  panoLon = panoTargetLon = panoDefaultLon;
+  panoLat = panoTargetLat = 0;
+  panoGyroRebase(true);
 
   // Update Bottom Adjacency Chips Navigation
   const adjBar = document.getElementById('panoAdjBar');
@@ -18937,6 +19046,8 @@ function openPano(spotId = 'spot-10', forceReload = false) {
 }
 
 function closePano() {
+  if (panoGyro.on) setPanoGyro(false);
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
   const wrap = document.getElementById('pano-wrap');
   if (wrap) wrap.hidden = true;
   if (panoAnimId) {
@@ -22819,3 +22930,6 @@ function runChunkedSceneBuild() {
 
 // Kick off progressive time-sliced scene construction
 runChunkedSceneBuild();
+
+// Debug hook (read-only): current pano view angles
+window.__panoDbg = () => ({ lon: +panoTargetLon.toFixed(1), lat: +panoTargetLat.toFixed(1), fov: panoCamera ? panoCamera.fov : null });
