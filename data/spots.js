@@ -237,11 +237,11 @@ window.CAMPUS_360_SPOTS = [
     "name": "中庭幾何花磚廣場（北向視角）",
     "group": "中庭花園與愛悅樓",
     "floor": "1F",
-    "px": 561.15,
-    "py": 172.92,
-    "x": 12.78,
+    "px": 512,
+    "py": 180,
+    "x": 0,
     "y": 2.2,
-    "z": -17.44,
+    "z": -15.6,
     "thumb": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RJtuYn7zGFpqcFUi4gi6AYzzXGf8GUes9ERh8WieealGl29R0pY67814jSxq7N9Rh9Y9MTo43tTK9Xe3a-YBHXQC3Eh6ppURTVSJ8STNFb8UQ2okMi4yUIFwUBHBzf1S-70SFG=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RJtuYn7zGFpqcFUi4gi6AYzzXGf8GUes9ERh8WieealGl29R0pY67814jSxq7N9Rh9Y9MTo43tTK9Xe3a-YBHXQC3Eh6ppURTVSJ8STNFb8UQ2okMi4yUIFwUBHBzf1S-70SFG=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,340h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XJIg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RJtuYn7zGFpqcFUi4gi6AYzzXGf8GUes9ERh8WieealGl29R0pY67814jSxq7N9Rh9Y9MTo43tTK9Xe3a-YBHXQC3Eh6ppURTVSJ8STNFb8UQ2okMi4yUIFwUBHBzf1S-70SFG%3Dw900-h600-k-no-pi-20-ya340-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
@@ -258,11 +258,11 @@ window.CAMPUS_360_SPOTS = [
     "name": "中庭廣場中央景觀",
     "group": "中庭花園與愛悅樓",
     "floor": "1F",
-    "px": 541.23,
-    "py": 202.12,
-    "x": 7.6,
+    "px": 512,
+    "py": 220,
+    "x": 0,
     "y": 2.2,
-    "z": -9.85,
+    "z": -5.2,
     "thumb": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9S8iyeZJInuldmeU8TFOR_t7mNPYsalvH1BP3Pbd8GjsVTHoNSVzJf4ym9lFk42Bl6FhxOyjXynU0IMRm4OFvZenLOr4Ax-PVJ3GiO-40qFRllJD0G8CN0-l9vVyxLVQ0J9-U33=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9S8iyeZJInuldmeU8TFOR_t7mNPYsalvH1BP3Pbd8GjsVTHoNSVzJf4ym9lFk42Bl6FhxOyjXynU0IMRm4OFvZenLOr4Ax-PVJ3GiO-40qFRllJD0G8CN0-l9vVyxLVQ0J9-U33=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,180h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH7arAjgE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9S8iyeZJInuldmeU8TFOR_t7mNPYsalvH1BP3Pbd8GjsVTHoNSVzJf4ym9lFk42Bl6FhxOyjXynU0IMRm4OFvZenLOr4Ax-PVJ3GiO-40qFRllJD0G8CN0-l9vVyxLVQ0J9-U33%3Dw900-h600-k-no-pi-10-ya179-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
@@ -280,11 +280,11 @@ window.CAMPUS_360_SPOTS = [
     "name": "中庭環視全景",
     "group": "中庭花園與愛悅樓",
     "floor": "1F",
-    "px": 500,
-    "py": 210,
-    "x": -3.12,
+    "px": 444.73,
+    "py": 224.77,
+    "x": -17.49,
     "y": 2.2,
-    "z": -7.8,
+    "z": -3.96,
     "thumb": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9R8-9CFze5Qe8PL27X0fWD-8br13O8O6Ntc1PxboXf9-s2qbG5GUUP9xk-b_FeAaF9cpg5Zj9I2VSwD_b21rEwHEmaldWqNxFlkuJfVdOXCW5CgUrfKbUiZMVuFA7a09CToQRbN=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9R8-9CFze5Qe8PL27X0fWD-8br13O8O6Ntc1PxboXf9-s2qbG5GUUP9xk-b_FeAaF9cpg5Zj9I2VSwD_b21rEwHEmaldWqNxFlkuJfVdOXCW5CgUrfKbUiZMVuFA7a09CToQRbN=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94WcpAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9R8-9CFze5Qe8PL27X0fWD-8br13O8O6Ntc1PxboXf9-s2qbG5GUUP9xk-b_FeAaF9cpg5Zj9I2VSwD_b21rEwHEmaldWqNxFlkuJfVdOXCW5CgUrfKbUiZMVuFA7a09CToQRbN%3Dw900-h600-k-no-pi0-ya0-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
@@ -301,11 +301,11 @@ window.CAMPUS_360_SPOTS = [
     "name": "中庭愛悅樓前拱門廣場",
     "group": "中庭花園與愛悅樓",
     "floor": "1F",
-    "px": 520,
-    "py": 240,
-    "x": 2.08,
+    "px": 715.69,
+    "py": 213.77,
+    "x": 52.96,
     "y": 2.2,
-    "z": 0,
+    "z": -6.82,
     "thumb": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SKHvnzeWz6vCs7iUgHHEbyGG7tkFf0HI9DTuOZSuCOGeBSQ2QtM5L9dFiSmdwJEEsdnhIxRDlxYXW7ApbOrueKD5cPF8qJemHOD-aKVLky1riunBA97o533dmRIzNuQzxeOlTH=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SKHvnzeWz6vCs7iUgHHEbyGG7tkFf0HI9DTuOZSuCOGeBSQ2QtM5L9dFiSmdwJEEsdnhIxRDlxYXW7ApbOrueKD5cPF8qJemHOD-aKVLky1riunBA97o533dmRIzNuQzxeOlTH=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,59.89h,90.11t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94Wc5AE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9SKHvnzeWz6vCs7iUgHHEbyGG7tkFf0HI9DTuOZSuCOGeBSQ2QtM5L9dFiSmdwJEEsdnhIxRDlxYXW7ApbOrueKD5cPF8qJemHOD-aKVLky1riunBA97o533dmRIzNuQzxeOlTH%3Dw900-h600-k-no-pi-0.11253999999999564-ya59.887460000000004-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
@@ -313,8 +313,7 @@ window.CAMPUS_360_SPOTS = [
     "adjacentSpotIds": [
       "spot-10",
       "spot-21",
-      "spot-35",
-      "spot-2"
+      "spot-35"
     ]
   },
   {
@@ -344,11 +343,11 @@ window.CAMPUS_360_SPOTS = [
     "name": "愛悅樓 1F 黃色圓洞走廊景觀",
     "group": "中庭花園與愛悅樓",
     "floor": "1F",
-    "px": 530,
-    "py": 250,
-    "x": 4.68,
+    "px": 591.69,
+    "py": 275.96,
+    "x": 20.72,
     "y": 2.2,
-    "z": 2.6,
+    "z": 9.35,
     "thumb": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-ATXAXKyGNdw3YaXSUNtzb5ee4aCjRhg6399g9-Gy1uQ0-o6E9jyJBsrZromUKdVoq7rHluxRS-CG-C4cBBStj7hW2MbFaY3j9YAY2VF2J2UUrXXtLBW2c7rt7cI5aW-FMQCo=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-ATXAXKyGNdw3YaXSUNtzb5ee4aCjRhg6399g9-Gy1uQ0-o6E9jyJBsrZromUKdVoq7rHluxRS-CG-C4cBBStj7hW2MbFaY3j9YAY2VF2J2UUrXXtLBW2c7rt7cI5aW-FMQCo=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,20h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH7YqPPg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-ATXAXKyGNdw3YaXSUNtzb5ee4aCjRhg6399g9-Gy1uQ0-o6E9jyJBsrZromUKdVoq7rHluxRS-CG-C4cBBStj7hW2MbFaY3j9YAY2VF2J2UUrXXtLBW2c7rt7cI5aW-FMQCo%3Dw900-h600-k-no-pi-20-ya19-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
@@ -357,27 +356,6 @@ window.CAMPUS_360_SPOTS = [
       "spot-29",
       "spot-10",
       "spot-3"
-    ]
-  },
-  {
-    "id": "spot-2",
-    "num": 2,
-    "name": "穿堂操場景觀入口",
-    "group": "大樓穿堂與走廊",
-    "floor": "1F",
-    "px": 420,
-    "py": 280,
-    "x": -23.92,
-    "y": 2.2,
-    "z": 10.4,
-    "thumb": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-zCqXeFh389QzhREcJc2sxQ06CPmF2se2wfMzhsC_pAYG34Ef_2OwruPdD4G7N5ooNYBmSDswlZwW6KiuFRnOVUzxeBS6jxTSMSZPBomUYUgsTyfU_3oEUfIsCYLX8cNHaOlQf=w400-h250-k-no",
-    "panoUrl": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-zCqXeFh389QzhREcJc2sxQ06CPmF2se2wfMzhsC_pAYG34Ef_2OwruPdD4G7N5ooNYBmSDswlZwW6KiuFRnOVUzxeBS6jxTSMSZPBomUYUgsTyfU_3oEUfIsCYLX8cNHaOlQf=w2048",
-    "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtK7czgE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-zCqXeFh389QzhREcJc2sxQ06CPmF2se2wfMzhsC_pAYG34Ef_2OwruPdD4G7N5ooNYBmSDswlZwW6KiuFRnOVUzxeBS6jxTSMSZPBomUYUgsTyfU_3oEUfIsCYLX8cNHaOlQf%3Dw900-h600-k-no-pi0-ya359-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
-    "desc": "西棟通往大操場的主要穿堂通道，視野豁然開朗迎向蔚藍天空與綠茵球場。",
-    "adjacentSpotIds": [
-      "spot-29",
-      "spot-18",
-      "spot-19"
     ]
   },
   {
@@ -502,8 +480,7 @@ window.CAMPUS_360_SPOTS = [
     "desc": "最高三樓圓拱觀景走廊，居高臨下俯瞰整個大操場與綜合球場全景。",
     "adjacentSpotIds": [
       "spot-43",
-      "spot-9",
-      "spot-2"
+      "spot-9"
     ]
   },
   {
@@ -533,11 +510,11 @@ window.CAMPUS_360_SPOTS = [
     "name": "教學大樓樓梯平台",
     "group": "大樓穿堂與走廊",
     "floor": "2F",
-    "px": 490,
-    "py": 160,
-    "x": -5.72,
+    "px": 650.42,
+    "py": 271.81,
+    "x": 35.99,
     "y": 6.8,
-    "z": -20.8,
+    "z": 8.27,
     "thumb": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9S2pQst0y8nkCfarS3xMBsFyScoW44WtSlPq9juxAUqQOXWo8yckkDZdHpmK7lY2J26QLsIpVFEyxWktwsIgbcismmdhAYwk9t6W7zZnabWXuApCQl4p6ceKGAgtk3M3BY3PiCg=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9S2pQst0y8nkCfarS3xMBsFyScoW44WtSlPq9juxAUqQOXWo8yckkDZdHpmK7lY2J26QLsIpVFEyxWktwsIgbcismmdhAYwk9t6W7zZnabWXuApCQl4p6ceKGAgtk3M3BY3PiCg=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtM6iaA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9S2pQst0y8nkCfarS3xMBsFyScoW44WtSlPq9juxAUqQOXWo8yckkDZdHpmK7lY2J26QLsIpVFEyxWktwsIgbcismmdhAYwk9t6W7zZnabWXuApCQl4p6ceKGAgtk3M3BY3PiCg%3Dw900-h600-k-no-pi0-ya359-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
@@ -554,11 +531,11 @@ window.CAMPUS_360_SPOTS = [
     "name": "2F 走廊綠植盆栽步道",
     "group": "大樓穿堂與走廊",
     "floor": "2F",
-    "px": 597.19,
-    "py": 272.85,
-    "x": 22.15,
+    "px": 540,
+    "py": 160,
+    "x": 7.28,
     "y": 6.8,
-    "z": 8.54,
+    "z": -20.8,
     "thumb": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U9adVexgXOkawxZcTAZcWTwjVmQKFL4KvAE4yv_bwcXqDO8dMiXNm6FIxPW3SWrpaHzov0yVeGrSUh0YKT1KF4P5UumwJ6f4dUbzh92ro4t90EhnispNdRa07RkCk_93jr2QerM=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U9adVexgXOkawxZcTAZcWTwjVmQKFL4KvAE4yv_bwcXqDO8dMiXNm6FIxPW3SWrpaHzov0yVeGrSUh0YKT1KF4P5UumwJ6f4dUbzh92ro4t90EhnispNdRa07RkCk_93jr2QerM=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH7crWXg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U9adVexgXOkawxZcTAZcWTwjVmQKFL4KvAE4yv_bwcXqDO8dMiXNm6FIxPW3SWrpaHzov0yVeGrSUh0YKT1KF4P5UumwJ6f4dUbzh92ro4t90EhnispNdRa07RkCk_93jr2QerM%3Dw900-h600-k-no-pi0-ya239-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
@@ -658,19 +635,18 @@ window.CAMPUS_360_SPOTS = [
     "name": "智慧數位學習創客教室",
     "group": "圖書館與特色教室",
     "floor": "2F",
-    "px": 380,
-    "py": 200,
-    "x": -34.32,
+    "px": 725.15,
+    "py": 260.77,
+    "x": 55.42,
     "y": 6.8,
-    "z": -10.4,
+    "z": 5.4,
     "thumb": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9R122zk0_VWRBo9DMLJXro--HIMjsAiwT-nw201h4PvUaKjnlVOB58SDi-aYUsZtEYsOtrhBVBRIW2VJYNFZGggvs6AS6o4yPlDsM-VqgMEtdHqslT7jzT4jduXzovz418U9V7ElA=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9R122zk0_VWRBo9DMLJXro--HIMjsAiwT-nw201h4PvUaKjnlVOB58SDi-aYUsZtEYsOtrhBVBRIW2VJYNFZGggvs6AS6o4yPlDsM-VqgMEtdHqslT7jzT4jduXzovz418U9V7ElA=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH3YHxwgE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9R122zk0_VWRBo9DMLJXro--HIMjsAiwT-nw201h4PvUaKjnlVOB58SDi-aYUsZtEYsOtrhBVBRIW2VJYNFZGggvs6AS6o4yPlDsM-VqgMEtdHqslT7jzT4jduXzovz418U9V7ElA%3Dw900-h600-k-no-pi0-ya239-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
     "desc": "配備最新觸控大螢幕與平板電腦，進行科技創新與程式創客課程。",
     "adjacentSpotIds": [
       "spot-9",
-      "spot-34",
-      "spot-2"
+      "spot-34"
     ]
   },
   {
@@ -679,11 +655,11 @@ window.CAMPUS_360_SPOTS = [
     "name": "綜合多功能會議研習室",
     "group": "圖書館與特色教室",
     "floor": "2F",
-    "px": 748.08,
-    "py": 296.12,
-    "x": 61.38,
+    "px": 754.58,
+    "py": 292.38,
+    "x": 63.07,
     "y": 6.8,
-    "z": 14.59,
+    "z": 13.62,
     "thumb": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9TkFZOWhMXm8Xo7HVAFHn1BLQgYxNRTrO5beCulpy6ng8_3xZiZGt1gnn8XSWkbhMCYSpigO0YhmFpbobQDZ3q9HALbzh-5cTWAP04zoes2KFc2XEVuqd8OQJawFaN_QYisCJXf=w400-h250-k-no",
     "panoUrl": "https://lh3.googleusercontent.com/gps-cs-s/ANWiy9TkFZOWhMXm8Xo7HVAFHn1BLQgYxNRTrO5beCulpy6ng8_3xZiZGt1gnn8XSWkbhMCYSpigO0YhmFpbobQDZ3q9HALbzh-5cTWAP04zoes2KFc2XEVuqd8OQJawFaN_QYisCJXf=w2048",
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,260h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH3d7NEQ!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9TkFZOWhMXm8Xo7HVAFHn1BLQgYxNRTrO5beCulpy6ng8_3xZiZGt1gnn8XSWkbhMCYSpigO0YhmFpbobQDZ3q9HALbzh-5cTWAP04zoes2KFc2XEVuqd8OQJawFaN_QYisCJXf%3Dw900-h600-k-no-pi0-ya259-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
@@ -711,8 +687,28 @@ window.CAMPUS_360_SPOTS = [
     "desc": "新棟非營利幼兒園安全防撞走廊，色彩繽紛明亮，專為幼兒量身打造。",
     "adjacentSpotIds": [
       "spot-46",
-      "spot-19",
-      "spot-2"
+      "spot-19"
+    ]
+  },
+  {
+    "id": "spot-7",
+    "num": 7,
+    "name": "戶外綜合球場",
+    "group": "操場球場與遊戲區",
+    "floor": "1F",
+    "px": 163.77,
+    "py": 156.73,
+    "x": -90.54,
+    "y": 2.2,
+    "z": -21.65,
+    "thumb": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U8XkWJN9QDH8eN44-6AHMAjMckRkCmWmHEQdVcPDuKbjqPJfAnDPMVFbrMH_3K_5mhTlh7ECrFoAp4KEhsQJqQ-1ftFDeGT469o1voOsVZXTaRX20rUktWP1ff8Q_RnexQMmR4ooA=w400-h250-k-no",
+    "panoUrl": "https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U8XkWJN9QDH8eN44-6AHMAjMckRkCmWmHEQdVcPDuKbjqPJfAnDPMVFbrMH_3K_5mhTlh7ECrFoAp4KEhsQJqQ-1ftFDeGT469o1voOsVZXTaRX20rUktWP1ff8Q_RnexQMmR4ooA=w2048",
+    "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,80h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XJ4gE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U8XkWJN9QDH8eN44-6AHMAjMckRkCmWmHEQdVcPDuKbjqPJfAnDPMVFbrMH_3K_5mhTlh7ECrFoAp4KEhsQJqQ-1ftFDeGT469o1voOsVZXTaRX20rUktWP1ff8Q_RnexQMmR4ooA%3Dw900-h600-k-no-pi-20-ya80-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
+    "desc": "標準彩繪戶外綜合球場，可進行籃球、排球等多項體育競技活動。",
+    "adjacentSpotIds": [
+      "spot-42",
+      "spot-25",
+      "spot-11"
     ]
   },
   {
@@ -752,6 +748,7 @@ window.CAMPUS_360_SPOTS = [
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94mpnwE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9SpP7j7WBkgdNugndzaAhWK5s6qduQz0t3CAlKabUTtxX1o-9yLc1vlLiNTH8tAVwNMYIuSR_xqYq0h7uzbo_Evy6QNt_W7ZnBMDYQq8ry3LX21_-QZAC-YvQWTHzekfGmDM8b-yg%3Dw900-h600-k-no-pi0-ya239-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
     "desc": "綠樹環抱下的活力籃球場，標準籃框與優質地面防滑塗層。",
     "adjacentSpotIds": [
+      "spot-7",
       "spot-8",
       "spot-11"
     ]
@@ -774,7 +771,8 @@ window.CAMPUS_360_SPOTS = [
     "adjacentSpotIds": [
       "spot-8",
       "spot-18",
-      "spot-42"
+      "spot-42",
+      "spot-7"
     ]
   },
   {
@@ -794,8 +792,7 @@ window.CAMPUS_360_SPOTS = [
     "desc": "標準 PU 彈性跑道，奔馳揮灑汗水與展現體育活力的賽道。",
     "adjacentSpotIds": [
       "spot-11",
-      "spot-8",
-      "spot-2"
+      "spot-8"
     ]
   },
   {
@@ -814,8 +811,8 @@ window.CAMPUS_360_SPOTS = [
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH9_HTbg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U8hGJj5Ma8amrSFxPeUVXklM7ppZOpUDu3Fepywr4XT0ICIYksmUIrFRY6zEvxzii49hKiEiAUQN5n9nL32AM66RLWzhDp95ZSef26ILIe6mCN6sJjJ3dj7kacQ1wz2fP00F51S%3Dw900-h600-k-no-pi0-ya359-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
     "desc": "深受小朋友喜愛的安全共融遊具、攀爬架與彩色溜滑梯園地。",
     "adjacentSpotIds": [
-      "spot-26",
-      "spot-2"
+      "spot-7",
+      "spot-26"
     ]
   },
   {
@@ -834,7 +831,8 @@ window.CAMPUS_360_SPOTS = [
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,300h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XJogE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-SggcFQVr7pLGyaZY_dowp8h0jwuiMP8S2CIU55v8LYonUFP4XtWsmaQA8ipCkp51uQoBymxuVajk6As6_sh-8aDN--Wu4PC5y2H5AbYOelCywGEAayg26oSOBltrrf2Myz0a7dg%3Dw900-h600-k-no-pi-10-ya300-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
     "desc": "北側綠能遮陽自行車停車棚與校園原生植物生態觀察區。",
     "adjacentSpotIds": [
-      "spot-25"
+      "spot-25",
+      "spot-7"
     ]
   },
   {
@@ -853,7 +851,6 @@ window.CAMPUS_360_SPOTS = [
     "externalUrl": "https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,320h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtM75bw!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9T5NrnJxXsZUIrjLLHsg2IdIaQ2lfcWdwzFjZGUU8spY-S8iVlai0huIFniteoM54jr-n3osXvgDZuNCRmFbmR0jHAbmlw_iXhrwJWfv3A3ESxJZPcICeRiD9CYL9k9DMVr9XrV%3Dw900-h600-k-no-pi-10-ya319-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D",
     "desc": "連接各棟後側的林蔭連鎖磚步道，幽靜舒適。",
     "adjacentSpotIds": [
-      "spot-2",
       "spot-5",
       "spot-46"
     ]
