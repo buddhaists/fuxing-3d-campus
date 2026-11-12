@@ -18492,6 +18492,102 @@ function init360SpotBeacons() {
 
 init360SpotBeacons();
 
+// ============================================================================
+// 2F / 3F 實景標示外移：標示放在「該地點前走廊外面」的半空中，從校園鳥瞰就看得到，
+// 不會被屋頂與走廊雨遮擋住；並以細線連回實際拍攝位置。
+// 作法：建築構建完成後，以正交相機由上往下渲染一次「屋頂高度圖」(GPU，數毫秒)，
+// 再由每個被遮住的景點往東西南北找最近一處「該樓層高度以上已無建築物」的位置（即走廊雨遮外緣）。
+// ============================================================================
+const HMAP = { X0: -135, X1: 140, Z0: -70, Z1: 90, RES: 4 };   // 每公尺 4 像素
+let roofHeightData = null;
+function buildRoofHeightMap() {
+  const W = (HMAP.X1 - HMAP.X0) * HMAP.RES, H = (HMAP.Z1 - HMAP.Z0) * HMAP.RES;
+  const rt = new THREE.WebGLRenderTarget(W, H);
+  const cam = new THREE.OrthographicCamera(HMAP.X0, HMAP.X1, -HMAP.Z0, -HMAP.Z1, 0.1, 400);
+  cam.position.set(0, 200, 0); cam.up.set(0, 0, -1); cam.lookAt(0, 0, 0);
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.DoubleSide,
+    vertexShader: `varying float vY;
+      void main() {
+        vec4 p = vec4(position, 1.0);
+        #ifdef USE_INSTANCING
+          p = instanceMatrix * p;
+        #endif
+        vec4 w = modelMatrix * p; vY = w.y;
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
+    fragmentShader: `varying float vY;
+      void main() {
+        float h = clamp(vY, 0.0, 50.99) / 51.0 * 255.0;   // 0～51 m，以 R(整數) + G(小數) 編碼
+        gl_FragColor = vec4(floor(h) / 255.0, fract(h), 0.0, 1.0);
+      }`
+  });
+  const saved = scene.children.map(o => o.visible);
+  const savedBg = scene.background, savedOverride = scene.overrideMaterial, savedRT = renderer.getRenderTarget();
+  const savedClear = renderer.getClearColor(new THREE.Color()), savedAlpha = renderer.getClearAlpha();
+  const savedShadow = renderer.shadowMap.enabled;
+  scene.children.forEach(o => { o.visible = (o === layerGroups.buildings); });
+  scene.background = null; scene.overrideMaterial = mat; renderer.shadowMap.enabled = false;
+  renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 1); renderer.clear();
+  renderer.render(scene, cam);
+  const buf = new Uint8Array(W * H * 4);
+  renderer.readRenderTargetPixels(rt, 0, 0, W, H, buf);
+  renderer.setRenderTarget(savedRT); renderer.setClearColor(savedClear, savedAlpha);
+  scene.children.forEach((o, i) => { o.visible = saved[i]; });
+  scene.background = savedBg; scene.overrideMaterial = savedOverride; renderer.shadowMap.enabled = savedShadow;
+  rt.dispose(); mat.dispose();
+  roofHeightData = { buf, W, H };
+}
+function roofHeightAt(x, z) {
+  if (!roofHeightData) return 0;
+  const { buf, W, H } = roofHeightData;
+  const c = Math.floor((x - HMAP.X0) * HMAP.RES), r = Math.floor((HMAP.Z1 - z) * HMAP.RES);   // 讀回資料第 0 列為畫面底部 (z = Z1)
+  if (c < 0 || r < 0 || c >= W || r >= H) return 0;
+  const i = (r * W + c) * 4;
+  return (buf[i] + buf[i + 1] / 255) * 51 / 255;
+}
+const upperLeaderGroup = new THREE.Group();
+scene.add(upperLeaderGroup);
+function placeUpperFloorBeacons() {
+  try { buildRoofHeightMap(); } catch (err) { console.warn('[Beacons] 高度圖建立失敗，標示維持原位', err); return; }
+  while (upperLeaderGroup.children.length) { const c = upperLeaderGroup.children.pop(); c.geometry.dispose(); }
+  const lineMat = new THREE.LineDashedMaterial({ color: 0x923c32, dashSize: 0.35, gapSize: 0.22, transparent: true, opacity: 0.85 });
+  const spots = window.CAMPUS_360_SPOTS || [];
+  let moved = 0;
+  for (const s of spots) {
+    if (!s.floor || s.floor === '1F' || s.floor === 'BF') continue;
+    const floorTop = s.y - 2.3;           // 2F ≈ 4.5 m、3F ≈ 8.9 m：比樓板略低即視為「屋外」
+    delete s.displayX; delete s.displayZ; delete s.outwardX; delete s.outwardZ;
+    if (roofHeightAt(s.x, s.z) < floorTop) continue;   // 標示本來就在屋外（看得到），維持原位
+    let best = null;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {   // 校舍與走廊皆沿東西／南北軸線
+      let clear = 0;
+      for (let d = 0.25; d <= 16; d += 0.25) {
+        if (roofHeightAt(s.x + dx * d, s.z + dz * d) < floorTop) { if (++clear >= 3) { const dd = d - 0.5; if (!best || dd < best.d) best = { d: dd, dx, dz }; break; } }
+        else clear = 0;
+      }
+    }
+    if (!best) continue;
+    const out = best.d + 1.4;             // 走出雨遮外緣後再留 1.4 m
+    s.displayX = s.x + best.dx * out; s.displayZ = s.z + best.dz * out;
+    s.outwardX = best.dx; s.outwardZ = best.dz;
+    const pin = panoBeaconMeshes.find(p => p.userData.spotId === s.id);
+    if (pin) pin.position.set(s.displayX, s.y, s.displayZ);
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(s.x, s.y - 1.6, s.z), new THREE.Vector3(s.displayX, s.y - 1.6, s.displayZ), new THREE.Vector3(s.displayX, s.y, s.displayZ)
+    ]);
+    const line = new THREE.Line(geo, lineMat); line.computeLineDistances(); line.userData.spotId = s.id;
+    upperLeaderGroup.add(line);
+    moved++;
+  }
+  console.log(`[Beacons] ${moved} 個 2F/3F 實景標示已移至前走廊外側`);
+  requestRender(20);
+}
+window.__roofHeightAt = (x, z) => roofHeightAt(x, z);
+window.__placeUpperFloorBeacons = placeUpperFloorBeacons;
+if (window.__buildComplete) placeUpperFloorBeacons();
+else window.addEventListener('campus-build-complete', () => setTimeout(placeUpperFloorBeacons, 50), { once: true });
+
 function updateBeaconHighlight(targetSpotId) {
   panoBeaconMeshes.forEach(pin => {
     const isTarget = (pin.userData.spotId === targetSpotId);
@@ -18502,6 +18598,7 @@ function updateBeaconHighlight(targetSpotId) {
       floorVisible = (pinFloor === activePlanFloor);
     }
     pin.visible = floorVisible;
+    upperLeaderGroup.children.forEach(l => { if (l.userData.spotId === pin.userData.spotId) l.visible = floorVisible; });
 
     if (isTarget) {
       pin.userData.mat.color.setHex(0x10b981);
@@ -18545,8 +18642,11 @@ function select360Spot(spotId, origin = 'manual') {
     el.classList.toggle('is-selected', el.dataset.spotId === spot.id);
   });
 
-  const eyePos = [spot.x + 8.5, spot.y + 13.5, spot.z + 17.5];
-  const lookPos = [spot.x, spot.y + 0.8, spot.z];
+  const px = spot.displayX ?? spot.x, pz = spot.displayZ ?? spot.z;
+  const eyePos = spot.outwardX !== undefined
+    ? [px + spot.outwardX * 18, spot.y + 9, pz + spot.outwardZ * 18]     // 2F/3F：由走廊外側正面看向標示與走廊
+    : [px + 8.5, spot.y + 13.5, pz + 17.5];
+  const lookPos = [px, spot.y + 0.8, pz];
   flyTo(eyePos, lookPos, 850);
 
   if (origin === 'manual' || origin === '3d') {
