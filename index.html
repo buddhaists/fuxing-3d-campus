@@ -2651,6 +2651,11 @@ document.addEventListener('click', function(e) {
   }
 
   /* Collapsible Group in Left Drawer */
+  .spot-chip-bar { display: flex; gap: 6px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: none; }
+  .spot-chip-bar::-webkit-scrollbar { display: none; }
+  .spot-chip { flex: 0 0 auto; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .spot-chip.is-active { background: #10b981; border-color: #10b981; color: #fff; }
+  .spot-item.is-seen .spot-title::after { content: '✓ 已看過'; margin-left: 6px; font-size: 10px; font-weight: 700; color: #059669; background: #d1fae5; border-radius: 4px; padding: 1px 5px; }
   .spot-group-block {
     margin-bottom: 10px;
     border-radius: 10px;

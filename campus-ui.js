@@ -1642,6 +1642,21 @@ function getLandmarkCategories(lm) {
   return cats;
 }
 
+// ---- 360 spot directory state: group filter + seen marks (persisted) ----
+let activeSpotGroup = 'ALL';
+const seenSpotIds = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem('fx360seen') || '[]')); } catch (_) { return new Set(); }
+})();
+window.addEventListener('pano-seen', ev => {
+  const id = ev.detail && ev.detail.id;
+  if (!id || seenSpotIds.has(id)) return;
+  seenSpotIds.add(id);
+  try { localStorage.setItem('fx360seen', JSON.stringify([...seenSpotIds])); } catch (_) {}
+  document.querySelectorAll(`.spot-item[data-spot-id="${id}"]`).forEach(el => el.classList.add('is-seen'));
+  const rc = document.getElementById('result-count');
+  if (rc && /360°/.test(rc.textContent)) rc.textContent = rc.textContent.replace(/已看過 \d+\/\d+/, `已看過 ${seenSpotIds.size}/${CAMPUS_360_SPOTS.length}`);
+});
+
 function renderPlacesList() {
   const placesListEl = document.getElementById('placesList');
   const searchInputEl = document.getElementById('searchInput');
@@ -1671,7 +1686,22 @@ function renderPlacesList() {
       (s.group && s.group.toLowerCase().includes(q))
     ) : CAMPUS_360_SPOTS;
 
+    // Group filter chips (single-group view); counts follow the current search
+    const chipBar = document.createElement('div');
+    chipBar.className = 'spot-chip-bar';
+    [['ALL', '全部']].concat(SPOT_GROUPS.map(g => [g, g])).forEach(([key, label]) => {
+      const n = key === 'ALL' ? spots.length : spots.filter(s => s.group === key).length;
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'spot-chip' + (activeSpotGroup === key ? ' is-active' : '');
+      chip.textContent = `${label} ${n}`;
+      chip.addEventListener('click', () => { activeSpotGroup = key; renderPlacesList(); });
+      chipBar.appendChild(chip);
+    });
+    placesListEl.appendChild(chipBar);
+
     SPOT_GROUPS.forEach(groupName => {
+      if (activeSpotGroup !== 'ALL' && activeSpotGroup !== groupName) return;
       const groupSpots = spots.filter(s => s.group === groupName);
       if (groupSpots.length === 0) return;
 
@@ -1695,10 +1725,10 @@ function renderPlacesList() {
       groupSpots.forEach(s => {
         const btn = document.createElement('button');
         const isSel = (currentSpotId === s.id);
-        btn.className = 'spot-item' + (isSel ? ' is-selected' : '');
+        btn.className = 'spot-item' + (isSel ? ' is-selected' : '') + (seenSpotIds.has(s.id) ? ' is-seen' : '');
         btn.dataset.spotId = s.id;
         btn.innerHTML = `
-          <img class="spot-thumb" src="${s.thumb}" alt="${s.name}" onerror="this.src='./assets/campus_overview_preview.jpg'"/>
+          <img class="spot-thumb" src="${s.thumb}" alt="${s.name}" loading="lazy" decoding="async" onerror="this.src='./assets/campus_overview_preview.jpg'"/>
           <div class="spot-meta">
             <div class="spot-title">
               <span class="tab-dot"></span>
@@ -1729,7 +1759,8 @@ function renderPlacesList() {
     });
 
     const rc = document.getElementById('result-count');
-    if (rc) rc.textContent = `${spots.length} 處 360° 實景拍攝點`;
+    const shownN = activeSpotGroup === 'ALL' ? spots.length : spots.filter(x => x.group === activeSpotGroup).length;
+    if (rc) rc.textContent = `${shownN} 處 360° 實景拍攝點 · 已看過 ${seenSpotIds.size}/${CAMPUS_360_SPOTS.length}`;
     return;
   }
 
