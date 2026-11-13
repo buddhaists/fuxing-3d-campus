@@ -17770,6 +17770,112 @@ function buildOrganicFarm() {
     addBox(ofg, 2.4, 1.15, 0.28, paintedWallMat, 96.6, 0.575, fSouthZ + 0.35);
   }
 
+  // F. 《學校前庭綠籬規劃平面圖》四季果樹區：檸檬、香蕉、芭樂、百香果（2 × 2 紅磚矮框果樹畦，附木製解說牌）
+  //    平面圖排列：左列（南）檸檬／芭樂、右列（北）香蕉／百香果；上排（西）檸檬／香蕉、下排（東）芭樂／百香果。
+  //    因資材室位於平面圖果樹畦位置中段，果樹畦分置於資材室西側與東側之農場北半部。
+  {
+    const bedCurb = (x1, x2, z1, z2) => {
+      const w = x2 - x1, d = z2 - z1, cx = (x1 + x2) / 2, cz = (z1 + z2) / 2, h = 0.32, t = 0.18;
+      addBox(ofg, w, h, t, redBrickWallMat, cx, 0.25 + h / 2, z1 + t / 2);
+      addBox(ofg, w, h, t, redBrickWallMat, cx, 0.25 + h / 2, z2 - t / 2);
+      addBox(ofg, t, h, d, redBrickWallMat, x1 + t / 2, 0.25 + h / 2, cz);
+      addBox(ofg, t, h, d, redBrickWallMat, x2 - t / 2, 0.25 + h / 2, cz);
+      addBox(ofg, w - 2 * t, 0.10, d - 2 * t, farmSoilMat, cx, 0.25 + h - 0.05, cz, false);
+      return { cx, cz, top: 0.25 + h };
+    };
+    const signMat = label => {
+      const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fef3c7'; ctx.fillRect(0, 0, 256, 128);
+      ctx.strokeStyle = '#8c6d46'; ctx.lineWidth = 10; ctx.strokeRect(5, 5, 246, 118);
+      ctx.fillStyle = '#5b3d1e'; ctx.font = 'bold 64px "Noto Sans TC", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, 128, 68);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      return new THREE.MeshStandardMaterial({ map: t, roughness: 0.7 });
+    };
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x8c6d46, roughness: 0.85 });
+    const addSign = (label, x, z) => {
+      addBox(ofg, 0.05, 0.75, 0.05, postMat, x, 0.62, z);
+      const pl = addMesh(ofg, new THREE.PlaneGeometry(0.62, 0.31), signMat(label), x, 1.05, z + 0.03, false);
+      pl.rotation.y = 0;   // 面向南側車道
+    };
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b5442, roughness: 0.9 });
+    const leafDark = new THREE.MeshStandardMaterial({ color: 0x2f6a2a, roughness: 0.78 });
+    const leafLime = new THREE.MeshStandardMaterial({ color: 0x5f9a3a, roughness: 0.76 });
+    const lemonFruit = new THREE.MeshStandardMaterial({ color: 0xf4d23c, roughness: 0.45 });
+    const guavaFruit = new THREE.MeshStandardMaterial({ color: 0xb5d36a, roughness: 0.5 });
+    const bananaLeaf = new THREE.MeshStandardMaterial({ color: 0x6fae3e, roughness: 0.7, side: THREE.DoubleSide });
+    const bananaStem = new THREE.MeshStandardMaterial({ color: 0x7f9a52, roughness: 0.8 });
+    const passionFruit = new THREE.MeshStandardMaterial({ color: 0x5b2a5e, roughness: 0.5 });
+    const passionFlower = new THREE.MeshStandardMaterial({ color: 0xf5f3ff, roughness: 0.5 });
+
+    // 1) 檸檬（西段・南列）：3 株圓冠小喬木，掛黃色果實
+    {
+      const b = bedCurb(53.5, 66.0, -53.6, -51.4);
+      [55.8, 59.8, 63.8].forEach((x, i) => {
+        addMesh(ofg, new THREE.CylinderGeometry(0.07, 0.10, 1.0, 7), trunkMat, x, b.top + 0.5, b.cz);
+        const cr = addMesh(ofg, new THREE.SphereGeometry(0.85, 12, 9), i % 2 ? leafDark : leafLime, x, b.top + 1.55, b.cz);
+        cr.scale.set(1.1, 0.95, 1.0);
+        for (let f = 0; f < 7; f++) {
+          const a = f * 0.9 + i;
+          addMesh(ofg, new THREE.SphereGeometry(0.075, 7, 6), lemonFruit, x + Math.cos(a) * 0.8, b.top + 1.25 + (f % 3) * 0.25, b.cz + Math.sin(a) * 0.72);
+        }
+      });
+      addSign('檸檬', 54.2, b.cz + 1.15);
+    }
+    // 2) 香蕉（西段・北列）：4 叢香蕉，假莖＋大型下垂葉片＋綠色果串
+    {
+      const b = bedCurb(53.5, 66.0, -55.8, -53.8);
+      [55.2, 58.4, 61.6, 64.6].forEach((x, i) => {
+        const h = 2.3 + (i % 2) * 0.4;
+        addMesh(ofg, new THREE.CylinderGeometry(0.12, 0.17, h, 8), bananaStem, x, b.top + h / 2, b.cz);
+        for (let l = 0; l < 7; l++) {
+          const a = (l / 7) * Math.PI * 2 + i;
+          const leaf = addBox(ofg, 1.5, 0.02, 0.42, bananaLeaf, x + Math.cos(a) * 0.72, b.top + h + 0.05, b.cz + Math.sin(a) * 0.72);
+          leaf.rotation.y = -a;
+          leaf.rotation.z = -0.55;    // 葉片外展下垂
+        }
+        const bunch = addMesh(ofg, new THREE.CylinderGeometry(0.16, 0.08, 0.5, 8), guavaFruit, x + 0.22, b.top + h - 0.55, b.cz + 0.1);
+        bunch.rotation.z = 0.3;
+      });
+      addSign('香蕉', 54.2, b.cz - 1.0);
+    }
+    // 3) 芭樂（東段・南列）：3 株開展型樹冠，掛淡綠色果實
+    {
+      const b = bedCurb(77.0, 91.0, -54.2, -52.6);
+      [79.6, 84.0, 88.4].forEach((x, i) => {
+        addMesh(ofg, new THREE.CylinderGeometry(0.09, 0.13, 1.2, 7), trunkMat, x, b.top + 0.6, b.cz);
+        [[0, 1.75, 0, 0.95], [-0.6, 1.5, 0.2, 0.7], [0.6, 1.55, -0.2, 0.72]].forEach(([ox, oy, oz, r], k) => {
+          const cl = addMesh(ofg, new THREE.DodecahedronGeometry(r, 1), (k + i) % 2 ? leafLime : leafDark, x + ox, b.top + oy, b.cz + oz);
+          cl.scale.set(1.15, 0.75, 1.05);
+        });
+        for (let f = 0; f < 6; f++) {
+          const a = f * 1.05 + i;
+          addMesh(ofg, new THREE.SphereGeometry(0.09, 7, 6), guavaFruit, x + Math.cos(a) * 0.85, b.top + 1.35 + (f % 2) * 0.2, b.cz + Math.sin(a) * 0.6);
+        }
+      });
+      addSign('芭樂', 77.7, b.cz + 1.05);
+    }
+    // 4) 百香果（東段・北列）：低矮竹架攀爬藤蔓，紫色果實與白紫色花
+    {
+      const b = bedCurb(77.0, 91.0, -55.9, -54.4);
+      const bambooMat2 = new THREE.MeshStandardMaterial({ color: 0x9c8458, roughness: 0.85 });
+      const archH = 1.6;
+      for (let x = 77.6; x <= 90.4; x += 1.6) {
+        addMesh(ofg, new THREE.CylinderGeometry(0.03, 0.035, archH, 6), bambooMat2, x, b.top + archH / 2, b.cz);
+      }
+      [archH - 0.05, archH * 0.55].forEach(y => addMesh(ofg, new THREE.CylinderGeometry(0.025, 0.025, 13.2, 6), bambooMat2, 84.0, b.top + y, b.cz).rotation.z = Math.PI / 2);
+      for (let v = 0; v < 14; v++) {
+        const x = 77.9 + v * 0.95;
+        const cl = addMesh(ofg, new THREE.DodecahedronGeometry(0.42 + (v % 3) * 0.08, 1), v % 2 ? leafDark : leafLime, x, b.top + 0.9 + (v % 3) * 0.28, b.cz + (v % 2 ? 0.12 : -0.12));
+        cl.scale.set(1.2, 0.85, 0.6);
+        if (v % 2 === 0) addMesh(ofg, new THREE.SphereGeometry(0.07, 7, 6), passionFruit, x + 0.2, b.top + 0.75, b.cz + 0.25);
+        if (v % 3 === 0) addMesh(ofg, new THREE.SphereGeometry(0.06, 6, 5), passionFlower, x - 0.2, b.top + 1.25, b.cz + 0.24);
+      }
+      addSign('百香果', 77.7, b.cz - 0.95);
+    }
+  }
+
   ofg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'organic-farm'; });
   layerGroups.buildings.add(ofg);
   clickableGroups.push(ofg);
