@@ -933,6 +933,33 @@ function addBox(parent, w, h, d, mat, x, y, z, cast = true) {
 addBox(layerGroups.roads, 980, 0.2, 980, new THREE.MeshStandardMaterial({ color: 0x8eb374, roughness: 0.92 }), 0, -0.14, 0, false);
 
 // Procedural Campus Green Lawn Texture (`運動場與後圍牆間的校園草地緩衝區` 自然草皮紋理)
+// 前庭草坪（依 2026 俯拍照片：偏橄欖綠、無明顯割草條紋、局部黃褐色踩踏斑塊）
+function makeForecourtLawnTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#4f6a2c';
+  ctx.fillRect(0, 0, 512, 512);
+  let s = 77;
+  const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 26; i++) {               // 大塊色差
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    const x = r() * 512, y = r() * 512, rad = 30 + r() * 70;
+    ctx.save(); ctx.translate(x, y); ctx.scale(rad, rad * (0.6 + r() * 0.6));
+    g.addColorStop(0, i % 4 === 0 ? 'rgba(160,140,90,0.35)' : (i % 2 ? 'rgba(90,120,55,0.35)' : 'rgba(120,145,70,0.30)'));
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+  for (let i = 0; i < 4200; i++) {
+    ctx.fillStyle = ['#46602a', '#62803c', '#6f8746', '#435a2c'][i % 4];
+    ctx.fillRect(r() * 512, r() * 512, 2, 2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function makeCampusLawnTexture() {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 256;
@@ -16308,87 +16335,64 @@ function buildMainGateLayer() {
     ctx.fillStyle = '#8b8e92';
     ctx.fillRect(0, 0, W, H);
 
-    // 北側粉紅連鎖磚縱向停車帶 (y: 0..210) 與南側垂直停車格粉紅磚帶 (y: 760..1024)
-    ctx.fillStyle = '#a86b68';
-    ctx.fillRect(0, 0, W * 0.72, 210);
-    ctx.fillStyle = '#9e6865';
-    ctx.fillRect(W * 0.16, 760, W * 0.74, 264);
-
-    // 細密連鎖磚格線
-    ctx.strokeStyle = 'rgba(45,48,52,0.28)';
-    ctx.lineWidth = 1.5;
-    for (let x = 0; x < W; x += 24) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    // v2.11.4 依 2026 東棟 2F 俯拍照片重繪（畫布上 = 北、左 = 東棟、右 = 校門；1 m ≈ 46 px 寬 × 59 px 深）
+    // 細密灰色連鎖磚（錯縫小長方磚，每片微幅色差）
+    {
+      let sd = 7; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let y = 0; y < H; y += 12) {
+        const off = ((y / 12) % 2) * 11;
+        for (let x = -22; x < W; x += 22) {
+          const v = 128 + Math.floor(rnd() * 22);
+          ctx.fillStyle = `rgb(${v},${v + 2},${v + 5})`;
+          ctx.fillRect(x + off + 1, y + 1, 20, 10);
+        }
+      }
     }
-    for (let y = 0; y < H; y += 16) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    }
-
-    // 中央米黃色雙道引導磚線 (x: W*0.42..W*0.96, y: 465 & 495) 與縱向黃磚裝飾線
-    ctx.fillStyle = '#c4a668';
-    ctx.fillRect(W * 0.18, 462, W * 0.78, 12);
-    ctx.fillRect(W * 0.18, 492, W * 0.78, 12);
-    ctx.fillRect(W * 0.16, 752, W * 0.74, 12);
-    [0.22, 0.34, 0.48].forEach(fx => {
-      ctx.fillRect(W * fx, 220, 14, 520);
+    // 淡米黃色菱形拼花磚塊（照片：填色淡黃褐色方塊，非框線）
+    ctx.fillStyle = 'rgba(196,170,112,0.55)';
+    [[300, 520], [620, 360], [620, 700], [980, 520], [1300, 360], [1300, 700], [1640, 470], [420, 800], [1000, 830]].forEach(([dx, dy]) => {
+      ctx.beginPath(); ctx.moveTo(dx, dy - 70); ctx.lineTo(dx + 90, dy); ctx.lineTo(dx, dy + 70); ctx.lineTo(dx - 90, dy); ctx.closePath(); ctx.fill();
     });
+    // 北側（臨北草坪）紅磚帶 2.2 m，南側（臨南草坪）紅磚帶 1.6 m，皆全長
+    const brick = (x, y, w, h, base) => {
+      ctx.fillStyle = base; ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(60,30,28,0.25)'; ctx.lineWidth = 1.5;
+      for (let yy = y; yy < y + h; yy += 12) { ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke(); }
+    };
+    brick(0, 0, W * 0.90, 130, '#9a6662');
+    brick(0, H - 94, W, 94, '#956460');
+    // 中央偏南雙黃線（自校門延伸至中央花台）
+    ctx.fillStyle = '#d1a93e';
+    ctx.fillRect(W * 0.52, 588, W * 0.48, 9);
+    ctx.fillRect(W * 0.52, 606, W * 0.48, 9);
 
-    // 米黃色菱格幾何拼花圖騰 (Argyle / Diamond Inlays，照片 5 地面特色拼花)
-    function drawYellowDiamond(cx, cy, r) {
-      ctx.save();
-      ctx.strokeStyle = '#c8aa6c';
-      ctx.lineWidth = 14;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r);
-      ctx.lineTo(cx + r, cy);
-      ctx.lineTo(cx, cy + r);
-      ctx.lineTo(cx - r, cy);
-      ctx.closePath();
-      ctx.stroke();
-      ctx.fillStyle = '#b89a5e';
-      ctx.fillRect(cx - 12, cy - 12, 24, 24);
-      ctx.restore();
-    }
-    [
-      [340, 320, 75], [340, 620, 75],
-      [620, 320, 70], [620, 620, 70],
-      [920, 320, 70], [920, 620, 70],
-      [1240, 340, 65], [1240, 600, 65]
-    ].forEach(([dx, dy, dr]) => drawYellowDiamond(dx, dy, dr));
-
-    // 北側白線縱向停車區、禁停交叉網格 (✕) 與白色方向箭頭 (← 朝向東棟)
-    ctx.strokeStyle = '#f8fafc';
-    ctx.lineWidth = 10;
-    ctx.strokeRect(18, 8, W * 0.70, 200);
-    [0.18, 0.35, 0.44, 0.58].forEach(fx => {
-      ctx.beginPath(); ctx.moveTo(W * fx, 8); ctx.lineTo(W * fx, 208); ctx.stroke();
-    });
-    // 禁停白叉網格 (位於 x: 0.35..0.44)
-    ctx.beginPath();
-    ctx.moveTo(W * 0.35, 8); ctx.lineTo(W * 0.44, 208);
-    ctx.moveTo(W * 0.44, 8); ctx.lineTo(W * 0.35, 208);
-    ctx.stroke();
-
-    // 地面白色方向箭頭 (照片 5 北車道朝向東棟之白色箭頭)
-    ctx.fillStyle = '#f8fafc';
-    const ax = W * 0.47, ay = 315;
-    ctx.fillRect(ax, ay - 8, 70, 16);
-    ctx.beginPath();
-    ctx.moveTo(ax - 36, ay);
-    ctx.lineTo(ax + 6, ay - 28);
-    ctx.lineTo(ax + 6, ay + 28);
-    ctx.closePath();
-    ctx.fill();
-
-    // 南側 5 格白線垂直停車格 (照片 5 右側 5 格整齊白線停車位)
-    const stallStartX = W * 0.52, stallEndX = W * 0.88;
-    const stallW = (stallEndX - stallStartX) / 5;
-    ctx.strokeStyle = '#f8fafc';
+    ctx.strokeStyle = '#f4f6f8';
     ctx.lineWidth = 9;
-    for (let s = 0; s < 5; s++) {
-      const sx = stallStartX + s * stallW;
-      ctx.strokeRect(sx, 768, stallW, 240);
+    // 北側垂直停車格：前緣長白線（距北緣 4.1 m），分隔線橫跨紅磚帶至草坪緣；中段一格為斜線禁停格
+    const nStallY = 242, nX0 = W * 0.04, nX1 = W * 0.72, nCount = 9, nW = (nX1 - nX0) / nCount;
+    ctx.beginPath(); ctx.moveTo(nX0, nStallY); ctx.lineTo(nX1, nStallY); ctx.stroke();
+    for (let i = 0; i <= nCount; i++) { ctx.beginPath(); ctx.moveTo(nX0 + i * nW, 4); ctx.lineTo(nX0 + i * nW, nStallY); ctx.stroke(); }
+    {
+      const hx = nX0 + 4 * nW;   // 照片中的白色斜線格
+      ctx.beginPath(); ctx.moveTo(hx, 140); ctx.lineTo(hx + nW, nStallY); ctx.moveTo(hx + nW, 140); ctx.lineTo(hx, nStallY);
+      ctx.moveTo(hx + nW * 0.5, 140); ctx.lineTo(hx, nStallY); ctx.moveTo(hx + nW * 0.5, 140); ctx.lineTo(hx + nW, nStallY); ctx.stroke();
     }
+    // 南側近校門 5 格垂直停車格（灰磚上，南緣接紅磚帶）
+    const sX0 = W * 0.70, sX1 = W * 0.93, sCount = 5, sW = (sX1 - sX0) / sCount, sY0 = H - 94 - 250;
+    ctx.beginPath(); ctx.moveTo(sX0, sY0); ctx.lineTo(sX0, H - 94); ctx.stroke();
+    for (let i = 0; i <= sCount; i++) { ctx.beginPath(); ctx.moveTo(sX0 + i * sW, sY0 + (i === 0 ? 0 : 0)); ctx.lineTo(sX0 + i * sW, H - 94); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(sX0, sY0); ctx.lineTo(sX1, sY0); ctx.stroke();
+    // 白色方向箭頭：北車道 ← 往東棟、南側 ↰ 轉向與直行箭頭
+    ctx.fillStyle = '#f4f6f8';
+    const arrow = (x, y, dir) => {
+      ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1);
+      ctx.fillRect(0, -7, 80, 14);
+      ctx.beginPath(); ctx.moveTo(-36, 0); ctx.lineTo(4, -26); ctx.lineTo(4, 26); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    };
+    arrow(W * 0.50, 330, 1);
+    arrow(W * 0.30, 700, -1);
+    arrow(W * 0.78, 470, -1);
 
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
@@ -16568,7 +16572,7 @@ function buildMainGateLayer() {
     const nLawnW = nLawnMaxX - nLawnMinX, nLawnD = nLawnMaxZ - nLawnMinZ;
     const nLawnCx = (nLawnMinX + nLawnMaxX) / 2, nLawnCz = (nLawnMinZ + nLawnMaxZ) / 2;
     // 依《學校前庭綠籬規劃平面圖》：臨復興路一側為向草坪內凹之大圓弧（FU-SHING 矮牆北端 → 老榕樹後方 → 東側門）
-    const northLawnTex = makeCampusLawnTexture(); northLawnTex.repeat.set(1, 1);
+    const northLawnTex = makeForecourtLawnTexture(); northLawnTex.repeat.set(0.6, 0.6);
     const northTurfMat = new THREE.MeshStandardMaterial({ map: northLawnTex, roughness: 0.88, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const northCurvePts = sampleXZCurve(FORECOURT_NORTH_CURVE, 0.5);
     {
@@ -16984,7 +16988,7 @@ function buildMainGateLayer() {
     const sLawnW = sLawnMaxX - sLawnMinX, sLawnD = sLawnMaxZ - sLawnMinZ;
     const sLawnCx = (sLawnMinX + sLawnMaxX) / 2, sLawnCz = (sLawnMinZ + sLawnMaxZ) / 2;
     // 依《學校前庭綠籬規劃平面圖》：北緣臨中央廣場直線、東緣沿大門南側欄杆與斜向矮牆、南緣為 S 形曲線
-    const southLawnTex = makeCampusLawnTexture(); southLawnTex.repeat.set(1, 1);
+    const southLawnTex = makeForecourtLawnTexture(); southLawnTex.repeat.set(0.6, 0.6);
     const southTurfMat = new THREE.MeshStandardMaterial({ map: southLawnTex, roughness: 0.88, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     {
       const southEdge = offsetXZ(sampleXZCurve(FORECOURT_SOUTH_CURVE, 0.5), 0.20, 0, -1).reverse();   // 由西往東
@@ -17048,16 +17052,45 @@ function buildMainGateLayer() {
       addBox(mg, 0.04, 0.22, 0.30, new THREE.MeshStandardMaterial({ color: 0xffffff }), 85.55, 1.45, 8.8);
     }
 
-    // 3. 草坪中央「方形水泥基座與石雕藝術品」(照片 4 小葉欖仁後方淺灰石雕)
+    // 3. 南草坪「母子」石雕與「耕心園」黑色刻字景觀石（依 2026 實景照片 29、30）
     {
       const scx = 84.5, scz = 11.4;
-      const sculpBaseMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.85 });
-      const sculpStoneMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.68 });
-      addBox(mg, 0.76, 0.52, 0.76, sculpBaseMat, scx, 0.26, scz);
-      addBox(mg, 0.84, 0.08, 0.84, stoneCapMat, scx, 0.54, scz);
-      const body = addMesh(mg, new THREE.CylinderGeometry(0.22, 0.28, 0.95, 10), sculpStoneMat, scx, 1.05, scz);
-      body.scale.set(1.1, 1.0, 0.85);
-      addMesh(mg, new THREE.SphereGeometry(0.20, 10, 10), sculpStoneMat, scx, 1.62, scz);
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8f877b, roughness: 0.92 });
+      const baseMat = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.95 });
+      const sg = new THREE.Group();
+      sg.position.set(scx, 0, scz);
+      sg.rotation.y = -0.35;                       // 母親身軀前傾朝東，懷抱幼兒
+      addBox(sg, 0.62, 0.42, 0.55, baseMat, 0, 0.21, 0);                                   // 粗鑿方形石座
+      const body = addMesh(sg, new THREE.CylinderGeometry(0.17, 0.25, 0.95, 14), stoneMat, -0.06, 0.88, 0);
+      body.rotation.z = 0.22; body.scale.set(1.0, 1.0, 0.75);                             // 弧形背部
+      addMesh(sg, new THREE.SphereGeometry(0.155, 14, 12), stoneMat, 0.06, 1.48, 0);       // 母親頭部（光滑卵形）
+      const arm = addMesh(sg, new THREE.CylinderGeometry(0.07, 0.08, 0.36, 10), stoneMat, 0.14, 0.95, 0);
+      arm.rotation.z = Math.PI / 2.4;
+      addMesh(sg, new THREE.SphereGeometry(0.095, 12, 10), stoneMat, 0.30, 1.05, 0);       // 幼兒頭部
+      const child = addMesh(sg, new THREE.CylinderGeometry(0.06, 0.09, 0.30, 10), stoneMat, 0.27, 0.82, 0);
+      child.rotation.z = -0.2;
+      mg.add(sg);
+
+      // 「耕心園」景觀石：黑色圓潤河石，正面朝北（朝廣場），紅字
+      // 球面 UV：u = 0.5 對應 +x，旋轉 +90° 後朝北 (−z)；字集中在 u 0.42～0.58 的正面範圍（1 px ≈ 3 mm）
+      const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+      const ctx = c.getContext('2d');
+      const grd = ctx.createLinearGradient(0, 0, 0, 512);
+      grd.addColorStop(0, '#262627'); grd.addColorStop(0.62, '#2f2f30'); grd.addColorStop(1, '#5f5d58');
+      ctx.fillStyle = grd; ctx.fillRect(0, 0, 1024, 512);
+      ctx.fillStyle = '#a8352b'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.save(); ctx.scale(0.82, 1);
+      ctx.font = 'bold 96px "Noto Serif TC", "PMingLiU", serif';
+      ctx.fillText('耕', 438 / 0.82, 262); ctx.fillText('園', 590 / 0.82, 262);
+      ctx.font = 'bold 66px "Noto Serif TC", "PMingLiU", serif';
+      ctx.fillText('心', 514 / 0.82, 178);
+      ctx.restore();
+      const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      const rockMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 });
+      const rock = addMesh(mg, new THREE.SphereGeometry(0.5, 32, 20), rockMat, scx - 1.7, 0.38, scz + 0.15);
+      rock.scale.set(1.32, 0.86, 0.80);
+      rock.rotation.y = Math.PI / 2;
+      rock.scale.set(0.80, 0.86, 1.32);   // 旋轉後：局部 z 為東西寬 1.32 m、局部 x 為南北厚 0.80 m
     }
 
     // 4. 草坪中南側灌木叢與東南側「斜幹造型榕樹＋樹下紅陶盆栽群」(照片 4 右側標誌性斜幹樹與盆栽)
