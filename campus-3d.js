@@ -929,8 +929,21 @@ function addBox(parent, w, h, d, mat, x, y, z, cast = true) {
 // ============================================================================
 // 3. BUILD GROUND, COMMUTER WALKWAY BUFFER, ROADS, COURTYARD, BOUNDARY & CONTEXT
 // ============================================================================
-// Base terrain
-addBox(layerGroups.roads, 980, 0.2, 980, new THREE.MeshStandardMaterial({ color: 0x8eb374, roughness: 0.92 }), 0, -0.14, 0, false);
+// 下沉中庭（v2.12.0）：中庭比東棟穿堂低約 0.9 m、比前庭低約 0.75 m（依現場：穿堂前僅一階，中庭低於穿堂約 1 m）
+const COURTYARD_SINK = { x1: -17.2, x2: 52.6, z1: -24.0, z2: 8.7, D: 0.75 };
+window.COURTYARD_SINK = COURTYARD_SINK;
+const inCourtyardSink = (x, z, m = 0) => x >= COURTYARD_SINK.x1 - m && x <= COURTYARD_SINK.x2 + m && z >= COURTYARD_SINK.z1 - m && z <= COURTYARD_SINK.z2 + m;
+window.inCourtyardSink = inCourtyardSink;
+
+// Base terrain（中庭範圍挖空，另以下沉中庭地基與擋土牆圍塑）
+{
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x8eb374, roughness: 0.92 });
+  const C = COURTYARD_SINK, E = 490;
+  [[-E, E, -E, C.z1], [-E, E, C.z2, E], [-E, C.x1, C.z1, C.z2], [C.x2, E, C.z1, C.z2]].forEach(([x1, x2, z1, z2]) =>
+    addBox(layerGroups.roads, x2 - x1, 0.2, z2 - z1, baseMat, (x1 + x2) / 2, -0.14, (z1 + z2) / 2, false));
+  // 下沉中庭地基（頂面略低於中庭鋪面）
+  addBox(layerGroups.roads, C.x2 - C.x1, 0.3, C.z2 - C.z1, new THREE.MeshStandardMaterial({ color: 0x9a968c, roughness: 0.9 }), (C.x1 + C.x2) / 2, -C.D - 0.16, (C.z1 + C.z2) / 2, false);
+}
 
 // Procedural Campus Green Lawn Texture (`運動場與後圍牆間的校園草地緩衝區` 自然草皮紋理)
 // 前庭草坪（依 2026 俯拍照片：偏橄欖綠、無明顯割草條紋、局部黃褐色踩踏斑塊）
@@ -1050,6 +1063,11 @@ const CAMPUS_PERIMETER_PX = [
     else innerShape.lineTo(wx, wz);
   });
   innerShape.closePath();
+  {
+    const C = COURTYARD_SINK, hole = new THREE.Path();   // 形狀座標：y = −世界 z
+    hole.moveTo(C.x1, -C.z1); hole.lineTo(C.x1, -C.z2); hole.lineTo(C.x2, -C.z2); hole.lineTo(C.x2, -C.z1); hole.closePath();
+    innerShape.holes.push(hole);
+  }
   const innerGroundMesh = new THREE.Mesh(
     new THREE.ShapeGeometry(innerShape),
     new THREE.MeshStandardMaterial({ color: 0xdad6ca, roughness: 0.88, side: THREE.DoubleSide })
@@ -1301,7 +1319,61 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   });
 
   cg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'courtyard-plaza'; });
+  cg.position.y = -COURTYARD_SINK.D;   // 下沉中庭
   layerGroups.roads.add(cg);
+
+  // 下沉中庭四周洗石子擋土牆、壓頂與出入台階（北、南、西三向；東側由東棟穿堂台階與無障礙坡道銜接）
+  {
+    const C = COURTYARD_SINK, yC = 0.16 - C.D, yT = 0.06, H = yT - yC, t = 0.30;
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xc9c5bb, roughness: 0.86 });
+    const capMat = new THREE.MeshStandardMaterial({ color: 0xe2ded4, roughness: 0.7 });
+    const stepMat = new THREE.MeshStandardMaterial({ color: 0xd5d2ca, roughness: 0.72 });
+    const noseMat = new THREE.MeshStandardMaterial({ color: 0x3a3c3e, roughness: 0.85 });
+    const grp = new THREE.Group();
+    const flights = { N: [[18.0, 3.2]], S: [[-1.5, 3.0], [31.0, 3.0]], W: [[-8.0, 3.0]] };
+    const n = Math.max(2, Math.round(H / 0.15)), r = H / n, tr = 0.32;
+    // 依開口切分牆段
+    const run = (side, a1, a2) => {
+      const gaps = (flights[side] || []).map(([c, w]) => [c - w / 2, c + w / 2]).sort((p, q) => p[0] - q[0]);
+      let cur = a1; const segs = [];
+      gaps.forEach(([g1, g2]) => { if (g1 > cur) segs.push([cur, g1]); cur = Math.max(cur, g2); });
+      if (cur < a2) segs.push([cur, a2]);
+      return segs;
+    };
+    const wall = (side, b1, b2) => {
+      const L = b2 - b1, m = (b1 + b2) / 2;
+      if (side === 'N' || side === 'S') {
+        const z = side === 'N' ? C.z1 - t / 2 : C.z2 + t / 2;
+        addBox(grp, L, H, t, wallMat, m, yC + H / 2, z);
+        addBox(grp, L, 0.06, t + 0.08, capMat, m, yT + 0.03, z);
+      } else {
+        const x = C.x1 - t / 2;
+        addBox(grp, t, H, L, wallMat, x, yC + H / 2, m);
+        addBox(grp, t + 0.08, 0.06, L, capMat, x, yT + 0.03, m);
+      }
+    };
+    run('N', C.x1 - t, C.x2).forEach(([a, b]) => wall('N', a, b));
+    run('S', C.x1 - t, C.x2).forEach(([a, b]) => wall('S', a, b));
+    run('W', C.z1, C.z2).forEach(([a, b]) => wall('W', a, b));
+    // 台階：自中庭邊緣向內下行
+    const flight = (side, c, w) => {
+      for (let k = 0; k < n; k++) {
+        const top = yT - k * r, d = (k + 0.5) * tr;
+        if (side === 'N' || side === 'S') {
+          const z = side === 'N' ? C.z1 + d : C.z2 - d;
+          addBox(grp, w, top - yC, tr, stepMat, c, yC + (top - yC) / 2, z);
+          addBox(grp, w, 0.012, 0.04, noseMat, c, top + 0.006, z + (side === 'N' ? tr / 2 - 0.02 : -(tr / 2 - 0.02)), false);
+        } else {
+          const x = C.x1 + d;
+          addBox(grp, tr, top - yC, w, stepMat, x, yC + (top - yC) / 2, c);
+          addBox(grp, 0.04, 0.012, w, noseMat, x + tr / 2 - 0.02, top + 0.006, c, false);
+        }
+      }
+    };
+    Object.entries(flights).forEach(([side, list]) => list.forEach(([c, w]) => flight(side, c, w)));
+    grp.traverse(o => { o.userData.keepLevel = true; });
+    layerGroups.roads.add(grp);
+  }
   clickableGroups.push(cg);
   landmarkGroupMap.set('courtyard-plaza', cg);
 }
@@ -1315,7 +1387,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   pg.userData = { landmarkId: 'playground-zone' };
   // 位置：北棟前方採光天井外緣 (z ≈ −23.7) 以南約 6 m（照片 31 由北側約 6 m 處拍攝）；整組架於中庭鋪面 (0.16 m) 之上
   const px = 40.2, pz = -17.8;
-  pg.position.y = 0.16;
+  pg.position.y = 0.16 - COURTYARD_SINK.D;   // 中庭鋪面（已下沉）之上
 
   const postGreen = new THREE.MeshStandardMaterial({ color: 0x3aa346, roughness: 0.38, metalness: 0.1 });
   const capDark = new THREE.MeshStandardMaterial({ color: 0x3a2f2c, roughness: 0.5 });
@@ -6515,7 +6587,7 @@ function buildEastBuilding() {
   // 6) 1F 穿堂文化核心：「復興德馬號」五分車閱讀站 ＆ 「READ」原木造型書架
   // 依據現場實拍照片 media_1793514956908～1793514957415 1:1 沉浸式精準建模
   // ============================================================================
-  const yBreezeFloor = 1.16; // 穿堂 1F 水磨石地坪標高（v2.11.9：比中庭地面 0.16 m 高約 1 m，與北棟 1.25 m／南棟 1.15 m 之 1F 同高）
+  const yBreezeFloor = y0 + 0.02; // 穿堂 1F 水磨石地坪標高（v2.12.0：與前走廊等高，正面僅一階；中庭已下沉約 0.9 m）
   const yCeiling = yF[1] - 0.25; // 天花板底面標高 (約 4.15m)
   const zNorthWall = cz(AXIS_CM[8]); // 北側牆面 (約 -10.65m，面向 +Z)
   const zSouthWall = cz(AXIS_CM[7]); // 南側牆面 (約 -1.93m，面向 -Z)
@@ -7127,7 +7199,7 @@ function buildEastBuilding() {
   // 1F 穿堂西側出口：花崗石寬階梯、兩側混凝土側牆與無障礙坡道轉折平臺
   // 依據最新實景照片 media_1793002887451_10566a0d.jpg 1:1 精確還原
   // ============================================================================
-  const yCourtGround = 0.16;
+  const yCourtGround = 0.16 - COURTYARD_SINK.D;   // 下沉中庭鋪面標高
   // yBreezeFloor 已於穿堂文化核心區塊宣告
   const stairRiseTotal = yBreezeFloor - yCourtGround; // 1.20m
   const nBreezeSteps = Math.max(1, Math.round((yBreezeFloor - yCourtGround) / 0.15));   // 依高差自動計算級數
@@ -7140,22 +7212,8 @@ function buildEastBuilding() {
   const breezeFloorCx = (xW0 + xA) / 2;
   const breezeFloorH = yBreezeFloor - y0;
   addBox(g, breezeFloorW + 0.15, breezeFloorH, breezeW, passageFloorMat, breezeFloorCx, y0 + breezeFloorH / 2, breezeZ, false);
-  // v2.11.9：穿堂段前走廊同步架高（穿堂與前走廊等高），並於東側（前庭）設寬大台階下至前庭鋪面
-  {
-    addBox(g, xE - xA + 0.02, breezeFloorH, breezeW, passageFloorMat, (xA + xE) / 2, y0 + breezeFloorH / 2, breezeZ, false);
-    const yPlaza = 0.10, nS = Math.max(1, Math.round((yBreezeFloor - yPlaza) / 0.15)), rS = (yBreezeFloor - yPlaza) / nS, tS = 0.34;
-    const stepMat = new THREE.MeshStandardMaterial({ color: 0xd5d2ca, roughness: 0.72 });
-    const noseMat = new THREE.MeshStandardMaterial({ color: 0x323538, roughness: 0.88 });
-    for (let k = 0; k < nS; k++) {
-      const top = yBreezeFloor - k * rS, x = xE + (k + 0.5) * tS;
-      addBox(g, tS, top - yPlaza, breezeW - 0.3, stepMat, x, yPlaza + (top - yPlaza) / 2, breezeZ);
-      addBox(g, 0.04, 0.012, breezeW - 0.3, noseMat, x + tS / 2 - 0.02, top + 0.006, breezeZ, false);
-    }
-    // 台階兩側矮牆
-    const runX = nS * tS;
-    [-1, 1].forEach(sd => addBox(g, runX + 0.1, yBreezeFloor - yPlaza + 0.25, 0.22, wallMat, xE + runX / 2, yPlaza + (yBreezeFloor - yPlaza + 0.25) / 2, breezeZ + sd * (breezeW / 2 - 0.08)));
-  }
 
+  const keepMarkG = g.children.length, keepMarkD = eastDetailGroup.children.length;
   // 穿堂西側 8 階寬大戶外花崗石台階 (正對挑高大穿堂出口)
   const stairZ_Min = cz(AXIS_CM[8]) + 0.25;
   const stairZ_Max = cz(AXIS_CM[7]) - 0.25;
@@ -7329,6 +7387,9 @@ function buildEastBuilding() {
     }
     window.EAST_REAR_RAMP = { xA1, xB1, xC1, xC2, zN, zS, zNland, zSland, zCtop, zAexit, y1, y2, yTop, yGround };
   }
+  // 以上台階與坡道已依下沉中庭標高建置：標記為不再下移
+  g.children.slice(keepMarkG).forEach(o => o.traverse(c => { c.userData.keepLevel = true; }));
+  eastDetailGroup.children.slice(keepMarkD).forEach(o => o.traverse(c => { c.userData.keepLevel = true; }));
 
 
   // (中庭遊戲器材已統一移至 playground-zone 1:1 準確還原)
@@ -18369,6 +18430,8 @@ pinRingGeo.rotateX(-Math.PI / 2);
 
 function init360SpotBeacons() {
   const spots = window.CAMPUS_360_SPOTS || [];
+  // 下沉中庭內的 1F 實景點：標示高度隨中庭下移
+  spots.forEach(s => { if ((s.floor || '1F') === '1F' && inCourtyardSink(s.x, s.z) && !s.__sunk) { s.y -= COURTYARD_SINK.D; s.__sunk = true; } });
   spots.forEach((s, idx) => {
     const pinGroup = new THREE.Group();
     pinGroup.position.set(s.x, s.y, s.z);
@@ -22363,6 +22426,13 @@ renderer.setAnimationLoop(mainLoopFn = now => {
           if (targetFeet !== null) camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetFeet + eye, 0.18);
         }
       }
+      // 下沉中庭：進入中庭範圍時視高隨地面下降，離開時回復（東棟坡道／台階由其本身邏輯處理）
+      {
+        const inC = inCourtyardSink(camera.position.x, camera.position.z, -0.4);
+        const onRamp = window.EAST_REAR_RAMP && camera.position.x > window.EAST_REAR_RAMP.xA1 - 0.3;
+        if (inC && !onRamp && camera.position.y < 2.8) { camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72 - COURTYARD_SINK.D, 0.18); walkState.sunk = true; }
+        else if (!inC && walkState.sunk && camera.position.y < 1.6) { camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72, 0.18); if (Math.abs(camera.position.y - 1.72) < 0.02) walkState.sunk = false; }
+      }
       camera.position.y += Math.sin(now * 0.012) * (len > 0.001 ? 0.018 : 0);
       updateWalkCameraTarget();
     } else {
@@ -22471,7 +22541,7 @@ renderer.setAnimationLoop(mainLoopFn = now => {
       const pz = curA[1] + (curB[1] - curA[1]) * ag.segT;
       const cycle = now * 0.0085 * ag.speed + ag.phase;
       const bob = Math.abs(Math.cos(cycle)) * 0.025;
-      ag.mesh.position.set(px, 0.10 + bob, pz);
+      ag.mesh.position.set(px, 0.10 + bob - (inCourtyardSink(px, pz) ? COURTYARD_SINK.D : 0), pz);
       ag.mesh.rotation.y = Math.atan2(curB[0] - curA[0], curB[1] - curA[1]);
       const swing = Math.sin(cycle) * 0.46;
       ag.legL.rotation.x = swing;
@@ -22860,7 +22930,34 @@ const ALL_BUILD_TASKS = [
 
 // ---- 靜態幾何合批：每棟建築構建完成即合併 (draw call 降一個數量級) ----
 window.__batchStats = { batches: 0, ms: 0 };
+// 下沉中庭：將完全位於中庭範圍內、原本貼地建置的物件（樹木、植栽、花台、長椅…）整體下移 D
+const courtyardLowered = new WeakSet();
+const _cbox = new THREE.Box3(), _cpos = new THREE.Vector3();
+function lowerCourtyardContents() {
+  const C = COURTYARD_SINK;
+  const SKIP = new Set(['courtyard-plaza', 'playground-zone', 'north-building']);
+  const todo = [];
+  Object.values(layerGroups).forEach(root => root.traverse(o => {
+    if (!o.isMesh || o.isInstancedMesh || courtyardLowered.has(o)) return;
+    courtyardLowered.add(o);
+    if (o.userData.keepLevel || o.name.startsWith('batch:')) return;
+    let a = o, lm = '';
+    while (a && !lm) { lm = a.userData?.landmarkId || ''; a = a.parent; }
+    if (SKIP.has(lm)) return;
+    _cbox.setFromObject(o);
+    if (_cbox.isEmpty() || _cbox.min.y < -0.3) return;
+    if (_cbox.min.x < C.x1 || _cbox.max.x > C.x2 || _cbox.min.z < C.z1 || _cbox.max.z > C.z2) return;
+    todo.push(o);
+  }));
+  todo.forEach(o => {
+    o.getWorldPosition(_cpos); _cpos.y -= C.D;
+    o.parent.worldToLocal(_cpos); o.position.copy(_cpos); o.updateMatrix();
+  });
+  return todo.length;
+}
+
 function runStaticBatching(label) {
+  try { lowerCourtyardContents(); } catch (err) { console.warn('[Courtyard] lowering skipped:', err); }
   if (new URLSearchParams(window.location.search).has('nobatch')) return;
   try {
     const exclude = [
