@@ -382,7 +382,7 @@ window.CAMPUS_360_SPOTS = [
   {
     "id": "spot-13",
     "num": 13,
-    "name": "東棟行政大樓 1F 門廳",
+    "name": "東棟大樓圖書室入口_2F 門廳",
     "group": "大樓穿堂與走廊",
     "floor": "2F",
     "px": 758.12,
