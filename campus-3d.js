@@ -6338,7 +6338,9 @@ function buildEastBuilding() {
   const slabMat = new THREE.MeshStandardMaterial({ color: 0xbbb8af, roughness: 0.85 });
   const soffitMat = new THREE.MeshStandardMaterial({ color: 0xa8a59d, roughness: 0.9 });
   const columnMat = new THREE.MeshStandardMaterial({ color: 0xf2f0e9, roughness: 0.7 });
-  const passageFloorMat = new THREE.MeshStandardMaterial({ color: 0x8b8c88, roughness: 0.55 });
+  // 穿堂／後走廊水磨石地坪（照片：淺灰白底、黑色石粒、約 60 cm 方格分割）
+  const passageFloorTex = makeTerrazzoTexture(); passageFloorTex.repeat.set(12, 12);
+  const passageFloorMat = new THREE.MeshStandardMaterial({ map: passageFloorTex, color: 0xf2f1ec, roughness: 0.42 });
   const pebbleMat = new THREE.MeshStandardMaterial({ color: 0xd3d1c9, roughness: 0.9 });
   const acMat = new THREE.MeshStandardMaterial({ color: 0xeeefee, roughness: 0.5 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x3b3c3e, roughness: 0.7 });
@@ -6706,14 +6708,14 @@ function buildEastBuilding() {
     ctx.lineWidth = 3;
 
     const poemLines = [
-      { chars: ['閱','讀','五','分','車','，'], x: 1830 },
-      { chars: ['行','經','萬','年','縣','。'], x: 1895 },
-      { chars: ['與','糖','越','讀','者','，'], x: 1955 },
-      { chars: ['復','興','展','新','頁','。'], x: 2005 }
+      { chars: ['閱','讀','五','分','車','，'], x: 2000, y0: 120 },   // 直書由右至左，各行依序下移（照片）
+      { chars: ['行','經','萬','年','縣','。'], x: 1935, y0: 175 },
+      { chars: ['興','糖','越','讀','者','，'], x: 1870, y0: 270 },
+      { chars: ['復','興','展','新','頁','。'], x: 1805, y0: 325 }
     ];
 
     poemLines.forEach(col => {
-      let cy = 320;
+      let cy = col.y0;
       col.chars.forEach(ch => {
         ctx.strokeText(ch, col.x, cy);
         ctx.fillText(ch, col.x, cy);
@@ -6723,9 +6725,9 @@ function buildEastBuilding() {
 
     ctx.font = 'bold 26px "DFKai-SB","BiauKai","Noto Serif TC",serif';
     ctx.fillStyle = '#44403c';
-    let sy = 760;
-    ['（','五','分','車','閱','讀','站','）'].forEach(ch => {
-      ctx.fillText(ch, 1955, sy);
+    let sy = 640;
+    ['《','五','分','車','閱','讀','站','》'].forEach(ch => {
+      ctx.fillText(ch, 1745, sy);
       sy += 32;
     });
 
@@ -6927,386 +6929,155 @@ function buildEastBuilding() {
          xCabCtr - 0.10, yBase + 0.52, zLoco + locoWid / 2 + 0.04, false);
 
   // ============================================================
-  // 3. 2 節大型書架車廂 (Book-Cart Wagons x 2)
-  //    深褐灰色箱體 / 3 列 x 2 排格子 / 黃色踢腳板 / 黑小輪
+  // 3. 2 節書架車廂（v2.11.7 依 2026 實景照片）：每節 = 書櫃塔 ｜ 座椅＋黃色圓頭小桌 ｜ 書櫃塔
+  //    深咖啡灰箱體、上兩層黃色斜面展示板（封面朝外）、底層直立書；黃色車台邊條、灰色大圓輪
   // ============================================================
-  const carStartX   = xCabCtr - cabLen / 2;
-  const numCars     = 2;
-  const carLen      = 1.65;
-  const carWid      = 0.56;
-  const carH        = 1.22;
-  const carBaseH    = 0.10;
-  const carWheelR   = 0.09;
-  const zCar        = zNorthWall + carWid / 2 + 0.05;
-
+  const carStartX = xCabCtr - cabLen / 2;
+  const numCars = 2, carLen = 2.15, carWid = 0.62, zCar = zNorthWall + carWid / 2 + 0.06;
+  const deckH = 0.18, towerW = 0.56, towerH = 1.05;
+  const cabinetMat = new THREE.MeshStandardMaterial({ color: 0x544a43, roughness: 0.7 });
+  const cabinetIn = new THREE.MeshStandardMaterial({ color: 0x3f3732, roughness: 0.75 });
+  const wheelGrey = new THREE.MeshStandardMaterial({ color: 0x6b6460, roughness: 0.6 });
+  const faceOut = (x, y, z, w) => {   // 斜面展示板＋封面朝外書本
+    const board = addBox(g, w, 0.02, 0.30, carriageYellowMat, x, y + 0.13, z + 0.04, false);
+    board.rotation.x = -1.05;
+    const nB = 2;
+    for (let i = 0; i < nB; i++) {
+      const col = bookPalette[(Math.floor(x * 13) + i * 3) % bookPalette.length];
+      const bk = addBox(g, w / nB - 0.03, 0.24, 0.015, new THREE.MeshStandardMaterial({ color: col, roughness: 0.6 }), x - w / 2 + (i + 0.5) * w / nB, y + 0.15, z + 0.13, false);
+      bk.rotation.x = -0.5;
+    }
+  };
+  const tower = (x) => {
+    const yb = yBase + deckH, zc = zCar;
+    addBox(g, towerW, towerH, 0.03, cabinetMat, x, yb + towerH / 2, zc - carWid / 2 + 0.015);          // 背板
+    [-1, 1].forEach(s => addBox(g, 0.03, towerH, carWid, cabinetMat, x + s * (towerW / 2 - 0.015), yb + towerH / 2, zc));   // 側板
+    addBox(g, towerW, 0.03, carWid, cabinetMat, x, yb + towerH - 0.015, zc);                         // 頂板
+    [0.36, 0.70].forEach(h => addBox(g, towerW - 0.06, 0.025, carWid - 0.04, cabinetIn, x, yb + h, zc, false));
+    faceOut(x, yb + 0.70, zc, towerW - 0.08);
+    faceOut(x, yb + 0.36, zc, towerW - 0.08);
+    makeBooksRow(x - towerW / 2 + 0.05, x + towerW / 2 - 0.05, yb + 0.01, zc + 0.04, 9, carWid * 0.7);
+  };
   for (let c = 0; c < numCars; c++) {
-    const cx = carStartX - carLen / 2 - c * carLen;
-
-    addBox(g, carLen, carBaseH, carWid, locoBlackFrameMat, cx, yBase + carBaseH / 2, zCar);
-
-    [+0.60, -0.60].forEach(dwx => {
-      [+1, -1].forEach(ds => {
-        const cw = addMesh(g, new THREE.CylinderGeometry(carWheelR, carWheelR, 0.04, 14),
-                           trainWheelMat, cx + dwx, yBase + carWheelR, zCar + ds * (carWid / 2 + 0.02), false);
-        cw.rotation.x = Math.PI / 2;
-      });
+    const cx = carStartX - 0.06 - carLen / 2 - c * (carLen + 0.08);
+    // 車台：深色台面＋黃色邊條
+    addBox(g, carLen, 0.10, carWid + 0.04, cabinetMat, cx, yBase + deckH - 0.05, zCar);
+    addBox(g, carLen + 0.02, 0.07, 0.02, carriageYellowMat, cx, yBase + deckH - 0.04, zCar + carWid / 2 + 0.03, false);
+    [-1, 1].forEach(s => addBox(g, 0.02, 0.07, carWid + 0.04, carriageYellowMat, cx + s * (carLen / 2 + 0.01), yBase + deckH - 0.04, zCar, false));
+    // 灰色大圓輪（前側兩顆、圓面朝外）
+    [-carLen / 2 + 0.32, carLen / 2 - 0.32].forEach(dx => {
+      const wl = addMesh(g, new THREE.CylinderGeometry(0.15, 0.15, 0.05, 24), wheelGrey, cx + dx, yBase + 0.15, zCar + carWid / 2 - 0.05, false);
+      wl.rotation.x = Math.PI / 2;
     });
-
-    const carBodyMat = new THREE.MeshStandardMaterial({ color: 0x3e3b35, roughness: 0.70 });
-
-    addBox(g, carLen, carH, 0.045, carBodyMat, cx, yBase + carBaseH + carH / 2, zCar - carWid / 2 + 0.022, false);
-    addBox(g, 0.045, carH, carWid, carBodyMat, cx - carLen / 2 + 0.022, yBase + carBaseH + carH / 2, zCar, false);
-    addBox(g, 0.045, carH, carWid, carBodyMat, cx + carLen / 2 - 0.022, yBase + carBaseH + carH / 2, zCar, false);
-    addBox(g, carLen, 0.045, carWid, carBodyMat, cx, yBase + carBaseH + carH - 0.022, zCar, false);
-    addBox(g, carLen + 0.04, 0.055, carWid + 0.04, carriageYellowMat,
-           cx, yBase + carBaseH + carH + 0.005, zCar);
-    addBox(g, carLen + 0.04, 0.09, carWid + 0.04, carriageYellowMat,
-           cx, yBase + carBaseH + 0.045, zCar);
-
-    addBox(g, carLen - 0.09, 0.040, carWid - 0.06, carBodyMat,
-           cx, yBase + carBaseH + carH / 2, zCar, false);
-    for (let col = 1; col < 3; col++) {
-      addBox(g, 0.040, carH - 0.09, carWid - 0.06, carBodyMat,
-             cx - carLen / 2 + col * (carLen / 3), yBase + carBaseH + carH / 2, zCar, false);
-    }
-
-    if (c < numCars - 1) {
-      const deskX = cx - carLen / 2;
-      addMesh(g, new THREE.CylinderGeometry(0.26, 0.26, 0.04, 20),
-              carriageYellowMat, deskX, yBase + carBaseH + carH / 2 + 0.04, zCar + carWid / 2 + 0.22);
-      addMesh(g, new THREE.CylinderGeometry(0.06, 0.06, carH / 2 - 0.02, 12),
-              locoBlackFrameMat, deskX, yBase + carBaseH + carH / 4, zCar + carWid / 2 + 0.22);
-    }
-
-    const colW = (carLen - 0.09) / 3;
-    for (let col = 0; col < 3; col++) {
-      const bStartX = cx - carLen / 2 + 0.045 + col * colW;
-      const bEndX   = bStartX + colW - 0.025;
-      makeBooksRow(bStartX, bEndX, yBase + carBaseH + 0.10, zCar + 0.05, 6, 0.46);
-      makeBooksRow(bStartX, bEndX, yBase + carBaseH + carH / 2 + 0.04, zCar + 0.05, 5, 0.46);
-    }
+    tower(cx - carLen / 2 + towerW / 2);
+    tower(cx + carLen / 2 - towerW / 2);
+    // 中段：座椅與黃色圓頭小桌（桌板固定於牆側立柱）
+    const gapX = cx, gapW = carLen - 2 * towerW;
+    addBox(g, gapW - 0.06, 0.24, carWid * 0.55, cabinetMat, gapX, yBase + deckH + 0.12, zCar - carWid * 0.2);   // 座椅
+    const top = addMesh(g, new THREE.CylinderGeometry(0.22, 0.22, 0.04, 24), carriageYellowMat, gapX, yBase + deckH + 0.62, zCar + 0.02);
+    top.scale.set(1.25, 1, 0.9);
+    addBox(g, 0.05, 0.6, 0.05, cabinetMat, gapX, yBase + deckH + 0.31, zCar - 0.05, false);
   }
 
   // ============================================================
+  // (C) 南側牆面：消光黑底牆 ＆ READ 立體造型書架（v2.11.7 依 2026 實景照片）
+  //     每個字母為「中空粗體字框」：淺原木色外框（深 28 cm）＋字腔內框，書本置於筆畫內，筆畫內設橫隔板
   // ============================================================
-  // (C) 南側牆面：消光黑底牆 ＆ READ 立體原木造型書架
-  //     依實拍照片精準 1:1 重建 (精確數學版)
-  //     LD=28cm 厚度、LH=1.28m 高、LW=0.95m 寬
-  //     顏色：溫暖蜂蜜金 #D4A030
-  // ============================================================
-
-  // 1. 消光黑底牆
   const blackWallH = 1.52;
-  const blackWallW = hallLenX - 0.1;
-  addBox(g, blackWallW, blackWallH, 0.05, chalkBoardMat,
-         bodyCx, yBreezeFloor + blackWallH / 2, zSouthWall - 0.02);
-
-  // 2. READ 立體書架 (溫暖蜂蜜金 #D4A030)
-  // 面向南牆（+Z方向）之觀察者由左至右依序閱讀 R · E · A · D
-  // 觀察者左方為 +X（東），右方為 -X（西）
-  const letterGoldMat = new THREE.MeshStandardMaterial({ color: 0xd4a030, roughness: 0.42 });
-
-  const LH  = 1.28;    // 字高
-  const LD  = 0.28;    // 字厚 (前後深)
-  const LW  = 0.95;    // 字寬
-  const LT  = 0.090;   // 板厚
-  const LSP = 0.12;    // 字間距
-
-  const totalLetterW = 4 * LW + 3 * LSP;
-  // 觀察者視野由左至右：R 在最高 X，D 在最低 X
-  const xLetR = bodyCx + totalLetterW / 2 - LW / 2;
-  const xLetE = xLetR - (LW + LSP);
-  const xLetA = xLetE - (LW + LSP);
-  const xLetD = xLetA - (LW + LSP);
-
-  const yL = yBreezeFloor;
-  const zL = zSouthWall - 0.22;  // 字母中心 Z：貼南牆消光黑底牆前方，留足夠進深避免Z-fighting
-
-  // ════════════════════════════════════════════
-  // ─── 「R」字母書架 ───────────────────────────
-  // ════════════════════════════════════════════
+  addBox(g, hallLenX - 0.1, blackWallH, 0.05, chalkBoardMat, bodyCx, yBreezeFloor + blackWallH / 2, zSouthWall - 0.02);
   {
-    const xc = xLetR;
-    const x_spine = xc + LW / 2 - LT / 2; // 觀察者左側主柱（高 X 端）
-    const bowlW   = LW * 0.65;
-    const bowlMidY = LH * 0.52;
-    const bowlH   = LH - bowlMidY;
-
-    // 左垂直主柱 (全高)
-    addBox(g, LT, LH, LD, letterGoldMat, x_spine, yL + LH / 2, zL);
-
-    // 頂橫樑 (向觀察者右方 -X 延伸)
-    addBox(g, bowlW, LT, LD, letterGoldMat, x_spine - LT / 2 - bowlW / 2, yL + LH - LT / 2, zL);
-
-    // 中橫樑 (向觀察者右方 -X 延伸)
-    addBox(g, bowlW, LT, LD, letterGoldMat, x_spine - LT / 2 - bowlW / 2, yL + bowlMidY + LT / 2, zL);
-
-    // 碗形右側垂直弧板 (連接頂橫樑與中橫樑)
-    addBox(g, LT, bowlH - LT, LD, letterGoldMat,
-           x_spine - LT / 2 - bowlW + LT / 2,
-           yL + bowlMidY + LT + (bowlH - LT) / 2, zL);
-
-    // 右斜腿：自中橫樑底部往右下（-X、-Y）延伸至 (xc - LW/2 + LT/2, yL)
-    const leg_startX = x_spine - LT / 2 - bowlW * 0.68;
-    const leg_startY = yL + bowlMidY;
-    const leg_endX   = xc - LW / 2 + LT / 2;
-    const leg_endY   = yL;
-    const legDx = leg_endX - leg_startX;
-    const legDy = leg_endY - leg_startY;
-    const legLen = Math.hypot(legDx, legDy);
-    const legAngle = Math.atan2(legDx, -legDy);
-    const rLegMesh = addBox(g, LT * 1.3, legLen, LD, letterGoldMat,
-           (leg_startX + leg_endX) / 2, (leg_startY + leg_endY) / 2, zL);
-    rLegMesh.rotation.z = legAngle;
-
-    // 書籍：R 碗內 (中橫樑上方)
-    makeBooksRow(x_spine - LT - bowlW + 0.08, x_spine - LT - 0.04,
-                 yL + bowlMidY + LT + 0.02, zL, 5, LD * 0.70, true);
-    // 書籍：R 下格左區 (主柱旁中橫樑下方)
-    makeBooksRow(x_spine - LT - bowlW * 0.45, x_spine - LT - 0.04,
-                 yL + 0.02, zL, 3, LD * 0.70);
-  }
-
-  // ════════════════════════════════════════════
-  // ─── 「E」字母書架 ───────────────────────────
-  // ════════════════════════════════════════════
-  {
-    const xc = xLetE;
-    const x_spine = xc + LW / 2 - LT / 2; // 觀察者左側背柱（高 X 端）
-    const armTopW = LW * 0.82;
-    const armMidW = LW * 0.64;
-    const armBotW = LW * 0.82;
-    const midY    = LH * 0.50;
-
-    // 左垂直背柱 (全高)
-    addBox(g, LT, LH, LD, letterGoldMat, x_spine, yL + LH / 2, zL);
-    // 頂橫臂 (向觀察者右方 -X 延伸)
-    addBox(g, armTopW - LT, LT, LD, letterGoldMat,
-           x_spine - LT / 2 - (armTopW - LT) / 2, yL + LH - LT / 2, zL);
-    // 中橫臂 (向觀察者右方 -X 延伸)
-    addBox(g, armMidW - LT, LT, LD, letterGoldMat,
-           x_spine - LT / 2 - (armMidW - LT) / 2, yL + midY, zL);
-    // 底橫臂 (向觀察者右方 -X 延伸)
-    addBox(g, armBotW - LT, LT, LD, letterGoldMat,
-           x_spine - LT / 2 - (armBotW - LT) / 2, yL + LT / 2, zL);
-
-    // 書籍：上格 (中臂 → 頂臂之間)
-    makeBooksRow(x_spine - LT - armMidW + 0.12, x_spine - LT - 0.04,
-                 yL + midY + LT / 2 + 0.02, zL, 6, LD * 0.70, true);
-    // 書籍：下格 (底臂 → 中臂之間)
-    makeBooksRow(x_spine - LT - armBotW + 0.12, x_spine - LT - 0.04,
-                 yL + LT + 0.02, zL, 7, LD * 0.70);
-  }
-
-  // ════════════════════════════════════════════
-  // ─── 「A」字母書架 ───────────────────────────
-  // ════════════════════════════════════════════
-  {
-    const xc = xLetA;
-    const apexX = xc;
-    const apexY = yL + LH;
-    const dxL = (xc + LW / 2 - LT / 2) - apexX;
-    const lenA = Math.hypot(dxL, -LH);
-
-    // 左斜柱 (頂端 apexX 向觀察者左側 +X 傾斜向下開展)
-    const rotL = Math.atan2(dxL, LH);
-    const aLMesh = addBox(g, LT * 1.25, lenA, LD, letterGoldMat,
-                          (apexX + (xc + LW / 2 - LT / 2)) / 2, yL + LH / 2, zL);
-    aLMesh.rotation.z = rotL;
-
-    // 右斜柱 (頂端 apexX 向觀察者右側 -X 傾斜向下開展)
-    const dxR = (xc - LW / 2 + LT / 2) - apexX;
-    const rotR = Math.atan2(dxR, LH);
-    const aRMesh = addBox(g, LT * 1.25, lenA, LD, letterGoldMat,
-                          (apexX + (xc - LW / 2 + LT / 2)) / 2, yL + LH / 2, zL);
-    aRMesh.rotation.z = rotR;
-
-    // 頂封帽
-    addBox(g, LT * 2.2, LT, LD, letterGoldMat, xc, yL + LH - LT / 2, zL);
-
-    // 中橫檔層板
-    const crossY = yL + LH * 0.44;
-    const frac = (crossY - yL) / LH;
-    const wAtCross = (LW - LT) * (1 - frac);
-    addBox(g, wAtCross, LT * 1.1, LD, letterGoldMat, xc, crossY, zL);
-
-    // 書籍：中橫檔上方 (三角格內)
-    makeBooksRow(xc - wAtCross / 2 + 0.06, xc + wAtCross / 2 - 0.06,
-                 crossY + LT * 0.55 + 0.02, zL, 3, LD * 0.70, true);
-    // 書籍：左側開展腳區
-    makeBooksRow(xc + wAtCross / 2 - 0.02, xc + LW / 2 - 0.12,
-                 yL + 0.02, zL, 2, LD * 0.70);
-    // 書籍：右側開展腳區
-    makeBooksRow(xc - LW / 2 + 0.12, xc - wAtCross / 2 + 0.02,
-                 yL + 0.02, zL, 2, LD * 0.70);
-  }
-
-  // ════════════════════════════════════════════
-  // ─── 「D」字母書架 ───────────────────────────
-  // ════════════════════════════════════════════
-  {
-    const xc = xLetD;
-    const x_spine = xc + LW / 2 - LT / 2; // 觀察者左側垂直主柱（高 X 端）
-    const capW = LW * 0.65;
-
-    // 左垂直主柱 (全高)
-    addBox(g, LT, LH, LD, letterGoldMat, x_spine, yL + LH / 2, zL);
-    // 頂橫板 (向觀察者右方 -X 延伸)
-    addBox(g, capW - LT, LT, LD, letterGoldMat,
-           x_spine - LT / 2 - (capW - LT) / 2, yL + LH - LT / 2, zL);
-    // 底橫板 (向觀察者右方 -X 延伸)
-    addBox(g, capW - LT, LT, LD, letterGoldMat,
-           x_spine - LT / 2 - (capW - LT) / 2, yL + LT / 2, zL);
-
-    // 右弧形拱板：上斜段、中垂直段、下斜段向右圓潤凸出
-    const p0 = [x_spine - capW, yL + LH - LT];
-    const p1 = [xc - LW / 2 + LT / 2, yL + LH * 0.68];
-    const p2 = [xc - LW / 2 + LT / 2, yL + LH * 0.32];
-    const p3 = [x_spine - capW, yL + LT];
-
-    const addArcSegment = (pa, pb) => {
-      const dx = pb[0] - pa[0];
-      const dy = pb[1] - pa[1];
-      const len = Math.hypot(dx, dy);
-      const rot = Math.atan2(dx, -dy);
-      const m = addBox(g, LT * 1.25, len, LD, letterGoldMat, (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2, zL);
-      m.rotation.z = rot;
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0xd8b57c, roughness: 0.55 });
+    const woodEdge = new THREE.MeshStandardMaterial({ color: 0xc49a5c, roughness: 0.6 });
+    const H = 1.25, D = 0.28, t = 0.05, y0 = yBreezeFloor + 0.06, zc = zSouthWall - 0.05 - D / 2;
+    const arc = (cx, cy, rx, ry, a0, a1, n = 10) => { const p = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; p.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); } return p; };
+    // 字母輪廓（字母座標：x 向觀者右、y 向上；外框順時針，字腔另列）
+    const L = {
+      R: { w: 1.0, outer: [[0, 0], [0, H], [0.56, H], ...arc(0.56, 0.95, 0.36, 0.30, Math.PI / 2, -Math.PI / 2), [0.98, 0], [0.70, 0], [0.42, 0.56], [0.26, 0.56], [0.26, 0]],
+           holes: [[[0.26, 0.82], [0.26, 1.07], [0.56, 1.07], ...arc(0.56, 0.945, 0.12, 0.125, Math.PI / 2, -Math.PI / 2, 6)]],
+           shelves: [[0, 0.26, 0.42], [0, 0.26, 0.85], [0.72, 0.92, 0.18]] },
+      E: { w: 0.86, outer: [[0, 0], [0, H], [0.86, H], [0.86, 1.01], [0.27, 1.01], [0.27, 0.74], [0.72, 0.74], [0.72, 0.51], [0.27, 0.51], [0.27, 0.24], [0.86, 0.24], [0.86, 0]],
+           holes: [], shelves: [[0, 0.27, 0.62], [0, 0.27, 0.95]] },
+      A: { w: 1.06, outer: [[0, 0], [0.41, H], [0.65, H], [1.06, 0], [0.79, 0], [0.71, 0.27], [0.35, 0.27], [0.27, 0]],
+           holes: [[[0.43, 0.49], [0.53, 0.92], [0.63, 0.49]]], shelves: [[0.2, 0.86, 0.27]] },
+      D: { w: 1.02, outer: [[0, 0], [0, H], [0.42, H], ...arc(0.42, H / 2, 0.60, H / 2, Math.PI / 2, -Math.PI / 2, 14)],
+           holes: [[[0.26, 0.24], [0.26, 1.01], [0.42, 1.01], ...arc(0.42, H / 2, 0.32, 0.385, Math.PI / 2, -Math.PI / 2, 10)]],
+           shelves: [[0, 0.26, 0.45], [0, 0.26, 0.85]] }
     };
-
-    addArcSegment(p0, p1);
-    addBox(g, LT, p1[1] - p2[1], LD, letterGoldMat, p1[0], (p1[1] + p2[1]) / 2, zL);
-    addArcSegment(p2, p3);
-
-    // 書籍：D 字下排
-    makeBooksRow(x_spine - capW + 0.06, x_spine - LT - 0.04,
-                 yL + LT + 0.02, zL, 6, LD * 0.70);
-    // 書籍：D 字上排
-    makeBooksRow(x_spine - capW + 0.06, x_spine - LT - 0.04,
-                 yL + LH * 0.52 + 0.02, zL, 5, LD * 0.70, true);
+    const sp = 0.16, order = ['R', 'E', 'A', 'D'];
+    const totalW = order.reduce((a, k) => a + L[k].w, 0) + sp * 3;
+    let cursor = bodyCx + totalW / 2;          // 觀者面向南牆，左手邊為 +X（東）
+    const ring = (pts, x0, mat) => {
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        const ax = x0 - a[0], ay = y0 + a[1], bx = x0 - b[0], by = y0 + b[1];
+        const len = Math.hypot(bx - ax, by - ay);
+        if (len < 0.005) continue;
+        const m = addBox(g, len + t, t, D, mat, (ax + bx) / 2, (ay + by) / 2, zc);
+        m.rotation.z = Math.atan2(by - ay, bx - ax);
+      }
+    };
+    order.forEach((k, li) => {
+      const Lt = L[k], x0 = cursor;
+      ring(Lt.outer, x0, woodMat);
+      Lt.holes.forEach(h => ring(h, x0, woodEdge));
+      // 筆畫內橫隔板與書本
+      Lt.shelves.forEach(([sx1, sx2, sy], si) => {
+        addBox(g, sx2 - sx1, 0.03, D - 0.02, woodMat, x0 - (sx1 + sx2) / 2, y0 + sy, zc);
+        const n = Math.max(2, Math.round((sx2 - sx1) / 0.035));
+        makeBooksRow(x0 - sx2 + 0.03, x0 - sx1 - 0.03, y0 + sy + 0.015, zc, Math.min(n, 6), D * 0.7, si % 2 === 0);
+      });
+      // 底部書本（字腳內）
+      makeBooksRow(x0 - 0.24, x0 - 0.03, y0 + 0.02, zc, 5, D * 0.7);
+      if (k === 'R' || k === 'A') makeBooksRow(x0 - Lt.w + 0.06, x0 - Lt.w + 0.24, y0 + 0.02, zc, 4, D * 0.7);
+      void li;
+      cursor -= Lt.w + sp;
+    });
   }
 
-  // 3. 上方四聯式木框玻璃校務歷史公佈欄 (Glass Showcase Bulletin Board)
+  // 3. 上方三聯木框玻璃公佈欄（v2.11.7 依照片：軟木底板、紅底家長會名單、三張校刊海報）＋原木飾板橫楣
   function makeEastHallwayBulletinBoardTexture() {
-    const c = document.createElement('canvas');
-    c.width = 2048; c.height = 512;
+    const c = document.createElement('canvas'); c.width = 2048; c.height = 400;
     const ctx = c.getContext('2d');
-    const W = 2048, H = 512;
-
-    ctx.fillStyle = '#f7eedb';
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.fillStyle = 'rgba(168, 126, 75, 0.12)';
-    for (let i = 0; i < 4000; i++) {
-      ctx.fillRect(Math.random() * W, Math.random() * H, 2.5, 2.5);
-    }
-
-    const panelW = W / 4;
-    ctx.fillStyle = '#5c3d28';
-    for (let p = 0; p <= 4; p++) {
-      ctx.fillRect(p * panelW - (p === 0 ? 0 : (p === 4 ? 16 : 8)), 0, 16, H);
-    }
-
-    // 第 1 聯
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('校史沿革與糖廠記憶', panelW * 0.5, 60);
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillRect(panelW * 0.1, 80, panelW * 0.8, 4);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(panelW * 0.12, 105, panelW * 0.76, 210);
-    ctx.fillStyle = '#64748b';
-    ctx.fillRect(panelW * 0.16, 120, panelW * 0.68, 140);
-    ctx.fillStyle = '#475569';
-    ctx.font = '22px "Noto Sans TC",sans-serif';
-    ctx.fillText('1947 年創校老校舍與製糖工場五分車老照片', panelW * 0.5, 290);
-    ctx.fillStyle = '#334155';
-    ctx.font = '20px "Noto Sans TC",sans-serif';
-    ctx.fillText('傳承台糖子弟小學文脈，深耕萬年溪畔一甲子', panelW * 0.5, 360);
-    ctx.fillText('開拓書香永續校園，培育卓越復興學子', panelW * 0.5, 410);
-
-    // 第 2 聯
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
-    ctx.fillText('復興少棒隊光榮歷史', panelW * 1.5, 60);
-    ctx.fillStyle = '#f59e0b';
-    ctx.fillRect(panelW * 1.1, 80, panelW * 0.8, 4);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(panelW * 1.12, 105, panelW * 0.76, 210);
-    ctx.fillStyle = '#0284c7';
-    ctx.fillRect(panelW * 1.16, 120, panelW * 0.68, 140);
-    ctx.fillStyle = '#ca8a04';
-    ctx.font = 'bold 24px "Noto Sans TC",sans-serif';
-    ctx.fillText('★ 全國少棒選拔賽冠軍・威廉波特代表隊 ★', panelW * 1.5, 290);
-    ctx.fillStyle = '#334155';
-    ctx.font = '20px "Noto Sans TC",sans-serif';
-    ctx.fillText('1972 年成軍揚威國際・復興棒球薪火相傳', panelW * 1.5, 360);
-    ctx.fillText('熱血拚搏・團隊合作・強健體魄・追求卓越', panelW * 1.5, 410);
-
-    // 第 3 聯
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
-    ctx.fillText('適性樂學 · 幸福復興', panelW * 2.5, 60);
-    ctx.fillStyle = '#10b981';
-    ctx.fillRect(panelW * 2.1, 80, panelW * 0.8, 4);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(panelW * 2.12, 105, panelW * 0.76, 210);
-    ctx.fillStyle = '#059669';
-    ctx.fillRect(panelW * 2.16, 120, panelW * 0.68, 140);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 32px "Noto Sans TC",sans-serif';
-    ctx.fillText('愛上閱讀 · 快樂學習', panelW * 2.5, 180);
-    ctx.font = 'bold 26px "Noto Sans TC",sans-serif';
-    ctx.fillText('多元展能 · 迎向未來', panelW * 2.5, 225);
-    ctx.fillStyle = '#334155';
-    ctx.font = '20px "Noto Sans TC",sans-serif';
-    ctx.fillText('推動晨讀時光・班級讀書會・五分車故事媽媽', panelW * 2.5, 360);
-    ctx.fillText('雙語教育・數位科技・美感藝術全人發展', panelW * 2.5, 410);
-
-    // 第 4 聯
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
-    ctx.fillText('學生藝文成果展與校園快訊', panelW * 3.5, 60);
-    ctx.fillStyle = '#ec4899';
-    ctx.fillRect(panelW * 3.1, 80, panelW * 0.8, 4);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(panelW * 3.12, 105, panelW * 0.36, 180);
-    ctx.fillRect(panelW * 3.52, 105, panelW * 0.36, 180);
-    ctx.fillStyle = '#f43f5e';
-    ctx.fillRect(panelW * 3.15, 115, panelW * 0.30, 125);
-    ctx.fillStyle = '#8b5cf6';
-    ctx.fillRect(panelW * 3.55, 115, panelW * 0.30, 125);
-    ctx.fillStyle = '#475569';
-    ctx.font = '18px "Noto Sans TC",sans-serif';
-    ctx.fillText('屏東縣學生美展特優', panelW * 3.30, 265);
-    ctx.fillText('語文競賽特優榮譽榜', panelW * 3.70, 265);
-    ctx.fillStyle = '#334155';
-    ctx.font = '20px "Noto Sans TC",sans-serif';
-    ctx.fillText('【最新快訊】全校閱讀列車集點摸彩開跑！', panelW * 3.5, 340);
-    ctx.fillText('歡迎小朋友課後到 1F 穿堂閱讀五分車借書！', panelW * 3.5, 385);
-    ctx.fillText('借閱一本蓋一枚五分車章，兌換榮譽徽章！', panelW * 3.5, 430);
-
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = 8;
+    ctx.fillStyle = '#c99a68'; ctx.fillRect(0, 0, 2048, 400);
+    let sd = 3; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 9000; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(120,80,40,0.18)' : 'rgba(255,230,190,0.15)'; ctx.fillRect(r() * 2048, r() * 400, 2, 2); }
+    // 三聯分隔木條
+    ctx.fillStyle = '#d6b27a';
+    [0, 684, 1366, 2040].forEach(x => ctx.fillRect(x, 0, 10, 400));
+    // 紅底家長會名單（第 1 聯）
+    ctx.fillStyle = '#e8322b'; ctx.fillRect(220, 60, 300, 260);
+    ctx.fillStyle = '#1a1a1a'; ctx.font = 'bold 22px "Noto Serif TC",serif'; ctx.textAlign = 'center';
+    for (let col = 0; col < 9; col++) for (let row = 0; row < 6; row++) if (r() > 0.25) ctx.fillText('名', 500 - col * 32, 92 + row * 38);
+    // 海報（第 2、3 聯）
+    const poster = (x, title, accent) => {
+      ctx.fillStyle = '#fbf6ec'; ctx.fillRect(x, 40, 200, 300);
+      ctx.fillStyle = accent; ctx.fillRect(x, 40, 200, 30);
+      ctx.fillStyle = '#333'; ctx.font = 'bold 18px "Noto Sans TC",sans-serif'; ctx.fillText(title, x + 100, 62);
+      ctx.fillStyle = '#9aa3a8'; ctx.fillRect(x + 20, 90, 160, 80);
+      ctx.fillStyle = '#777'; for (let i = 0; i < 9; i++) ctx.fillRect(x + 20, 185 + i * 15, 160 - (i % 3) * 25, 5);
+    };
+    poster(840, '多元社團 藝境非凡', '#f2c9a0');
+    poster(1110, '復興報馬仔', '#a8dccf');
+    poster(1460, '復興報馬仔', '#a8dccf');
+    poster(1740, '校園新訊', '#a8dccf');
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
     return t;
   }
 
-  const bbW = 5.8, bbH = 1.05;
-  const bbY = yBreezeFloor + 1.55 + bbH / 2;
-  const bbTex = makeEastHallwayBulletinBoardTexture();
-  const bbMat = new THREE.MeshStandardMaterial({ map: bbTex, roughness: 0.65 });
-  addMesh(g, new THREE.PlaneGeometry(bbW, bbH), bbMat, bodyCx, bbY, zSouthWall - 0.04, false);
-  // 深胡桃木外框
-  addBox(g, bbW + 0.18, 0.09, 0.08, darkWalnutMat, bodyCx, bbY + bbH / 2 + 0.045, zSouthWall - 0.04);
-  addBox(g, bbW + 0.18, 0.09, 0.08, darkWalnutMat, bodyCx, bbY - bbH / 2 - 0.045, zSouthWall - 0.04);
-  addBox(g, 0.09, bbH, 0.08, darkWalnutMat, bodyCx - bbW / 2 - 0.045, bbY, zSouthWall - 0.04);
-  addBox(g, 0.09, bbH, 0.08, darkWalnutMat, bodyCx + bbW / 2 + 0.045, bbY, zSouthWall - 0.04);
-  // 微透明玻璃拉門
-  addBox(g, bbW, bbH, 0.02, mats.glassDark, bodyCx, bbY, zSouthWall - 0.07, false);
+  const bbW = hallLenX - 0.5, bbH = 0.82;
+  const bbY = yBreezeFloor + blackWallH + 0.05 + bbH / 2;
+  const bbMat = new THREE.MeshStandardMaterial({ map: makeEastHallwayBulletinBoardTexture(), roughness: 0.75 });
+  addMesh(g, new THREE.PlaneGeometry(bbW, bbH), bbMat, bodyCx, bbY, zSouthWall - 0.04, false).rotation.y = Math.PI;
+  const lightOak = new THREE.MeshStandardMaterial({ color: 0xd6b27a, roughness: 0.6 });
+  addBox(g, bbW + 0.12, 0.05, 0.10, lightOak, bodyCx, bbY - bbH / 2 - 0.025, zSouthWall - 0.06);
+  [-1, 1].forEach(sd => addBox(g, 0.05, bbH, 0.10, lightOak, bodyCx + sd * (bbW / 2 + 0.035), bbY, zSouthWall - 0.06));
+  // 上方原木飾板橫楣（直達天花板）
+  const hdrH = Math.max(0.15, yCeiling - (bbY + bbH / 2));
+  addBox(g, bbW + 0.12, hdrH, 0.10, lightOak, bodyCx, bbY + bbH / 2 + hdrH / 2, zSouthWall - 0.06);
+  addBox(g, bbW, bbH, 0.012, new THREE.MeshStandardMaterial({ color: 0xdfe8ea, roughness: 0.05, transparent: true, opacity: 0.18 }), bodyCx, bbY, zSouthWall - 0.085, false);
 
   // 4. 右側復古木質閱覽小矮桌與置物推車
-  const xDesk = xA - 0.70, zDesk = zSouthWall - 0.45;
+  const xDesk = xB + 0.75, zDesk = zSouthWall - 0.45;   // 照片 37：小木桌位於 READ 右側（西側）
   addBox(g, 0.85, 0.04, 0.52, warmOakMat, xDesk, yBreezeFloor + 0.48, zDesk);
   [-0.38, 0.38].forEach(dx => [-0.22, 0.22].forEach(dz => {
     addBox(g, 0.035, 0.46, 0.035, darkMat, xDesk + dx, yBreezeFloor + 0.23, zDesk + dz, false);
@@ -7316,7 +7087,7 @@ function buildEastBuilding() {
   addBox(g, 0.22, 0.020, 0.16, bookPalette[1], xDesk + 0.12, yBreezeFloor + 0.51, zDesk + 0.04, false);
 
   // 置物推車
-  const xCart = xA - 1.35, zCart = zSouthWall - 0.45;
+  const xCart = xB + 1.55, zCart = zSouthWall - 0.55;
   addBox(g, 0.42, 0.03, 0.36, warmOakMat, xCart, yBreezeFloor + 0.16, zCart, false);
   addBox(g, 0.42, 0.03, 0.36, warmOakMat, xCart, yBreezeFloor + 0.52, zCart, false);
   addBox(g, 0.03, 0.65, 0.03, darkMat, xCart + 0.21, yBreezeFloor + 0.35, zCart + 0.15, false);
