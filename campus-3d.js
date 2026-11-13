@@ -1306,166 +1306,303 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   landmarkGroupMap.set('courtyard-plaza', cg);
 }
 
-// Playground Zone (`11 中庭共融遊戲器材區` 依 20261019_140245 等現場實景照片 1:1 準確建模)
+// Playground Zone（11 中庭共融遊戲器材區 — v2.11.6 依 2026 實景照片 5 張重建）
+// 由西至東：西側低平台（紅色圓窗板、綠色樹葉板、黃色波浪滑梯、蝸牛立柱、紅色圓盤攀爬柱）
+//          → 西塔（黃色階梯式四坡屋頂、橘色齒輪板、南側黑色樓梯＋黃色扶手）
+//          → 透明黃色鑽筒 → 東塔（紅色拱門、藍色 OX 井字板、棕櫚葉＋橘花飾柱、南側灰色攀岩板、紅色波浪滑梯）
 {
   const pg = new THREE.Group();
   pg.userData = { landmarkId: 'playground-zone' };
-  const px = 40.2, pz = -20.8;
+  // 位置：北棟前方採光天井外緣 (z ≈ −23.7) 以南約 6 m（照片 31 由北側約 6 m 處拍攝）；整組架於中庭鋪面 (0.16 m) 之上
+  const px = 40.2, pz = -17.8;
+  pg.position.y = 0.16;
 
-  // 材質庫：實景亮眼耐候粉體烤漆與橡膠地墊
-  const postGreen = new THREE.MeshStandardMaterial({ color: 0x228b4a, roughness: 0.35, metalness: 0.15 });
-  const playYellow = new THREE.MeshStandardMaterial({ color: 0xf5b81a, roughness: 0.32 });
-  const playRed = new THREE.MeshStandardMaterial({ color: 0xd93829, roughness: 0.32 });
-  const playBlue = new THREE.MeshStandardMaterial({ color: 0x1976d2, roughness: 0.35 });
-  const rockWallMat = new THREE.MeshStandardMaterial({ color: 0xbac0c5, roughness: 0.85 });
-  const snailPink = new THREE.MeshStandardMaterial({ color: 0xf06292, roughness: 0.3 });
-  const darkMetal = new THREE.MeshStandardMaterial({ color: 0x2c3437, roughness: 0.6 });
+  const postGreen = new THREE.MeshStandardMaterial({ color: 0x3aa346, roughness: 0.38, metalness: 0.1 });
+  const capDark = new THREE.MeshStandardMaterial({ color: 0x3a2f2c, roughness: 0.5 });
+  const yellow = new THREE.MeshStandardMaterial({ color: 0xf2c531, roughness: 0.35 });
+  const slideYellow = new THREE.MeshStandardMaterial({ color: 0xf1d36b, roughness: 0.4, side: THREE.DoubleSide });
+  const roofYellow = new THREE.MeshStandardMaterial({ color: 0xead58e, roughness: 0.5 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xd8262b, roughness: 0.33, side: THREE.DoubleSide });
+  const orange = new THREE.MeshStandardMaterial({ color: 0xf26a1f, roughness: 0.35 });
+  const blackDeck = new THREE.MeshStandardMaterial({ color: 0x26282a, roughness: 0.7 });
+  const leafGreen = new THREE.MeshStandardMaterial({ color: 0x5cc261, roughness: 0.4, side: THREE.DoubleSide });
+  const rockGrey = new THREE.MeshStandardMaterial({ color: 0x8e9396, roughness: 0.75 });
   const curbMat = new THREE.MeshStandardMaterial({ color: 0xd2d6dc, roughness: 0.8 });
+  const canvasMat = (w, h, draw, opts = {}) => {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    draw(c.getContext('2d'), w, h);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.4, side: THREE.DoubleSide, ...opts });
+  };
+  const P = (x, y, z) => [px + x, y, pz + z];
 
-  // 1) 複合幾何安全防墜地墊 (藍色、草綠、鵝黃色拼接，加混凝土安全收邊緣石)
+  // 1) 彩色 EPDM 安全地墊：青綠底、米色寬弧帶、彩繪小鳥／小魚（黑色尾尖）
   const matW = 14.2, matD = 9.2;
-  const matBlue = new THREE.MeshStandardMaterial({ color: 0x1f78a4, roughness: 0.7 });
-  const matGreen = new THREE.MeshStandardMaterial({ color: 0x33a02c, roughness: 0.7 });
-  const matYellow = new THREE.MeshStandardMaterial({ color: 0xffd92f, roughness: 0.7 });
-  addBox(pg, matW, 0.08, matD, matBlue, px, 0.04, pz, false);
-  addBox(pg, matW * 0.45, 0.09, matD * 0.55, matGreen, px - 2.8, 0.045, pz + 1.2, false);
-  addBox(pg, matW * 0.35, 0.095, matD * 0.45, matYellow, px + 3.2, 0.048, pz - 1.1, false);
-  // 周圍安全收邊緣石
-  addBox(pg, matW + 0.5, 0.14, 0.25, curbMat, px, 0.07, pz - matD / 2 - 0.12, false);
-  addBox(pg, matW + 0.5, 0.14, 0.25, curbMat, px, 0.07, pz + matD / 2 + 0.12, false);
-  addBox(pg, 0.25, 0.14, matD + 0.5, curbMat, px - matW / 2 - 0.12, 0.07, pz, false);
-  addBox(pg, 0.25, 0.14, matD + 0.5, curbMat, px + matW / 2 + 0.12, 0.07, pz, false);
-
-  // 2) 主結構立柱 (綠色金屬圓柱)
-  const postCoords = [
-    [-4.5, -1.2, 3.2], [-4.5, 1.2, 3.2], // 左側滑梯塔
-    [-2.2, -1.2, 3.6], [-2.2, 1.2, 3.6], // 小屋塔
-    [-0.2, -1.2, 3.0], [-0.2, 1.2, 3.0], // 空橋中柱
-    [1.9, -1.2, 3.6],  [1.9, 1.2, 3.6],  // 攀岩板與中右塔
-    [4.2, -1.2, 3.6],  [4.2, 1.2, 3.6]   // 右側紅滑梯塔
-  ];
-  postCoords.forEach(([ox, oz, ph]) => {
-    addMesh(pg, new THREE.CylinderGeometry(0.085, 0.085, ph, 12), postGreen, px + ox, ph / 2, pz + oz);
-  });
-
-  // 3) 左側遊戲塔：頂部「粉紅蝸牛造型立柱飾頭」與黃色波浪溜滑梯
-  // 粉紅蝸牛飾板 (左外側兩根柱頭)
-  [-1.2, 1.2].forEach(oz => {
-    const snail = addMesh(pg, new THREE.CylinderGeometry(0.24, 0.24, 0.04, 16), snailPink, px - 4.5, 3.32, pz + oz);
-    snail.rotation.x = Math.PI / 2;
-    addMesh(pg, new THREE.SphereGeometry(0.09, 8, 8), playYellow, px - 4.35, 3.48, pz + oz); // 蝸牛觸角
-    addMesh(pg, new THREE.SphereGeometry(0.09, 8, 8), playYellow, px - 4.55, 3.48, pz + oz);
-  });
-  // 左平台
-  addBox(pg, 1.8, 0.16, 2.2, playYellow, px - 4.5, 1.45, pz);
-  // 鮮黃色波浪溜滑梯 (向西滑降)
-  const slideSegments = [
-    { len: 1.5, angle: 0.52, y: 1.15, ox: -5.7 },
-    { len: 1.4, angle: 0.35, y: 0.55, ox: -6.9 },
-    { len: 0.8, angle: 0.08, y: 0.18, ox: -7.8 }
-  ];
-  slideSegments.forEach(seg => {
-    const sl = addBox(pg, seg.len, 0.14, 0.78, playYellow, px + seg.ox, seg.y, pz - 0.2);
-    sl.rotation.z = seg.angle;
-    // 兩側黃色安全滑槽邊緣
-    const flL = addBox(pg, seg.len, 0.32, 0.06, playYellow, px + seg.ox, seg.y + 0.12, pz - 0.2 + 0.38);
-    flL.rotation.z = seg.angle;
-    const flR = addBox(pg, seg.len, 0.32, 0.06, playYellow, px + seg.ox, seg.y + 0.12, pz - 0.2 - 0.38);
-    flR.rotation.z = seg.angle;
-  });
-  // 紅色圓環攀爬梯 (左側前緣)
-  for (let r = 0; r < 3; r++) {
-    const ring = addMesh(pg, new THREE.TorusGeometry(0.32, 0.04, 8, 20), playRed, px - 4.5, 0.45 + r * 0.48, pz + 1.22);
+  {
+    const m = canvasMat(1420, 920, (ctx, W, H) => {
+      ctx.fillStyle = '#3c7564'; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = '#c4b285'; ctx.lineCap = 'round';
+      [[0.15, 0.9, 0.6, 0.1, 120], [0.45, 1.0, 0.95, 0.25, 140], [-0.1, 0.55, 0.3, -0.05, 110]].forEach(([x1, y1, x2, y2, lw]) => {
+        ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x1 * W, y1 * H);
+        ctx.quadraticCurveTo((x1 + x2) / 2 * W + 120, (y1 + y2) / 2 * H, x2 * W, y2 * H); ctx.stroke();
+      });
+      let sd = 5; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      const cols = ['#5d9bd8', '#c58aa9', '#efece4', '#8d86c9', '#5d9bd8', '#c58aa9'];
+      for (let i = 0; i < 16; i++) {
+        const x = 80 + r() * (W - 160), y = 80 + r() * (H - 160);
+        if (Math.abs(x - W / 2) < 420 && Math.abs(y - H / 2) < 170) continue;    // 器材正下方不畫
+        ctx.save(); ctx.translate(x, y); ctx.rotate(r() * Math.PI * 2); ctx.scale(0.8 + r() * 0.5, 0.8 + r() * 0.5);
+        ctx.fillStyle = cols[i % cols.length];
+        ctx.beginPath(); ctx.moveTo(-80, 0); ctx.quadraticCurveTo(-20, -30, 60, -8); ctx.lineTo(95, -40); ctx.lineTo(80, 0); ctx.lineTo(95, 40); ctx.lineTo(60, 8); ctx.quadraticCurveTo(-20, 30, -80, 0); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-10, -12); ctx.lineTo(10, -60); ctx.lineTo(25, -12); ctx.fill();     // 翅膀
+        ctx.fillStyle = '#1b1b1b';
+        ctx.beginPath(); ctx.moveTo(80, 0); ctx.lineTo(95, -40); ctx.lineTo(118, -46); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(80, 0); ctx.lineTo(95, 40); ctx.lineTo(118, 46); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }, { side: THREE.FrontSide, roughness: 0.85 });
+    addBox(pg, matW, 0.08, matD, m, px, 0.04, pz, false);
+    [[0, -matD / 2 - 0.12, matW + 0.5, 0.25], [0, matD / 2 + 0.12, matW + 0.5, 0.25], [-matW / 2 - 0.12, 0, 0.25, matD + 0.5], [matW / 2 + 0.12, 0, 0.25, matD + 0.5]]
+      .forEach(([ox, oz, w, d]) => addBox(pg, w, 0.14, d, curbMat, px + ox, 0.07, pz + oz, false));
   }
 
-  // 4) 中央偏左：黃色斜屋頂小屋與紅色螺旋鑽筒滑梯
-  addBox(pg, 2.2, 0.18, 2.2, playYellow, px - 2.2, 1.62, pz);
-  // 黃色山形屋頂 (具波浪屋簷特色)
-  const roofH = 1.1, roofW = 2.4, roofD = 2.4;
-  const roofL = addBox(pg, 1.5, 0.14, roofD, playYellow, px - 2.2 - 0.55, 3.65, pz);
-  roofL.rotation.z = 0.45;
-  const roofR = addBox(pg, 1.5, 0.14, roofD, playYellow, px - 2.2 + 0.55, 3.65, pz);
-  roofR.rotation.z = -0.45;
-  addBox(pg, 0.16, 0.22, roofD + 0.1, playRed, px - 2.2, 4.02, pz); // 屋脊紅邊飾條
-  // 小屋四面安全柵欄與窗型護板
-  addBox(pg, 0.08, 0.85, 2.0, playBlue, px - 2.2 - 1.05, 2.12, pz);
-  addBox(pg, 2.0, 0.85, 0.08, playYellow, px - 2.2, 2.12, pz - 1.05);
-  // 紅色直筒旋轉滑梯 (向南伸展旋出)
-  for (let t = 0; t < 4; t++) {
-    const tubePiece = addMesh(pg, new THREE.CylinderGeometry(0.48, 0.48, 0.85, 16), playRed, px - 2.2 + t * 0.22, 1.45 - t * 0.35, pz + 1.35 + t * 0.55);
-    tubePiece.rotation.x = 0.75;
-    tubePiece.rotation.y = t * 0.25;
-    // 圓形透明透氣採光窗
-    addMesh(pg, new THREE.SphereGeometry(0.18, 8, 8), playYellow, px - 2.2 + t * 0.22, 1.45 - t * 0.35 + 0.32, pz + 1.35 + t * 0.55);
-  }
+  const post = (x, z, h) => {
+    addMesh(pg, new THREE.CylinderGeometry(0.057, 0.057, h, 14), postGreen, ...P(x, h / 2, z));
+    for (const yy of [0.35, h * 0.5, h - 0.25]) addMesh(pg, new THREE.CylinderGeometry(0.068, 0.068, 0.07, 14), postGreen, ...P(x, yy, z));   // 束環
+    addMesh(pg, new THREE.SphereGeometry(0.065, 10, 8), capDark, ...P(x, h + 0.02, z));
+  };
+  const deck = (x1, x2, y) => addBox(pg, x2 - x1, 0.06, 1.2, blackDeck, px + (x1 + x2) / 2, y, pz);
+  const yellowBars = (x1, x2, y, z, h = 0.85) => {
+    addBox(pg, x2 - x1, 0.04, 0.04, yellow, px + (x1 + x2) / 2, y + h, pz + z);
+    const n = Math.max(2, Math.round((x2 - x1) / 0.11));
+    for (let i = 1; i < n; i++) addBox(pg, 0.03, h, 0.03, yellow, px + x1 + (x2 - x1) * i / n, y + h / 2, pz + z);
+  };
 
-  // 5) 中央連接空橋 (紅藍拱形空橋)
-  const bridgeDeck = addBox(pg, 2.0, 0.14, 1.1, playYellow, px - 0.1, 1.62, pz);
-  // 空橋兩側拱形圓管防護欄杆
-  for (let b = 0; b < 2; b++) {
-    const bz = pz + (b === 0 ? -0.58 : 0.58);
-    const archMat = b === 0 ? playRed : playBlue;
-    const archRailing = addMesh(pg, new THREE.TorusGeometry(0.85, 0.045, 8, 20, Math.PI), archMat, px - 0.1, 2.05, bz);
-    for (let st = -3; st <= 3; st++) {
-      addMesh(pg, new THREE.CylinderGeometry(0.025, 0.025, 0.85, 8), archMat, px - 0.1 + st * 0.26, 2.05, bz);
+  // 2) 西側低平台 T0（x −3.4～−2.2，平台 0.9 m）
+  const yT0 = 0.9, yT = 1.2;
+  [[-3.4, -0.6], [-3.4, 0.6], [-2.2, -0.6], [-2.2, 0.6]].forEach(([x, z]) => post(x, z, 2.0));
+  deck(-3.4, -2.2, yT0);
+  {   // 北側紅色圓窗板（中央大圓孔）＋上方黃色欄杆
+    const sh = new THREE.Shape(); sh.moveTo(-0.55, 0); sh.lineTo(0.55, 0); sh.lineTo(0.55, 0.95); sh.quadraticCurveTo(0, 1.12, -0.55, 0.95); sh.closePath();
+    const hole = new THREE.Path(); hole.absarc(0, 0.5, 0.33, 0, Math.PI * 2, true); sh.holes.push(hole);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false, curveSegments: 24 });
+    addMesh(pg, geo, red, ...P(-2.8, yT0, -0.63));
+    addMesh(pg, new THREE.TorusGeometry(0.33, 0.04, 8, 32), red, ...P(-2.8, yT0 + 0.5, -0.66));
+  }
+  {   // 西側綠色樹葉造型板（兩個不規則鏤空）
+    const sh = new THREE.Shape(); sh.moveTo(-0.6, 0); sh.lineTo(0.6, 0); sh.lineTo(0.6, 0.9); sh.bezierCurveTo(0.3, 1.05, -0.3, 0.8, -0.6, 1.0); sh.closePath();
+    const h1 = new THREE.Path(); h1.absellipse(-0.25, 0.55, 0.16, 0.25, 0, Math.PI * 2, true); sh.holes.push(h1);
+    const h2 = new THREE.Path(); h2.absellipse(0.25, 0.4, 0.13, 0.2, 0, Math.PI * 2, true); sh.holes.push(h2);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false, curveSegments: 16 });
+    const lp = addMesh(pg, geo, leafGreen, ...P(-3.43, yT0 + 0.55, 0));
+    lp.rotation.y = Math.PI / 2;
+    lp.scale.set(1, 0.6, 1);
+  }
+  // 南側黃色欄杆
+  yellowBars(-3.35, -2.25, yT0, 0.6);
+
+  // 3) 西塔 T1（x −2.2～−1.0，平台 1.2 m）：黃色四坡階梯屋頂
+  [[-1.0, -0.6], [-1.0, 0.6]].forEach(([x, z]) => post(x, z, 2.55));
+  [[-2.2, -0.6], [-2.2, 0.6]].forEach(([x, z]) => addMesh(pg, new THREE.CylinderGeometry(0.057, 0.057, 0.6, 14), postGreen, ...P(x, 2.25, z)));
+  deck(-2.2, -1.0, yT);
+  {
+    const rx = -1.6;
+    addBox(pg, 1.55, 0.32, 1.55, roofYellow, ...P(rx, 2.62, 0));                  // 屋簷封板
+    for (let k = 0; k < 4; k++) {                                                    // 同心階梯屋面
+      const w = 1.55 - k * 0.32;
+      const lay = addMesh(pg, new THREE.CylinderGeometry(w * 0.52, w * 0.72, 0.13, 4, 1), roofYellow, ...P(rx, 2.84 + k * 0.12, 0));
+      lay.rotation.y = Math.PI / 4;
     }
+    addBox(pg, 1.3, 0.25, 0.04, yellow, ...P(rx, 2.38, -0.66));                     // 屋簷下黃色橫板
+  }
+  // 北側橘色齒輪板
+  addMesh(pg, new THREE.PlaneGeometry(1.0, 1.0), canvasMat(256, 256, (ctx) => {
+    ctx.fillStyle = '#f26a1f'; ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = '#ff8a3d'; ctx.fillRect(20, 30, 26, 190); ctx.fillRect(210, 30, 26, 190);
+    ctx.fillStyle = '#cfe7f5'; ctx.fillRect(80, 60, 96, 96);
+    const gear = (x, y, r, col) => { ctx.fillStyle = col; ctx.beginPath(); for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2, rr = i % 2 ? r : r * 0.78; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } ctx.fill(); };
+    gear(108, 90, 18, '#2a7de1'); gear(146, 104, 20, '#e0322b'); gear(118, 130, 17, '#3fae4a'); gear(150, 140, 12, '#f2c531');
+    ctx.fillStyle = '#ff8a3d'; ctx.beginPath(); ctx.arc(128, 205, 22, 0, Math.PI * 2); ctx.fill();
+  }), ...P(-1.6, yT + 0.55, -0.64)).rotation.y = Math.PI;
+  // 南側黑色樓梯＋黃色扶手（自平台向南下至地面）
+  {
+    const n = 6, run = 1.75, w = 0.62, sx = -1.6;
+    for (let i = 0; i < n; i++) {
+      const y = yT - (i + 1) * yT / (n + 1), z = 0.6 + (i + 0.5) * run / n;
+      addBox(pg, w, 0.05, run / n + 0.02, blackDeck, ...P(sx, y, z));
+    }
+    const len = Math.hypot(run, yT), ang = Math.atan2(yT, run);
+    [-1, 1].forEach(sd => {
+      const st = addBox(pg, 0.05, 0.2, len, blackDeck, ...P(sx + sd * w / 2, yT / 2 - 0.05, 0.6 + run / 2)); st.rotation.x = ang;
+      const hr = addBox(pg, 0.04, 0.04, len + 0.1, yellow, ...P(sx + sd * (w / 2 + 0.03), yT / 2 + 0.85, 0.6 + run / 2)); hr.rotation.x = ang;
+      for (let i = 0; i <= 8; i++) {
+        const f = i / 8, z = 0.6 + run * f, y = yT * (1 - f);
+        addBox(pg, 0.025, 0.85, 0.025, yellow, ...P(sx + sd * (w / 2 + 0.03), y + 0.425, z));
+      }
+    });
   }
 
-  // 6) 中央偏右：灰色大型穿透式攀岩板 (帶雙孔穿越圓洞與彩色抱石)
-  const boardX = px + 1.85, boardZ = pz + 1.15;
-  const rockBoard = addBox(pg, 1.9, 1.95, 0.14, rockWallMat, boardX, 1.35, boardZ);
-  rockBoard.rotation.x = 0.14; // 微傾斜增加攀爬樂趣
-  // 雙孔穿透圓形鑽洞 (深色洞口帶紅/藍保護邊框圈)
-  const holePositions = [[boardX - 0.45, 1.45, boardZ + 0.02, playRed], [boardX + 0.45, 1.05, boardZ - 0.02, playBlue]];
-  holePositions.forEach(([hx, hy, hz, hMat]) => {
-    const rim = addMesh(pg, new THREE.TorusGeometry(0.32, 0.05, 8, 20), hMat, hx, hy, hz);
-    rim.rotation.x = 0.14;
-    const holeInner = addMesh(pg, new THREE.CylinderGeometry(0.28, 0.28, 0.16, 16), darkMetal, hx, hy, hz);
-    holeInner.rotation.x = Math.PI / 2 + 0.14;
-  });
-  // 表面彩色攀岩石 (紅、黃、藍、綠抱石塊)
-  const gripColors = [playRed, playYellow, playBlue, postGreen];
-  const grips = [
-    [-0.7, 0.5], [-0.3, 0.75], [0.1, 0.45], [0.65, 0.6],
-    [-0.6, 1.1], [0.0, 1.25], [0.7, 1.4],
-    [-0.2, 1.7], [0.35, 1.8], [-0.55, 1.85]
-  ];
-  grips.forEach(([gx, gy], gIdx) => {
-    const grip = addMesh(pg, new THREE.DodecahedronGeometry(0.075), gripColors[gIdx % gripColors.length], boardX + gx, gy, boardZ + 0.09);
-    grip.rotation.set(gx * 2, gy * 3, gIdx);
-  });
+  // 4) 透明黃色鑽筒（T1 → T2）
+  {
+    const tubeMat = new THREE.MeshStandardMaterial({ color: 0xf3e3a0, roughness: 0.15, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false });
+    const tube = addMesh(pg, new THREE.CylinderGeometry(0.4, 0.4, 1.9, 24, 1, true), tubeMat, ...P(-0.05, yT + 0.42, 0), false);
+    tube.rotation.z = Math.PI / 2;
+    [-1.0, -0.05, 0.9].forEach(x => {
+      const rg = addMesh(pg, new THREE.TorusGeometry(0.42, 0.05, 8, 28), x === -0.05 ? slideYellow : yellow, ...P(x, yT + 0.42, 0));
+      rg.rotation.y = Math.PI / 2;
+    });
+  }
 
-  // 7) 右側遊戲塔：紅色大拱門門楣、熱帶棕櫚葉柱頭與紅色雙波浪滑梯
-  addBox(pg, 2.1, 0.18, 2.1, playYellow, px + 3.8, 1.62, pz);
-  // 頂部紅色大拱門
-  const topArch = addMesh(pg, new THREE.TorusGeometry(0.95, 0.07, 8, 20, Math.PI), playRed, px + 3.8, 3.45, pz);
-  // 熱帶棕櫚葉造型柱頭 (四角立柱頂部)
-  [-1.2, 1.2].forEach(oz => {
-    const leaf = addMesh(pg, new THREE.ConeGeometry(0.28, 0.42, 6), postGreen, px + 4.2, 3.75, pz + oz);
-    leaf.rotation.x = oz > 0 ? 0.35 : -0.35;
-  });
-  // 紅色雙波浪滑梯 (向東方雙軌滑下)
-  const rSegments = [
-    { len: 1.6, angle: -0.52, y: 1.15, ox: 5.0 },
-    { len: 1.5, angle: -0.36, y: 0.55, ox: 6.2 },
-    { len: 0.9, angle: -0.08, y: 0.18, ox: 7.2 }
-  ];
-  rSegments.forEach(seg => {
-    // 雙軌主體
-    const sl = addBox(pg, seg.len, 0.14, 1.25, playRed, px + seg.ox, seg.y, pz);
-    sl.rotation.z = seg.angle;
-    // 中央分隔島與兩側護欄
-    const flC = addBox(pg, seg.len, 0.28, 0.08, playYellow, px + seg.ox, seg.y + 0.11, pz);
-    flC.rotation.z = seg.angle;
-    const flL = addBox(pg, seg.len, 0.32, 0.08, playRed, px + seg.ox, seg.y + 0.12, pz + 0.62);
-    flL.rotation.z = seg.angle;
-    const flR = addBox(pg, seg.len, 0.32, 0.08, playRed, px + seg.ox, seg.y + 0.12, pz - 0.62);
-    flR.rotation.z = seg.angle;
-  });
+  // 5) 東塔 T2（x 0.9～2.1，平台 1.2 m）
+  [[0.9, -0.6], [0.9, 0.6], [2.1, -0.6], [2.1, 0.6]].forEach(([x, z]) => post(x, z, 2.35));
+  deck(0.9, 2.1, yT);
+  {   // 紅色大拱門（橫跨東西兩柱，柱頭紅色環飾）
+    addMesh(pg, new THREE.TorusGeometry(0.6, 0.09, 12, 32, Math.PI), red, ...P(1.5, 2.55, 0));
+    [0.9, 2.1].forEach(x => {
+      addMesh(pg, new THREE.CylinderGeometry(0.09, 0.09, 0.22, 14), red, ...P(x, 2.45, 0));
+      addMesh(pg, new THREE.CylinderGeometry(0.12, 0.12, 0.05, 14), red, ...P(x, 2.36, 0));
+    });
+    [0.9, 2.1].forEach(x => addMesh(pg, new THREE.CylinderGeometry(0.057, 0.057, 0.35, 14), postGreen, ...P(x, 2.17, 0)));
+  }
+  // 北側藍色 OX 井字遊戲板
+  addMesh(pg, new THREE.PlaneGeometry(1.05, 1.15), canvasMat(256, 280, (ctx) => {
+    ctx.fillStyle = '#1f5fbf'; ctx.fillRect(0, 0, 256, 280);
+    ctx.fillStyle = '#2f7ae0'; for (let i = 0; i < 9; i++) { ctx.beginPath(); ctx.arc(30 + i * 25, 30, 8, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = '#cfe7f5'; ctx.fillRect(40, 60, 176, 180);
+    const marks = ['X', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'X'];
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+      ctx.fillStyle = '#f2c531'; ctx.fillRect(48 + c * 56, 66 + r * 58, 50, 52);
+      ctx.fillStyle = '#111'; ctx.font = 'bold 34px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(marks[r * 3 + c], 73 + c * 56, 93 + r * 58);
+    }
+  }), ...P(1.5, yT + 0.58, -0.64)).rotation.y = Math.PI;
+  yellowBars(0.95, 2.05, yT, 0.6, 0.85);
+  // 東北角棕櫚葉＋橘色花朵飾柱
+  {
+    post(2.35, -0.85, 3.0);
+    const leaf = addMesh(pg, new THREE.SphereGeometry(0.42, 16, 10), leafGreen, ...P(2.1, 3.05, -0.85));
+    leaf.scale.set(1.1, 0.22, 0.6); leaf.rotation.z = 0.35;
+    const fl = addMesh(pg, new THREE.CylinderGeometry(0.3, 0.3, 0.06, 16), orange, ...P(2.55, 3.15, -0.85));
+    fl.rotation.x = Math.PI / 2;
+    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; addMesh(pg, new THREE.SphereGeometry(0.07, 6, 5), orange, ...P(2.55 + Math.cos(a) * 0.32, 3.15 + Math.sin(a) * 0.32, -0.85)); }
+    addMesh(pg, new THREE.SphereGeometry(0.08, 8, 6), red, ...P(2.55, 3.15, -0.89));
+  }
+  // 南側灰色攀岩板（兩個穿越大圓孔＋彩色抱石）
+  {
+    const sh = new THREE.Shape(); sh.moveTo(-0.62, 0); sh.lineTo(0.62, 0); sh.lineTo(0.55, 1.6); sh.lineTo(-0.55, 1.6); sh.closePath();
+    const h1 = new THREE.Path(); h1.absarc(-0.18, 0.95, 0.24, 0, Math.PI * 2, true); sh.holes.push(h1);
+    const h2 = new THREE.Path(); h2.absarc(0.22, 0.42, 0.26, 0, Math.PI * 2, true); sh.holes.push(h2);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.22, bevelEnabled: true, bevelSize: 0.07, bevelThickness: 0.08, bevelSegments: 3, curveSegments: 20 });
+    const wall = addMesh(pg, geo, rockGrey, ...P(1.5, 0, 0.6 + 1.0));
+    wall.rotation.x = -Math.atan2(1.0, yT);   // 底部在南側地面，向北斜靠至平台南緣
+    const holdCols = [0xd8262b, 0xf2c531, 0x3aa346, 0x2a7de1, 0xf26a1f];
+    [[-0.4, 0.3], [0.45, 0.85], [-0.35, 1.35], [0.3, 1.3], [0.0, 0.15], [-0.45, 0.8]].forEach(([u, v], i) => {
+      const hold = addMesh(pg, new THREE.SphereGeometry(0.055, 7, 6), new THREE.MeshStandardMaterial({ color: holdCols[i % 5], roughness: 0.5 }), 0, 0, 0);
+      hold.position.set(u, v, 0.15); hold.scale.set(1.3, 1, 0.7);
+      pg.remove(hold); wall.add(hold);
+    });
+  }
 
-  // 後方直通階梯
-  for (let s = 0; s < 5; s++) {
-    addBox(pg, 0.95, 0.08, 0.32, darkMetal, px + 3.8, 0.3 + s * 0.28, pz - 1.2 - s * 0.3);
+  // 6) 波浪溜滑梯：黃色向西（自 T0），紅色向東（自 T2）
+  // 平滑 U 形槽溜滑梯：沿中心線取 40 個剖面組成連續曲面（起點短平台 → 波浪下滑 → 出口平滑段）
+  const wavySlide = (x0, y0, dir, mat, run) => {
+    const N = 40, w = 0.56, wallH = 0.2, exitY = 0.28;
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const f = i / N, x = f * run;
+      let y;
+      if (f < 0.08) y = y0;                                                    // 頂端平台
+      else if (f > 0.85) y = exitY;                                            // 出口段
+      else {
+        const g = (f - 0.08) / 0.77;
+        const sm = g * g * (3 - 2 * g);                                        // 平順進出
+        y = y0 - (y0 - exitY) * Math.min(1, Math.max(0, sm + 0.045 * Math.sin(g * Math.PI * 4)));   // 兩道波浪
+      }
+      pts.push([x, y]);
+    }
+    const prof = [[-w / 2, wallH], [-w / 2, 0], [w / 2, 0], [w / 2, wallH]];   // [橫向 z, 法向偏移]
+    const pos = [], idx = [];
+    pts.forEach(([x, y], i) => {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(N, i + 1)];
+      let tx = b[0] - a[0], ty = b[1] - a[1]; const l = Math.hypot(tx, ty); tx /= l; ty /= l;
+      const nx = -ty, ny = tx;                                                // 坡面法線（朝上）
+      prof.forEach(([lz, off]) => pos.push(px + x0 + dir * (x + nx * off), y + ny * off, pz + lz));
+    });
+    for (let i = 0; i < N; i++) for (let k = 0; k < 3; k++) {
+      const a = i * 4 + k, b = a + 1, c = a + 4, d = a + 5;
+      idx.push(a, c, b, b, c, d);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true;
+    pg.add(m);
+    // 槽緣捲邊（沿兩側上緣的圓管）
+    [-1, 1].forEach(sd => {
+      const curve = new THREE.CatmullRomCurve3(pts.map(([x, y], i) => {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(N, i + 1)];
+        let tx = b[0] - a[0], ty = b[1] - a[1]; const l = Math.hypot(tx, ty); tx /= l; ty /= l;
+        return new THREE.Vector3(px + x0 + dir * (x - ty * wallH), y + tx * wallH, pz + sd * w / 2);
+      }));
+      const lip = new THREE.Mesh(new THREE.TubeGeometry(curve, 60, 0.035, 6, false), mat);
+      lip.castShadow = true; pg.add(lip);
+    });
+    addBox(pg, 0.1, exitY, w, mat, px + x0 + dir * (run - 0.05), exitY / 2, pz);   // 出口支撐
+  };
+  wavySlide(-3.4, yT0, -1, slideYellow, 2.4);
+  wavySlide(2.1, yT, 1, red, 3.2);
+
+  // 7) T0 北側紅色圓盤攀爬柱（3 片紅色圓盤）
+  {
+    addMesh(pg, new THREE.CylinderGeometry(0.035, 0.035, 1.25, 10), yellow, ...P(-2.8, 0.62, -1.05));
+    [0.3, 0.6, 0.9].forEach(y => {
+      addMesh(pg, new THREE.CylinderGeometry(0.2, 0.2, 0.04, 20), red, ...P(-2.8, y, -1.05));
+      addMesh(pg, new THREE.TorusGeometry(0.2, 0.02, 6, 20), red, ...P(-2.8, y + 0.02, -1.05)).rotation.x = Math.PI / 2;
+    });
+    addBox(pg, 0.04, 0.04, 0.45, yellow, ...P(-2.8, 1.23, -0.82));
+  }
+  // 8) 西北角蝸牛造型立柱（綠色彎柱頂端：粉橘螺旋殼＋黃色身體）
+  {
+    post(-3.65, -0.75, 2.6);
+    const bend = addMesh(pg, new THREE.TorusGeometry(0.25, 0.057, 10, 16, Math.PI / 2), postGreen, ...P(-3.4, 2.6, -0.75));
+    bend.rotation.z = Math.PI / 2;
+    const shellMat = canvasMat(128, 128, (ctx) => {
+      ctx.fillStyle = '#f6b08a'; ctx.fillRect(0, 0, 128, 128);
+      ctx.strokeStyle = '#e07a52'; ctx.lineWidth = 5; ctx.beginPath();
+      for (let t = 0; t < 18; t += 0.1) { const r = 3 + t * 3.2; ctx.lineTo(64 + Math.cos(t) * r, 64 + Math.sin(t) * r); }
+      ctx.stroke();
+    });
+    const shell = addMesh(pg, new THREE.CylinderGeometry(0.27, 0.27, 0.16, 24), [new THREE.MeshStandardMaterial({ color: 0xf6b08a, roughness: 0.4 }), shellMat, shellMat], ...P(-3.25, 3.05, -0.75));
+    shell.rotation.x = Math.PI / 2;
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf3d77a, roughness: 0.4 });
+    const body = addMesh(pg, new THREE.CapsuleGeometry(0.08, 0.32, 6, 10), bodyMat, ...P(-3.05, 2.85, -0.75));
+    body.rotation.z = Math.PI / 2;
+    addMesh(pg, new THREE.SphereGeometry(0.1, 10, 8), bodyMat, ...P(-2.88, 3.12, -0.75));
+    addMesh(pg, new THREE.CylinderGeometry(0.06, 0.08, 0.3, 8), bodyMat, ...P(-2.88, 2.98, -0.75));
+    [-0.04, 0.04].forEach(dz => {
+      addMesh(pg, new THREE.CylinderGeometry(0.012, 0.012, 0.18, 6), bodyMat, ...P(-2.84, 3.28, -0.75 + dz)).rotation.z = -0.3;
+      addMesh(pg, new THREE.SphereGeometry(0.025, 6, 5), bodyMat, ...P(-2.8, 3.37, -0.75 + dz));
+    });
+  }
+
+  // 9) 周邊：白色公園長椅、6–12 歲遊具使用告示牌
+  {
+    const benchWhite = new THREE.MeshStandardMaterial({ color: 0xf2f2ef, roughness: 0.45 });
+    const bx = px + 5.6, bz = pz + matD / 2 - 0.9;
+    for (let i = 0; i < 4; i++) addBox(pg, 1.5, 0.035, 0.09, benchWhite, bx, 0.45, bz - 0.15 + i * 0.11);
+    for (let i = 0; i < 3; i++) addBox(pg, 1.5, 0.09, 0.03, benchWhite, bx, 0.6 + i * 0.12, bz + 0.27);
+    [-0.68, 0.68].forEach(o => { addBox(pg, 0.05, 0.45, 0.5, benchWhite, bx + o, 0.225, bz + 0.05); addBox(pg, 0.05, 0.25, 0.05, benchWhite, bx + o, 0.68, bz - 0.15); });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5b3b26, roughness: 0.8 });
+    const sx = px + 3.5, sz = pz + matD / 2 - 0.3;
+    [-0.42, 0.42].forEach(o => addBox(pg, 0.08, 1.6, 0.08, wood, sx + o, 0.8, sz));
+    addBox(pg, 0.9, 0.85, 0.05, wood, sx, 1.15, sz);
+    addMesh(pg, new THREE.PlaneGeometry(0.76, 0.72), canvasMat(152, 144, (ctx) => {
+      ctx.fillStyle = '#f2d98c'; ctx.fillRect(0, 0, 152, 144);
+      ctx.fillStyle = '#7a3b12'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('遊戲場使用須知', 76, 22);
+      ctx.font = 'bold 34px sans-serif'; ctx.fillStyle = '#c0392b'; ctx.fillText('6-12', 76, 66); ctx.font = 'bold 14px sans-serif'; ctx.fillText('歲適用', 76, 84);
+      ctx.fillStyle = '#7a3b12'; for (let i = 0; i < 4; i++) ctx.fillRect(18, 96 + i * 11, 116, 4);
+    }), sx, 1.15, sz - 0.03).rotation.y = Math.PI;
   }
 
   pg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'playground-zone'; });
