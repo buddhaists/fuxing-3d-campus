@@ -43,7 +43,7 @@ window.__updateProgress(15, '正在啟動三維校園引擎...');
 if ('serviceWorker' in navigator) {
   window.addEventListener('DOMContentLoaded', () => {
     window.__updateProgress(25, '校園核心樣式就緒...');
-    navigator.serviceWorker.register('./sw.js?v=2.10.3').then(reg => {
+    navigator.serviceWorker.register('./sw.js?v=2.11.0').then(reg => {
       reg.update();
     }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -76,7 +76,7 @@ document.addEventListener('click', function(e) {
 </script>
 <!-- modulepreload 必須放在 importmap 之後，否則瀏覽器會在 import map 生效前解析 "three" 而失敗 -->
 <link rel="modulepreload" href="./vendor/three/three.module.js">
-<link rel="modulepreload" href="./campus-3d.js?v=2.10.3">
+<link rel="modulepreload" href="./campus-3d.js?v=2.11.0">
 <style>
   /* ==========================================================================
      PKU-3D ("燕园 · 循图，走进燕园") Editorial Design System
@@ -3635,6 +3635,6 @@ document.addEventListener('click', function(e) {
 <script src="./vendor/qrcode.min.js"></script>
 <script src="./data/spots.js"></script>
 <script src="./campus-ui.js?v=2.10.1"></script>
-<script type="module" src="./campus-3d.js?v=2.10.3"></script>
+<script type="module" src="./campus-3d.js?v=2.11.0"></script>
 </body>
 </html>
