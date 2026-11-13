@@ -6515,7 +6515,7 @@ function buildEastBuilding() {
   // 6) 1F 穿堂文化核心：「復興德馬號」五分車閱讀站 ＆ 「READ」原木造型書架
   // 依據現場實拍照片 media_1793514956908～1793514957415 1:1 沉浸式精準建模
   // ============================================================================
-  const yBreezeFloor = y0 + 0.02; // 穿堂 1F 水磨石地坪標高（v2.11.8 依指示：與東側前走廊等高，不再架高 1 m）
+  const yBreezeFloor = 1.16; // 穿堂 1F 水磨石地坪標高（v2.11.9：比中庭地面 0.16 m 高約 1 m，與北棟 1.25 m／南棟 1.15 m 之 1F 同高）
   const yCeiling = yF[1] - 0.25; // 天花板底面標高 (約 4.15m)
   const zNorthWall = cz(AXIS_CM[8]); // 北側牆面 (約 -10.65m，面向 +Z)
   const zSouthWall = cz(AXIS_CM[7]); // 南側牆面 (約 -1.93m，面向 -Z)
@@ -7140,6 +7140,21 @@ function buildEastBuilding() {
   const breezeFloorCx = (xW0 + xA) / 2;
   const breezeFloorH = yBreezeFloor - y0;
   addBox(g, breezeFloorW + 0.15, breezeFloorH, breezeW, passageFloorMat, breezeFloorCx, y0 + breezeFloorH / 2, breezeZ, false);
+  // v2.11.9：穿堂段前走廊同步架高（穿堂與前走廊等高），並於東側（前庭）設寬大台階下至前庭鋪面
+  {
+    addBox(g, xE - xA + 0.02, breezeFloorH, breezeW, passageFloorMat, (xA + xE) / 2, y0 + breezeFloorH / 2, breezeZ, false);
+    const yPlaza = 0.10, nS = Math.max(1, Math.round((yBreezeFloor - yPlaza) / 0.15)), rS = (yBreezeFloor - yPlaza) / nS, tS = 0.34;
+    const stepMat = new THREE.MeshStandardMaterial({ color: 0xd5d2ca, roughness: 0.72 });
+    const noseMat = new THREE.MeshStandardMaterial({ color: 0x323538, roughness: 0.88 });
+    for (let k = 0; k < nS; k++) {
+      const top = yBreezeFloor - k * rS, x = xE + (k + 0.5) * tS;
+      addBox(g, tS, top - yPlaza, breezeW - 0.3, stepMat, x, yPlaza + (top - yPlaza) / 2, breezeZ);
+      addBox(g, 0.04, 0.012, breezeW - 0.3, noseMat, x + tS / 2 - 0.02, top + 0.006, breezeZ, false);
+    }
+    // 台階兩側矮牆
+    const runX = nS * tS;
+    [-1, 1].forEach(sd => addBox(g, runX + 0.1, yBreezeFloor - yPlaza + 0.25, 0.22, wallMat, xE + runX / 2, yPlaza + (yBreezeFloor - yPlaza + 0.25) / 2, breezeZ + sd * (breezeW / 2 - 0.08)));
+  }
 
   // 穿堂西側 8 階寬大戶外花崗石台階 (正對挑高大穿堂出口)
   const stairZ_Min = cz(AXIS_CM[8]) + 0.25;
