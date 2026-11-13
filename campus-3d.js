@@ -6515,7 +6515,7 @@ function buildEastBuilding() {
   // 6) 1F 穿堂文化核心：「復興德馬號」五分車閱讀站 ＆ 「READ」原木造型書架
   // 依據現場實拍照片 media_1793514956908～1793514957415 1:1 沉浸式精準建模
   // ============================================================================
-  const yBreezeFloor = 1.36; // 穿堂 1F 水磨石地坪標高
+  const yBreezeFloor = y0 + 0.02; // 穿堂 1F 水磨石地坪標高（v2.11.8 依指示：與東側前走廊等高，不再架高 1 m）
   const yCeiling = yF[1] - 0.25; // 天花板底面標高 (約 4.15m)
   const zNorthWall = cz(AXIS_CM[8]); // 北側牆面 (約 -10.65m，面向 +Z)
   const zSouthWall = cz(AXIS_CM[7]); // 南側牆面 (約 -1.93m，面向 -Z)
@@ -7128,10 +7128,10 @@ function buildEastBuilding() {
   // 依據最新實景照片 media_1793002887451_10566a0d.jpg 1:1 精確還原
   // ============================================================================
   const yCourtGround = 0.16;
-  // yBreezeFloor (1.36m) 已於穿堂文化核心區塊宣告
+  // yBreezeFloor 已於穿堂文化核心區塊宣告
   const stairRiseTotal = yBreezeFloor - yCourtGround; // 1.20m
-  const nBreezeSteps = 8;    // 8 級平緩寬台階
-  const stepRiserH = stairRiseTotal / nBreezeSteps; // 0.15m
+  const nBreezeSteps = Math.max(1, Math.round((yBreezeFloor - yCourtGround) / 0.15));   // 依高差自動計算級數
+  const stepRiserH = stairRiseTotal / nBreezeSteps;
   const stepTreadD = 0.35;   // 踏步進深 35cm
   const stairTotalRunX = nBreezeSteps * stepTreadD; // 2.80m
 
@@ -7183,7 +7183,7 @@ function buildEastBuilding() {
   //   ・洗石子（灰白抿石）擋土牆與圓弧收邊；不鏽鋼直立欄杆＋雙層扶手（內側扶手以 U 形支架固定）
   // ============================================================================
   {
-    const yTop = yBreezeFloor, yGround = yCourtGround;          // 1.36 m → 0.16 m（落差 1.20 m）
+    const yTop = yBreezeFloor, yGround = yCourtGround;          // 穿堂地坪 → 中庭地面
     const zN = stairZ_Max + 0.10;                                // 北端（緊鄰穿堂大台階南側）
     const zS = cz(AXIS_CM[4]) + 0.75;                            // 南端（興學樓北側綠籬前）
     const laneW = 1.60;
