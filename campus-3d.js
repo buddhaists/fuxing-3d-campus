@@ -15334,6 +15334,38 @@ function buildMainGateLayer() {
   // 脊柱頂部斜切壓頂
   const spineCap = addBox(mg, 0.66, 0.10, 0.57, stoneCapMat, pylonX, 4.70, pylonZ + 0.155);
   spineCap.rotation.z = 0.04;
+  // 門碑背面（西側，面向前庭廣場）彩色陶瓷拼貼壁飾（依 2026 東棟 2F 俯拍照片 28、29）
+  {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 896;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#6a655c'; ctx.fillRect(0, 0, 512, 896);            // 深色勾縫
+    let sd = 101; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    const pal = ['#c9b48e', '#a88a62', '#8c6b4c', '#d8cdb5', '#b27a55', '#9a9286', '#c7a46b', '#7d6f5e', '#e2d6bd', '#a0603f', '#8e9a8a', '#b9a07a'];
+    const cell = 18;                                                          // 每片約 6 cm
+    for (let y = 0; y < 896; y += cell) {
+      for (let x = 0; x < 512; x += cell) {
+        if (rnd() < 0.12) continue;                                           // 不規則留縫
+        const w = rnd() < 0.18 ? cell * 2 : cell;
+        ctx.fillStyle = pal[Math.floor(rnd() * pal.length)];
+        ctx.fillRect(x + 2, y + 2, w - 4 + (rnd() * 3 - 1.5), cell - 4 + (rnd() * 3 - 1.5));
+      }
+    }
+    // 幾片較大的彩繪陶板（照片中可見的方形色塊）
+    for (let i = 0; i < 14; i++) {
+      const bx = Math.floor(rnd() * 8) * 64 + 4, by = Math.floor(rnd() * 14) * 64 + 4;
+      ctx.fillStyle = pal[Math.floor(rnd() * pal.length)];
+      ctx.fillRect(bx, by, 56, 56);
+      ctx.strokeStyle = 'rgba(60,40,30,0.5)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(bx + 28, by + 28, 14 + rnd() * 8, 0, Math.PI * 2); ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+    const panelW = 1.62, panelH = 2.85, backX = pylonX - 0.31;
+    const panelCz = pylonZ + 0.13, panelCy = 0.95 + panelH / 2;
+    addBox(mg, 0.04, panelH + 0.16, panelW + 0.16, stoneCapMat, backX - 0.02, panelCy, panelCz);       // 灰色石材外框
+    const mosaic = addMesh(mg, new THREE.PlaneGeometry(panelW, panelH), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 }), backX - 0.045, panelCy, panelCz, false);
+    mosaic.rotation.y = -Math.PI / 2;    // 面向西（前庭廣場）
+  }
+
   // 脊柱北緣垂直深色溝槽（實景中銘刻字右側之垂直凹縫）
   addBox(mg, 0.04, 4.40, 0.05, darkSteelMat, pylonX + 0.315, 2.35, pylonZ - 0.085, false);
 
@@ -16315,11 +16347,51 @@ function buildMainGateLayer() {
 
   // H. 大門南側背景大王椰子樹 (避開北側開放草坪與正面視野)
   const palmFoliageMat = new THREE.MeshStandardMaterial({ color: 0x2e6b35, roughness: 0.82 });
-  [Z(275)].forEach(pz => {
-    addMesh(mg, new THREE.CylinderGeometry(0.28, 0.35, 10.5, 12), mats.slab, wallRightX - 3.5, 5.25, pz);
-    const palmCrown = addMesh(mg, new THREE.SphereGeometry(2.4, 12, 10), palmFoliageMat, wallRightX - 3.5, 10.6, pz);
-    palmCrown.scale.set(1.4, 0.8, 1.4);
-  });
+  // v2.11.5 依 2026 東棟 2F 俯拍照片 29：南草坪靠校門側兩株高聳大王椰子（約 13～14 m），灰白光滑樹幹、
+  //          綠色葉鞘冠莖、羽狀長葉向四周拱形下垂
+  {
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0xb4b0a6, roughness: 0.8 });
+    const shaftMat = new THREE.MeshStandardMaterial({ color: 0x5f8f3e, roughness: 0.7 });
+    const frondMat = new THREE.MeshStandardMaterial({ color: 0x3f7a35, roughness: 0.78, side: THREE.DoubleSide });
+    const frondMat2 = new THREE.MeshStandardMaterial({ color: 0x55903f, roughness: 0.78, side: THREE.DoubleSide });
+    const royalPalm = (px, pz, h, seed) => {
+      const pg = new THREE.Group();
+      pg.position.set(px, 0, pz);
+      // 樹幹：基部略膨大、中段收細的灰白樹幹（分兩段）
+      addMesh(pg, new THREE.CylinderGeometry(0.24, 0.34, h * 0.35, 14), trunkMat, 0, h * 0.175, 0);
+      addMesh(pg, new THREE.CylinderGeometry(0.21, 0.24, h * 0.55, 14), trunkMat, 0, h * 0.35 + h * 0.275, 0);
+      for (let r = 1; r < 12; r++) addMesh(pg, new THREE.TorusGeometry(0.235 - r * 0.002, 0.012, 4, 16), trunkMat, 0, r * h * 0.075, 0).rotation.x = Math.PI / 2;   // 葉痕環紋
+      // 綠色葉鞘冠莖
+      const top = h * 0.9;
+      addMesh(pg, new THREE.CylinderGeometry(0.19, 0.22, 1.6, 12), shaftMat, 0, top + 0.8, 0);
+      // 羽狀葉：每片 4 節，逐節加大下垂角度
+      const nF = 14;
+      for (let f = 0; f < nF; f++) {
+        const ang = (f / nF) * Math.PI * 2 + seed;
+        const lift = (f % 3) * 0.12;
+        // 每片葉為一個子群組：先繞樹幹轉到方位 ang，再於該垂直面內由內而外逐節下垂
+        const fg = new THREE.Group();
+        fg.position.set(0, top + 1.55 + lift, 0);
+        fg.rotation.y = ang;
+        let x = 0, y = 0, tilt = 0.55 - (f % 2) * 0.25 - lift;      // 起始略向上，隨後拱形下垂
+        const seg = 1.0;
+        for (let k = 0; k < 4; k++) {
+          const w = 0.9 - k * 0.17;
+          const dx = Math.cos(tilt) * seg, dy = Math.sin(tilt) * seg;
+          const leaf = new THREE.Mesh(new THREE.BoxGeometry(seg + 0.06, 0.03, w), k % 2 ? frondMat2 : frondMat);
+          leaf.position.set(x + dx / 2, y + dy / 2, 0);
+          leaf.rotation.set(0.35 * (k % 2 ? 1 : -1), 0, tilt);   // 小葉片兩側略呈 V 形
+          leaf.castShadow = true;
+          fg.add(leaf);
+          x += dx; y += dy; tilt -= 0.42;
+        }
+        pg.add(fg);
+      }
+      mg.add(pg);
+    };
+    royalPalm(101.5, 10.0, 13.5, 0.2);
+    royalPalm(104.6, 12.6, 14.2, 1.1);
+  }
 
     // ================================================================
   // (依指示移除穿堂前盆景台與巨石，保持前庭迎賓大道通透視野)
