@@ -13937,6 +13937,89 @@ function buildNewBuilding() {
     mirrorRim.position.z = -0.005;
     mirrorGrp.add(mirrorRim);
     g.add(mirrorGrp);
+
+    // (7) 新棟東南轉角（42巷 34 弄口）電線桿、路牌與第二支反射鏡（v2.12.5 依 2024 街景 12 建興南路42巷）
+    //     ・深灰水泥電線桿立於緣石旁，高約 9 m：頂部橫擔與礙子、路燈挑臂，桿身掛綠底白字「← 建興南路42巷34弄」路名牌、
+    //       背面小型門牌指示牌、灰色電箱與殘留小廣告
+    //     ・電線桿右側（近新棟/南棟間白色小門）另一支反射鏡：灰色立桿、黑黃斑紋桿腳、白底黑字「注意」直牌、橘框凸面鏡
+    {
+      const textPlate = (w, h, draw) => {
+        const c = document.createElement('canvas');
+        c.width = Math.round(w * 400); c.height = Math.round(h * 400);
+        draw(c.getContext('2d'), c.width, c.height);
+        const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+        return new THREE.MeshBasicMaterial({ map: t });
+      };
+      const cautionMat = textPlate(0.12, 0.36, (ctx, W, H) => {
+        ctx.fillStyle = '#f8f8f6'; ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 3; ctx.strokeRect(2, 2, W - 4, H - 4);
+        ctx.fillStyle = '#111'; ctx.font = `bold ${Math.round(W * 0.72)}px "Noto Sans TC", sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('注', W / 2, H * 0.3); ctx.fillText('意', W / 2, H * 0.7);
+      });
+      const poleConcrete = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.85 });
+      const steelGrey = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.4, metalness: 0.7 });
+      const stripeYellow = new THREE.MeshStandardMaterial({ color: 0xf2c418, roughness: 0.5 });
+
+      // 電線桿
+      const upX = mirrorX + 2.53, upZ = mirrorZ - 0.54;
+      const up = new THREE.Group();
+      up.position.set(upX, 0.14, upZ);
+      up.rotation.y = Math.PI / 4;                       // 路名牌面向東南（42巷車道）
+      addMesh(up, new THREE.CylinderGeometry(0.13, 0.18, 9.0, 14), poleConcrete, 0, 4.5, 0);
+      addBox(up, 1.6, 0.1, 0.1, poleConcrete, 0, 8.55, 0);                                   // 頂部橫擔
+      [-0.7, -0.25, 0.25, 0.7].forEach(ix => addMesh(up, new THREE.CylinderGeometry(0.035, 0.05, 0.16, 8), new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.4 }), ix, 8.68, 0, false));
+      addBox(up, 0.08, 0.08, 1.5, steelGrey, 0, 7.4, 0.75);                                 // 路燈挑臂（往車道）
+      addMesh(up, new THREE.ConeGeometry(0.2, 0.16, 14), steelGrey, 0, 7.3, 1.45, false);
+      addMesh(up, new THREE.SphereGeometry(0.08, 8, 6), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff6dc, emissiveIntensity: 0.6 }), 0, 7.22, 1.45, false);
+      addBox(up, 0.32, 0.5, 0.2, new THREE.MeshStandardMaterial({ color: 0x8b9096, roughness: 0.6, metalness: 0.3 }), 0, 4.1, -0.2);   // 電箱
+      // 綠底白字路名牌（雙面）與背面小指示牌
+      const streetSignMat = textPlate(1.0, 0.24, (ctx, W, H) => {
+        ctx.fillStyle = '#0f7a3c'; ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.strokeRect(5, 5, W - 10, H - 10);
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.moveTo(16, H / 2); ctx.lineTo(56, H / 2 - 26); ctx.lineTo(56, H / 2 + 26); ctx.closePath(); ctx.fill();
+        ctx.fillRect(54, H / 2 - 8, 26, 16);
+        ctx.font = `bold ${Math.round(H * 0.4)}px "Noto Sans TC", sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('建興南路42巷34弄', W / 2 + 40, H / 2 + 2, W - 110);
+      });
+      [0.15, -0.15].forEach((zz, k) => {
+        const sg = addMesh(up, new THREE.PlaneGeometry(1.0, 0.24), streetSignMat, -0.62, 3.05, zz, false);
+        if (k) sg.rotation.y = Math.PI;
+      });
+      addBox(up, 1.02, 0.26, 0.02, new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.5, metalness: 0.4 }), -0.62, 3.05, 0, false);
+      addBox(up, 0.3, 0.03, 0.03, steelGrey, -0.15, 3.05, 0, false);
+      const subSign = addBox(up, 0.26, 0.5, 0.02, new THREE.MeshStandardMaterial({ color: 0x3f4b57, roughness: 0.5 }), 0.18, 2.55, 0.0, false);
+      subSign.rotation.y = Math.PI / 2;
+      // 桿身殘留小廣告與綁帶
+      [[1.6, 0.18, 0xf5f5f0], [2.05, 0.14, 0xe8e2d0], [1.25, 0.12, 0xf0f0f0]].forEach(([yy, hh, col], k) => {
+        const ad = addBox(up, 0.2, hh, 0.02, new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 }), 0, yy, 0.17, false);
+        ad.rotation.y = k * 0.6;
+      });
+      g.add(up);
+
+      // 第二支反射鏡（電線桿右後方、近白色小門）
+      const m2x = mirrorX + 0.9, m2z = mirrorZ - 1.28;
+      addMesh(g, new THREE.CylinderGeometry(0.042, 0.042, 3.0, 10), steelGrey, m2x, 1.64, m2z);
+      for (let k = 0; k < 6; k++) addMesh(g, new THREE.CylinderGeometry(0.048, 0.048, 0.14, 10), k % 2 ? gateDarkMat : stripeYellow, m2x, 0.66 + k * 0.14, m2z, false);
+      const cp = addMesh(g, new THREE.PlaneGeometry(0.12, 0.36), cautionMat, m2x + 0.04, 1.75, m2z + 0.04, false);
+      cp.rotation.y = Math.PI / 4;
+      const m2 = new THREE.Group();
+      m2.position.set(m2x, 2.82, m2z);
+      m2.rotation.y = Math.PI / 5;                        // 鏡面朝東南，照向 42 巷兩向來車
+      const m2Mirror = new THREE.Mesh(new THREE.SphereGeometry(0.75, 20, 6, 0, Math.PI * 2, 0, 0.5), new THREE.MeshStandardMaterial({ color: 0xcfd8e0, roughness: 0.06, metalness: 0.95 }));
+      m2Mirror.rotation.x = Math.PI / 2; m2Mirror.position.z = 0.04 - 0.75 * Math.cos(0.5);
+      m2.add(m2Mirror);
+      m2.add(new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.038, 8, 24), new THREE.MeshStandardMaterial({ color: 0xe8541a, roughness: 0.45 })));
+      const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.12, 20, 1, true, 0, Math.PI), new THREE.MeshStandardMaterial({ color: 0xe8541a, roughness: 0.5, side: THREE.DoubleSide }));
+      hood.rotation.x = Math.PI / 2; hood.rotation.y = Math.PI / 2; hood.position.z = -0.04;
+      m2.add(hood);
+      g.add(m2);
+      // 原反射鏡桿亦補上白底「注意」直牌
+      const cp1 = addMesh(g, new THREE.PlaneGeometry(0.12, 0.36), cautionMat, mirrorX + 0.04, 1.9, mirrorZ + 0.07, false);
+      cp1.rotation.y = 0.2;
+    }
   }
 
   // ==========================================================================
