@@ -2306,7 +2306,24 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   }
 
   // 1) North Perimeter Wall (`V0(56,22) -> V1(955,22)`)
-  addMasonryWallRun(X(56), Z(22), X(955), Z(22), wallBodyMat, true, 1, false);
+  // v2.12.7 依實景照片（北棟西側往後門）：與屏東高工相隔之北側圍牆為清水紅磚牆，高約 2.1 m，每約 3.2 m 一道凸出磚柱，無壓頂石與綠籬
+  {
+    const x1 = X(56), x2 = X(955), z = Z(22), len = x2 - x1;
+    const brickTex = makeTaiwaneseRedBrickTexture();
+    brickTex.wrapS = brickTex.wrapT = THREE.RepeatWrapping;
+    brickTex.repeat.set(len / 3, 1);
+    const nbMat = new THREE.MeshStandardMaterial({ map: brickTex, color: 0x9a7268, roughness: 0.92 });
+    const pierTex = makeTaiwaneseRedBrickTexture(); pierTex.wrapS = pierTex.wrapT = THREE.RepeatWrapping; pierTex.repeat.set(0.2, 1);
+    const nbPierMat = new THREE.MeshStandardMaterial({ map: pierTex, color: 0x8c665c, roughness: 0.92 });
+    const g = new THREE.Group();
+    addBox(g, len, 0.18, 0.34, wallBaseMat, (x1 + x2) / 2, 0.09, z);
+    addBox(g, len, 2.0, 0.24, nbMat, (x1 + x2) / 2, 1.1, z);
+    addBox(g, len, 0.06, 0.28, nbPierMat, (x1 + x2) / 2, 2.13, z);
+    for (let px = x1; px <= x2 + 0.01; px += len / Math.round(len / 3.2)) {
+      addBox(g, 0.36, 2.22, 0.42, nbPierMat, px, 1.11, z);
+    }
+    layerGroups.boundary.add(g);
+  }
 
   // 2) School West Rear Perimeter Wall (`V0(56,22) -> V6(56,328)`, enclosing the West Campus Lawn Buffer, Ball Courts & Command Stage)
   addMasonryWallRun(X(56), Z(22), X(56), Z(73), wallSportsMat, true, -1, true);
@@ -18108,37 +18125,38 @@ function buildNorthCarport() {
   const driveMinX = X(430), driveMaxX = X(955), driveCx = (driveMinX + driveMaxX) / 2;
   const driveZ = -43.5, driveW = 6.4;
   const eastRoadLen = driveMaxX - driveMinX; // 136.5m
-  addBox(layerGroups.roads, eastRoadLen, 0.10, driveW, asphaltMat, driveCx, 0.05, driveZ, false);
+  // v2.12.7 依實景照片：北側車道為斑駁淺灰水泥路面（非柏油），雙向白色箭頭，無中央虛線
+  const wornConcreteMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#a3a19c', '#7d7b77', '#bdbab4', false), roughness: 0.92 });
+  wornConcreteMat.map.repeat.set(eastRoadLen / 3, driveW / 3);
+  addBox(layerGroups.roads, eastRoadLen, 0.10, driveW, wornConcreteMat, driveCx, 0.05, driveZ, false);
+  // 平貼路面的箭頭三角（dir = +1 朝東、-1 朝西）
+  const flatArrowHeadGeo = dir => {
+    const sh = new THREE.Shape();
+    sh.moveTo(0, -0.6); sh.lineTo(0, 0.6); sh.lineTo(dir * 1.1, 0); sh.closePath();
+    const g = new THREE.ShapeGeometry(sh); g.rotateX(-Math.PI / 2); return g;
+  };
 
   // 車道南緣紅磚路緣石 (照片 2、3 草坪北緣與車道交界紅磚緣石，x = 50.0m 至 115.0m)
   addBox(layerGroups.roads, 65.0, 0.15, 0.28, new THREE.MeshStandardMaterial({ color: 0xa8584c, roughness: 0.85 }), 82.5, 0.075, driveZ + driveW / 2, false);
   // 車道南緣白色路面邊線 (Solid White Edge Line)
-  addBox(layerGroups.roads, eastRoadLen, 0.012, 0.15, lineWhiteMat, driveCx, 0.052, driveZ + driveW / 2 - 0.15, false);
+  addBox(layerGroups.roads, eastRoadLen, 0.012, 0.15, lineWhiteMat, driveCx, 0.104, driveZ + driveW / 2 - 0.15, false);
   // 車道北緣停放區劃分白線
-  addBox(layerGroups.roads, eastRoadLen, 0.012, 0.15, lineWhiteMat, driveCx, 0.052, driveZ - driveW / 2 + 0.15, false);
+  addBox(layerGroups.roads, eastRoadLen, 0.012, 0.15, lineWhiteMat, driveCx, 0.104, driveZ - driveW / 2 + 0.15, false);
 
   // 實景照片 20261110_135208.jpg：柏油車道路面白色直行/指示標線箭頭 (東向車流)
   [-12.0, 18.0, 48.0, 78.0, 102.0].forEach(ax => {
     // 箭頭桿身
-    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.055, driveZ + 0.9, false);
+    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.105, driveZ + 0.9, false);
     // 箭頭頭部 (指向東向 +X)
-    const arrowHead = addMesh(layerGroups.roads, new THREE.ConeGeometry(0.65, 1.25, 3), lineWhiteMat, ax + 1.5, 0.056, driveZ + 0.9, false);
-    arrowHead.rotation.x = -Math.PI / 2;
-    arrowHead.rotation.z = -Math.PI / 2;
+    addMesh(layerGroups.roads, flatArrowHeadGeo(1), lineWhiteMat, ax + 1.2, 0.106, driveZ + 0.9, false);
   });
 
   // 西向車流地面箭頭標線 (指向西向 -X，西行出入動線)
   [2.0, 32.0, 62.0, 92.0].forEach(ax => {
-    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.055, driveZ - 0.9, false);
-    const arrowHead = addMesh(layerGroups.roads, new THREE.ConeGeometry(0.65, 1.25, 3), lineWhiteMat, ax - 1.5, 0.056, driveZ - 0.9, false);
-    arrowHead.rotation.x = -Math.PI / 2;
-    arrowHead.rotation.z = Math.PI / 2;
+    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.105, driveZ - 0.9, false);
+    addMesh(layerGroups.roads, flatArrowHeadGeo(-1), lineWhiteMat, ax - 1.2, 0.106, driveZ - 0.9, false);
   });
 
-  // 車道中央白色虛線分隔標線 (Dashed center guide lines)
-  for (let lx = driveMinX + 4.0; lx < driveMaxX - 4.0; lx += 6.0) {
-    addBox(layerGroups.roads, 3.2, 0.012, 0.12, lineWhiteMat, lx, 0.052, driveZ, false);
-  }
 
   // 【B. 中段過渡車道】(x = -21.32m 至 x = -38.0m，微斜過渡通過北棟西端與電梯/廁所北側)
   const transX1 = driveMinX, transX2 = -38.0;
@@ -18153,7 +18171,7 @@ function buildNorthCarport() {
     const transGrp = new THREE.Group();
     transGrp.position.set(transCx, 0.05, transCz);
     transGrp.rotation.y = transAng;
-    addBox(transGrp, transLen, 0.10, 5.0, asphaltMat, 0, 0, 0, false);
+    addBox(transGrp, transLen, 0.10, 5.0, wornConcreteMat, 0, 0, 0, false);
     layerGroups.roads.add(transGrp);
   }
 
@@ -18196,26 +18214,46 @@ function buildNorthCarport() {
 
   // 藍色浪板單層鋼構大車棚 (實景相片 135208.jpg 天藍色烤漆方管鋼架柱梁、深藍浪板屋頂與停放機車汽車)
   const sw = (705 - 430) * S, sd = 22 * S, scx = X((430 + 705) / 2), scz = Z(42);
-  const blueRoofMat = new THREE.MeshStandardMaterial({ color: 0x1d6fb8, roughness: 0.42, metalness: 0.35 });
-  const cyanBeamMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.38, metalness: 0.45 }); // 實景鮮豔天藍色方管鋼構
-  addBox(cp, sw, 0.14, sd + 1.4, mats.slab, scx, 0.07, scz, false);
-  addBox(cp, sw + 0.6, 0.24, sd + 0.6, blueRoofMat, scx, 3.45, scz);
-  addBox(cp, sw + 0.7, 0.12, 0.18, new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.35 }), scx, 3.52, scz + sd / 2 + 0.3);
-  for (let i = 0; i <= 10; i++) {
-    const colX = X(430) + i * (sw / 10);
-    // 天藍色方管鋼柱
-    addBox(cp, 0.22, 3.4, 0.22, cyanBeamMat, colX, 1.7, scz - sd / 2 + 0.5);
-    addBox(cp, 0.22, 3.4, 0.22, cyanBeamMat, colX, 1.7, scz + sd / 2 - 0.5);
-    // 頂部天藍色人字屋架橫梁
-    addBox(cp, 0.14, 0.18, sd, cyanBeamMat, colX, 3.32, scz);
+  // v2.12.7 依實景照片：淺灰鍍鋅浪板單斜屋頂（臨車道側高約 3.6 m、往北牆側降低），深灰鋼柱，
+  //   每跨屋架下緣交替漆藍色與青綠色方管橫梁；地坪水泥、白線劃設垂直停車格
+  const roofMetalMat = new THREE.MeshStandardMaterial({ color: 0xc9cdd0, roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide });
+  const cyanBeamMat = new THREE.MeshStandardMaterial({ color: 0x2f7fa3, roughness: 0.45, metalness: 0.3 });
+  const tealBeamMat = new THREE.MeshStandardMaterial({ color: 0x3f9a6e, roughness: 0.45, metalness: 0.3 });
+  const colMat = new THREE.MeshStandardMaterial({ color: 0x55595d, roughness: 0.5, metalness: 0.4 });
+  addBox(cp, sw, 0.12, sd + 1.4, new THREE.MeshStandardMaterial({ color: 0xa8a6a1, roughness: 0.9 }), scx, 0.06, scz, false);
+  const roofRise = 0.7, frontH = 3.6;
+  {
+    const roof = addMesh(cp, new THREE.BoxGeometry(sw + 0.6, 0.06, sd + 1.6), roofMetalMat, scx, frontH - roofRise / 2, scz);
+    roof.rotation.x = -Math.atan2(roofRise, sd + 1.6);          // 南（車道側）高、北低
+    for (let k = -Math.floor((sw + 0.6) / 0.6) / 2; k <= Math.floor((sw + 0.6) / 0.6) / 2; k++) {   // 浪板波紋
+      const rib = addMesh(cp, new THREE.BoxGeometry(0.05, 0.05, sd + 1.6), roofMetalMat, scx + k * 0.6, frontH - roofRise / 2 + 0.05, scz, false);
+      rib.rotation.x = roof.rotation.x;
+    }
   }
-  const carColors = [0xe8e9eb, 0x38495c, 0x9c3b34, 0x627078, 0xd8d4c8];
+  const nBays = 12;
+  for (let i = 0; i <= nBays; i++) {
+    const colX = X(430) + i * (sw / nBays);
+    addBox(cp, 0.2, frontH - 0.1, 0.2, colMat, colX, (frontH - 0.1) / 2, scz + sd / 2 - 0.3);
+    addBox(cp, 0.2, frontH - roofRise - 0.1, 0.2, colMat, colX, (frontH - roofRise - 0.1) / 2, scz - sd / 2 + 0.3);
+    const beam = addBox(cp, 0.16, 0.28, sd + 0.6, i % 2 ? tealBeamMat : cyanBeamMat, colX, frontH - roofRise / 2 - 0.22, scz);
+    beam.rotation.x = -Math.atan2(roofRise, sd + 1.6);
+  }
+  addBox(cp, sw, 0.26, 0.16, cyanBeamMat, scx, frontH - 0.2, scz + sd / 2 - 0.3);
+  // 白色停車格線（車頭朝車道）
+  const stallW = 2.5;
+  for (let lx = X(430); lx <= X(705) + 0.01; lx += stallW) addBox(cp, 0.1, 0.012, sd - 0.4, lineWhiteMat, lx, 0.125, scz, false);
+  addBox(cp, sw, 0.012, 0.1, lineWhiteMat, scx, 0.125, scz + sd / 2 - 0.2, false);
+  const carColors = [0x9ea3a8, 0x2b2e33, 0xe8e9eb, 0x627078, 0xd8d4c8, 0x8a8f96];
   for (let c = 0; c < 6; c++) {
-    const carX = X(448 + c * 24), carZ = scz;
+    const carX = X(430) + stallW * (1.5 + c * (c < 3 ? 1 : 2.4)), carZ = scz;
     const cMat = new THREE.MeshStandardMaterial({ color: carColors[c % carColors.length], roughness: 0.35, metalness: 0.25 });
-    addBox(cp, 1.85, 0.72, 4.1, cMat, carX, 0.52, carZ);
-    addBox(cp, 1.62, 0.62, 2.2, cMat, carX, 1.12, carZ - 0.15);
-    addBox(cp, 1.66, 0.52, 2.25, mats.glassDark, carX, 1.12, carZ - 0.15);
+    addBox(cp, 1.8, 0.6, 4.4, cMat, carX, 0.6, carZ);
+    addBox(cp, 1.6, 0.5, 2.2, cMat, carX, 1.15, carZ - 0.1);
+    addBox(cp, 1.64, 0.42, 2.26, mats.glassDark, carX, 1.13, carZ - 0.1);
+    [[0.75, 1.35], [0.75, -1.35], [-0.75, 1.35], [-0.75, -1.35]].forEach(([wx, wz]) => {
+      const wh = addMesh(cp, new THREE.CylinderGeometry(0.33, 0.33, 0.22, 12), mats.darkMetal, carX + wx, 0.33, carZ + wz);
+      wh.rotation.z = Math.PI / 2;
+    });
   }
   for (let b = 0; b < 16; b++) {
     const bikeX = X(600 + b * 6.5);
@@ -18807,12 +18845,66 @@ const northDrivewayShadeTrees = [
   [-82.0, -36.16, 0.95, 'broad'],
   [-94.0, -36.16, 1.04, 'broad'],
   [-106.0, -36.16, 0.92, 'broad'],
-  // 北側校園北界圍牆內側綠帶：
-  [-55.0, -47.0, 1.02, 'broad'],
-  [-72.0, -47.0, 1.08, 'broad'],
-  [-88.0, -47.0, 0.98, 'broad'],
-  [-102.0, -47.0, 1.04, 'broad']
+  // 北側圍牆內側老樹改由 buildNorthWallOldTrees() 依實景重建（板根、落葉草地）
 ];
+// v2.12.7 依實景照片（北棟西側往後門）：紅磚北牆內側一排高大老樹，粗壯樹幹基部外露板根，樹冠茂密相連；
+//   樹下為稀疏草地與落葉。北棟北側車道與教室之間另有數株細高羽葉喬木（往東看停車場照片）
+(function buildNorthWallOldTrees() {
+  const grp = new THREE.Group();
+  const bark = new THREE.MeshStandardMaterial({ color: 0x4a3c30, roughness: 0.92 });
+  const leafA = new THREE.MeshStandardMaterial({ color: 0x2f5f2a, roughness: 0.82 });
+  const leafB = new THREE.MeshStandardMaterial({ color: 0x447a36, roughness: 0.8 });
+  const litter = new THREE.MeshStandardMaterial({ color: 0x8a7a55, roughness: 0.96 });
+  const up = new THREE.Vector3(0, 1, 0);
+  let sd = 61; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const limb = (a, b, r0, r1) => {
+    const d = new THREE.Vector3().subVectors(b, a);
+    const m = addMesh(grp, new THREE.CylinderGeometry(r1, r0, d.length(), 8), bark, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    m.quaternion.setFromUnitVectors(up, d.normalize());
+  };
+  const wallZ = Z(22);
+  // 牆邊落葉草帶
+  addBox(grp, 80, 0.03, 3.6, litter, -78, 0.05, wallZ + 2.0, false);
+  for (let tx = -44; tx > -118; tx -= 8.6 + r() * 2) {
+    const tz = wallZ + 2.0 + r() * 0.8, k = 0.9 + r() * 0.3;
+    const base = new THREE.Vector3(tx, 0, tz), top = new THREE.Vector3(tx + (r() - 0.5) * 0.6, 4.2 * k, tz + 0.2);
+    limb(base, top, 0.42 * k, 0.32 * k);
+    for (let b = 0; b < 5; b++) {                       // 外露板根
+      const a = (b / 5) * Math.PI * 2 + r();
+      const root = addBox(grp, 1.5 * k, 0.32 * k, 0.12, bark, tx + Math.cos(a) * 0.7 * k, 0.14 * k, tz + Math.sin(a) * 0.7 * k);
+      root.rotation.y = -a; root.rotation.z = 0.25;
+    }
+    for (let b = 0; b < 4; b++) {
+      const a = (b / 4) * Math.PI * 2 + r();
+      const e = new THREE.Vector3(tx + Math.cos(a) * 3.2 * k, (7.8 + r() * 1.5) * k, tz + Math.sin(a) * 2.6 * k);
+      limb(top, e, 0.24 * k, 0.1 * k);
+      for (let c = 0; c < 5; c++) {
+        const ca = r() * Math.PI * 2, cr = r() * 2.2 * k;
+        const cl = addMesh(grp, new THREE.IcosahedronGeometry((1.2 + r() * 0.6) * k, 1), c % 2 ? leafA : leafB, e.x + Math.cos(ca) * cr, e.y + 0.6 * k + (r() - 0.4) * 1.4, e.z + Math.sin(ca) * cr * 0.8);
+        cl.scale.set(1.3, 0.75, 1.3);
+      }
+    }
+  }
+  // 北棟北側車道與教室間細高羽葉喬木（深色細長樹幹，高處分枝，細碎稀疏樹冠）
+  const featherA = new THREE.MeshStandardMaterial({ color: 0x4f8a3a, roughness: 0.8 });
+  const featherB = new THREE.MeshStandardMaterial({ color: 0x69a046, roughness: 0.8 });
+  [[-30, -38.6], [-21, -38.9], [-8, -38.7], [6, -38.8], [22, -39.0], [38, -38.8]].forEach(([tx, tz], i) => {
+    const k = 0.95 + (i % 3) * 0.08;
+    const fork = new THREE.Vector3(tx + 0.3, 5.0 * k, tz);
+    limb(new THREE.Vector3(tx, 0, tz), fork, 0.2 * k, 0.15 * k);
+    for (let b = 0; b < 3; b++) {
+      const a = b * 2.1 + i;
+      const e = new THREE.Vector3(tx + Math.cos(a) * 2.2 * k, (9.0 + b * 0.6) * k, tz + Math.sin(a) * 1.4 * k);
+      limb(fork, e, 0.12 * k, 0.05 * k);
+      for (let c = 0; c < 8; c++) {
+        const ca = r() * Math.PI * 2, cr = r() * 1.9 * k;
+        const cl = addMesh(grp, new THREE.IcosahedronGeometry((0.45 + r() * 0.3) * k, 0), c % 2 ? featherA : featherB, e.x + Math.cos(ca) * cr, e.y + (r() - 0.3) * 1.2, e.z + Math.sin(ca) * cr * 0.7);
+        cl.scale.set(1.5, 0.55, 1.5);
+      }
+    }
+  });
+  layerGroups.vegetation.add(grp);
+})();
 northDrivewayShadeTrees.forEach(([tx, tz, sc, sp]) => {
   addTree(tx, tz, sc, sp);
 });
