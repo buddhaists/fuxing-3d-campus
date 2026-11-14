@@ -5010,11 +5010,13 @@ function buildNorthBuilding() {
 
           // A. 沉降天井坑體地坪與四周 RC 擋土矮牆
           addBox(g, rW, 0.20, nLwD, concreteFloorMat, rCx, nLwFloorY + 0.10, nLwCz);
-          // 北外側擋土牆 (外緣 Y=-2.60m 至 地面 +0.20m 截水緣石)
-          addBox(g, rW, nPitDepth + 0.20, 0.20, outdoorConcreteMat, rCx, (nLwFloorY + baseH + 0.20) / 2, nLwZ1 - 0.10);
+          // 北外側擋土牆：v2.12.8 依實景照片，牆頂僅高出室外地面約 0.4 m（原誤高至 1F 樓板 +0.2 m，遮住欄杆）
+          const lwTopY = 0.40;
+          addBox(g, rW, lwTopY - nLwFloorY, 0.20, outdoorConcreteMat, rCx, (nLwFloorY + lwTopY) / 2, nLwZ1 - 0.10);
+          addBox(g, rW + 0.06, 0.05, 0.26, outdoorConcreteMat, rCx, lwTopY + 0.025, nLwZ1 - 0.10);
           // 兩端封頭牆
-          addBox(g, 0.20, nPitDepth + 0.20, nLwD, outdoorConcreteMat, run.x1 + 0.10, (nLwFloorY + baseH + 0.20) / 2, nLwCz);
-          addBox(g, 0.20, nPitDepth + 0.20, nLwD, outdoorConcreteMat, run.x2 - 0.10, (nLwFloorY + baseH + 0.20) / 2, nLwCz);
+          addBox(g, 0.20, lwTopY - nLwFloorY, nLwD, outdoorConcreteMat, run.x1 + 0.10, (nLwFloorY + lwTopY) / 2, nLwCz);
+          addBox(g, 0.20, lwTopY - nLwFloorY, nLwD, outdoorConcreteMat, run.x2 - 0.10, (nLwFloorY + lwTopY) / 2, nLwCz);
 
           // B. 地面邊緣水泥截水台與排水溝
           const curbH = 0.18, curbThick = 0.22;
@@ -5035,18 +5037,27 @@ function buildNorthBuilding() {
             rib.rotation.x = -canopySlopeAng;
           }
 
-          // D. 外緣墨綠色金屬圓鋼管防護欄杆 (Dark Green Metal Handrail & Balusters per Photo 6 & 7)
-          const railH = 0.96;
-          addBox(g, rW, 0.045, 0.045, appleGreenMat, rCx, railH, nLwZ1 - 0.04);
-          addBox(g, rW, 0.035, 0.035, appleGreenMat, rCx, railH * 0.52, nLwZ1 - 0.04);
-          const nPosts = Math.max(4, Math.round(rW / 1.5));
-          for (let p = 0; p <= nPosts; p++) {
-            const px = run.x1 + p * (rW / nPosts);
-            addBox(g, 0.04, railH, 0.04, appleGreenMat, px, railH / 2, nLwZ1 - 0.04);
-          }
-          // 兩端回折欄杆
-          addBox(g, 0.045, 0.045, nLwD, appleGreenMat, run.x1 + 0.04, railH, nLwCz);
-          addBox(g, 0.045, 0.045, nLwD, appleGreenMat, run.x2 - 0.04, railH, nLwCz);
+          // D. 外緣墨綠色金屬欄杆（v2.12.8 依實景照片：立於 0.4 m 矮牆頂，高約 1.0 m；方管上下橫桿、
+          //    約 1.5 m 一支主柱、其間密排細直條；兩端沿天井回折至建築外牆）
+          const rail0 = lwTopY + 0.05, railTop = rail0 + 1.0, rz = nLwZ1 - 0.10;
+          const lwRailMat = new THREE.MeshStandardMaterial({ color: 0x2f6a45, roughness: 0.5, metalness: 0.35 });
+          const railRun = (ax1, az1, ax2, az2) => {
+            const len = Math.hypot(ax2 - ax1, az2 - az1), cx = (ax1 + ax2) / 2, cz = (az1 + az2) / 2;
+            const alongX = Math.abs(ax2 - ax1) > Math.abs(az2 - az1);
+            const bar = (w, h, y) => addBox(g, alongX ? len : w, h, alongX ? w : len, lwRailMat, cx, y, cz, false);
+            bar(0.05, 0.05, railTop);
+            bar(0.04, 0.04, railTop - 0.12);
+            bar(0.04, 0.04, rail0 + 0.08);
+            const nP = Math.max(2, Math.round(len / 1.5)), nB = Math.max(4, Math.round(len / 0.12));
+            for (let k = 0; k <= nB; k++) {
+              const t = k / nB, px = ax1 + (ax2 - ax1) * t, pz = az1 + (az2 - az1) * t;
+              const main = k % Math.round(nB / nP) === 0;
+              addBox(g, main ? 0.05 : 0.018, railTop - rail0, main ? 0.05 : 0.018, lwRailMat, px, (rail0 + railTop) / 2, pz, false);
+            }
+          };
+          railRun(run.x1 + 0.1, rz, run.x2 - 0.1, rz);
+          railRun(run.x1 + 0.1, rz, run.x1 + 0.1, nLwZ2);
+          railRun(run.x2 - 0.1, rz, run.x2 - 0.1, nLwZ2);
         });
 
         // 2) 南側前走廊沉降採光天井與「階梯花台」(South Front Lightwells & Stepped Planters, Axis A–B)
@@ -18888,7 +18899,7 @@ const northDrivewayShadeTrees = [
   // 北棟北側車道與教室間細高羽葉喬木（深色細長樹幹，高處分枝，細碎稀疏樹冠）
   const featherA = new THREE.MeshStandardMaterial({ color: 0x4f8a3a, roughness: 0.8 });
   const featherB = new THREE.MeshStandardMaterial({ color: 0x69a046, roughness: 0.8 });
-  [[-30, -38.6], [-21, -38.9], [-8, -38.7], [6, -38.8], [22, -39.0], [38, -38.8]].forEach(([tx, tz], i) => {
+  [[-30, -41.0], [-21, -41.1], [-8, -41.0], [6, -41.0], [22, -41.1], [38, -41.0]].forEach(([tx, tz], i) => {
     const k = 0.95 + (i % 3) * 0.08;
     const fork = new THREE.Vector3(tx + 0.3, 5.0 * k, tz);
     limb(new THREE.Vector3(tx, 0, tz), fork, 0.2 * k, 0.15 * k);
