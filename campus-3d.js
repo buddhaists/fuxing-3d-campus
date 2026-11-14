@@ -16507,13 +16507,13 @@ function buildMainGateLayer() {
   }
 
   // 配置南側 5 格白線停車格旁之 2 座藍色「訪客停車位」鐵牌架與停放機車 (照片 4、5)
-  addVisitorParkingStand(97.5, 4.55, -0.25, false);
-  addVisitorParkingStand(100.2, 4.65, -0.25, false);
+  addVisitorParkingStand(104.0, 4.6, -0.2, false);   // v2.12.2 依俯拍照片：位於 5 格車位中段的草坪緣
+  addVisitorParkingStand(106.3, 4.6, -0.2, false);
   {
     // 停放於南側第 1 格車位旁之黑色重機/機車 (照片 4、5)
     const motoGrp = new THREE.Group();
-    motoGrp.position.set(92.4, 0.11, 2.6);
-    motoGrp.rotation.y = 0.35;
+    motoGrp.position.set(100.2, 0.11, 3.2);          // v2.12.2：停在 5 格車位西端、紅磚帶旁
+    motoGrp.rotation.y = 1.2;
     const motoBlack = new THREE.MeshStandardMaterial({ color: 0x1e2228, roughness: 0.35, metalness: 0.45 });
     const motoSilver = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.25, metalness: 0.8 });
     const motoPlate = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
@@ -16532,24 +16532,39 @@ function buildMainGateLayer() {
     mg.add(motoGrp);
   }
 
-  // 前庭中央「6柱頭復古米灰磚造方形花台」與盛開桃紅九重葛、景觀黑石 (照片 5 核心視覺焦點)
+  // 前庭植栽共用小工具（亂數、錐形枝幹）
+  let fcSeed = 7;
+  const fcRnd = () => (fcSeed = (fcSeed * 16807) % 2147483647) / 2147483647;
+  const _limbUp = new THREE.Vector3(0, 1, 0);
+  function addLimb(parent, a, b, r0, r1, mat, seg = 7) {     // 由 a 至 b 的錐形枝幹
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const len = dir.length();
+    const m = addMesh(parent, new THREE.CylinderGeometry(r1, r0, len, seg), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    m.quaternion.setFromUnitVectors(_limbUp, dir.normalize());
+    return m;
+  }
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+  // 前庭中央九重葛花台（v2.12.2 依 2026 東棟 2F 俯拍照片：廣場中央偏西的低矮長方形花台，
+  //   灰褐粗面磚石砌、高約 0.4 m、南北長約 3.2 m × 東西寬約 1.8 m，內鋪草皮；
+  //   一株老幹九重葛，西側基部為粗壯扭曲老幹，枝條疏朗開展，零星桃紅苞片）
   {
-    function makeVintageBrickPlanterTexture() {
+    function makeRubbleStoneTexture() {
       const c = document.createElement('canvas');
-      c.width = 512; c.height = 256;
+      c.width = 512; c.height = 128;
       const ctx = c.getContext('2d');
-      ctx.fillStyle = '#6e6559';
-      ctx.fillRect(0, 0, 512, 256);
-      const brickCols = ['#9c8d76', '#857763', '#b2a38b', '#746857', '#a6957c', '#635849'];
+      ctx.fillStyle = '#5d5850';
+      ctx.fillRect(0, 0, 512, 128);
+      const cols = ['#8d877b', '#7b7569', '#9d968a', '#6f695e', '#a59f92', '#857e70'];
       let bs = 53;
       const br = () => ((bs = (bs * 16807) % 2147483647) / 2147483647);
-      const rows = 6, cols = 12;
-      const bh = 256 / rows, bw = 512 / cols;
-      for (let r = 0; r < rows; r++) {
-        const off = (r % 2) * (bw / 2);
-        for (let col = -1; col <= cols; col++) {
-          ctx.fillStyle = brickCols[Math.floor(br() * brickCols.length)];
-          ctx.fillRect(col * bw + off + 3, r * bh + 3, bw - 6, bh - 6);
+      for (let r = 0; r < 4; r++) {
+        let x = -br() * 30;
+        while (x < 512) {
+          const w = 34 + br() * 30;
+          ctx.fillStyle = cols[Math.floor(br() * cols.length)];
+          ctx.fillRect(x + 2, r * 32 + 2, w - 4, 28);
+          x += w;
         }
       }
       const t = new THREE.CanvasTexture(c);
@@ -16557,46 +16572,57 @@ function buildMainGateLayer() {
       t.colorSpace = THREE.SRGBColorSpace;
       return t;
     }
-    const vintageBrickMat = new THREE.MeshStandardMaterial({ map: makeVintageBrickPlanterTexture(), roughness: 0.88 });
-    const px = 83.2, pz = -4.2, pw = 3.6, pd = 2.8, ph = 0.54;
-    // 四周復古磚牆壁體
-    addBox(mg, pw, ph, 0.28, vintageBrickMat, px, ph / 2 + 0.08, pz - pd / 2);
-    addBox(mg, pw, ph, 0.28, vintageBrickMat, px, ph / 2 + 0.08, pz + pd / 2);
-    addBox(mg, 0.28, ph, pd, vintageBrickMat, px - pw / 2, ph / 2 + 0.08, pz);
-    addBox(mg, 0.28, ph, pd, vintageBrickMat, px + pw / 2, ph / 2 + 0.08, pz);
-    // 6 座凸出方形磚柱頭 (四角 + 長邊中柱，照片 5 清晰可見凹凸柱頭造型)
-    [
-      [-pw / 2, -pd / 2], [0, -pd / 2], [pw / 2, -pd / 2],
-      [-pw / 2,  pd / 2], [0,  pd / 2], [pw / 2,  pd / 2]
-    ].forEach(([ox, oz]) => {
-      addBox(mg, 0.44, ph + 0.14, 0.44, vintageBrickMat, px + ox, (ph + 0.14) / 2 + 0.08, pz + oz);
-      addBox(mg, 0.50, 0.06, 0.50, stoneCapMat, px + ox, ph + 0.24, pz + oz);
-    });
-    // 花台內綠茵草皮與深黑景觀奇石
-    addBox(mg, pw - 0.36, 0.42, pd - 0.36, bedGrassMat, px, 0.29, pz, false);
-    const planterRock = addMesh(mg, new THREE.DodecahedronGeometry(0.46, 1), new THREE.MeshStandardMaterial({ color: 0x26292e, roughness: 0.85 }), px - 0.35, 0.68, pz - 0.25);
-    planterRock.scale.set(1.25, 0.85, 1.1);
-    // 姿態舒展之多幹九重葛與桃紅花簇 (Bougainvillea)
-    const bougLeafMat = new THREE.MeshStandardMaterial({ color: 0x4d7c32, roughness: 0.78 });
-    const bougFlowerMat = new THREE.MeshStandardMaterial({ color: 0xd62872, roughness: 0.55 });
-    [[-0.2, 0.1, 0.25, -0.15], [0.25, -0.1, -0.22, 0.18], [0.05, 0.2, 0.12, 0.25]].forEach(([bx, bz, rx, rz]) => {
-      const st = addMesh(mg, new THREE.CylinderGeometry(0.07, 0.12, 1.85, 7), trunkBrownMat, px + bx, 1.25, pz + bz);
-      st.rotation.set(rx, 0, rz);
-    });
-    const crownClusters = [
-      [0, 2.15, 0, 1.15], [-0.95, 1.95, 0.35, 0.92], [0.95, 2.05, -0.25, 0.95],
-      [-0.45, 2.35, -0.65, 0.85], [0.55, 1.85, 0.75, 0.88], [0, 1.75, 1.05, 0.78]
-    ];
-    crownClusters.forEach(([cx, cy, cz, cr]) => {
-      const cl = addMesh(mg, new THREE.DodecahedronGeometry(cr, 1), bougLeafMat, px + cx, cy, pz + cz);
-      cl.scale.set(1.25, 0.72, 1.2);
-      for (let f = 0; f < 6; f++) {
-        const fa = f * 1.05 + cx;
-        addMesh(mg, new THREE.SphereGeometry(0.14, 6, 6), bougFlowerMat, px + cx + Math.cos(fa) * cr * 0.85, cy + (f % 2 ? 0.22 : -0.12), pz + cz + Math.sin(fa) * cr * 0.85);
+    const rubbleTex = makeRubbleStoneTexture();
+    const rubbleMatLong = new THREE.MeshStandardMaterial({ map: rubbleTex, roughness: 0.92 });
+    const rubbleTexShort = rubbleTex.clone(); rubbleTexShort.repeat.set(0.56, 1); rubbleTexShort.needsUpdate = true;
+    const rubbleMatShort = new THREE.MeshStandardMaterial({ map: rubbleTexShort, roughness: 0.92 });
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x8a8478, roughness: 0.9 });
+    const px = 83.4, pz = -3.9, pw = 1.8, pd = 3.2, ph = 0.42, t = 0.24;   // pw：東西寬、pd：南北長
+    const y0 = 0.11;
+    addBox(mg, pw, ph, t, rubbleMatShort, px, y0 + ph / 2, pz - pd / 2 + t / 2);
+    addBox(mg, pw, ph, t, rubbleMatShort, px, y0 + ph / 2, pz + pd / 2 - t / 2);
+    addBox(mg, t, ph, pd - 2 * t, rubbleMatLong, px - pw / 2 + t / 2, y0 + ph / 2, pz);
+    addBox(mg, t, ph, pd - 2 * t, rubbleMatLong, px + pw / 2 - t / 2, y0 + ph / 2, pz);
+    // 壓頂：略不平整的粗石壓頂
+    addBox(mg, pw + 0.04, 0.05, t + 0.04, capMat, px, y0 + ph + 0.025, pz - pd / 2 + t / 2);
+    addBox(mg, pw + 0.04, 0.05, t + 0.04, capMat, px, y0 + ph + 0.025, pz + pd / 2 - t / 2);
+    addBox(mg, t + 0.04, 0.05, pd - 2 * t, capMat, px - pw / 2 + t / 2, y0 + ph + 0.025, pz);
+    addBox(mg, t + 0.04, 0.05, pd - 2 * t, capMat, px + pw / 2 - t / 2, y0 + ph + 0.025, pz);
+    addBox(mg, pw - 2 * t, ph - 0.06, pd - 2 * t, bedGrassMat, px, y0 + (ph - 0.06) / 2, pz, false);
+
+    // 九重葛：西側基部扭曲老幹（深褐瘤狀）→ 斜向東上之數支主枝 → 細枝末端疏散葉團與桃紅苞片
+    const bougTrunkMat = new THREE.MeshStandardMaterial({ color: 0x3a3029, roughness: 0.95 });
+    const bougLeafMat = new THREE.MeshStandardMaterial({ color: 0x5b8a3a, roughness: 0.78 });
+    const bougLeafMat2 = new THREE.MeshStandardMaterial({ color: 0x4a7a31, roughness: 0.8 });
+    const bougFlowerMat = new THREE.MeshStandardMaterial({ color: 0xd8287a, roughness: 0.55 });
+    const g = new THREE.Group();
+    g.position.set(px - 0.35, y0 + ph - 0.06, pz + 0.3);
+    const knot = addMesh(g, new THREE.DodecahedronGeometry(0.34, 0), bougTrunkMat, 0, 0.18, 0);
+    knot.scale.set(1.3, 0.8, 1.0);
+    const base = V3(0.05, 0.3, 0);
+    addLimb(g, V3(0, 0.1, 0), base, 0.2, 0.15, bougTrunkMat, 8);
+    const tipsB = [];
+    const grow = (p, ang, tilt, len, rad, depth) => {
+      const e = V3(p.x + Math.cos(ang) * Math.sin(tilt) * len, p.y + Math.cos(tilt) * len, p.z + Math.sin(ang) * Math.sin(tilt) * len);
+      addLimb(g, p, e, rad, rad * 0.65, depth > 1 ? bougTrunkMat : trunkBrownMat, 5);
+      if (depth === 0) { tipsB.push(e); return; }
+      for (let k = 0; k < 2; k++) grow(e, ang + (k ? 0.7 : -0.6) + (fcRnd() - 0.5) * 0.4, Math.min(1.3, tilt + 0.15), len * 0.7, rad * 0.65, depth - 1);
+    };
+    [[0.3, 0.75], [1.6, 0.6], [-1.2, 0.7], [2.9, 0.85]].forEach(([a, tl]) => grow(base, a, tl, 0.85, 0.1, 2));
+    tipsB.forEach((e, i) => {
+      for (let k = 0; k < 3; k++) {
+        const r = 0.24 + fcRnd() * 0.16;
+        const cl = addMesh(g, new THREE.IcosahedronGeometry(r, 0), (i + k) % 2 ? bougLeafMat : bougLeafMat2,
+          e.x + (fcRnd() - 0.5) * 0.5, e.y + (fcRnd() - 0.3) * 0.35, e.z + (fcRnd() - 0.5) * 0.5);
+        cl.scale.set(1.3, 0.75, 1.3);
+      }
+      if (i % 3 !== 2) {
+        addMesh(g, new THREE.IcosahedronGeometry(0.11, 0), bougFlowerMat, e.x + 0.12, e.y + 0.18, e.z - 0.08, false);
+        if (i % 2) addMesh(g, new THREE.IcosahedronGeometry(0.08, 0), bougFlowerMat, e.x - 0.18, e.y + 0.05, e.z + 0.12, false);
       }
     });
+    mg.add(g);
   }
-
   // ================================================================
   // 7) 前庭北側大草坪、校門左側通學步道與復興路綠籬景觀
   //    (依據《學校前庭綠籬平面圖》CAD藍圖與 2024 年 2 月最新街景照片 1:1 極致精準還原)
@@ -16774,17 +16800,6 @@ function buildMainGateLayer() {
     // 2. 前庭北草坪植栽（v2.12.1 依 2026 東棟 2F 俯拍標註照片重建）
     //    由東棟大樓眺望左側草地：左側百年氣根大榕樹 → 中段圓錐龍柏 → 草地中央立支架雞蛋花 →
     //    右側臨復興路兩排綠籬（第一排春不老、第二排朱槿）與羽葉藍花楹；綠籬外為通學步道大榕樹
-    let fcSeed = 7;
-    const fcRnd = () => (fcSeed = (fcSeed * 16807) % 2147483647) / 2147483647;
-    const _limbUp = new THREE.Vector3(0, 1, 0);
-    function addLimb(parent, a, b, r0, r1, mat, seg = 7) {     // 由 a 至 b 的錐形枝幹
-      const dir = new THREE.Vector3().subVectors(b, a);
-      const len = dir.length();
-      const m = addMesh(parent, new THREE.CylinderGeometry(r1, r0, len, seg), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-      m.quaternion.setFromUnitVectors(_limbUp, dir.normalize());
-      return m;
-    }
-    const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
 
     // 2-1.【草坪西北側百年氣根大榕樹】照片黃框：樹冠寬約 17 m、高約 11 m，濃密圓頂樹冠，
     //      主幹粗壯略向東傾，樹冠下緣東南側垂掛成簾的氣根，數根已入土成支柱根
@@ -17178,9 +17193,57 @@ function buildMainGateLayer() {
           cl.scale.set(1.35, 0.52, 1.35);
         }
       });
-      // 後方伴生直幹喬木 (附白色樹名牌，照片 4 左中)
-      addMesh(mg, new THREE.CylinderGeometry(0.22, 0.30, 6.4, 9), trunkBrownMat, 85.8, 3.2, 8.8);
-      addBox(mg, 0.04, 0.22, 0.30, new THREE.MeshStandardMaterial({ color: 0xffffff }), 85.55, 1.45, 8.8);
+      // 後方伴生高聳喬木 (附白色樹名牌)：照片中南草坪最高的一株，直幹約 6 m 處分枝，細葉疏朗的高聳樹冠（約 13 m）
+      {
+        const tx = 85.8, tz = 8.8;
+        const tg = new THREE.Group();
+        tg.position.set(tx, 0, tz);
+        addLimb(tg, V3(0, 0, 0), V3(0.15, 6.2, -0.1), 0.3, 0.2, trunkBrownMat, 9);
+        const tallLeafA = new THREE.MeshStandardMaterial({ color: 0x4f8636, roughness: 0.8 });
+        const tallLeafB = new THREE.MeshStandardMaterial({ color: 0x6a9a44, roughness: 0.8 });
+        [[0.4, 1.9, 0.5], [2.3, 2.1, 0.45], [4.2, 2.0, 0.5], [5.5, 1.6, 0.35]].forEach(([a, d, tl]) => {
+          const e = V3(0.15 + Math.cos(a) * d, 6.2 + d * 2.0, -0.1 + Math.sin(a) * d);
+          addLimb(tg, V3(0.15, 6.0, -0.1), e, 0.15, 0.06, trunkBrownMat, 6);
+          for (let k = 0; k < 7; k++) {
+            const sa = fcRnd() * Math.PI * 2, sr = fcRnd() * 1.8;
+            const cl = addMesh(tg, new THREE.IcosahedronGeometry(0.7 + fcRnd() * 0.5, 0), k % 2 ? tallLeafA : tallLeafB,
+              e.x + Math.cos(sa) * sr, e.y + (fcRnd() - 0.4) * 1.6, e.z + Math.sin(sa) * sr);
+            cl.scale.set(1.4, 0.7, 1.4);
+          }
+        });
+        mg.add(tg);
+        addBox(mg, 0.04, 0.22, 0.30, new THREE.MeshStandardMaterial({ color: 0xffffff }), tx - 0.31, 1.45, tz);
+      }
+
+      // 南側 5 格停車位旁（近校門）濃密遮蔭大樹：照片中遮住大王椰子下半部之圓厚樹冠，高約 9 m、冠幅約 8 m，
+      //   旁伴一株較小的同種樹；樹下為訪客停車牌與停放機車
+      {
+        const shadeA = new THREE.MeshStandardMaterial({ color: 0x2c5f2a, roughness: 0.84 });
+        const shadeB = new THREE.MeshStandardMaterial({ color: 0x3d7432, roughness: 0.82 });
+        const shadeC = new THREE.MeshStandardMaterial({ color: 0x4f8a3a, roughness: 0.8 });
+        const shadeTree = (tx, tz, s) => {
+          const g = new THREE.Group();
+          g.position.set(tx, 0, tz);
+          addLimb(g, V3(0, 0, 0), V3(-0.1 * s, 2.6 * s, 0.1 * s), 0.3 * s, 0.24 * s, trunkBrownMat, 9);
+          [[0.5, 1.0], [2.4, 1.1], [4.2, 0.95]].forEach(([a, tl]) => {
+            addLimb(g, V3(-0.1 * s, 2.5 * s, 0.1 * s), V3(Math.cos(a) * 1.8 * s, 4.8 * s, Math.sin(a) * 1.8 * s), 0.18 * s, 0.08 * s, trunkBrownMat, 6);
+          });
+          const mats = [shadeA, shadeB, shadeC];
+          const cl = (x, y, z, r, m) => { const c = addMesh(g, new THREE.DodecahedronGeometry(r, 1), m, x, y, z); c.scale.set(1.25, 0.78, 1.2); };
+          cl(0, 7.0 * s, 0, 2.3 * s, shadeC);
+          for (let k = 0; k < 7; k++) {
+            const a = (k / 7) * Math.PI * 2;
+            cl(Math.cos(a) * 2.6 * s, (5.6 + (k % 2) * 0.6) * s, Math.sin(a) * 2.5 * s, (1.8 + (k % 3) * 0.2) * s, mats[k % 3]);
+          }
+          for (let k = 0; k < 8; k++) {
+            const a = fcRnd() * Math.PI * 2, rr = fcRnd() * 3.2 * s;
+            cl(Math.cos(a) * rr, (5.0 + fcRnd() * 2.4) * s, Math.sin(a) * rr, (0.9 + fcRnd() * 0.5) * s, mats[k % 3]);
+          }
+          mg.add(g);
+        };
+        shadeTree(98.6, 7.0, 1.0);
+        shadeTree(103.4, 7.4, 0.78);
+      }
     }
 
     // 3. 南草坪「母子」石雕與「耕心園」黑色刻字景觀石（依 2026 實景照片 29、30）
@@ -18157,9 +18220,7 @@ const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 const streetLightBulbs = [];
 function buildLandscapeAndLighting() {
 // 依最新實景照片：前庭北側大草坪與有機農場已配置 1:1 專屬百年大榕樹、圓錐灌木、三腳支架景觀樹、附生鳥巢蕨小葉欖仁與斜幹榕樹，僅於南側前庭邊界保留背景椰子樹
-[
-  [X(780), Z(305), 1.05], [X(845), Z(315), 1.0],  [X(915), Z(310), 0.95]  // 南側前庭花園背景椰子
-].forEach(([px, pz, sc]) => addTree(px, pz, sc, 'palm'));
+// （v2.12.2 依東棟 2F 俯拍照片：南草坪上無椰子樹，原 3 株背景椰子移除；椰子樹群位於復興路對面）
 // 同步將前庭與有機農場 1:1 實景喬木登錄至 campusTreeRecords 供 2D 平面布局樹冠層顯示
 [
   { x: 79.5, z: -30.8, r: 8.4, species: 'broad' },     // 前庭北草坪西北側百年氣根大榕樹
@@ -18170,7 +18231,10 @@ function buildLandscapeAndLighting() {
   { x: 110.0, z: -20.8, r: 2.4, species: 'flowering' },// 綠籬帶藍花楹 2
   { x: 109.6, z: -25.6, r: 2.6, species: 'flowering' },// 綠籬帶藍花楹 3
   { x: 108.8, z: -29.4, r: 2.2, species: 'flowering' },// 綠籬帶藍花楹 4
-  { x: 83.2, z: -4.2, r: 2.4, species: 'flowering' },  // 前庭中央 6 柱頭復古磚造花台九重葛
+  { x: 83.1, z: -3.6, r: 1.6, species: 'flowering' },  // 前庭中央粗石低花台九重葛
+  { x: 85.8, z: 8.8, r: 3.4, species: 'broad' },       // 前庭南草坪高聳喬木 (白色樹名牌)
+  { x: 98.6, z: 7.0, r: 4.0, species: 'broad' },       // 南側停車位旁濃密遮蔭大樹
+  { x: 103.4, z: 7.4, r: 3.1, species: 'broad' },      // 南側停車位旁遮蔭樹 2
   { x: 80.5, z: 10.2, r: 3.2, species: 'broad' },      // 前庭南草坪附生鳥巢蕨小葉欖仁
   { x: 96.8, z: 13.8, r: 3.6, species: 'broad' },      // 前庭南草坪斜幹造型榕樹
   { x: 58.5, z: -50.2, r: 2.2, species: 'broad' },     // 有機農場西端果樹與甘蔗叢
