@@ -1383,8 +1383,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   addBox(layerGroups.roads, 0.22, 0.13, 1200 * S, lineWhiteMat, X(978), 0.065, Z(220), false);
   // (實景校門正前方無斑馬線，已依指示精確移除原先 9 條枕木紋白色斑馬線)
 
-  // (E) North Rear Wall Commuter Walkway Buffer (`北側後圍牆外通學步道緩衝帶`, `V0(56,22) -> V1(955,22)`)
-  addCommuterWalkwayStrip(X(56), Z(22), X(955), Z(22), -1, 4.0, true, gateExclusionZones);
+  // (E) 北側圍牆：v2.12.6 依空拍圖，圍牆外直接為屏東高工校地（草地與運動場），並無通學步道，原步道移除
 }
 
 // Courtyard Geometric Brick Plaza (`06 幾何花磚中庭廣場`)
@@ -3016,6 +3015,60 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   buildOldSouthGate(X(657), Z(318));
 }
 
+// 北鄰國立屏東高工校地（v2.12.6 依 Google 空拍：復興國小北側圍牆外即屏工運動場，牆外為草地，無步道與民宅）
+//   ・圍牆外草地自圍牆延伸至屏工校區，沿牆一排屏工側喬木
+//   ・屏工 PU 跑道運動場：橢圓跑道（直道約 92 m、彎道半徑約 30 m），內場草皮，位於本校運動場與北棟正北方
+{
+  const pg = new THREE.Group();
+  pg.userData = { landmarkId: 'ptivs-grounds' };
+  const wallZ = Z(22);
+  const x1 = X(40), x2 = X(972), zN = wallZ - 125;
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x7fa452, roughness: 0.92 });
+  addBox(pg, x2 - x1, 0.06, wallZ - 0.4 - zN, grassMat, (x1 + x2) / 2, 0.0, (wallZ - 0.4 + zN) / 2, false);
+  // 跑道
+  const tcx = -28, tcz = wallZ - 48, straight = 92, R = 30, laneW = 7.2;
+  const stadium = (r) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-straight / 2, -r);
+    sh.lineTo(straight / 2, -r);
+    sh.absarc(straight / 2, 0, r, -Math.PI / 2, Math.PI / 2, false);
+    sh.lineTo(-straight / 2, r);
+    sh.absarc(-straight / 2, 0, r, Math.PI / 2, Math.PI * 1.5, false);
+    return sh;
+  };
+  const ring = stadium(R + laneW);
+  ring.holes.push(new THREE.Path(stadium(R).getPoints(64).reverse()));
+  const trackMesh = new THREE.Mesh(new THREE.ShapeGeometry(ring, 48), new THREE.MeshStandardMaterial({ color: 0xb4513f, roughness: 0.85 }));
+  trackMesh.rotation.x = -Math.PI / 2; trackMesh.position.set(tcx, 0.045, tcz); trackMesh.receiveShadow = true;
+  pg.add(trackMesh);
+  const infield = new THREE.Mesh(new THREE.ShapeGeometry(stadium(R - 0.05), 48), new THREE.MeshStandardMaterial({ color: 0x8d9a5a, roughness: 0.92 }));
+  infield.rotation.x = -Math.PI / 2; infield.position.set(tcx, 0.04, tcz);
+  pg.add(infield);
+  // 分道白線
+  const laneLineMat = new THREE.MeshBasicMaterial({ color: 0xf1ede4 });
+  for (let k = 1; k < 6; k++) {
+    const r = R + k * (laneW / 6);
+    const pts = stadium(r).getPoints(80);
+    const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, 0, -p.y))), laneLineMat);
+    line.position.set(tcx, 0.06, tcz);
+    pg.add(line);
+  }
+  // 沿本校北牆外側之屏工喬木列
+  const trunkM = new THREE.MeshStandardMaterial({ color: 0x5a4634, roughness: 0.9 });
+  const leafA = new THREE.MeshStandardMaterial({ color: 0x3d6e35, roughness: 0.82 });
+  const leafB = new THREE.MeshStandardMaterial({ color: 0x4f8540, roughness: 0.8 });
+  for (let tx = x1 + 6; tx < x2 - 4; tx += 11) {
+    const tz = wallZ - 3.2 - ((tx * 7) % 3);
+    const sc = 0.85 + (((tx * 13) % 10) / 30);
+    addMesh(pg, new THREE.CylinderGeometry(0.2 * sc, 0.3 * sc, 3.4 * sc, 8), trunkM, tx, 1.7 * sc, tz);
+    [[0, 4.6, 0, 2.2], [1.4, 4.0, 0.6, 1.7], [-1.3, 4.1, -0.5, 1.8], [0.2, 5.4, -0.3, 1.6]].forEach(([ox, oy, oz, r], k) => {
+      const c = addMesh(pg, new THREE.DodecahedronGeometry(r * sc, 1), k % 2 ? leafA : leafB, tx + ox * sc, oy * sc, tz + oz * sc);
+      c.scale.set(1.2, 0.78, 1.15);
+    });
+  }
+  layerGroups.context.add(pg);
+}
+
 // Context Neighbor Buildings (`context` layer - Pingtung Townhouses positioned cleanly outside the Buffered Roads)
 {
   const ctxMat1 = new THREE.MeshStandardMaterial({ color: 0xd7d4ca, roughness: 0.86 });
@@ -3039,8 +3092,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [-85, 450, -5, 545, 34.0],   // 西南高樓 A (10層高樓)
     [25, 510, 115, 600, 36.5],   // 西南高樓 B (11層高樓)
     [125, 520, 215, 610, 38.0],  // 南側高樓 C (12層高樓)
-    // North across North Buffer
-    [220, -68, 340, -12, 10.5], [360, -68, 485, -12, 12.0], [510, -68, 640, -12, 11.0], [665, -68, 810, -12, 13.0]
+    // v2.12.6：北側圍牆外為國立屏東高工運動場與草地（非民宅），原 4 棟北側住宅量體移除，改於下方建置屏工運動場
   ];
   contextBlocks.forEach(([x1, y1, x2, y2, h], idx) => {
     const w = (x2 - x1) * S, d = (y2 - y1) * S, cx = X((x1 + x2) / 2), cz = Z((y1 + y2) / 2);
@@ -14331,51 +14383,7 @@ function buildSportsLayer() {
   innerGrass.rotation.x = -Math.PI / 2; innerGrass.position.set(cx, 0.14, cz); innerGrass.receiveShadow = true;
   tg.add(innerGrass);
 
-  // =========================================================================
-  // 8) 實景 1:1 還原：內場跳遠跑道、木質起跳板、長條沙坑與螢光橘警示錐 (照片 135014.jpg & 135021.jpg)
-  // =========================================================================
-  const ljRunwayW = 1.25, ljRunwayL = 30.0;
-  const ljRunwayX = cx - innerCurbR + 3.2; // 位於西側直線內場草坪內側約 3.2m 處
-  const ljRunwayCz = cz - 2.0;             // 助跑段中心偏北
-  const longJumpRunwayMat = new THREE.MeshStandardMaterial({ color: 0xbd4736, roughness: 0.82 });
-  const takeoffBoardMat = new THREE.MeshStandardMaterial({ color: 0xfaf8f2, roughness: 0.55 });
-  const sandPitMat = new THREE.MeshStandardMaterial({ color: 0xd6b77e, roughness: 0.96 });
-  const curbConcreteMat = new THREE.MeshStandardMaterial({ color: 0xd8d4cb, roughness: 0.75 });
-
-  // (a) 紅色合成橡膠跳遠助跑道 (長 30m，寬 1.25m)
-  addBox(tg, ljRunwayW, 0.035, ljRunwayL, longJumpRunwayMat, ljRunwayX, 0.155, ljRunwayCz);
-  // 助跑道兩側白色 5cm 邊線
-  addBox(tg, 0.05, 0.038, ljRunwayL, lineWhiteMat, ljRunwayX - ljRunwayW / 2 + 0.025, 0.158, ljRunwayCz, false);
-  addBox(tg, 0.05, 0.038, ljRunwayL, lineWhiteMat, ljRunwayX + ljRunwayW / 2 - 0.025, 0.158, ljRunwayCz, false);
-
-  // (b) 白色標準木質起跳板 (Takeoff Board) + 黑色橡皮泥犯規顯示板
-  const takeoffZ = ljRunwayCz + ljRunwayL / 2 + 0.12;
-  addBox(tg, ljRunwayW, 0.045, 0.22, takeoffBoardMat, ljRunwayX, 0.165, takeoffZ);
-  addBox(tg, ljRunwayW, 0.048, 0.08, mats.darkMetal, ljRunwayX, 0.166, takeoffZ + 0.10); // 犯規橡皮泥板
-
-  // (c) 長條跳遠沙坑 (Sand Pit — 長 7.5m，寬 3.2m，金屬/水泥圓角邊框)
-  const pitW = 3.2, pitL = 7.5;
-  const pitZ = takeoffZ + 0.15 + pitL / 2;
-  // 外圍水泥圓角包邊緣石
-  addBox(tg, pitW + 0.36, 0.08, pitL + 0.36, curbConcreteMat, ljRunwayX, 0.17, pitZ);
-  // 金黃色顆粒跳遠專用沙坑表面
-  addBox(tg, pitW, 0.075, pitL, sandPitMat, ljRunwayX, 0.175, pitZ);
-
-  // (d) 跑道邊 4 頂螢光橘色安全警示錐 (Traffic Cones per Photo 135021.jpg)
-  const coneOrangeMat = new THREE.MeshStandardMaterial({ color: 0xff4d00, roughness: 0.45 });
-  const coneWhiteMat  = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
-  const coneBaseMat   = new THREE.MeshStandardMaterial({ color: 0x1f2326, roughness: 0.85 });
-  const coneSpacing = 7.2;
-  for (let c = 0; c < 4; c++) {
-    const kz = ljRunwayCz - 10.5 + c * coneSpacing;
-    const kx = ljRunwayX + ljRunwayW / 2 + 0.45; // 排列於助跑道東側邊緣
-    // 黑色防滑橡膠方形底座
-    addBox(tg, 0.38, 0.035, 0.38, coneBaseMat, kx, 0.155, kz);
-    // 螢光橘色錐身
-    addMesh(tg, new THREE.ConeGeometry(0.14, 0.65, 14), coneOrangeMat, kx, 0.48, kz);
-    // 中央反光白色環帶
-    addMesh(tg, new THREE.CylinderGeometry(0.082, 0.105, 0.15, 14), coneWhiteMat, kx, 0.45, kz);
-  }
+  // 8) v2.12.6 依 Google 空拍：運動場內場僅為草皮，無跳遠助跑道、沙坑等設施（原跳遠設施與警示錐移除）
 
   // 9) 跑道外圍校園草地緩衝區休閒長椅
   const lawnBenchCoords = [
