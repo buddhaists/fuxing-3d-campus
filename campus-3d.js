@@ -10579,7 +10579,13 @@ function buildSouthBuilding() {
   }
 
   // 14.8 中庭前景「回字形紅灰白幾何同心方塊」連鎖透水地磚廣場
-  const courtyardBrickMat = new THREE.MeshStandardMaterial({ map: makeCourtyardConcentricBrickTexture(), roughness: 0.85 });
+  // v2.12.11：依使用者指示，南棟前地磚帶改用與中庭幾何花磚廣場相同之鮮明紅黑白同心方塊貼圖，
+  //   並依廣場磚塊尺寸（X 向約 5.79 m、Z 向約 4.32 m 一組）換算重複次數，X 向與廣場圖樣對齊
+  const plazaTileX = (712 - 445) * S / 12, plazaTileZ = (278 - 145) * S / 8;
+  const bandTex = makeCourtyardBrickTexture();
+  bandTex.repeat.set((bldgW + 4.0) / plazaTileX, 8.5 / plazaTileZ);
+  bandTex.offset.x = (((bldgCx - (bldgW + 4.0) / 2) - X(445)) / plazaTileX) % 1;
+  const courtyardBrickMat = new THREE.MeshStandardMaterial({ map: bandTex, roughness: 0.82 });
   addBox(g, bldgW + 4.0, 0.04, 8.5, courtyardBrickMat, bldgCx, 0.02, zNorth - 7.2, false);
   frontLand.traverse(o => { if (o.isMesh) o.userData.keepLevel = true; });
 
