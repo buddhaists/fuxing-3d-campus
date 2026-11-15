@@ -19370,6 +19370,7 @@ const CAMPUS_TREE_REGISTRY = [
     curSp = sp;
     phenoState(sp);
     window.__phenoCounts = window.__phenoCounts || {}; window.__phenoCounts[sp] = (window.__phenoCounts[sp] || 0) + 1;
+    phenoTreeAt(sp, x, z);
     fn(x, z, lean);
     decoratePheno(sp, n0, x, z);
     // 依樹幹位置決定標高：下沉中庭內整株下移；全部標記 keepLevel，避免中庭下移程序拆散樹冠
@@ -19707,9 +19708,10 @@ function applyPhenology(month) {
 // 本月花況：回傳 [{ sp, count, kind }]（kind：flower 花期、bare 落葉、turn 轉色、new 新葉、fruit 果期）
 function phenologyHighlights(month) {
   const idx = (month - 1) % 12, out = [];
-  Object.keys(PHENO_STATE).forEach(sp => {
-    const ph = PHENO[sp]; if (!ph) return;
+  Object.keys(PHENO).forEach(sp => {
+    const ph = PHENO[sp];
     const n = (window.__phenoCounts || {})[sp] || 0;
+    if (!n) return;                                   // 校園中沒有此樹種
     if (ph.flower && ph.flower.m.includes(month)) out.push({ sp, n, kind: '開花' });
     else if (ph.leaf[idx] === 'D') out.push({ sp, n, kind: '落葉' });
     else if (ph.leaf[idx] === 'T') out.push({ sp, n, kind: '轉色' });
@@ -19722,10 +19724,19 @@ window.applyPhenology = applyPhenology;
 
 // v2.12.19 個別建模樹木、落葉地被、乾季草坪
 //   建模程式可能早於本段執行，故以佇列暫存，於 applyPhenology 時併入
+// 各樹種位置（供「本月花況」點選飛往）
+var PHENO_TREES = window.__phenoTrees = window.__phenoTrees || {};   // var：建築建模可能早於此行呼叫
+function phenoTreeAt(sp, x, z, isPhoto = false) {
+  PHENO_TREES = window.__phenoTrees = window.__phenoTrees || {};
+  const arr = (PHENO_TREES[sp] = PHENO_TREES[sp] || []);
+  if (!arr.some(t => Math.hypot(t.x - x, t.z - z) < 1.5)) arr.push({ x, z });
+  if (isPhoto) { window.__phenoCounts = window.__phenoCounts || {}; window.__phenoCounts[sp] = arr.length; }
+}
 function registerPhenoMats(sp, roles) {
   (window.__phenoPending = window.__phenoPending || []).push({ sp, roles });
 }
 function addPhenoGround(parent, sp, x, y, z, rad) {
+  phenoTreeAt(sp, x, z, true);
   (window.__phenoGroundPending = window.__phenoGroundPending || []).push({ parent, sp, x, y, z, rad });
 }
 function registerLawnMat(mat) {
@@ -21743,12 +21754,32 @@ function updateMonthUi() {
     if (!seasonsEnabled) { bl.textContent = '四季動態已關閉（樹木維持綠葉）'; return; }
     const hs = phenologyHighlights(activeMonth);
     const groups = {};
-    hs.forEach(h => { (groups[h.kind] = groups[h.kind] || []).push(h.sp + (h.n > 1 ? `×${h.n}` : '')); });
+    hs.forEach(h => { (groups[h.kind] = groups[h.kind] || []).push(`<button type="button" class="bloom-chip" data-sp="${h.sp}" title="飛往${h.sp}">${h.sp}${h.n > 1 ? `×${h.n}` : ''}</button>`); });
     bl.innerHTML = Object.keys(groups).length
-      ? ['開花', '新葉', '轉色', '落葉', '結果'].filter(k => groups[k]).map(k => `<b>${k}</b> ${groups[k].join('、')}`).join('<br>')
+      ? ['開花', '新葉', '轉色', '落葉', '結果'].filter(k => groups[k]).map(k => `<div class="bloom-row"><b>${k}</b>${groups[k].join('')}</div>`).join('')
       : '本月校園樹木以常綠綠葉為主';
   }
 }
+// 點選樹種：鏡頭飛往該樹並以光環標示；同種多棵時依序輪流
+const bloomRing = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.1, 40), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.9, depthTest: false, side: THREE.DoubleSide }));
+bloomRing.rotation.x = -Math.PI / 2; bloomRing.renderOrder = 999; bloomRing.visible = false;
+scene.add(bloomRing);
+const bloomCycle = {};
+let bloomRingTimer = null;
+document.getElementById('bloom-now')?.addEventListener('click', e => {
+  const btn = e.target.closest('.bloom-chip'); if (!btn) return;
+  const sp = btn.dataset.sp, list = PHENO_TREES[sp] || [];
+  if (!list.length) return;
+  const i = (bloomCycle[sp] = ((bloomCycle[sp] ?? -1) + 1) % list.length);
+  const t = list[i];
+  const y = typeof inCourtyardSink === 'function' && inCourtyardSink(t.x, t.z) ? -COURTYARD_SINK.D : 0;
+  flyTo([t.x + 13, y + 11, t.z + 13], [t.x, y + 3.5, t.z], 1100);
+  bloomRing.position.set(t.x, y + 0.25, t.z); bloomRing.visible = true;
+  clearTimeout(bloomRingTimer);
+  bloomRingTimer = setTimeout(() => { bloomRing.visible = false; requestRender(2); }, 6000);
+  requestRender(2);
+  showToast(`${sp}（第 ${i + 1}／${list.length} 棵）`);
+});
 const monthSliderEl = document.getElementById('month-slider');
 if (monthSliderEl) monthSliderEl.addEventListener('input', e => {
   activeMonth = parseInt(e.target.value, 10) || 1;
@@ -24406,7 +24437,7 @@ function lowerCourtyardContents() {
 }
 
 function runStaticBatching(label) {
-  try { applyPhenology(phenoMonth()); } catch (err) { console.warn('[Pheno] skipped:', err); }   // 併入各建築新登錄之物候材質與地被
+  try { applyPhenology(phenoMonth()); if (typeof updateMonthUi === 'function') updateMonthUi(); } catch (err) { console.warn('[Pheno] skipped:', err); }   // 併入各建築新登錄之物候材質與地被
   try { lowerCourtyardContents(); } catch (err) { console.warn('[Courtyard] lowering skipped:', err); }
   if (new URLSearchParams(window.location.search).has('nobatch')) return;
   try {
