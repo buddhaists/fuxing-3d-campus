@@ -19000,6 +19000,19 @@ function buildAthleticBanyanTree(tx, tz) {
 buildAthleticBanyanTree(-175.5, 27.5); // 運動場百年大榕樹 (實景照片 135014.jpg)
 addTree(X(56) + 1.85, Z(90) + 3.80, 1.15, 'broad');
 addTree(-20.8, -12.8, 1.18, 'broad');
+// v2.12.15 依使用者標註之運動場實景照片：司令台（西側、面向東）周邊與跑道東側之命名樹木
+//   司令台右側（南）：麵包樹、大花紫薇；司令台左側（北）：桃花心木；
+//   跑道東側育樂樓前：三棵楓香；新棟前：兩棵印度紫檀
+const SPORTS_NAMED_TREES = [
+  { x: -82.6, z: 15.2, r: 3.6, kind: 'breadfruit', name: '麵包樹' },
+  { x: -83.4, z: 10.6, r: 3.4, kind: 'crapeMyrtle', name: '大花紫薇' },
+  { x: -81.6, z: -7.2, r: 6.6, kind: 'mahogany', name: '桃花心木' },
+  { x: -39.7, z: -9.5, r: 3.0, kind: 'sweetgum', name: '楓香' },
+  { x: -39.7, z: -2.2, r: 3.0, kind: 'sweetgum', name: '楓香' },
+  { x: -39.7, z: 5.6, r: 2.8, kind: 'sweetgum', name: '楓香' },
+  { x: -40.1, z: 14.6, r: 5.8, kind: 'rosewood', name: '印度紫檀' },
+  { x: -40.6, z: 23.4, r: 5.6, kind: 'rosewood', name: '印度紫檀' }
+];
 function pointInCampusPx(px, py, inset = 0) {
   const P = CAMPUS_PERIMETER_PX;
   let inside = false;
@@ -19022,7 +19035,7 @@ const treeZones = [
   [480, 195, 695, 255, 6, 'flowering'],  // Courtyard grass mounds (Flowering & Broad shade trees)
   [196, 115, 218, 205, 3, 'broad'],      // North of Command Stage lawn buffer
   [196, 298, 218, 365, 3, 'broad'],      // South of Command Stage lawn buffer
-  [358, 120, 376, 365, 7, 'flowering'],  // East of PU track lawn buffer
+  // v2.12.15：跑道東側（育樂樓、新棟前）改由 SPORTS_NAMED_TREES 依實景配置三棵楓香、兩棵印度紫檀
   [88, 308, 212, 438, 11, 'flowering'],  // SW Campus Lawn Buffer Grove (inside Rear Wall `(56,328)->(180,480)`, seen in Google Maps!)
   [215, 385, 365, 422, 8, 'broad']       // South Campus Lawn Buffer Grove (between PU Track `y=376` & South Rear Wall `(180,480)->(405,392)`)
 ];
@@ -19034,6 +19047,7 @@ treeZones.forEach(([x1, y1, x2, y2, count, defaultType]) => {
     const tz = Z(ppy);
     // v2.12.4：隨機樹須位於校園圍牆內至少約 2 m（原南側林帶範圍越出運動場斜向圍牆，樹木長在 42 巷車道上）
     if (!pointInCampusPx(ppx, ppy, 8)) continue;
+    if (SPORTS_NAMED_TREES.some(t => Math.hypot(tx - t.x, tz - t.z) < t.r + 2.5)) continue;   // 讓出實景命名樹木
     // 依全景照片 media_1792763927173_74e0dc77.jpg 與西棟正面照：保持中庭幾何花磚廣場、西棟東向立面（「育樂樓」）與南棟全線立面視野通透無遮擋
     if (tx > -24.0 && tx < 54.0 && tz > -12.5 && tz < 12.0) continue;
     // 保持西棟大樓（育樂樓）、北翼廚房、北棟遮雨棚與廁所大樓全周及西側停車區/車道無隨機樹木 (依截圖紅框指示完全移除)
@@ -19113,6 +19127,67 @@ const northDrivewayShadeTrees = [
         cl.scale.set(1.5, 0.55, 1.5);
       }
     }
+  });
+  layerGroups.vegetation.add(grp);
+})();
+(function buildSportsNamedTrees() {
+  const grp = new THREE.Group();
+  const up = new THREE.Vector3(0, 1, 0);
+  let sd = 131; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.82 });
+  const limb = (a, b, r0, r1, mat) => {
+    const d = new THREE.Vector3().subVectors(b, a);
+    const m = addMesh(grp, new THREE.CylinderGeometry(r1, r0, d.length(), 8), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    m.quaternion.setFromUnitVectors(up, d.normalize());
+  };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  // 通用：主幹 → 分叉高度 forkH → nB 支斜生主枝 → 枝端葉團（葉團大小 leafR、每枝 nC 團、扁平度 flat）
+  const tree = (t, o) => {
+    const base = V(t.x, 0, t.z), fork = V(t.x + (o.lean || 0), o.forkH, t.z);
+    limb(base, fork, o.trunkR, o.trunkR * 0.78, o.bark);
+    if (o.buttress) for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2 + r();
+      const rt = addBox(grp, o.trunkR * 3.4, o.trunkR * 0.9, 0.12, o.bark, t.x + Math.cos(a) * o.trunkR * 1.4, o.trunkR * 0.35, t.z + Math.sin(a) * o.trunkR * 1.4);
+      rt.rotation.y = -a; rt.rotation.z = 0.2;
+    }
+    for (let b = 0; b < o.nB; b++) {
+      const a = (b / o.nB) * Math.PI * 2 + r() * 0.6;
+      const reach = o.spread * (0.75 + r() * 0.3);
+      const e = V(t.x + Math.cos(a) * reach, o.H * (o.endY + r() * 0.12), t.z + Math.sin(a) * reach);
+      limb(fork, e, o.trunkR * 0.55, o.trunkR * 0.22, o.bark);
+      for (let c = 0; c < o.nC; c++) {
+        const ca = r() * Math.PI * 2, cr = r() * o.leafR * 1.4;
+        const cl = addMesh(grp, new THREE.IcosahedronGeometry(o.leafR * (0.75 + r() * 0.5), o.detail || 0), o.leaves[c % o.leaves.length],
+          e.x + Math.cos(ca) * cr, e.y + o.leafR * 0.4 + (r() - 0.4) * o.leafR, e.z + Math.sin(ca) * cr);
+        cl.scale.set(1.25, o.flat, 1.25);
+      }
+    }
+    if (o.crownTop) {                                    // 樹冠頂部補團，使輪廓飽滿
+      for (let c = 0; c < o.crownTop; c++) {
+        const ca = r() * Math.PI * 2, cr = r() * o.spread * 0.6;
+        const cl = addMesh(grp, new THREE.IcosahedronGeometry(o.leafR * 1.1, o.detail || 0), o.leaves[c % o.leaves.length], t.x + Math.cos(ca) * cr, o.H * 0.92 + r() * o.leafR, t.z + Math.sin(ca) * cr);
+        cl.scale.set(1.3, o.flat, 1.3);
+      }
+    }
+  };
+  const darkBark = M(0x4a3d31), greyBark = M(0x7a7268), lightBark = M(0x9a8f80);
+  const SPEC = {
+    // 桃花心木：粗壯深褐主幹約 3 m 分枝，濃密深綠圓頂大樹冠（高約 13 m、冠幅約 13 m）
+    mahogany: { H: 13, forkH: 3.2, trunkR: 0.42, bark: darkBark, buttress: true, nB: 6, spread: 4.6, endY: 0.68, nC: 9, leafR: 1.5, flat: 0.72, crownTop: 8, detail: 1, leaves: [M(0x24502a), M(0x2f5f30), M(0x3a6c35)] },
+    // 印度紫檀：灰褐主幹，大枝斜展後略下垂，細碎羽葉構成寬闊濃密的傘形樹冠（高約 13 m）
+    rosewood: { H: 12.5, forkH: 3.6, trunkR: 0.38, bark: greyBark, nB: 6, spread: 4.4, endY: 0.7, nC: 10, leafR: 1.25, flat: 0.62, crownTop: 6, leaves: [M(0x355f2c), M(0x467235), M(0x58803c)] },
+    // 楓香：通直淺灰主幹、枝條短而上揚，窄卵形疏朗樹冠（高約 10 m）
+    sweetgum: { H: 10, forkH: 4.2, trunkR: 0.2, bark: lightBark, nB: 5, spread: 1.6, endY: 0.82, nC: 6, leafR: 0.9, flat: 0.95, crownTop: 4, leaves: [M(0x587f3a), M(0x6a8f40), M(0x7a9a46)] },
+    // 麵包樹：深褐主幹，大型裂葉形成濃密深綠圓形樹冠（高約 8 m）
+    breadfruit: { H: 8.5, forkH: 2.4, trunkR: 0.26, bark: darkBark, nB: 5, spread: 2.4, endY: 0.72, nC: 7, leafR: 1.15, flat: 0.8, crownTop: 4, detail: 1, leaves: [M(0x2b5a2a), M(0x376a31)] },
+    // 大花紫薇：光滑淺褐主幹，低處多分枝，圓形中型樹冠（高約 7.5 m）
+    crapeMyrtle: { H: 7.5, forkH: 1.9, trunkR: 0.2, bark: M(0xa08a74), nB: 6, spread: 2.3, endY: 0.74, nC: 7, leafR: 0.95, flat: 0.8, crownTop: 4, leaves: [M(0x3f7032), M(0x4f8038)] }
+  };
+  SPORTS_NAMED_TREES.forEach(t => {
+    tree(t, SPEC[t.kind]);
+    // 樹穴（楓香、印度紫檀位於跑道外圍步道上）
+    if (t.kind === 'sweetgum' || t.kind === 'rosewood') addMesh(grp, new THREE.CylinderGeometry(0.75, 0.75, 0.04, 16), M(0x4f4235), t.x, 0.17, t.z, false);
+    campusTreeRecords.push({ x: t.x, z: t.z, r: t.r, species: 'broad' });
   });
   layerGroups.vegetation.add(grp);
 })();
