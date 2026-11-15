@@ -1148,7 +1148,7 @@ function flatXZPoly(points, mat, y, parent, uvScale = 0.1) {
 // The Rear Perimeter Wall (`V0 -> V6 -> V5 -> V4`) encloses 100% of the Sports Ground (`08`) & Ball Courts (`09`)
 // with a wide, continuous Campus Green Lawn Buffer Zone (`校園草地緩衝區域`) between the sports ground and the wall!
 const CAMPUS_PERIMETER_PX = [
-  [82.5, 22], // V0: NW Rear Wall Corner（v2.12.23 依校園樹木分布圖：西牆東移約 7 m，西側樹列貼齊牆內）
+  [65.7, -67.6], // V0: NW 角（v2.12.24 依校園樹木分布衛星圖：北牆自東端往西漸偏北，西北角較原模型偏北約 23 m）
   [955, 22],  // V1: NE Corner (Xingan St & Fuxing Rd)
   [955, 326], // V2: SE Corner (Fuxing Rd & Jianxing S. Rd Lane 42)
   [772, 320], // V3: 學校新南側門 (建興南路42巷 · 東棟大樓右側)
@@ -1156,10 +1156,15 @@ const CAMPUS_PERIMETER_PX = [
   [438, 374], // V4b: 幼兒園大門東柱 / 南圍牆折角 (建興南路42巷)
   [367, 374], // V5: 幼兒園西端 / 運動場南側圍牆交界
   [180, 480], // V6: 運動場西南尖端
-  [131.2, 353.5], // V7b: 西牆斜段折點（依樹木分布圖）
-  [106.2, 280.4], // V7a: 西牆斜段折點
-  [82.5, 244]     // V7: 西牆直段南端（依樹木分布圖）
+  [152.9, 437.2], [134.6, 381.8], [105.2, 308.8], [76.2, 245.3],   // 西牆斜段（依衛星圖）
+  [45, 193.7], [39.2, 158.8], [51.4, 149.4]                         // 西牆中段外凸與北段直牆南端
 ];
+
+// v2.12.24 依校園樹木分布衛星圖之圍牆線（平面圖像素座標）
+const WEST_WALL_PX = [[65.7, -67.6], [51.4, 149.4], [39.2, 158.8], [45, 193.7], [76.2, 245.3], [105.2, 308.8], [134.6, 381.8], [152.9, 437.2], [180, 480]];
+const NORTH_WALL_PX = [[65.7, -67.6], [955, 22]];
+const northWallZAt = x => { const [a, b] = NORTH_WALL_PX; const t = (x - X(a[0])) / (X(b[0]) - X(a[0])); return Z(a[1]) + t * (Z(b[1]) - Z(a[1])); };
+const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) { const [x1, y1] = WEST_WALL_PX[i], [x2, y2] = WEST_WALL_PX[i + 1]; if (py >= Math.min(y1, y2) && py <= Math.max(y1, y2)) return x1 + (x2 - x1) * (py - y1) / ((y2 - y1) || 1); } return WEST_WALL_PX[0][0]; };
 
 // 1) Campus Inner Ground Polygon Slab & Full Sports Ground Campus Lawn Buffer Zone (`校園草地緩衝區域`)
 {
@@ -1364,8 +1369,8 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [X(772), Z(320), 4.5], // 學校新南側門 (東棟大樓右側)
     [X(657), Z(318), 4.8], // 學校舊南側門 (南棟大樓東側 1F 興學樓大字下通道後面)
     [X(429), Z(374), 4.5], // 幼兒園大門 (新棟大樓南側大門)
-    [X(82.5), Z(90),  5.0], // 西側後門
-    [X(82.5), Z(236), 4.2]  // 司令台後小門
+    [X(55.3), Z(90),  5.0], // 西側後門
+    [X(79.3), Z(252), 4.2]  // 司令台後小門
   ];
 
   // (A) West Rear Wall Perimeter (`建興南路 50 巷` & `建興南路`):
@@ -1373,11 +1378,11 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   // v2.12.23：西牆改為「直段＋三段斜牆」（依校園樹木分布圖），人行道與道路沿新牆線分段配置
   {
     const tile = { tileTex: makeSpeckledGraniteTexture('#a4a29d', '#6d6b67', '#c3c0ba', false), tileRepeatM: 3.0 };
-    const WP = [[82.5, 22], [82.5, 244], [106.2, 280.4], [131.2, 353.5], [180, 480]];
+    const WP = WEST_WALL_PX;
     for (let i = 0; i < WP.length - 1; i++) {
       const [ax1, ay1] = WP[i], [ax2, ay2] = WP[i + 1];
       addCommuterWalkwayStrip(X(ax1), Z(ay1), X(ax2), Z(ay2), 1, 3.2, false, gateExclusionZones, false, tile);
-      addBufferedRoadSegment(X(ax1), Z(ay1 - (i === 0 ? 12 : 0)), X(ax2), Z(ay2), 1, 3.2, 9.6, true, i === 0 ? [0.3] : [], i === 0 ? { parked: [[0.45, 0x2b2d31], [0.55, 0xe5e7eb], [0.65, 0x8a8f96], [0.9, 0xc9c2a8]] } : {});
+      addBufferedRoadSegment(X(ax1), Z(ay1 - (i === 0 ? 30 : 0)), X(ax2), Z(ay2), 1, 3.2, 9.6, true, i === 0 ? [0.55] : [], i === 0 ? { parked: [[0.62, 0x2b2d31], [0.7, 0xe5e7eb], [0.78, 0x8a8f96], [0.9, 0xc9c2a8]] } : {});
     }
   }
 
@@ -2348,25 +2353,27 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   // 1) North Perimeter Wall (`V0(56,22) -> V1(955,22)`)
   // v2.12.7 依實景照片（北棟西側往後門）：與屏東高工相隔之北側圍牆為清水紅磚牆，高約 2.1 m，每約 3.2 m 一道凸出磚柱，無壓頂石與綠籬
   {
-    const x1 = X(82.5), x2 = X(955), z = Z(22), len = x2 - x1;
+    const p1 = new THREE.Vector3(X(NORTH_WALL_PX[0][0]), 0, Z(NORTH_WALL_PX[0][1])), p2 = new THREE.Vector3(X(NORTH_WALL_PX[1][0]), 0, Z(NORTH_WALL_PX[1][1]));
+    const len = p1.distanceTo(p2);
     const brickTex = makeTaiwaneseRedBrickTexture();
     brickTex.wrapS = brickTex.wrapT = THREE.RepeatWrapping;
     brickTex.repeat.set(len / 3, 1);
     const nbMat = new THREE.MeshStandardMaterial({ map: brickTex, color: 0x9a7268, roughness: 0.92 });
     const pierTex = makeTaiwaneseRedBrickTexture(); pierTex.wrapS = pierTex.wrapT = THREE.RepeatWrapping; pierTex.repeat.set(0.2, 1);
     const nbPierMat = new THREE.MeshStandardMaterial({ map: pierTex, color: 0x8c665c, roughness: 0.92 });
-    const g = new THREE.Group();
-    addBox(g, len, 0.18, 0.34, wallBaseMat, (x1 + x2) / 2, 0.09, z);
-    addBox(g, len, 2.0, 0.24, nbMat, (x1 + x2) / 2, 1.1, z);
-    addBox(g, len, 0.06, 0.28, nbPierMat, (x1 + x2) / 2, 2.13, z);
-    for (let px = x1; px <= x2 + 0.01; px += len / Math.round(len / 3.2)) {
-      addBox(g, 0.36, 2.22, 0.42, nbPierMat, px, 1.11, z);
-    }
+    const g = new THREE.Group();                         // 沿斜向北牆線建置（v2.12.24）
+    g.position.set((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
+    g.rotation.y = -Math.atan2(p2.z - p1.z, p2.x - p1.x);
+    addBox(g, len, 0.18, 0.34, wallBaseMat, 0, 0.09, 0);
+    addBox(g, len, 2.0, 0.24, nbMat, 0, 1.1, 0);
+    addBox(g, len, 0.06, 0.28, nbPierMat, 0, 2.13, 0);
+    const nP = Math.round(len / 3.2);
+    for (let k = 0; k <= nP; k++) addBox(g, 0.36, 2.22, 0.42, nbPierMat, -len / 2 + k * len / nP, 1.11, 0);
     layerGroups.boundary.add(g);
   }
 
   // 2) School West Rear Perimeter Wall (`V0(56,22) -> V6(56,328)`, enclosing the West Campus Lawn Buffer, Ball Courts & Command Stage)
-  addMasonryWallRun(X(82.5), Z(22), X(82.5), Z(73), wallSportsMat, true, -1, true);
+  addMasonryWallRun(X(65.7), Z(-67.6), X(56.4), Z(73), wallSportsMat, true, -1, true);
 
   // ==========================================================================
   // 西側學校後門 (`學校西側的後門_可以看到西棟大樓與北棟大樓.jpg` 1:1 實景精準建模)
@@ -2760,16 +2767,27 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     landmarkGroupMap.set('west-sports-gate', swg);
   }
 
-  buildWestBackGate(X(82.5), Z(90)); // 西側學校後門 (建興南路50巷)
+  buildWestBackGate(X(55.3), Z(90)); // 西側學校後門 (建興南路50巷)
   // v2.12.9 依 2024 街景與實景照片（建興南路 35 號前、司令台後小門）：運動場西側圍牆與南側同款——
   //   寬白漆龜裂柱墩＋玫瑰紅多層線腳柱頭、其間白色直條欄杆（局部鏽蝕），球場段牆頂加綠色菱形鐵絲網；
   //   牆外為低矮水泥花台（灌木與雜草），司令台後為單扇白色直條小門
-  const backGateZ = Z(236), backGateHalf = 0.95;   // v2.12.23 隨西牆東移，位於直段南端、司令台西北後方
-  addSportsSouthWallRun(X(82.5), Z(107), X(82.5), backGateZ - backGateHalf, -1, { upperMesh: true, planter: true });
-  buildCommandStageBackGate(X(82.5), backGateZ, backGateHalf);
-  addSportsSouthWallRun(X(82.5), backGateZ + backGateHalf, X(82.5), Z(244), -1, { planter: true });
-  addSportsSouthWallRun(X(82.5), Z(244), X(106.2), Z(280.4), -1, { planter: true });
-  addSportsSouthWallRun(X(106.2), Z(280.4), X(131.2), Z(353.5), -1, { planter: true });
+  // v2.12.24 依衛星圖：北段直牆（球場段加鐵絲網）→ 中段外凸 → 三段斜牆至西南尖角；司令台後小門位於第一段斜牆、司令台正後方
+  const backGateHalf = 0.95;
+  addSportsSouthWallRun(X(54.9), Z(107), X(51.4), Z(149.4), -1, { upperMesh: true, planter: true });
+  addSportsSouthWallRun(X(51.4), Z(149.4), X(39.2), Z(158.8), -1, { planter: true });
+  addSportsSouthWallRun(X(39.2), Z(158.8), X(45), Z(193.7), -1, { planter: true });
+  addSportsSouthWallRun(X(45), Z(193.7), X(76.2), Z(245.3), -1, { planter: true });
+  {
+    const a = new THREE.Vector3(X(76.2), 0, Z(245.3)), b = new THREE.Vector3(X(105.2), 0, Z(308.8));
+    const L = a.distanceTo(b), dir = b.clone().sub(a).normalize();
+    const gc = a.clone().addScaledVector(dir, (Z(252) - a.z) / dir.z);      // 司令台正後方
+    const ga = gc.clone().addScaledVector(dir, -(backGateHalf + 0.3)), gb = gc.clone().addScaledVector(dir, backGateHalf + 0.3);
+    addSportsSouthWallRun(a.x, a.z, ga.x, ga.z, -1, { planter: true });
+    buildCommandStageBackGate(gc.x, gc.z, backGateHalf, Math.atan2(dir.x, dir.z));
+    addSportsSouthWallRun(gb.x, gb.z, b.x, b.z, -1, { planter: true });
+  }
+  addSportsSouthWallRun(X(105.2), Z(308.8), X(134.6), Z(381.8), -1, { planter: true });
+  addSportsSouthWallRun(X(134.6), Z(381.8), X(152.9), Z(437.2), -1, { planter: true });
 
   // 3) School Southwest & South Sports Ground Perimeter Walls (`運動場四週_南側圍牆.jpg`:
   //    Wide white-painted masonry piers + terracotta-rose multi-tiered molded classical capitals +
@@ -2876,7 +2894,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
 
   // 司令台後小門：兩側白漆柱墩之間單扇白色直條鐵門（高約 1.6 m），門旁公告牌，門外為水泥坡道，
   //   南側花台轉角立黑黃斑紋桿之橘框凸面鏡（v2.12.9 依實景照片）
-  function buildCommandStageBackGate(gx, gz, half) {
+  function buildCommandStageBackGate(gx, gz, half, rotY = 0) {
     const gg = new THREE.Group();
     gg.userData = { landmarkId: 'west-sports-gate' };
     const white = new THREE.MeshStandardMaterial({ color: 0xf4f5f2, roughness: 0.45, metalness: 0.3 });
@@ -2917,12 +2935,18 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     mg.add(new THREE.Mesh(new THREE.TorusGeometry(0.39, 0.04, 8, 24), new THREE.MeshStandardMaterial({ color: 0xb4532a, roughness: 0.5 })));
     gg.add(mg);
     gg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'west-sports-gate'; });
-    layerGroups.boundary.add(gg);
+    if (rotY) {                                          // 斜向牆段：以門中心為軸旋轉
+      const pivot = new THREE.Group();
+      pivot.position.set(gx, 0, gz); pivot.rotation.y = rotY;
+      pivot.userData = { landmarkId: 'west-sports-gate' };
+      gg.position.set(-gx, 0, -gz); pivot.add(gg);
+      layerGroups.boundary.add(pivot);
+    } else layerGroups.boundary.add(gg);
     clickableGroups.push(gg);
     landmarkGroupMap.set('west-sports-gate', gg);
   }
 
-  addSportsSouthWallRun(X(131.2), Z(353.5), X(180), Z(480), -1, { planter: true, banner: 0.06 });
+  addSportsSouthWallRun(X(152.9), Z(437.2), X(180), Z(480), -1, { planter: true, banner: 0.06 });
   addSportsSouthWallRun(X(180), Z(480), X(367), Z(374), -1, { planter: true });
 
   // 5) East Perimeter Wall (`V1(955,22) -> V2(955,326)`)
@@ -3196,12 +3220,12 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
 {
   const pg = new THREE.Group();
   pg.userData = { landmarkId: 'ptivs-grounds' };
-  const wallZ = Z(22);
-  const x1 = X(40), x2 = X(972), zN = wallZ - 125;
+  // v2.12.24：北牆依衛星圖改為斜線（西端偏北），屏工草地與跑道隨之北移
+  const x1 = X(40), x2 = X(972), zN = Z(22) - 150;
   const grassMat = new THREE.MeshStandardMaterial({ color: 0x7fa452, roughness: 0.92 });
-  addBox(pg, x2 - x1, 0.06, wallZ - 0.4 - zN, grassMat, (x1 + x2) / 2, 0.0, (wallZ - 0.4 + zN) / 2, false);
+  flatXZPoly([new THREE.Vector3(x1, 0, northWallZAt(x1) - 0.4), new THREE.Vector3(x2, 0, northWallZAt(x2) - 0.4), new THREE.Vector3(x2, 0, zN), new THREE.Vector3(x1, 0, zN)], grassMat, 0.03, pg, 0.1);
   // 跑道
-  const tcx = -28, tcz = wallZ - 48, straight = 92, R = 30, laneW = 7.2;
+  const tcx = -28, tcz = northWallZAt(-28) - 44, straight = 92, R = 30, laneW = 7.2;
   const stadium = (r) => {
     const sh = new THREE.Shape();
     sh.moveTo(-straight / 2, -r);
@@ -3233,7 +3257,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   const leafA = new THREE.MeshStandardMaterial({ color: 0x3d6e35, roughness: 0.82 });
   const leafB = new THREE.MeshStandardMaterial({ color: 0x4f8540, roughness: 0.8 });
   for (let tx = x1 + 6; tx < x2 - 4; tx += 11) {
-    const tz = wallZ - 3.2 - ((tx * 7) % 3);
+    const tz = northWallZAt(tx) - 3.2 - ((tx * 7) % 3);
     const sc = 0.85 + (((tx * 13) % 10) / 30);
     addMesh(pg, new THREE.CylinderGeometry(0.2 * sc, 0.3 * sc, 3.4 * sc, 8), trunkM, tx, 1.7 * sc, tz);
     [[0, 4.6, 0, 2.2], [1.4, 4.0, 0.6, 1.7], [-1.3, 4.1, -0.5, 1.8], [0.2, 5.4, -0.3, 1.6]].forEach(([ox, oy, oz, r], k) => {
@@ -3260,7 +3284,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [735, 436, 785, 500, 11.0], [805, 434, 865, 498, 13.5], [872, 434, 935, 498, 10.5],
     [345, 482, 435, 542, 9.5],  [445, 460, 515, 520, 11.5], [235, 522, 325, 578, 10.0],
     // West of Jianxing S. Rd Lane 50 & Jianxing S. Rd (shifted west of the Commuter Walkway + Road buffer!)
-    [-49, 85, 10, 160, 10.0], [-49, 175, 10, 250, 12.5], [-10, 280, 45, 345, 9.5], [10, 365, 75, 430, 10.5],   // v2.12.23 隨西牆東移
+    [-75, 60, -16, 140, 10.0], [-80, 175, -25, 240, 12.5], [-25, 280, 35, 345, 9.5], [10, 380, 75, 440, 10.5],   // v2.12.24 依衛星圖西牆
     // East across Fuxing Rd
     [1180, 80, 1260, 175, 14.0], [1180, 195, 1260, 295, 11.5], [1180, 315, 1260, 405, 15.0],
     // Southwest/South High-Rise Residential Apartment Towers (實景照片 135447.jpg & 135708.jpg 西南側外圍 10~12 層紅磚瓷磚高層住宅大樓)
@@ -14629,7 +14653,7 @@ function buildSportsLayer() {
   const lawnBenchCoords = [
     [X(232), Z(412), -0.38], [X(282), Z(408), -0.38], [X(332), Z(392), -0.38],
     [X(142), Z(355), 0.88],  [X(172), Z(395), 0.88],
-    [X(92),  Z(155), Math.PI / 2]
+    [X(70),  Z(100), Math.PI / 2]
   ];
   lawnBenchCoords.forEach(([bx, bz, rotY]) => {
     const bGrp = new THREE.Group();
@@ -14750,7 +14774,7 @@ function buildSportsLayer() {
   // =========================================================================
   // 2) 雙面戶外標準籃球場 (四周無高架鐵欄網，由開闊綠草坪環繞，實景照片 20261110_135714.jpg & 160224.jpg)
   // =========================================================================
-  const bx = X((112 + 172) / 2) + 2.5, bz = Z((178 + 288) / 2), bw = (172 - 112) * S, bd = (288 - 178) * S;   // v2.12.23 隨西牆斜段東移 2.5 m
+  const bx = X((112 + 172) / 2), bz = Z((178 + 288) / 2), bw = (172 - 112) * S, bd = (288 - 178) * S;   // v2.12.23 隨西牆斜段東移 2.5 m
   const courtDarkGreenMat = new THREE.MeshStandardMaterial({ color: 0x3d7054, roughness: 0.82 }); // 實景照片耐磨深綠球場
   const courtLightGreenMat = new THREE.MeshStandardMaterial({ color: 0x4f8868, roughness: 0.80 }); // 亮綠三分線外區
   const courtKeyMat = new THREE.MeshStandardMaterial({ color: 0xb84e38, roughness: 0.75 }); // 陶紅禁區油漆區
@@ -18352,7 +18376,7 @@ function buildNorthCarport() {
 
   // 【C. 西段平整水泥混凝土車道】(x = -38.0m 至 x = -118.56m 直通後門，寬 4.8m，中心 z = -44.5m，北側貫通車道)
   // 實景照片 20261110_135221.jpg：淺灰平整水泥路面、橫向伸縮割縫、水泥路緣石、綠意草坪緩衝帶
-  const westRoadX1 = -38.0, westRoadX2 = X(82.5); // v2.12.23 西牆東移
+  const westRoadX1 = -38.0, westRoadX2 = X(56.8); // v2.12.24 依衛星圖西牆
   const westRoadLen = Math.abs(westRoadX2 - westRoadX1); // 80.56m
   const westRoadCx = (westRoadX1 + westRoadX2) / 2; // -78.28m
   const westRoadZ = -44.5, westRoadW = 4.8;
@@ -19042,95 +19066,95 @@ const northDrivewayShadeTrees = [
 //   欄位：[樹木編號末 6 碼, 樹種, x, z, 傾斜]
 // ============================================================================
 const CAMPUS_TREE_REGISTRY = [
-  ["442163", "光蠟樹", -110.3, -10.7, 0],
-  ["442158", "光蠟樹", -110.3, -15.3, 0],
-  ["442152", "光蠟樹", -110.3, -20.9, 0],
-  ["442147", "臺灣櫸", -110.3, -24.3, 0],
-  ["442141", "臺灣櫸", -110.3, -29.5, 0],
-  ["442184", "光蠟樹", -110.3, -1.3, 0],
-  ["442110", "茄冬", -110.3, -53.9, 0],
-  ["442191", "緬梔", -107.8, 4.4, 0],
-  ["442201", "蘭嶼肉桂", -103.8, 11.1, 0],
-  ["442206", "緬梔", -103.2, 12.8, 0],
-  ["442220", "蘭嶼肉桂", -101.5, 17.9, 0],
-  ["839656", "七里香", -97.4, 29.8, 0],
-  ["442246", "蘭嶼肉桂", -98.9, 25.6, 0],
-  ["442251", "蘭嶼肉桂", -97.9, 28.4, 0],
-  ["442257", "蘭嶼肉桂", -97.1, 30.5, 0],
-  ["442264", "大葉桃花心木", -95.3, 33.1, 0],
-  ["839657", "七里香", -87.7, 55.0, 0],
-  ["442285", "藍花楹", -89.2, 48.9, 0],
-  ["442102", "蘭嶼肉桂", -84.5, -53.8, 0],
-  ["442253", "鳳凰木", -84.5, 61.1, 0],
-  ["442095", "蘭嶼肉桂", -80.5, -54.2, 0],
-  ["442339", "海南菜豆樹", -79.7, -33.6, 0],
+  ["442163", "光蠟樹", -117.3, -14.3, 0],
+  ["442158", "光蠟樹", -116.9, -19.2, 0],
+  ["442152", "光蠟樹", -116.7, -25.0, 0],
+  ["442147", "臺灣櫸", -115.4, -28.6, 0],
+  ["442141", "臺灣櫸", -115.2, -34.0, 0],
+  ["442184", "光蠟樹", -114.7, -4.5, 0],
+  ["442110", "茄冬", -114.0, -59.6, 0],
+  ["442191", "緬梔", -112.3, -0.3, 0],
+  ["442201", "蘭嶼肉桂", -107.7, 7.3, 0],
+  ["442206", "緬梔", -106.8, 9.0, 0],
+  ["442220", "蘭嶼肉桂", -105.2, 14.4, 0],
+  ["839656", "七里香", -100.9, 26.7, 0],
+  ["442246", "蘭嶼肉桂", -102.1, 22.3, 0],
+  ["442251", "蘭嶼肉桂", -101.4, 25.4, 0],
+  ["442257", "蘭嶼肉桂", -100.4, 27.3, 0],
+  ["442264", "大葉桃花心木", -99.0, 30.3, 0],
+  ["839657", "七里香", -89.6, 52.4, 0],
+  ["442285", "藍花楹", -92.3, 46.7, 0],
+  ["442102", "蘭嶼肉桂", -91.2, -76.3, 0],
+  ["442253", "鳳凰木", -86.6, 58.9, 0],
+  ["442095", "蘭嶼肉桂", -87.0, -75.9, 0],
+  ["442339", "海南菜豆樹", -86.0, -38.6, 0],
   ["442117", "大葉桃花心木", -80.0, -18.0, 0],   // 依照片：司令台北側、籃球場與排球場交界前方，緊鄰跑道
   ["442232", "菲島福木", -80.5, 57.4, 0],
-  ["442269", "茄冬", -76.3, 49.4, 0],
+  ["442269", "茄冬", -81.6, 48.2, 0],
   ["442217", "菲島福木", -77.8, 55.9, 0],
   ["442210", "菲島福木", -75.0, 54.3, 0],
-  ["442089", "印度紫檀", -70.7, -53.2, 0],
+  ["442089", "印度紫檀", -76.8, -73.5, 0],
   ["442202", "菲島福木", -71.7, 52.4, 0],
   ["442196", "菲島福木", -68.7, 50.7, 0],
-  ["442085", "印度紫檀", -66.6, -53.2, 0],
+  ["442085", "印度紫檀", -72.5, -72.6, 0],
   ["442186", "菲島福木", -65.8, 49.1, 0],
-  ["442276", "可可椰子", -64.2, 51.2, 0],
+  ["442276", "可可椰子", -69.0, 50.0, 0],
   ["442172", "菲島福木", -62.0, 46.9, 0],
-  ["442074", "黃金風鈴木", -58.9, -48.1, 0],
+  ["442074", "黃金風鈴木", -64.4, -65.6, 0],
   ["442161", "菲島福木", -59.0, 45.2, 0],
-  ["442059", "蘭嶼肉桂", -57.1, -54.9, 0],
+  ["442059", "蘭嶼肉桂", -62.5, -72.3, 0],
   ["442145", "菲島福木", -56.6, 43.9, 0],
-  ["442072", "黃金風鈴木", -54.6, -48.2, 0],
-  ["442055", "蘭嶼肉桂", -54.3, -55.0, 0],
+  ["442072", "黃金風鈴木", -59.8, -64.7, 0],
+  ["442055", "蘭嶼肉桂", -59.6, -71.7, 0],
   ["442138", "菲島福木", -54.5, 42.7, 0],
   ["442134", "菲島福木", -52.5, 41.6, 0],
-  ["442046", "印度紫檀", -50.4, -55.2, 0],
+  ["442046", "印度紫檀", -55.5, -71.2, 0],
   ["442129", "菲島福木", -51.0, 40.7, 0],
-  ["442070", "黃金風鈴木", -49.8, -48.0, 0],
+  ["442070", "黃金風鈴木", -54.8, -63.4, 0],
   ["442122", "菲島福木", -49.0, 39.6, 0],
   ["442119", "菲島福木", -47.4, 38.7, 0],
-  ["442051", "印度紫檀", -46.3, -55, 0],
+  ["442051", "印度紫檀", -51.2, -70.0, 0],
   ["442112", "菲島福木", -45.9, 37.8, 0],
   ["442106", "菲島福木", -44.4, 37.0, 0],
-  ["442049", "印度紫檀", -42.2, -55.1, 0],
+  ["442049", "印度紫檀", -46.9, -69.2, 0],
   ["442099", "菲島福木", -42.7, 36.0, 0],
-  ["442031", "風鈴木", -41.8, -47.9, 0],
+  ["442031", "風鈴木", -46.5, -61.3, 0],
   ["442068", "菲島福木", -40.8, 34.9, 0],
   ["442063", "蘭嶼肉桂", -37.7, 35.3, 0],
   ["442016", "黃金風鈴木", -38.9, -35.0, 0],
-  ["442045", "印度紫檀", -36.8, -55.4, 0],
+  ["442045", "印度紫檀", -41.3, -68.3, 0],
   ["442022", "黃金風鈴木", -35.0, -38.8, 0],
-  ["442026", "黃金風鈴木", -36.2, -47.8, 0],
+  ["442026", "黃金風鈴木", -40.6, -60.2, 0],
   // 依照片：育樂樓西側跑道外三棵楓香等距分布（第四筆登錄 442020 現場未見，略去）
   ["442043", "楓香", -39.7, 5.8, 0],
   ["442035", "楓香", -39.7, -0.6, 0],
   ["442030", "楓香", -39.7, -8.3, 0],
-  ["442040", "印度紫檀", -34.2, -55.6, 0],
+  ["442040", "印度紫檀", -38.5, -68.0, 0],
   ["442281", "雨豆樹", -30.4, 28.5, 0],
   ["441981", "楓香", -30, -31.8, 0],
-  ["442007", "波羅蜜", -26.8, -48.0, 0],
-  ["441997", "緬梔", -26.5, -49.4, 0],
-  ["441990", "苦楝", -25.3, -48.5, 0],
+  ["442007", "波羅蜜", -30.7, -58.4, 0],
+  ["441997", "緬梔", -30.5, -59.8, 0],
+  ["441990", "苦楝", -29.2, -58.6, 0],
   ["442157", "金露花", -9.5, 10.6, 0],   // v2.12.22 依南棟／幼兒園前照片調整
-  ["442315", "印度紫檀", -13.1, -51.7, 0],
+  ["442315", "印度紫檀", -16.4, -59.3, 0],
   ["442139", "馬拉巴栗", -12.0, -23.9, 0],
   ["442144", "樟樹", -12.7, -23.5, 0],
   ["442133", "馬拉巴栗", -10.9, -23.8, 0],
-  ["442319", "印度紫檀", -10.1, -51.9, 0],
+  ["442319", "印度紫檀", -13.3, -58.8, 0],
   ["442150", "榕樹", -9.5, -19.8, 0],
   ["839655", "桂花", -11.2, 10.7, 0],   // v2.12.22 依南棟／幼兒園前照片調整
-  ["442332", "風鈴木", -5.6, -55.5, 0],
+  ["442332", "風鈴木", -8.5, -58.3, 0],
   ["442179", "金露花", -7.8, 10.9, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   // 442188 龍柏：與幼兒園前照片建模之龍柏為同一株，不重複建置
-  ["442323", "風鈴木", -1, -55.5, 0],
+  ["442323", "風鈴木", -3.7, -57.2, 0],
   ["442123", "黃槿", 0.7, -23.5, 0],
   ["442211", "樟樹", 4.4, 6.6, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   ["442204", "瓊崖海棠", 1.2, 7.3, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   ["442115", "水黃皮", 6.3, -22.3, 0],
   ["442218", "茄冬", 7.6, 6.9, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   ["442107", "火焰木", 10.4, -21.1, 0],
-  ["442334", "印度紫檀", 12.7, -55.5, 0],
-  ["442330", "印度紫檀", 16.4, -55.5, 0],
+  ["442334", "印度紫檀", 10.6, -57.3, 0],
+  ["442330", "印度紫檀", 14.5, -56.0, 0],
   ["442230", "黃金風鈴木", 19.6, 6.8, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   ["442100", "黃槿", 28, -17.7, 0],
   ["442237", "火焰木", 33.4, 7.8, 0, 0.7],   // v2.12.22 依南棟／幼兒園前照片調整
@@ -19493,7 +19517,7 @@ const streetLightCoords = [
   // v2.12.10：南棟／新棟前（中庭南緣）實景無路燈，原 3 支移除
   [X(382), Z(200)], [X(382), Z(295)], [X(208), Z(200)], [X(208), Z(295)],
   // Commuter Walkway Buffer Streetlights (`後圍牆外通學步道照明燈`)
-  [X(76), Z(165)], [X(76), Z(225)], [X(118), Z(422)], [X(255), Z(464)], [X(368), Z(418)], [X(615), Z(376)], [X(845), Z(374)]
+  [X(44), Z(80)], [X(40), Z(140)], [X(118), Z(422)], [X(255), Z(464)], [X(368), Z(418)], [X(615), Z(376)], [X(845), Z(374)]
 ];
 const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffe4a0 });
 streetLightCoords.forEach(([lx, lz]) => {
@@ -19545,8 +19569,8 @@ const pedestrianAgents = [];
     })(),
     // Loop 5: Exterior Commuter Walkway Buffer (`後圍牆外通學步道師生步行路線`: 西側後門 -> 運動場西側通學步道 -> 西南轉角 -> 建興南路42巷通學步道 -> 南側門)
     [
-      [X(73), Z(90)], [X(73), Z(250)], [X(174), Z(490)], [X(406), Z(402)], [X(506), Z(380)],
-      [X(722), Z(373)], [X(506), Z(380)], [X(406), Z(402)], [X(174), Z(490)], [X(73), Z(250)]
+      [X(46), Z(90)], [X(34), Z(180)], [X(174), Z(490)], [X(406), Z(402)], [X(506), Z(380)],
+      [X(722), Z(373)], [X(506), Z(380)], [X(406), Z(402)], [X(174), Z(490)], [X(34), Z(180)]
     ]
   ];
 
@@ -22908,7 +22932,7 @@ function updateMinimap() {
 
   let svgHtml = `
     <polygon points="${X(40)},${Z(8)} ${X(972)},${Z(8)} ${X(972)},${Z(336)} ${X(770)},${Z(330)} ${X(494)},${Z(328)} ${X(438)},${Z(384)} ${X(365)},${Z(384)} ${X(176)},${Z(498)} ${X(40)},${Z(334)}" fill="none" stroke="rgba(197,118,94,0.55)" stroke-width="1.2" stroke-dasharray="2 2"/>
-    <polygon points="${X(82.5)},${Z(22)} ${X(955)},${Z(22)} ${X(955)},${Z(326)} ${X(772)},${Z(320)} ${X(496)},${Z(318)} ${X(438)},${Z(374)} ${X(367)},${Z(374)} ${X(180)},${Z(480)} ${X(131.2)},${Z(353.5)} ${X(106.2)},${Z(280.4)} ${X(82.5)},${Z(244)}" fill="none" stroke="${isNight ? '#8bc7b0' : '#315b4e'}" stroke-width="1.5" opacity="0.85"/>
+    <polygon points="${X(65.7)},${Z(-67.6)} ${X(955)},${Z(22)} ${X(955)},${Z(326)} ${X(772)},${Z(320)} ${X(496)},${Z(318)} ${X(438)},${Z(374)} ${X(367)},${Z(374)} ${X(180)},${Z(480)} ${X(152.9)},${Z(437.2)} ${X(134.6)},${Z(381.8)} ${X(105.2)},${Z(308.8)} ${X(76.2)},${Z(245.3)} ${X(45)},${Z(193.7)} ${X(39.2)},${Z(158.8)} ${X(51.4)},${Z(149.4)}" fill="none" stroke="${isNight ? '#8bc7b0' : '#315b4e'}" stroke-width="1.5" opacity="0.85"/>
     <polygon points="${X(58)},${Z(24)} ${X(412)},${Z(24)} ${X(412)},${Z(386)} ${X(403)},${Z(390)} ${X(180)},${Z(477)} ${X(58)},${Z(327)}" fill="${isNight ? 'rgba(54,94,68,0.38)' : 'rgba(165,208,148,0.45)'}" stroke="none"/>
     <rect x="${X(224)}" y="${Z(120)}" width="${128 * S}" height="${256 * S}" rx="${64 * S}" fill="none" stroke="#c85a40" stroke-width="3.2" opacity="0.85"/>
   `;
