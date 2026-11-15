@@ -3009,10 +3009,11 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     const almondG = new THREE.MeshStandardMaterial({ color: 0x3f7a34, roughness: 0.8 });
     const almondG2 = new THREE.MeshStandardMaterial({ color: 0x5a8f3a, roughness: 0.8 });
     const almondRed = new THREE.MeshStandardMaterial({ color: 0x9a5a34, roughness: 0.82 });
-    const tropicalAlmond = (p, h, rot) => {
+    const tropicalAlmond = (p, h, rot, sc = 1) => {
       const g = new THREE.Group();
       g.position.set(p.x, 0, p.z);
       g.rotation.y = rot;
+      g.scale.setScalar(sc);
       limb(g, V(0, 0, 0), V(0.1, h, 0), 0.26, 0.12, barkMat, 9);
       [[0.42, 3.0, 5], [0.6, 2.4, 5], [0.78, 1.7, 4], [0.92, 1.0, 4]].forEach(([fy, reach, nb], tier) => {
         for (let b = 0; b < nb; b++) {
@@ -3021,7 +3022,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
           const e = V(Math.cos(a) * reach, h * fy + 0.35, Math.sin(a) * reach);
           limb(g, s0, e, 0.09, 0.04, barkMat, 5);
           for (let k = 0; k < 3; k++) {
-            const m = r() < 0.14 ? almondRed : (k % 2 ? almondG : almondG2);
+            const m = r() < 0.06 ? almondRed : (k % 2 ? almondG : almondG2);
             const cl = addMesh(g, new THREE.IcosahedronGeometry(0.75 + r() * 0.35, 0), m,
               e.x * (0.65 + k * 0.2) + (r() - 0.5) * 0.4, e.y + 0.15 + (r() - 0.5) * 0.25, e.z * (0.65 + k * 0.2) + (r() - 0.5) * 0.4);
             cl.scale.set(1.5, 0.42, 1.5);
@@ -3030,29 +3031,50 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       });
       segBg.add(g);
     };
-    tropicalAlmond(at(0.56), 8.2, 0.3);
-    tropicalAlmond(at(0.84), 7.4, 1.1);
-    // (2) 近轉角羽葉大喬木：低處分為數支斜生主幹，向外開展成寬闊傘形、細碎羽葉的通透樹冠
-    {
-      const p = at(0.2);
+    // v2.12.12 依使用者標註之 2024 街景：近復興路轉角（電線桿旁）高大者為【大葉欖仁】，
+    //   西側圓石桌旁為【小葉欖仁】；最西一株維持大葉欖仁
+    tropicalAlmond(at(0.2), 8.4, 0.6, 1.45);         // 轉角大葉欖仁：高約 12 m、冠幅約 11 m
+    // 小葉欖仁：通直灰褐主幹，枝條水平輪生成 5～6 層明顯分層的塔狀樹冠，細碎小葉平鋪於枝上、淺綠通透
+    const smallLeafTerminalia = (p, h) => {
       const g = new THREE.Group();
       g.position.set(p.x, 0, p.z);
-      const featherA = new THREE.MeshStandardMaterial({ color: 0x4d7f35, roughness: 0.8 });
-      const featherB = new THREE.MeshStandardMaterial({ color: 0x6b9645, roughness: 0.8 });
-      const fork = V(0, 2.2, 0);
-      limb(g, V(0, 0, 0), fork, 0.34, 0.28, barkMat, 9);
-      for (let b = 0; b < 4; b++) {
-        const a = (b / 4) * Math.PI * 2 + 0.4;
-        const e = V(Math.cos(a) * 3.0, 6.4 + (b % 2) * 0.8, Math.sin(a) * 3.0);
-        limb(g, fork, e, 0.2, 0.09, barkMat, 7);
-        for (let k = 0; k < 14; k++) {
-          const sa = r() * Math.PI * 2, sr = r() * 2.8;
-          const cl = addMesh(g, new THREE.IcosahedronGeometry(0.5 + r() * 0.35, 0), k % 3 ? featherA : featherB,
-            e.x + Math.cos(sa) * sr, e.y + 0.6 + (r() - 0.5) * 1.2, e.z + Math.sin(sa) * sr);
-          cl.scale.set(1.6, 0.5, 1.6);
+      const greyBark = new THREE.MeshStandardMaterial({ color: 0x77706a, roughness: 0.88 });
+      const leafA = new THREE.MeshStandardMaterial({ color: 0x6fa84a, roughness: 0.8 });
+      const leafB = new THREE.MeshStandardMaterial({ color: 0x86b95a, roughness: 0.8 });
+      limb(g, V(0, 0, 0), V(0, h, 0), 0.2, 0.06, greyBark, 9);
+      const tiers = 6;
+      for (let t = 0; t < tiers; t++) {
+        const fy = 0.32 + t * (0.62 / (tiers - 1));
+        const reach = 2.8 * (1 - t / tiers) + 0.6;
+        const nb = 5;
+        for (let b = 0; b < nb; b++) {
+          const a = (b / nb) * Math.PI * 2 + t * 0.55;
+          const y = h * fy;
+          const e = V(Math.cos(a) * reach, y + 0.15, Math.sin(a) * reach);
+          limb(g, V(0, y, 0), e, 0.05, 0.02, greyBark, 5);
+          for (let k = 0; k < 4; k++) {                 // 沿枝條平鋪之細葉層片
+            const tt = 0.35 + k * 0.2;
+            const pad = addMesh(g, new THREE.CylinderGeometry(0.55 * (1 - t / (tiers + 2)), 0.6 * (1 - t / (tiers + 2)), 0.12, 7), (k + t) % 2 ? leafA : leafB,
+              e.x * tt + (r() - 0.5) * 0.3, y + 0.15 + tt * 0.12, e.z * tt + (r() - 0.5) * 0.3);
+            pad.rotation.y = r() * Math.PI;
+          }
         }
       }
       segBg.add(g);
+    };
+    smallLeafTerminalia(at(0.56), 9.0);
+    tropicalAlmond(at(0.84), 7.4, 1.1);
+    // 轉角大葉欖仁前之水泥電線桿（街景：立於花台矮牆外鋪面上，頂部路燈挑臂伸向 42 巷）
+    {
+      const p = at(0.2);
+      const poleMat = new THREE.MeshStandardMaterial({ color: 0x8f8a82, roughness: 0.85 });
+      const px = p.x - 0.6, pz = p.z + 2.6;
+      addMesh(segBg, new THREE.CylinderGeometry(0.13, 0.18, 9.5, 12), poleMat, px, 4.9, pz);
+      addBox(segBg, 1.6, 0.1, 0.1, poleMat, px, 9.0, pz);
+      const steel = new THREE.MeshStandardMaterial({ color: 0xa8adb2, roughness: 0.35, metalness: 0.6 });
+      addBox(segBg, 0.07, 0.07, 1.6, steel, px, 7.6, pz + 0.8);
+      addMesh(segBg, new THREE.ConeGeometry(0.2, 0.15, 12), steel, px, 7.5, pz + 1.55, false);
+      for (let k = 0; k < 3; k++) addMesh(segBg, new THREE.CylinderGeometry(0.19, 0.19, 0.18, 12), new THREE.MeshStandardMaterial({ color: k % 2 ? 0x1b1b1b : 0xf2c418 }), px, 0.35 + k * 0.18, pz, false);
     }
 
     // 牆外人行道設施（照片：新南側門東側、欖仁樹下）
