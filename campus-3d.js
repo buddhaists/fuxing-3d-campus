@@ -18768,10 +18768,10 @@ const foliageMats = [
   new THREE.MeshStandardMaterial({ color: 0x689e54, roughness: 0.80 })  // Flowering / Accent crown (Spring pink / Autumn gold)
 ];
 const SEASON_PALETTES = {
-  spring: { foliage: [0x589c56, 0x76b569, 0x46824b, 0xe895b4], fogTint: 0xf4f2eb, label: '春 · 新綠繁花' },
+  spring: { foliage: [0x589c56, 0x76b569, 0x46824b, 0x6aa85a], fogTint: 0xf4f2eb, label: '春 · 新綠繁花' },
   summer: { foliage: [0x3b7a42, 0x528e4e, 0x2f6839, 0x689e54], fogTint: 0xebe9e1, label: '夏 · 濃蔭蟬鳴' },
-  autumn: { foliage: [0xc97b36, 0xd89c3e, 0x4f7348, 0xe06d3b], fogTint: 0xf0e9dc, label: '秋 · 金風楓染' },
-  winter: { foliage: [0x566b5c, 0x6c7d70, 0x45584b, 0x7a8a7d], fogTint: 0xe4e8eb, label: '冬 · 朗潤清寒' }
+  autumn: { foliage: [0x4a7a3e, 0x6a8a44, 0x3f6a3a, 0x8a8a3e], fogTint: 0xf0e9dc, label: '秋 · 涼風綠蔭' },
+  winter: { foliage: [0x4f6e48, 0x6a7f5a, 0x40604a, 0x8a8a5a], fogTint: 0xe4e8eb, label: '冬 · 乾季落葉' }
 };
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x69543e, roughness: 0.9 });
 const palmTrunkMat = new THREE.MeshStandardMaterial({ color: 0x8c897e, roughness: 0.86 });
@@ -18992,6 +18992,7 @@ const northDrivewayShadeTrees = [
 //   樹下為稀疏草地與落葉。北棟北側車道與教室之間另有數株細高羽葉喬木（往東看停車場照片）
 // v2.12.16：北牆老樹列與北棟旁細高喬木改由樹木普查登錄資料（印度紫檀、黃金風鈴木、蘭嶼肉桂等）呈現
 
+
 // ============================================================================
 // v2.12.16 校園樹木普查登錄（縣立復興國小 樹木資料 2026-11-15 匯出，WGS84 座標）
 //   換算方式：以已知實景樹木與圍牆、建築線為控制點，經相似轉換（比例約 0.95、旋轉約 −7.4°）後，
@@ -19123,6 +19124,14 @@ const CAMPUS_TREE_REGISTRY = [
   let sd = 977; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
   const matCache = {};
   const M = (c, rough = 0.82) => (matCache[c] = matCache[c] || new THREE.MeshStandardMaterial({ color: c, roughness: rough }));
+  // 物候分層材質：每個樹種各自一組（內層葉 core／外層葉 outer／花 flower／果 fruit），季節切換時只改顏色與可見性
+  let curSp = '';
+  const LP = (o, i, role) => {
+    const base = o.leaves[i % o.leaves.length];
+    const r2 = role || (i % 2 ? 'outer' : 'core');
+    return phenoMat(curSp, r2, base.color.getHex());
+  };
+  const FM = c => { PHENO_STATE[curSp] && (PHENO_STATE[curSp].inlineFlower = true); return phenoMat(curSp, 'flower', c.color ? c.color.getHex() : c); };
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   const limb = (a, b, r0, r1, mat, seg = 7) => {
     const d = new THREE.Vector3().subVectors(b, a);
@@ -19132,6 +19141,7 @@ const CAMPUS_TREE_REGISTRY = [
   const blob = (x, y, z, rad, mat, sx = 1.25, sy = 0.75, det = 0) => {
     const m = addMesh(grp, new THREE.IcosahedronGeometry(rad, det), mat, x, y, z);
     m.scale.set(sx, sy, sx); m.rotation.y = r() * 3;
+    if (mat.userData.phenoRole) m.userData.phenoRole = mat.userData.phenoRole;
     return m;
   };
   // ---- 樹形家族 ----
@@ -19156,13 +19166,13 @@ const CAMPUS_TREE_REGISTRY = [
       limb(fork, e, o.tr * 0.55, o.tr * 0.2, o.bark, 6);
       for (let c = 0; c < o.nC; c++) {
         const ca = r() * Math.PI * 2, cr = r() * o.leaf * 1.3;
-        blob(e.x + Math.cos(ca) * cr, e.y + o.leaf * 0.35 + (r() - 0.4) * o.leaf, e.z + Math.sin(ca) * cr, o.leaf * (0.75 + r() * 0.5), o.leaves[c % o.leaves.length], 1.25, o.flat, o.det || 0);
+        blob(e.x + Math.cos(ca) * cr, e.y + o.leaf * 0.35 + (r() - 0.4) * o.leaf, e.z + Math.sin(ca) * cr, o.leaf * (0.75 + r() * 0.5), LP(o, c), 1.25, o.flat, o.det || 0);
       }
-      if (o.flowers && r() < 0.6) blob(e.x, e.y + o.leaf * 0.9, e.z, o.leaf * 0.35, o.flowers, 1.3, 0.5);
+      if (o.flowers && r() < 0.6) blob(e.x, e.y + o.leaf * 0.9, e.z, o.leaf * 0.35, FM(o.flowers), 1.3, 0.5);
     }
     for (let c = 0; c < (o.top || 3); c++) {
       const ca = r() * Math.PI * 2, cr = r() * o.spread * 0.55;
-      blob(fork.x + Math.cos(ca) * cr, o.H * 0.9 + r() * o.leaf * 0.6, z + Math.sin(ca) * cr, o.leaf * 1.05, o.leaves[c % o.leaves.length], 1.3, o.flat, o.det || 0);
+      blob(fork.x + Math.cos(ca) * cr, o.H * 0.9 + r() * o.leaf * 0.6, z + Math.sin(ca) * cr, o.leaf * 1.05, LP(o, c, 'core'), 1.3, o.flat, o.det || 0);
     }
   };
   // 分層水平枝（欖仁、馬拉巴栗）
@@ -19175,7 +19185,7 @@ const CAMPUS_TREE_REGISTRY = [
         const a = (b / 5) * Math.PI * 2 + t * 0.7;
         const e = V(x + Math.cos(a) * reach, y + 0.3, z + Math.sin(a) * reach);
         limb(V(x, y, z), e, o.tr * 0.3, o.tr * 0.12, o.bark, 5);
-        for (let k = 0; k < 3; k++) blob(x + (e.x - x) * (0.5 + k * 0.22), e.y + 0.15, z + (e.z - z) * (0.5 + k * 0.22), o.leaf, o.leaves[(k + t) % o.leaves.length], 1.45, 0.42);
+        for (let k = 0; k < 3; k++) blob(x + (e.x - x) * (0.5 + k * 0.22), e.y + 0.15, z + (e.z - z) * (0.5 + k * 0.22), o.leaf, LP(o, k + t), 1.45, 0.42);
       }
     }
   };
@@ -19187,7 +19197,7 @@ const CAMPUS_TREE_REGISTRY = [
       const t = k / (n - 1);
       const rad = o.w * (o.cone ? (1 - t * 0.75) : Math.sin(Math.PI * (0.18 + t * 0.7))) + 0.2;
       const a = k * 2.4;
-      blob(x + Math.cos(a) * rad * 0.25, o.H * (0.3 + t * 0.66), z + Math.sin(a) * rad * 0.25, rad * 0.85, o.leaves[k % o.leaves.length], 1.0, o.cone ? 1.15 : 1.05, o.det || 0);
+      blob(x + Math.cos(a) * rad * 0.25, o.H * (0.3 + t * 0.66), z + Math.sin(a) * rad * 0.25, rad * 0.85, LP(o, k), 1.0, o.cone ? 1.15 : 1.05, o.det || 0);
     }
   };
   // 棕櫚類
@@ -19230,26 +19240,55 @@ const CAMPUS_TREE_REGISTRY = [
     if (o.stem) limb(V(x, 0, z), V(x, o.stem, z), 0.06, 0.05, M(0x6b5a48), 6);
     for (let k = 0; k < 6; k++) {
       const a = r() * Math.PI * 2, rr = r() * o.w * 0.45;
-      blob(x + Math.cos(a) * rr, (o.stem || 0) + o.w * 0.5 + r() * o.h * 0.5, z + Math.sin(a) * rr, o.w * (0.4 + r() * 0.2), o.leaves[k % o.leaves.length], 1.1, 0.9, 1);
+      blob(x + Math.cos(a) * rr, (o.stem || 0) + o.w * 0.5 + r() * o.h * 0.5, z + Math.sin(a) * rr, o.w * (0.4 + r() * 0.2), LP(o, k), 1.1, 0.9, 1);
     }
-    if (o.flowers) for (let k = 0; k < 5; k++) blob(x + (r() - 0.5) * o.w * 0.8, (o.stem || 0) + o.h * (0.5 + r() * 0.45), z + (r() - 0.5) * o.w * 0.8, 0.09, o.flowers, 1, 1);
+    if (o.flowers) for (let k = 0; k < 7; k++) blob(x + (r() - 0.5) * o.w * 0.8, (o.stem || 0) + o.h * (0.5 + r() * 0.45), z + (r() - 0.5) * o.w * 0.8, 0.11, FM(o.flowers), 1, 1);
   };
   // 雞蛋花：燭台狀叉枝 + 枝端葉叢
   const plumeria = (x, z, o) => {
-    const bark = M(0x8a7d6e), leafM = M(0x2f6e2f);
+    const bark = M(0x8a7d6e), leafM = phenoMat(curSp, 'outer', 0x2f6e2f), plFlower = FM(0xfffbeb);
     const base = V(x, 1.0, z);
     limb(V(x, 0, z), base, 0.2, 0.17, bark, 8);
     const fork = (p, a, tilt, len, rad, d) => {
       const e = V(p.x + Math.cos(a) * Math.sin(tilt) * len, p.y + Math.cos(tilt) * len, p.z + Math.sin(a) * Math.sin(tilt) * len);
       limb(p, e, rad, rad * 0.75, bark, 6);
-      if (d === 0) { blob(e.x, e.y + 0.2, e.z, 0.45, leafM, 1.3, 0.5); if (r() < 0.4) blob(e.x, e.y + 0.45, e.z, 0.12, M(0xfffbeb), 1, 0.6); return; }
+      if (d === 0) { blob(e.x, e.y + 0.2, e.z, 0.45, leafM, 1.3, 0.5); if (r() < 0.7) blob(e.x, e.y + 0.45, e.z, 0.14, plFlower, 1, 0.6); return; }
       fork(e, a - 0.6, tilt * 0.85, len * 0.75, rad * 0.75, d - 1); fork(e, a + 0.6, tilt * 0.85, len * 0.75, rad * 0.75, d - 1);
     };
     [0.3, 1.9, 3.4, 4.9].forEach(a => fork(base, a, 0.8, 1.1 * o.k, 0.11, 2));
   };
 
+  // 依物候表於葉團間補上花朵與果實（樹形本身已含花者不再重複）
+  const decoratePheno = (sp, n0) => {
+    const ph = PHENO[sp], st = PHENO_STATE[sp];
+    if (!ph) return;
+    const leafMeshes = [];
+    for (let i = n0; i < grp.children.length; i++) {
+      const m = grp.children[i];
+      if (m.isMesh && m.userData.phenoRole && /core|outer/.test(m.userData.phenoRole)) leafMeshes.push(m);
+    }
+    if (ph.flower && !st.inlineFlower) {
+      const fMat = phenoMat(sp, 'flower', ph.flower.color);
+      const step = Math.max(1, Math.round(1 / (ph.flower.dens || 0.6)));
+      leafMeshes.forEach((m, k) => {
+        if (k % step) return;
+        const rad = (m.geometry.parameters.radius || 0.8) * m.scale.x;
+        blob(m.position.x + (r() - 0.5) * rad * 0.6, m.position.y + rad * 0.45 * (m.scale.y / m.scale.x) + 0.1, m.position.z + (r() - 0.5) * rad * 0.6, Math.min(0.9, rad * 0.42), fMat, 1.25, 0.6);
+      });
+    }
+    if (ph.fruit) {
+      const fr = phenoMat(sp, 'fruit', ph.fruit.color);
+      leafMeshes.forEach((m, k) => {
+        if (k % 3) return;
+        const rad = (m.geometry.parameters.radius || 0.8) * m.scale.x;
+        for (let j = 0; j < 2; j++) addMesh(grp, new THREE.SphereGeometry(ph.fruit.size || 0.12, 6, 5), fr, m.position.x + (r() - 0.5) * rad, m.position.y - rad * 0.25, m.position.z + (r() - 0.5) * rad, false);
+      });
+    }
+  };
   const G = c => M(c), bDark = M(0x4a3d31), bGrey = M(0x7a7268), bLight = M(0x9a8f80), bRed = M(0x6b4a3a);
   const SP = {
+    '大花紫薇': (x, z) => broad(x, z, { H: 7.5, forkH: 1.9, tr: 0.2, bark: M(0xa08a74), nB: 6, spread: 2.3, endY: 0.74, nC: 7, leaf: 0.95, flat: 0.8, top: 4, leaves: [G(0x3f7032), G(0x4f8038)] }),
+    '麵包樹':   (x, z) => broad(x, z, { H: 8.5, forkH: 2.4, tr: 0.26, bark: bDark, nB: 5, spread: 2.4, endY: 0.72, nC: 7, leaf: 1.15, flat: 0.8, top: 4, det: 1, leaves: [G(0x2b5a2a), G(0x376a31)] }),
     '菲島福木': (x, z) => columnar(x, z, { H: 7.5, tr: 0.18, w: 1.15, n: 8, bark: bDark, det: 1, leaves: [G(0x24502a), G(0x2e5e2f)] }),
     '蘭嶼肉桂': (x, z) => columnar(x, z, { H: 6.5, tr: 0.16, w: 1.25, n: 7, bark: bDark, det: 1, leaves: [G(0x2f6a2f), G(0x6a5a2e), G(0x3c7535)] }),
     '陰香':     (x, z) => columnar(x, z, { H: 8.5, tr: 0.2, w: 1.6, n: 8, bark: bDark, det: 1, leaves: [G(0x2f6a2f), G(0x7a5a35)] }),
@@ -19291,11 +19330,17 @@ const CAMPUS_TREE_REGISTRY = [
     '田代氏石斑木': (x, z) => shrub(x, z, { w: 1.5, h: 1.8, stem: 0.4, leaves: [G(0x2b5a2a), G(0x376a31)], flowers: G(0xffe4ec) })
   };
   const crownR = { '菲島福木': 1.3, '蘭嶼肉桂': 1.4, '龍柏': 1.0, '竹柏': 1.2, '大葉羅漢松': 1.0, '七里香': 0.9, '金露花': 0.8, '桂花': 1.0, '臺灣海桐': 1.0, '田代氏石斑木': 0.9, '黃椰子': 1.6, '扇葉蒲葵': 1.8, '可可椰子': 3.0, '大王椰子': 3.2, '雨豆樹': 6.5, '榕樹': 5.5, '大葉桃花心木': 5.5, '印度紫檀': 5.0, '樟樹': 4.5, '鳳凰木': 5.0 };
-  CAMPUS_TREE_REGISTRY.forEach(([id, sp, x, z, lean]) => {
+  const SPORTS_KIND_SP = { breadfruit: '麵包樹', crapeMyrtle: '大花紫薇', rosewood: '印度紫檀' };
+  const allTrees = CAMPUS_TREE_REGISTRY.concat(SPORTS_NAMED_TREES.map((t, i) => ['photo' + i, SPORTS_KIND_SP[t.kind], t.x, t.z, 0]));
+  allTrees.forEach(([id, sp, x, z, lean]) => {
     const fn = SP[sp];
     if (!fn) return;
     const n0 = grp.children.length;
+    curSp = sp;
+    phenoState(sp);
+    window.__phenoCounts = window.__phenoCounts || {}; window.__phenoCounts[sp] = (window.__phenoCounts[sp] || 0) + 1;
     fn(x, z, lean);
+    decoratePheno(sp, n0);
     // 依樹幹位置決定標高：下沉中庭內整株下移；全部標記 keepLevel，避免中庭下移程序拆散樹冠
     const sink = inCourtyardSink(x, z) ? COURTYARD_SINK.D : 0;
     for (let i = n0; i < grp.children.length; i++) {
@@ -19307,8 +19352,10 @@ const CAMPUS_TREE_REGISTRY = [
   });
   layerGroups.vegetation.add(grp);
   window.__registryTreeCount = CAMPUS_TREE_REGISTRY.length;
+  applyPhenology(phenoMonth());
 })();
 (function buildSportsNamedTrees() {
+  return;   // v2.12.18：已併入 buildRegistryTrees（物候分層材質）
   const grp = new THREE.Group();
   const up = new THREE.Vector3(0, 1, 0);
   let sd = 131; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
@@ -19531,7 +19578,109 @@ let activeRoomCode = null;
 let activeFilter = 'featured';
 let activeMode = '3d'; // '3d' or 'plan'
 let timeOfDay = 10.5;  // 6.0 to 21.0
-let activeSeason = 'summer';
+// ============================================================================
+// v2.12.18 校園樹木物候（屏東平地一般物候；月份 1–12）
+//   leaf：12 字元依序為 1～12 月葉況 —— G 綠葉、T 轉色、S 換葉稀疏、D 落葉（僅剩枝幹）、N 新葉
+//   flower / fruit：月份、顏色、密度；turn 轉色色、newLeaf 新葉色
+//   若學校有實際觀察記錄，直接修改本表即可
+// ============================================================================
+const PHENO = {
+  '黃金風鈴木': { leaf: 'GTDNGGGGGGGG', flower: { m: [3], color: 0xf7c51e, dens: 1 }, turn: 0xc9a23a },
+  '風鈴木':     { leaf: 'GGSNGGGGGGGG', flower: { m: [3, 4], color: 0xe889b2, dens: 0.8 } },
+  '火焰木':     { leaf: 'GGGGGGGGGGGG', flower: { m: [1, 2, 3, 4], color: 0xe8541a } },
+  '苦楝':       { leaf: 'DDNGGGGGGGTT', flower: { m: [3, 4], color: 0xc9b0e4, dens: 0.8 }, fruit: { m: [11, 12, 1, 2], color: 0xe0b84a }, turn: 0xc9b040 },
+  '印度紫檀':   { leaf: 'GGSNGGGGGGGG', flower: { m: [4], color: 0xf2c418, dens: 1 } },
+  '藍花楹':     { leaf: 'GSDSNGGGGGGG', flower: { m: [4, 5], color: 0x8a78d8, dens: 1 } },
+  '鳳凰木':     { leaf: 'DDSNGGGGGGGT', flower: { m: [5, 6, 7], color: 0xe63f1c, dens: 1 }, turn: 0xc9b040 },
+  '大花紫薇':   { leaf: 'DDNGGGGGGGTT', flower: { m: [5, 6, 7], color: 0xb06fd8, dens: 0.9 }, turn: 0xb4532c },
+  '雨豆樹':     { leaf: 'GSNGGGGGGGGG', flower: { m: [5, 6], color: 0xf0a0b8, dens: 0.6 } },
+  '緬梔':       { leaf: 'DDDNGGGGGGTD', flower: { m: [4, 5, 6, 7, 8, 9, 10], color: 0xfffbeb }, turn: 0xc9b040 },
+  '水黃皮':     { leaf: 'GGSNGGGGGGGG', flower: { m: [4, 5, 6], color: 0xc9a0d8, dens: 0.6 } },
+  '欖仁樹':     { leaf: 'DDNGGGGGGGTT', turn: 0xb4432c },
+  '小葉欖仁':   { leaf: 'DDNGGGGGGGGT', turn: 0xc9a23a },
+  '楓香':       { leaf: 'DDNGGGGGGGTT', turn: 0xc8702c },
+  '臺灣櫸':     { leaf: 'DDNGGGGGGGTT', turn: 0xb07a3a },
+  '大葉桃花心木': { leaf: 'GSNGGGGGGGGG', newLeaf: 0xa8743a, fruit: { m: [10, 11, 12, 1, 2], color: 0x7a5a3a, size: 0.2 } },
+  '樟樹':       { leaf: 'GTNGGGGGGGGG', turn: 0xb4532c, newLeaf: 0xa8d860, flower: { m: [4], color: 0xf0f0d0, dens: 0.3 } },
+  '茄冬':       { leaf: 'GSNGGGGGGGGG', fruit: { m: [9, 10, 11], color: 0x6a4a5a } },
+  '光蠟樹':     { leaf: 'GSNGGGGGGGGG', flower: { m: [5, 6], color: 0xf0f0e0, dens: 0.5 } },
+  '蘭嶼肉桂':   { leaf: 'GGNNGGGGGGGG', newLeaf: 0xa85a3a },
+  '陰香':       { leaf: 'GGNNGGGGGGGG', newLeaf: 0xb0583a },
+  '黃槿':       { leaf: 'GGGGGGGGGGGG', flower: { m: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], color: 0xf5d742 } },
+  '海南菜豆樹': { leaf: 'GGGGGGGGGGGG', flower: { m: [4, 5, 6], color: 0xfffbe0, dens: 0.5 } },
+  '馬拉巴栗':   { leaf: 'GGGGGGGGGGGG', flower: { m: [4, 5], color: 0xf0e8c0, dens: 0.4 } },
+  '菲島福木':   { leaf: 'GGGGGGGGGGGG', fruit: { m: [7, 8, 9, 10], color: 0xe8b030 } },
+  '榕樹':       { leaf: 'GGNGGGGGGGGG', newLeaf: 0x7ab050 },
+  '麵包樹':     { leaf: 'GGGGGGGGGGGG', fruit: { m: [6, 7, 8], color: 0x8ab040, size: 0.22 } },
+  '波羅蜜':     { leaf: 'GGGGGGGGGGGG', fruit: { m: [5, 6, 7, 8], color: 0x9aa040, size: 0.28 } },
+  '瓊崖海棠':   { leaf: 'GGGGGGGGGGGG', flower: { m: [5, 6], color: 0xffffff, dens: 0.5 } },
+  '七里香':     { leaf: 'GGGGGGGGGGGG', flower: { m: [6, 7, 8, 9, 10], color: 0xfffbeb } },
+  '桂花':       { leaf: 'GGGGGGGGGGGG', flower: { m: [9, 10, 11, 12, 1, 2], color: 0xfff2a8 } },
+  '金露花':     { leaf: 'GGGGGGGGGGGG', flower: { m: [4, 5, 6, 7, 8, 9, 10, 11], color: 0x7a5ac8 }, fruit: { m: [7, 8, 9, 10, 11, 12], color: 0xe8a020, size: 0.08 } },
+  '臺灣海桐':   { leaf: 'GGGGGGGGGGGG', flower: { m: [3, 4], color: 0xffffff } },
+  '田代氏石斑木': { leaf: 'GGGGGGGGGGGG', flower: { m: [3, 4], color: 0xffe4ec } }
+};
+const PHENO_STATE = {};
+function phenoState(sp) {
+  return (PHENO_STATE[sp] = PHENO_STATE[sp] || { core: new Map(), outer: new Map(), flower: [], fruit: [], inlineFlower: false });
+}
+const _phenoMatCache = {};
+function phenoMat(sp, role, color) {
+  const key = sp + '|' + role + '|' + color;
+  if (_phenoMatCache[key]) return _phenoMatCache[key];
+  const m = new THREE.MeshStandardMaterial({ color, roughness: role === 'flower' ? 0.6 : 0.82 });
+  m.userData.phenoRole = role;
+  const st = phenoState(sp);
+  if (role === 'core' || role === 'outer') st[role].set(m, color);
+  else st[role].push(m);
+  return (_phenoMatCache[key] = m);
+}
+const phenoMonth = () => (typeof seasonsEnabled !== 'undefined' && !seasonsEnabled ? 7 : activeMonth);
+const _pc = new THREE.Color(), _pc2 = new THREE.Color();
+function applyPhenology(month) {
+  const idx = (month - 1) % 12;
+  Object.entries(PHENO_STATE).forEach(([sp, st]) => {
+    const ph = PHENO[sp];
+    const code = ph ? ph.leaf[idx] : 'G';
+    const turn = (ph && ph.turn) || 0xc9a23a, fresh = (ph && ph.newLeaf) || 0x9acd5a;
+    const set = (map, mix, target, visible) => map.forEach((base, m) => {
+      m.visible = visible;
+      _pc.setHex(base);
+      if (target !== null) _pc.lerp(_pc2.setHex(target), mix);
+      m.color.copy(_pc);
+    });
+    if (code === 'G') { set(st.core, 0, null, true); set(st.outer, 0, null, true); }
+    else if (code === 'T') { set(st.core, 0.45, turn, true); set(st.outer, 0.85, turn, true); }
+    else if (code === 'S') { set(st.core, 0, null, true); set(st.outer, 0, null, false); }
+    else if (code === 'D') { set(st.core, 0.6, turn, false); set(st.outer, 0, null, false); }
+    else if (code === 'N') { set(st.core, 0.45, fresh, true); set(st.outer, 0.75, fresh, true); }
+    const inBloom = !!(ph && ph.flower && ph.flower.m.includes(month));
+    st.flower.forEach(m => { m.visible = inBloom; });
+    const inFruit = !!(ph && ph.fruit && ph.fruit.m.includes(month));
+    st.fruit.forEach(m => { m.visible = inFruit; });
+  });
+  if (typeof markShadowsDirty === 'function') markShadowsDirty();
+}
+// 本月花況：回傳 [{ sp, count, kind }]（kind：flower 花期、bare 落葉、turn 轉色、new 新葉、fruit 果期）
+function phenologyHighlights(month) {
+  const idx = (month - 1) % 12, out = [];
+  Object.keys(PHENO_STATE).forEach(sp => {
+    const ph = PHENO[sp]; if (!ph) return;
+    const n = (window.__phenoCounts || {})[sp] || 0;
+    if (ph.flower && ph.flower.m.includes(month)) out.push({ sp, n, kind: '開花' });
+    else if (ph.leaf[idx] === 'D') out.push({ sp, n, kind: '落葉' });
+    else if (ph.leaf[idx] === 'T') out.push({ sp, n, kind: '轉色' });
+    else if (ph.leaf[idx] === 'N') out.push({ sp, n, kind: '新葉' });
+    else if (ph.fruit && ph.fruit.m.includes(month)) out.push({ sp, n, kind: '結果' });
+  });
+  return out;
+}
+window.applyPhenology = applyPhenology;
+
+let activeMonth = new Date().getMonth() + 1;
+const MONTH_SEASON = m => (m >= 3 && m <= 5 ? 'spring' : m >= 6 && m <= 8 ? 'summer' : m >= 9 && m <= 11 ? 'autumn' : 'winter');
+const SEASON_MONTH = { spring: 3, summer: 6, autumn: 10, winter: 1 };
+let activeSeason = MONTH_SEASON(activeMonth);
 let activeWeather = 'clear';
 let activeQuality = 'fine';
 let adaptiveDpr = 1;
@@ -21389,6 +21538,7 @@ function updateEnvironmentSimulation() {
   const cfg = LIGHTING_PRESETS[presetKey];
 
   // Apply seasonal foliage colors across all 4 botanical material groups
+  if (typeof applyPhenology === 'function' && window.__registryTreeCount) applyPhenology(phenoMonth());
   if (seasonsEnabled) {
     const seasonCfg = SEASON_PALETTES[activeSeason] || SEASON_PALETTES.summer;
     foliageMats.forEach((mat, idx) => {
@@ -21434,7 +21584,8 @@ function updateEnvironmentSimulation() {
     weatherPoints.visible = false;
   }
 
-  const seasonWord = { spring: '春', summer: '夏', autumn: '秋', winter: '冬' }[activeSeason];
+  const seasonWord = `${activeMonth}月`;
+  updateMonthUi();
   const weatherWord = { clear: '晴', rain: '雨', mist: '霧', snow: '雪' }[activeWeather];
   document.getElementById('env-button-label').textContent = `光影與生活 · ${timeStr} ${seasonWord}·${weatherWord}`;
   updateMinimap();
@@ -21460,10 +21611,32 @@ document.querySelectorAll('[data-preset-time]').forEach(btn => {
 document.querySelectorAll('[data-season]').forEach(btn => {
   btn.addEventListener('click', () => {
     activeSeason = btn.dataset.season;
-    document.querySelectorAll('[data-season]').forEach(b => b.classList.toggle('is-active', b === btn));
+    activeMonth = SEASON_MONTH[activeSeason];
     updateEnvironmentSimulation();
-    showToast(`季節氛圍已切換為：${SEASON_PALETTES[activeSeason].label}`);
+    showToast(`季節氛圍已切換為：${SEASON_PALETTES[activeSeason].label}（${activeMonth} 月）`);
   });
+});
+// v2.12.18 月份滑桿：依樹種物候呈現開花、落葉、轉色與新葉
+function updateMonthUi() {
+  document.querySelectorAll('[data-season]').forEach(b => b.classList.toggle('is-active', b.dataset.season === activeSeason));
+  const sl = document.getElementById('month-slider'), lb = document.getElementById('month-label'), bl = document.getElementById('bloom-now');
+  if (sl) sl.value = String(activeMonth);
+  if (lb) lb.textContent = `${activeMonth} 月`;
+  if (bl) {
+    if (!seasonsEnabled) { bl.textContent = '四季動態已關閉（樹木維持綠葉）'; return; }
+    const hs = phenologyHighlights(activeMonth);
+    const groups = {};
+    hs.forEach(h => { (groups[h.kind] = groups[h.kind] || []).push(h.sp + (h.n > 1 ? `×${h.n}` : '')); });
+    bl.innerHTML = Object.keys(groups).length
+      ? ['開花', '新葉', '轉色', '落葉', '結果'].filter(k => groups[k]).map(k => `<b>${k}</b> ${groups[k].join('、')}`).join('<br>')
+      : '本月校園樹木以常綠綠葉為主';
+  }
+}
+const monthSliderEl = document.getElementById('month-slider');
+if (monthSliderEl) monthSliderEl.addEventListener('input', e => {
+  activeMonth = parseInt(e.target.value, 10) || 1;
+  activeSeason = MONTH_SEASON(activeMonth);
+  updateEnvironmentSimulation();
 });
 
 document.querySelectorAll('[data-weather]').forEach(btn => {
@@ -22953,6 +23126,7 @@ document.getElementById('shareViewBtn').addEventListener('click', async () => {
   if (selectedId) params.set('place', selectedId);
   params.set('time', String(timeOfDay));
   params.set('season', activeSeason);
+  params.set('month', String(activeMonth));
   params.set('p', p);
   params.set('t', t);
   const url = `${location.origin}${location.pathname}#${params.toString()}`;
@@ -23247,7 +23421,9 @@ function restoreHashSnapshot() {
   const tVal = parseFloat(params.get('time'));
   if (Number.isFinite(tVal)) timeOfDay = THREE.MathUtils.clamp(tVal, 6, 21);
   const sVal = params.get('season');
-  if (sVal && SEASON_PALETTES[sVal]) activeSeason = sVal;
+  if (sVal && SEASON_PALETTES[sVal]) { activeSeason = sVal; activeMonth = SEASON_MONTH[sVal]; }
+  const mVal = parseInt(params.get('month'), 10);
+  if (mVal >= 1 && mVal <= 12) { activeMonth = mVal; activeSeason = MONTH_SEASON(mVal); }
   updateEnvironmentSimulation();
 
   const place = params.get('place');

@@ -43,7 +43,7 @@ window.__updateProgress(15, '正在啟動三維校園引擎...');
 if ('serviceWorker' in navigator) {
   window.addEventListener('DOMContentLoaded', () => {
     window.__updateProgress(25, '校園核心樣式就緒...');
-    navigator.serviceWorker.register('./sw.js?v=2.12.17').then(reg => {
+    navigator.serviceWorker.register('./sw.js?v=2.12.18').then(reg => {
       reg.update();
     }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -76,7 +76,7 @@ document.addEventListener('click', function(e) {
 </script>
 <!-- modulepreload 必須放在 importmap 之後，否則瀏覽器會在 import map 生效前解析 "three" 而失敗 -->
 <link rel="modulepreload" href="./vendor/three/three.module.js">
-<link rel="modulepreload" href="./campus-3d.js?v=2.12.17">
+<link rel="modulepreload" href="./campus-3d.js?v=2.12.18">
 <style>
   /* ==========================================================================
      PKU-3D ("燕园 · 循图，走进燕园") Editorial Design System
@@ -1159,6 +1159,11 @@ document.addEventListener('click', function(e) {
     font-size: 11px;
     transition: all 0.14s;
   }
+  .month-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .month-row input[type=range] { flex: 1; accent-color: #b5562e; }
+  .month-row span { min-width: 3.2em; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .bloom-now { margin-top: 6px; font-size: 12px; line-height: 1.6; opacity: .85; }
+  .bloom-now b { font-weight: 600; margin-right: 2px; }
   .segmented button.is-active {
     background: var(--paper);
     color: var(--ink);
@@ -3143,6 +3148,11 @@ document.addEventListener('click', function(e) {
         <button type="button" data-season="autumn">秋</button>
         <button type="button" data-season="winter">冬</button>
       </div>
+      <div class="month-row">
+        <input type="range" id="month-slider" min="1" max="12" step="1" value="11" aria-label="月份（樹木物候）">
+        <span id="month-label">11 月</span>
+      </div>
+      <div id="bloom-now" class="bloom-now" aria-live="polite"></div>
     </div>
 
     <div class="control-block">
@@ -3635,6 +3645,6 @@ document.addEventListener('click', function(e) {
 <script src="./vendor/qrcode.min.js"></script>
 <script src="./data/spots.js"></script>
 <script src="./campus-ui.js?v=2.10.1"></script>
-<script type="module" src="./campus-3d.js?v=2.12.17"></script>
+<script type="module" src="./campus-3d.js?v=2.12.18"></script>
 </body>
 </html>
