@@ -1164,6 +1164,7 @@ const CAMPUS_PERIMETER_PX = [
 const WEST_WALL_PX = [[65.7, -67.6], [51.4, 149.4], [39.2, 158.8], [45, 193.7], [76.2, 245.3], [105.2, 308.8], [134.6, 381.8], [152.9, 437.2], [180, 480]];
 const NORTH_WALL_PX = [[65.7, -67.6], [955, 22]];
 const northWallZAt = x => { const [a, b] = NORTH_WALL_PX; const t = (x - X(a[0])) / (X(b[0]) - X(a[0])); return Z(a[1]) + t * (Z(b[1]) - Z(a[1])); };
+const WEST_ROAD_PTS = [[-38.0, -44.5], [-52.0, -69.02], [-113.6, -75.23]];   // v2.12.25 北側西段水泥車道折線 [x, z]
 const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) { const [x1, y1] = WEST_WALL_PX[i], [x2, y2] = WEST_WALL_PX[i + 1]; if (py >= Math.min(y1, y2) && py <= Math.max(y1, y2)) return x1 + (x2 - x1) * (py - y1) / ((y2 - y1) || 1); } return WEST_WALL_PX[0][0]; };
 
 // 1) Campus Inner Ground Polygon Slab & Full Sports Ground Campus Lawn Buffer Zone (`校園草地緩衝區域`)
@@ -1192,12 +1193,14 @@ const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) 
   // Full Campus Green Lawn Buffer Zone (`運動場與學校後圍牆之間的校園草地緩衝區域`)
   // Covers the entire western/rear campus inside the Rear Perimeter Wall (`V0 -> V6 -> V5 -> V4`) around the PU Track & Courts!
   const sportsTurfPts = [
-    [58, 24],   // NW corner inside North & West Rear Walls
-    [412, 24],  // North edge along rear of North Building (`愛悅樓`)
+    // v2.12.25 依衛星圖新圍牆線內縮約 0.5 m：西北角草地、排球場北側草地一併鋪設
+    [68, -64.5],  // NW corner
+    [412, -30],   // North edge along north wall
+    [412, 24],    // 北棟後方
     [412, 340], // East edge along West Building (`專科大樓`) & New Wing (`幼兒園`)
     [367, 372], // SE corner inside Sports Ground Rear Wall
     [180, 477], // SW tip inside Sports Ground Rear Wall
-    [58, 327]   // West corner inside West Rear Wall
+    [154, 434], [136.5, 380], [107.5, 306.5], [78.5, 243], [47.5, 193], [41.5, 159.5], [53.5, 149]
   ];
   const turfShape = new THREE.Shape();
   sportsTurfPts.forEach(([px, py], idx) => {
@@ -1369,7 +1372,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [X(772), Z(320), 4.5], // 學校新南側門 (東棟大樓右側)
     [X(657), Z(318), 4.8], // 學校舊南側門 (南棟大樓東側 1F 興學樓大字下通道後面)
     [X(429), Z(374), 4.5], // 幼兒園大門 (新棟大樓南側大門)
-    [X(55.3), Z(90),  5.0], // 西側後門
+    [X(64.5), Z(-49.3),  5.0], // 西側後門（v2.12.25 西北角）
     [X(79.3), Z(252), 4.2]  // 司令台後小門
   ];
 
@@ -2373,7 +2376,8 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   }
 
   // 2) School West Rear Perimeter Wall (`V0(56,22) -> V6(56,328)`, enclosing the West Campus Lawn Buffer, Ball Courts & Command Stage)
-  addMasonryWallRun(X(65.7), Z(-67.6), X(56.4), Z(73), wallSportsMat, true, -1, true);
+  addMasonryWallRun(X(65.7), Z(-67.6), X(65.28), Z(-61.3), wallSportsMat, true, -1, true);
+  addMasonryWallRun(X(63.7), Z(-37.3), X(54.19), Z(107), wallSportsMat, true, -1, true);   // v2.12.25 後門移至西北角，原後門段補牆
 
   // ==========================================================================
   // 西側學校後門 (`學校西側的後門_可以看到西棟大樓與北棟大樓.jpg` 1:1 實景精準建模)
@@ -2767,7 +2771,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     landmarkGroupMap.set('west-sports-gate', swg);
   }
 
-  buildWestBackGate(X(55.3), Z(90)); // 西側學校後門 (建興南路50巷)
+  buildWestBackGate(X(64.5), Z(-49.3)); // 西側學校後門（v2.12.25 依衛星圖移至西北角，接北側車道）
   // v2.12.9 依 2024 街景與實景照片（建興南路 35 號前、司令台後小門）：運動場西側圍牆與南側同款——
   //   寬白漆龜裂柱墩＋玫瑰紅多層線腳柱頭、其間白色直條欄杆（局部鏽蝕），球場段牆頂加綠色菱形鐵絲網；
   //   牆外為低矮水泥花台（灌木與雜草），司令台後為單扇白色直條小門
@@ -14931,7 +14935,17 @@ function buildSportsLayer() {
   });
 
   bg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'ball-courts'; });
-  layerGroups.sports.add(bg);
+  // v2.12.25 依使用者於校園樹木分布衛星圖之標註：排球場與籃球場緊貼西牆內側、與西牆平行（約 5.9°），
+  //   整組北移約 22 m（排球場北側為草地，西北角茄苳旁）；以兩球場中心連線中點為軸整組旋轉平移
+  {
+    const P = new THREE.Vector3(-96.05, 0, -14.1), Q = new THREE.Vector3(-103.25, 0, -35.8);
+    const pivot = new THREE.Group();
+    pivot.position.copy(Q); pivot.rotation.y = -0.103;
+    pivot.userData = { landmarkId: 'ball-courts' };
+    bg.position.set(-P.x, 0, -P.z);
+    pivot.add(bg);
+    layerGroups.sports.add(pivot);
+  }
   clickableGroups.push(bg);
   landmarkGroupMap.set('ball-courts', bg);
 
@@ -18387,30 +18401,23 @@ function buildNorthCarport() {
   const lawnBufferMat   = new THREE.MeshStandardMaterial({ color: 0x5e9146, roughness: 0.92 }); // 車道與跑道間草坪緩衝帶
   registerLawnMat(lawnBufferMat);
 
-  // 水泥混凝土路面主體 (高出地表 0.055m，避免與底層 z-fight)
-  addBox(layerGroups.roads, westRoadLen, 0.10, westRoadW, concreteRoadMat, westRoadCx, 0.055, westRoadZ, false);
-
-  // 橫向伸縮縫 (Transverse Contraction Joints，實景照片 20261110_135221.jpg 每 4.5m 規律切縫)
-  for (let jx = westRoadX1 - 4.5; jx > westRoadX2 + 1.0; jx -= 4.5) {
-    addBox(layerGroups.roads, 0.045, 0.012, westRoadW - 0.08, jointSeamMat, jx, 0.061, westRoadZ, false);
+  // v2.12.25 依校園樹木分布衛星圖：西段水泥車道自北棟西端斜向西北，沿北圍牆內側（距牆約 4.5 m）通往西北角後門；
+  //   排球場、籃球場與草地位於車道南側（原東西向直線車道會穿過北移後之排球場）
+  const westRoadPts = WEST_ROAD_PTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
+  for (let i = 0; i < westRoadPts.length - 1; i++) {
+    const p1 = westRoadPts[i], p2 = westRoadPts[i + 1];
+    const L = p1.distanceTo(p2);
+    const sg = new THREE.Group();
+    sg.position.set((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
+    sg.rotation.y = -Math.atan2(p2.z - p1.z, p2.x - p1.x);
+    addBox(sg, L + westRoadW * 0.6, 0.10, westRoadW, concreteRoadMat, 0, 0.055, 0, false);
+    addBox(sg, L + 0.1, 0.010, 0.035, jointSeamMat, 0, 0.106, 0, false);
+    for (let jx = -L / 2 + 2.2; jx < L / 2 - 1; jx += 4.5) addBox(sg, 0.045, 0.012, westRoadW - 0.08, jointSeamMat, jx, 0.107, 0, false);
+    [-1, 1].forEach(sd => addBox(sg, L + 0.1, 0.16, 0.22, curbMat, 0, 0.085, sd * (westRoadW / 2 + 0.11), false));
+    layerGroups.roads.add(sg);
   }
-  // 縱向中央切縫 (Longitudinal Centerline Joint)
-  addBox(layerGroups.roads, westRoadLen, 0.010, 0.035, jointSeamMat, westRoadCx, 0.060, westRoadZ, false);
-
-  // 南側與北側水泥路緣石 (Curbs，高出路面 0.08m，寬 0.22m)
-  const southCurbZ = westRoadZ + westRoadW / 2 + 0.11; // -37.44m
-  const northCurbZ = westRoadZ - westRoadW / 2 - 0.11; // -42.86m
-  addBox(layerGroups.roads, westRoadLen, 0.16, 0.22, curbMat, westRoadCx, 0.085, southCurbZ, false);
-  addBox(layerGroups.roads, westRoadLen, 0.16, 0.22, curbMat, westRoadCx, 0.085, northCurbZ, false);
-
-  // 車道南緣與運動場外圍人行步道之間的綠意草坪緩衝帶 (Lawn Buffer Strip，照片 135221.jpg 實景)
-  // 由南側路緣石 z=-37.33m 延伸至跑道外圍步道邊緣 z=-35.0m，寬度約 2.33m
-  const lawnBufferZ = (southCurbZ + 0.11 + -35.0) / 2; // -36.16m
-  const lawnBufferW = Math.abs(-35.0 - (southCurbZ + 0.11)); // 2.33m
-  addBox(layerGroups.roads, westRoadLen + 2.0, 0.08, lawnBufferW, lawnBufferMat, westRoadCx, 0.045, lawnBufferZ, false);
-
-  // 【車道西端與西側學校後門平順交會區】(西側後門鋪面交界引導)
-  addBox(layerGroups.roads, 4.0, 0.09, 6.8, concreteRoadMat, westRoadX2 + 2.0, 0.052, -39.0, false);
+  // 車道西端與西北角後門平順交會區
+  { const e = westRoadPts[westRoadPts.length - 1]; addBox(layerGroups.roads, 4.0, 0.09, 6.8, concreteRoadMat, e.x - 1.0, 0.052, e.z, false); }
 
   // 藍色浪板單層鋼構大車棚 (實景相片 135208.jpg 天藍色烤漆方管鋼架柱梁、深藍浪板屋頂與停放機車汽車)
   const sw = (705 - 430) * S, sd = 22 * S, scx = X((430 + 705) / 2), scz = Z(42);
@@ -19093,32 +19100,32 @@ const CAMPUS_TREE_REGISTRY = [
   ["442269", "茄冬", -81.6, 48.2, 0],
   ["442217", "菲島福木", -77.8, 55.9, 0],
   ["442210", "菲島福木", -75.0, 54.3, 0],
-  ["442089", "印度紫檀", -76.8, -73.5, 0],
+  ["442089", "印度紫檀", -76.7, -74.9, 0],
   ["442202", "菲島福木", -71.7, 52.4, 0],
   ["442196", "菲島福木", -68.7, 50.7, 0],
-  ["442085", "印度紫檀", -72.5, -72.6, 0],
+  ["442085", "印度紫檀", -72.3, -74.5, 0],
   ["442186", "菲島福木", -65.8, 49.1, 0],
   ["442276", "可可椰子", -69.0, 50.0, 0],
   ["442172", "菲島福木", -62.0, 46.9, 0],
   ["442074", "黃金風鈴木", -64.4, -65.6, 0],
   ["442161", "菲島福木", -59.0, 45.2, 0],
-  ["442059", "蘭嶼肉桂", -62.5, -72.3, 0],
+  ["442059", "蘭嶼肉桂", -62.4, -73.5, 0],
   ["442145", "菲島福木", -56.6, 43.9, 0],
   ["442072", "黃金風鈴木", -59.8, -64.7, 0],
-  ["442055", "蘭嶼肉桂", -59.6, -71.7, 0],
+  ["442055", "蘭嶼肉桂", -59.4, -73.2, 0],
   ["442138", "菲島福木", -54.5, 42.7, 0],
   ["442134", "菲島福木", -52.5, 41.6, 0],
-  ["442046", "印度紫檀", -55.5, -71.2, 0],
+  ["442046", "印度紫檀", -55.3, -72.8, 0],
   ["442129", "菲島福木", -51.0, 40.7, 0],
   ["442070", "黃金風鈴木", -54.8, -63.4, 0],
   ["442122", "菲島福木", -49.0, 39.6, 0],
   ["442119", "菲島福木", -47.4, 38.7, 0],
-  ["442051", "印度紫檀", -51.2, -70.0, 0],
+  ["442051", "印度紫檀", -49.8, -71.7, 0],
   ["442112", "菲島福木", -45.9, 37.8, 0],
   ["442106", "菲島福木", -44.4, 37.0, 0],
   ["442049", "印度紫檀", -46.9, -69.2, 0],
   ["442099", "菲島福木", -42.7, 36.0, 0],
-  ["442031", "風鈴木", -46.5, -61.3, 0],
+  ["442031", "風鈴木", -44.4, -62.5, 0],
   ["442068", "菲島福木", -40.8, 34.9, 0],
   ["442063", "蘭嶼肉桂", -37.7, 35.3, 0],
   ["442016", "黃金風鈴木", -38.9, -35.0, 0],
@@ -19131,7 +19138,7 @@ const CAMPUS_TREE_REGISTRY = [
   ["442030", "楓香", -39.7, -8.3, 0],
   ["442040", "印度紫檀", -38.5, -68.0, 0],
   ["442281", "雨豆樹", -30.4, 28.5, 0],
-  ["441981", "楓香", -30, -31.8, 0],
+  ["441981", "楓香", -30.0, -31.8, 0],
   ["442007", "波羅蜜", -30.7, -58.4, 0],
   ["441997", "緬梔", -30.5, -59.8, 0],
   ["441990", "苦楝", -29.2, -58.6, 0],
@@ -21977,11 +21984,11 @@ const ROUTE_NODES = {
   'track-east':      [382, 235],
   'sports-track':    [294, 255],
   'command-stage':   [192, 268],
-  'ball-courts':     [145, 205],
+  'ball-courts':     [122, 145],
   'east-gate':       [955, 73],
   'carport':         [568, 73],
   'driveway-mid':    [370, 85],
-  'west-back-gate':  [56, 90]
+  'west-back-gate':  [64.5, -49.3]
 };
 
 const ROUTE_EDGES = [
