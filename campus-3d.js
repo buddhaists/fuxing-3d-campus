@@ -10437,8 +10437,8 @@ function buildSouthBuilding() {
   const sandyKnollMat = new THREE.MeshStandardMaterial({ color: 0xb9a37f, roughness: 0.95 });
   const moundCz = zNorth - 0.05, moundRz = moundCz - (curbZ + 0.12);
   const berms = [
-    { cx: ax(5) - 2.4, rx: 3.6, H: 1.0, mat: grassMoundMat },
-    { cx: ax(7) - 1.3, rx: 6.4, H: 1.75, mat: sandyKnollMat },
+    { cx: ax(5) - 1.6, rx: 2.6, H: 0.7, mat: grassMoundMat },     // 照片 4、5：興學樓梯西側窄草坪
+    { cx: ax(7) + 1.6, rx: 7.2, H: 1.6, mat: sandyKnollMat },     // 照片 3、4：天藍塔前欖仁樹下裸露沙土丘（約 x 21～35）
     { cx: ax(10) - 1.2, rx: 9.4, H: 2.05, mat: grassMoundMat }
   ];
   berms.forEach((bm, i) => {
@@ -10451,7 +10451,7 @@ function buildSouthBuilding() {
     return PY + h;
   };
   const leftMoundGroup = new THREE.Group();
-  const lMoundCx = ax(7) - 2.2, lMoundCz = zNorth - 1.55;
+  const lMoundCx = ax(7) + 1.2, lMoundCz = zNorth - 1.55;   // 恐龍位於欖仁樹幹西側（照片 3）
   leftMoundGroup.position.set(lMoundCx, 0, lMoundCz);
 
   // 14.5 【綠色長頸恐龍雕塑】(Iconic Green Sauropod Dinosaur Sculpture — 依 south_photo_02/03 實景精細雕塑)
@@ -10566,7 +10566,7 @@ function buildSouthBuilding() {
     const V = (x, y, z) => new THREE.Vector3(x, y, z);
     // 大葉欖仁
     {
-      const tx = ax(7) - 1.2, tz = zNorth - 2.1, by = hAt(tx, tz) - 0.05, H = 8.2;
+      const tx = ax(6) + 0.3, tz = zNorth - 2.1, by = hAt(tx, tz) - 0.05, H = 8.2;   // 照片 3：樹幹位於天藍塔東緣前方
       limb(V(tx, by, tz), V(tx + 0.25, by + H * 0.5, tz - 0.1), 0.36, 0.24);
       limb(V(tx + 0.25, by + H * 0.5, tz - 0.1), V(tx + 0.1, by + H * 0.92, tz), 0.24, 0.1);
       for (let k = 0; k < 6; k++) {                       // 板根
@@ -10590,6 +10590,7 @@ function buildSouthBuilding() {
         }
       });
       addBox(frontLand, 0.18, 0.12, 0.02, new THREE.MeshStandardMaterial({ color: 0xd8f0a8 }), tx, by + 1.5, tz - 0.38, false);   // 樹名牌
+      addPhenoGround(frontLand, '欖仁樹', tx, by + 0.02, tz, 4.5);
     }
     // 細高小喬木（細碎羽葉、疏朗樹冠）
     const slender = (tx, tz, H, w) => {
@@ -19099,32 +19100,32 @@ const CAMPUS_TREE_REGISTRY = [
   ["442007", "波羅蜜", -26.8, -48.0, 0],
   ["441997", "緬梔", -26.5, -49.4, 0],
   ["441990", "苦楝", -25.3, -48.5, 0],
-  ["442157", "金露花", -15, 6.8, 0],
+  ["442157", "金露花", -9.5, 10.6, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   ["442315", "印度紫檀", -13.1, -51.7, 0],
   ["442139", "馬拉巴栗", -12.0, -23.9, 0],
   ["442144", "樟樹", -12.7, -23.5, 0],
   ["442133", "馬拉巴栗", -10.9, -23.8, 0],
   ["442319", "印度紫檀", -10.1, -51.9, 0],
   ["442150", "榕樹", -9.5, -19.8, 0],
-  ["839655", "桂花", -5.2, 4.5, 0],
+  ["839655", "桂花", -11.2, 10.7, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   ["442332", "風鈴木", -5.6, -55.5, 0],
-  ["442179", "金露花", -3.7, 7, 0],
-  ["442188", "龍柏", -1.6, 6.3, 0],
+  ["442179", "金露花", -7.8, 10.9, 0],   // v2.12.22 依南棟／幼兒園前照片調整
+  // 442188 龍柏：與幼兒園前照片建模之龍柏為同一株，不重複建置
   ["442323", "風鈴木", -1, -55.5, 0],
   ["442123", "黃槿", 0.7, -23.5, 0],
-  ["442211", "樟樹", 2.5, 7.0, 0],
-  ["442204", "瓊崖海棠", 2.8, 6.8, 0],
+  ["442211", "樟樹", 4.4, 6.6, 0],   // v2.12.22 依南棟／幼兒園前照片調整
+  ["442204", "瓊崖海棠", 1.2, 7.3, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   ["442115", "水黃皮", 6.3, -22.3, 0],
-  ["442218", "茄冬", 11.2, 6.5, 0],
+  ["442218", "茄冬", 7.6, 6.9, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   ["442107", "火焰木", 10.4, -21.1, 0],
   ["442334", "印度紫檀", 12.7, -55.5, 0],
   ["442330", "印度紫檀", 16.4, -55.5, 0],
-  ["442230", "黃金風鈴木", 15.5, 6.2, 0],
+  ["442230", "黃金風鈴木", 19.6, 6.8, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   ["442100", "黃槿", 28, -17.7, 0],
-  ["442237", "火焰木", 30.3, 8.0, 0],
+  ["442237", "火焰木", 33.4, 7.8, 0, 0.7],   // v2.12.22 依南棟／幼兒園前照片調整
   ["442092", "黃金風鈴木", 31.8, -17.4, 0],
-  ["442263", "樟樹", 32.2, 3.9, 0],
-  ["442252", "竹柏", 36.5, 6.8, 0],
+  ["442263", "樟樹", 34.6, 6.6, 0, 0.5],   // v2.12.22 依南棟／幼兒園前照片調整
+  ["442252", "竹柏", 40.6, 7.0, 0],   // v2.12.22 依南棟／幼兒園前照片調整
   ["441975", "印度紫檀", 49.7, -33.5, 0],
   ["839658", "大葉羅漢松", 66.5, 18.6, 0],
   ["839651", "臺灣海桐", 67.5, 18.6, 0],
@@ -19363,7 +19364,7 @@ const CAMPUS_TREE_REGISTRY = [
   const crownR = { '菲島福木': 1.3, '蘭嶼肉桂': 1.4, '龍柏': 1.0, '竹柏': 1.2, '大葉羅漢松': 1.0, '七里香': 0.9, '金露花': 0.8, '桂花': 1.0, '臺灣海桐': 1.0, '田代氏石斑木': 0.9, '黃椰子': 1.6, '扇葉蒲葵': 1.8, '可可椰子': 3.0, '大王椰子': 3.2, '雨豆樹': 6.5, '榕樹': 5.5, '大葉桃花心木': 5.5, '印度紫檀': 5.0, '樟樹': 4.5, '鳳凰木': 5.0 };
   const SPORTS_KIND_SP = { breadfruit: '麵包樹', crapeMyrtle: '大花紫薇', rosewood: '印度紫檀' };
   const allTrees = CAMPUS_TREE_REGISTRY.concat(SPORTS_NAMED_TREES.map((t, i) => ['photo' + i, SPORTS_KIND_SP[t.kind], t.x, t.z, 0]));
-  allTrees.forEach(([id, sp, x, z, lean]) => {
+  allTrees.forEach(([id, sp, x, z, lean, k = 1]) => {   // k：個別縮放（新植幼樹等）
     const fn = SP[sp];
     if (!fn) return;
     const n0 = grp.children.length;
@@ -19377,8 +19378,21 @@ const CAMPUS_TREE_REGISTRY = [
     const sink = inCourtyardSink(x, z) ? COURTYARD_SINK.D : 0;
     for (let i = n0; i < grp.children.length; i++) {
       const o = grp.children[i];
+      if (k !== 1) {                                    // 以樹幹基部為中心等比縮放
+        o.position.set(x + (o.position.x - x) * k, o.position.y * k, z + (o.position.z - z) * k);
+        o.scale.multiplyScalar(k);
+      }
       o.position.y -= sink;
       o.traverse(c => { c.userData.keepLevel = true; });
+    }
+    if (k < 0.6) {                                      // 新植幼樹：三腳木支架
+      const stake = M(0xa38c6b);
+      for (let q = 0; q < 3; q++) {
+        const a = (q / 3) * Math.PI * 2 + 0.4;
+        const st = addMesh(grp, new THREE.CylinderGeometry(0.03, 0.035, 2.0, 6), stake, x + Math.cos(a) * 0.45, 0.95 - sink, z + Math.sin(a) * 0.45);
+        st.rotation.z = Math.cos(a) * 0.35; st.rotation.x = -Math.sin(a) * 0.35;
+        st.userData.keepLevel = true;
+      }
     }
     campusTreeRecords.push({ x, z, r: crownR[sp] || 3.2, species: /椰|蒲葵/.test(sp) ? 'palm' : (/風鈴|緬梔|紫薇|火焰|鳳凰|藍花楹/.test(sp) ? 'flowering' : 'broad') });
   });
