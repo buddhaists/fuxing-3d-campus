@@ -1042,6 +1042,7 @@ window.inCourtyardSink = inCourtyardSink;
 // Base terrain（中庭範圍挖空，另以下沉中庭地基與擋土牆圍塑）
 {
   const baseMat = new THREE.MeshStandardMaterial({ color: 0x8eb374, roughness: 0.92 });
+  registerLawnMat(baseMat);
   const C = COURTYARD_SINK, E = 490;
   [[-E, E, -E, C.z1], [-E, E, C.z2, E], [-E, C.x1, C.z1, C.z2], [C.x2, E, C.z1, C.z2]].forEach(([x1, x2, z1, z2]) =>
     addBox(layerGroups.roads, x2 - x1, 0.2, z2 - z1, baseMat, (x1 + x2) / 2, -0.14, (z1 + z2) / 2, false));
@@ -1426,6 +1427,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
 
   // Courtyard Central Open Space (Curved mounds and authentic dinosaur are accurately integrated at South Building)
   const grassMoundMat = new THREE.MeshStandardMaterial({ color: 0x67a353, roughness: 0.85 });
+  registerLawnMat(grassMoundMat);
   const curbWhiteMat = new THREE.MeshStandardMaterial({ color: 0xeeede6, roughness: 0.72 });
 
   // Raised White-Curbed Rectangular Green Lawn Planters in front of North Building (matching north_elevation.png & p3.jpg!)
@@ -2999,6 +3001,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     const almondG = new THREE.MeshStandardMaterial({ color: 0x3f7a34, roughness: 0.8 });
     const almondG2 = new THREE.MeshStandardMaterial({ color: 0x5a8f3a, roughness: 0.8 });
     const almondRed = new THREE.MeshStandardMaterial({ color: 0x9a5a34, roughness: 0.82 });
+    registerPhenoMats('欖仁樹', { core: [almondG], outer: [almondG2, almondRed] });
     const tropicalAlmond = (p, h, rot, sc = 1) => {
       const g = new THREE.Group();
       g.position.set(p.x, 0, p.z);
@@ -3035,7 +3038,8 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     };
     const bigAlmondP = outAtX(95.0);      // 街景：緊鄰第二組石桌東側
     treePit(bigAlmondP);
-    tropicalAlmond(V(bigAlmondP.x, 0.14, bigAlmondP.z), 8.4, 0.6, 1.45);   // 轉角大葉欖仁：高約 12 m、冠幅約 11 m
+    tropicalAlmond(V(bigAlmondP.x, 0.14, bigAlmondP.z), 8.4, 0.6, 1.45);
+    addPhenoGround(segBg, '欖仁樹', bigAlmondP.x, 0.16, bigAlmondP.z, 5.5);   // 轉角大葉欖仁：高約 12 m、冠幅約 11 m
     // 小葉欖仁：通直灰褐主幹，枝條水平輪生成 5～6 層明顯分層的塔狀樹冠，細碎小葉平鋪於枝上、淺綠通透
     const smallLeafTerminalia = (p, h) => {
       const g = new THREE.Group();
@@ -3043,6 +3047,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       const greyBark = new THREE.MeshStandardMaterial({ color: 0x77706a, roughness: 0.88 });
       const leafA = new THREE.MeshStandardMaterial({ color: 0x6fa84a, roughness: 0.8 });
       const leafB = new THREE.MeshStandardMaterial({ color: 0x86b95a, roughness: 0.8 });
+      registerPhenoMats('小葉欖仁', { core: [leafA], outer: [leafB] });
       limb(g, V(0, 0, 0), V(0, h, 0), 0.2, 0.06, greyBark, 9);
       const tiers = 6;
       for (let t = 0; t < tiers; t++) {
@@ -3067,6 +3072,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     const smallTermP = outAtX(85.6);
     treePit(smallTermP);
     smallLeafTerminalia(V(smallTermP.x, 0.14, smallTermP.z), 9.0);
+    addPhenoGround(segBg, '小葉欖仁', smallTermP.x, 0.16, smallTermP.z, 3.2);
     // 轉角大葉欖仁前之水泥電線桿（街景：立於花台矮牆外鋪面上，頂部路燈挑臂伸向 42 巷）
     {
       const poleMat = new THREE.MeshStandardMaterial({ color: 0x8f8a82, roughness: 0.85 });
@@ -9756,6 +9762,7 @@ function buildSouthBuilding() {
   const southSolarPanelMat = new THREE.MeshStandardMaterial({ color: 0x182436, roughness: 0.2, metalness: 0.65 });
   const southSolarFrameMat = new THREE.MeshStandardMaterial({ color: 0x8c3832, roughness: 0.5, metalness: 0.35 }); // 暗紅屋簷鋼構支架
   const grassMoundMat = new THREE.MeshStandardMaterial({ color: 0x5aa044, roughness: 0.88 });
+  registerLawnMat(grassMoundMat);
   const sandySoilMat = new THREE.MeshStandardMaterial({ color: 0x9e8f75, roughness: 0.92 });
   const dinoSculptureMat = new THREE.MeshStandardMaterial({ color: 0x3b7a47, roughness: 0.5 });
   const hedgeDarkGreenMat = new THREE.MeshStandardMaterial({ color: 0x235328, roughness: 0.9 });
@@ -10546,6 +10553,7 @@ function buildSouthBuilding() {
     const almondG = new THREE.MeshStandardMaterial({ color: 0x3c7431, roughness: 0.8 });
     const almondG2 = new THREE.MeshStandardMaterial({ color: 0x55893a, roughness: 0.8 });
     const almondRed = new THREE.MeshStandardMaterial({ color: 0x9c5a30, roughness: 0.82 });
+    registerPhenoMats('欖仁樹', { core: [almondG], outer: [almondG2, almondRed] });
     const fineA = new THREE.MeshStandardMaterial({ color: 0x4a8236, roughness: 0.8 });
     const fineB = new THREE.MeshStandardMaterial({ color: 0x66994a, roughness: 0.8 });
     const up = new THREE.Vector3(0, 1, 0);
@@ -13351,6 +13359,8 @@ function buildNewBuilding() {
     const plumeriaTrunkMat = new THREE.MeshStandardMaterial({ color: 0x6e5843, roughness: 0.92 });
     const plumeriaLeafMat = new THREE.MeshStandardMaterial({ color: 0x367c3b, roughness: 0.72 });
     const flowerWhiteMat = new THREE.MeshStandardMaterial({ color: 0xfffaea, roughness: 0.45 });
+    const kgPlumeriaFlowerMat = new THREE.MeshStandardMaterial({ color: 0xfffaea, roughness: 0.45 });
+    registerPhenoMats('緬梔', { outer: [plumeriaLeafMat], flower: [kgPlumeriaFlowerMat] });
     const juniperMat = new THREE.MeshStandardMaterial({ color: 0x1f4826, roughness: 0.84 });
     const hedgeMat1 = new THREE.MeshStandardMaterial({ color: 0x4a8c3d, roughness: 0.80 });
     const hedgeMat2 = new THREE.MeshStandardMaterial({ color: 0x275e2c, roughness: 0.82 });
@@ -13371,6 +13381,7 @@ function buildNewBuilding() {
     //   立面前連續修剪綠籬（約 0.9 m）與零星圓灌木；草坪上斜向踏石步道通往入口階梯，階梯西側兩顆景觀石；
     //   綠籬前兩座黃色移動拒馬與交通錐
     const pX = ax(7) + 0.35, pZ = zF - 1.55;
+    addPhenoGround(g, '緬梔', pX, 0.2, pZ, 2.2);
     const nbUp = new THREE.Vector3(0, 1, 0);
     let nsd = 47; const nr = () => ((nsd = (nsd * 16807) % 2147483647) / 2147483647);
     const nLimb = (a, b2, r0, r1, mat) => {
@@ -13400,7 +13411,7 @@ function buildNewBuilding() {
         }
         const tf = addMesh(g, new THREE.DodecahedronGeometry(0.42, 1), plumeriaLeafMat, e.x, e.y + 0.2, e.z);
         tf.scale.set(1.2, 0.55, 1.2);
-        if (i % 3 === 0) addMesh(g, new THREE.SphereGeometry(0.09, 6, 5), flowerWhiteMat, e.x + 0.1, e.y + 0.42, e.z, false);
+        if (i % 2 === 0) addMesh(g, new THREE.SphereGeometry(0.11, 6, 5), kgPlumeriaFlowerMat, e.x + 0.1, e.y + 0.42, e.z, false);
       });
     }
     // 龍柏（東側，濃密不規則簇葉、略帶黃褐枯梢）與細高針葉樹
@@ -14306,6 +14317,7 @@ function buildNewBuilding() {
     const greenSteelMat  = new THREE.MeshStandardMaterial({ color: 0x2e8540, roughness: 0.45, metalness: 0.35 });
     const blueTarpMat    = new THREE.MeshStandardMaterial({ color: 0x2468b8, roughness: 0.55, side: THREE.DoubleSide });
     const turfGreenMat   = new THREE.MeshStandardMaterial({ color: 0x4da856, roughness: 0.86 });
+    registerLawnMat(turfGreenMat);
     const matBluePad     = new THREE.MeshStandardMaterial({ color: 0x4c8cd6, roughness: 0.82 });
 
     // --- 5.1 Outdoor Playground Surface (`zA = 26.70m` to `zWall = 34.80m`, 100% Inside Perimeter Wall!) ---
@@ -14596,6 +14608,7 @@ function buildSportsLayer() {
     new THREE.MeshStandardMaterial({ color: 0x549b42, roughness: 0.88, side: THREE.DoubleSide })
   );
   innerGrass.rotation.x = -Math.PI / 2; innerGrass.position.set(cx, 0.14, cz); innerGrass.receiveShadow = true;
+  registerLawnMat(innerGrass.material);
   tg.add(innerGrass);
 
   // 8) v2.12.6 依 Google 空拍：運動場內場僅為草皮，無跳遠助跑道、沙坑等設施（原跳遠設施與警示錐移除）
@@ -17298,6 +17311,7 @@ function buildMainGateLayer() {
   const plumeriaLeafMat   = new THREE.MeshStandardMaterial({ color: 0x28632a, roughness: 0.72 });
   const plumeriaFlowerMat = new THREE.MeshStandardMaterial({ color: 0xfffbeb, roughness: 0.5 });
   const plumeriaCenterMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
+  registerPhenoMats('緬梔', { outer: [plumeriaLeafMat], flower: [plumeriaFlowerMat, plumeriaCenterMat] });
 
   const curbMat              = new THREE.MeshStandardMaterial({ color: 0xd8dce2, roughness: 0.72 });
   const walkwayPurpleCurbMat = new THREE.MeshStandardMaterial({ color: 0x9376b5, roughness: 0.62 });
@@ -17311,6 +17325,7 @@ function buildMainGateLayer() {
     // 依《學校前庭綠籬規劃平面圖》：臨復興路一側為向草坪內凹之大圓弧（FU-SHING 矮牆北端 → 老榕樹後方 → 東側門）
     const northLawnTex = makeForecourtLawnTexture(); northLawnTex.repeat.set(0.6, 0.6);
     const northTurfMat = new THREE.MeshStandardMaterial({ map: northLawnTex, roughness: 0.88, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    registerLawnMat(northTurfMat);
     const northCurvePts = sampleXZCurve(FORECOURT_NORTH_CURVE, 0.5);
     {
       const edge = offsetXZ(northCurvePts, 0.15, -1, 0);
@@ -17582,6 +17597,7 @@ function buildMainGateLayer() {
       }
       addMesh(pg, new THREE.TorusGeometry(0.17, 0.025, 4, 12), stakeMat, 0.03, 1.5, 0, false).rotation.x = Math.PI / 2;
       mg.add(pg);
+      addPhenoGround(mg, '緬梔', 86.8, 0.1, -22.4, 2.6);
     }
 
     // 草坪南緣黑色橢圓奇石與訪客車位立牌
@@ -17752,6 +17768,8 @@ function buildMainGateLayer() {
     //   北段兩排綠籬間另有數株 5～7 m 幼樹）：細長灰褐樹幹斜上分枝，二回羽狀細葉形成稀疏通透的層狀傘冠
     const jacLeafMat = new THREE.MeshStandardMaterial({ color: 0x6f9e3f, roughness: 0.80 });
     const jacLeafMat2 = new THREE.MeshStandardMaterial({ color: 0x86b04c, roughness: 0.80 });
+    const jacFlowerMat = new THREE.MeshStandardMaterial({ color: 0x8a78d8, roughness: 0.6 });
+    registerPhenoMats('藍花楹', { core: [jacLeafMat2], outer: [jacLeafMat], flower: [jacFlowerMat] });
     const jacTrunkMat = new THREE.MeshStandardMaterial({ color: 0x6b5a48, roughness: 0.88 });
     const hedgeXAt = z => { let best = northCurvePts[0]; northCurvePts.forEach(p => { if (Math.abs(p.z - z) < Math.abs(best.z - z)) best = p; }); return best.x; };
     function buildJacaranda(tx, tz, h, lean) {
@@ -17772,6 +17790,10 @@ function buildMainGateLayer() {
             e.x + Math.cos(sa) * sr, e.y + (fcRnd() - 0.35) * h * 0.12, e.z + Math.sin(sa) * sr);
           pl.scale.set(1.6, 0.55, 1.6);
           pl.rotation.set(fcRnd() * 0.5, sa, fcRnd() * 0.5);
+          if (s % 2 === 0) {                                      // 紫藍色圓錐花序（花期顯示）
+            const fl = addMesh(g, new THREE.IcosahedronGeometry(r * 0.75, 0), jacFlowerMat, e.x + Math.cos(sa) * sr, e.y + h * 0.05 + (fcRnd() - 0.2) * h * 0.08, e.z + Math.sin(sa) * sr, false);
+            fl.scale.set(1.3, 0.8, 1.3);
+          }
         }
       }
       for (let s = 0; s < 6; s++) {                               // 頂梢
@@ -17780,6 +17802,7 @@ function buildMainGateLayer() {
         pl.scale.set(1.6, 0.55, 1.6);
       }
       mg.add(g);
+      addPhenoGround(mg, '藍花楹', tx, 0.1, tz, h * 0.3);
     }
     buildJacaranda(hedgeXAt(-14.2) - 1.0, -14.2, 9.2, 0.3);    // FU-SHING 矮牆北側主樹
     [[-20.8, 6.2, -0.2], [-25.6, 7.0, 0.4], [-29.4, 5.6, 0.1]].forEach(([tz, h, lean]) => buildJacaranda(hedgeXAt(tz) - 1.4, tz, h, lean));
@@ -17793,6 +17816,7 @@ function buildMainGateLayer() {
     // 依《學校前庭綠籬規劃平面圖》：北緣臨中央廣場直線、東緣沿大門南側欄杆與斜向矮牆、南緣為 S 形曲線
     const southLawnTex = makeForecourtLawnTexture(); southLawnTex.repeat.set(0.6, 0.6);
     const southTurfMat = new THREE.MeshStandardMaterial({ map: southLawnTex, roughness: 0.88, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    registerLawnMat(southTurfMat);
     {
       const southEdge = offsetXZ(sampleXZCurve(FORECOURT_SOUTH_CURVE, 0.5), 0.20, 0, -1).reverse();   // 由西往東
       const wallInner = [];
@@ -17843,6 +17867,8 @@ function buildMainGateLayer() {
       }
       // 小葉欖仁分層水平傘狀樹冠
       const termLeafMat = new THREE.MeshStandardMaterial({ color: 0x4f8a3c, roughness: 0.80 });
+      registerPhenoMats('小葉欖仁', { outer: [termLeafMat] });
+      addPhenoGround(mg, '小葉欖仁', tx, 0.1, tz, 3.4);
       [[5.2, 3.2], [6.6, 2.6], [7.8, 1.9]].forEach(([ly, lr]) => {
         for (let b = 0; b < 5; b++) {
           const ba = (b / 5) * Math.PI * 2 + ly;
@@ -18323,6 +18349,7 @@ function buildNorthCarport() {
   const jointSeamMat    = new THREE.MeshStandardMaterial({ color: 0x3d4147, roughness: 0.95 }); // 瀝青填縫伸縮縫
   const curbMat         = new THREE.MeshStandardMaterial({ color: 0xc8c5be, roughness: 0.78 }); // 水泥路緣石
   const lawnBufferMat   = new THREE.MeshStandardMaterial({ color: 0x5e9146, roughness: 0.92 }); // 車道與跑道間草坪緩衝帶
+  registerLawnMat(lawnBufferMat);
 
   // 水泥混凝土路面主體 (高出地表 0.055m，避免與底層 z-fight)
   addBox(layerGroups.roads, westRoadLen, 0.10, westRoadW, concreteRoadMat, westRoadCx, 0.055, westRoadZ, false);
@@ -19259,7 +19286,7 @@ const CAMPUS_TREE_REGISTRY = [
   };
 
   // 依物候表於葉團間補上花朵與果實（樹形本身已含花者不再重複）
-  const decoratePheno = (sp, n0) => {
+  const decoratePheno = (sp, n0, tx, tz) => {
     const ph = PHENO[sp], st = PHENO_STATE[sp];
     if (!ph) return;
     const leafMeshes = [];
@@ -19267,6 +19294,10 @@ const CAMPUS_TREE_REGISTRY = [
       const m = grp.children[i];
       if (m.isMesh && m.userData.phenoRole && /core|outer/.test(m.userData.phenoRole)) leafMeshes.push(m);
     }
+    // 樹下落葉／落花地被（半徑取樹冠水平範圍）
+    let crown = 1.2;
+    leafMeshes.forEach(m => { crown = Math.max(crown, Math.hypot(m.position.x - tx, m.position.z - tz)); });
+    buildPhenoGround(grp, sp, tx, 0.1, tz, Math.min(7.5, crown * 0.9));
     if (ph.flower && !st.inlineFlower) {
       const fMat = phenoMat(sp, 'flower', ph.flower.color);
       const step = Math.max(1, Math.round(1 / (ph.flower.dens || 0.6)));
@@ -19340,7 +19371,7 @@ const CAMPUS_TREE_REGISTRY = [
     phenoState(sp);
     window.__phenoCounts = window.__phenoCounts || {}; window.__phenoCounts[sp] = (window.__phenoCounts[sp] || 0) + 1;
     fn(x, z, lean);
-    decoratePheno(sp, n0);
+    decoratePheno(sp, n0, x, z);
     // 依樹幹位置決定標高：下沉中庭內整株下移；全部標記 keepLevel，避免中庭下移程序拆散樹冠
     const sink = inCourtyardSink(x, z) ? COURTYARD_SINK.D : 0;
     for (let i = n0; i < grp.children.length; i++) {
@@ -19638,6 +19669,8 @@ function phenoMat(sp, role, color) {
 const phenoMonth = () => (typeof seasonsEnabled !== 'undefined' && !seasonsEnabled ? 7 : activeMonth);
 const _pc = new THREE.Color(), _pc2 = new THREE.Color();
 function applyPhenology(month) {
+  drainPhenoPending();
+  applyLawnSeason(month);
   const idx = (month - 1) % 12;
   Object.entries(PHENO_STATE).forEach(([sp, st]) => {
     const ph = PHENO[sp];
@@ -19658,6 +19691,8 @@ function applyPhenology(month) {
     st.flower.forEach(m => { m.visible = inBloom; });
     const inFruit = !!(ph && ph.fruit && ph.fruit.m.includes(month));
     st.fruit.forEach(m => { m.visible = inFruit; });
+    (st.litter || []).forEach(m => { m.visible = /[TDS]/.test(code); });
+    (st.petal || []).forEach(m => { m.visible = inBloom; });
   });
   if (typeof markShadowsDirty === 'function') markShadowsDirty();
 }
@@ -19676,6 +19711,80 @@ function phenologyHighlights(month) {
   return out;
 }
 window.applyPhenology = applyPhenology;
+
+// v2.12.19 個別建模樹木、落葉地被、乾季草坪
+//   建模程式可能早於本段執行，故以佇列暫存，於 applyPhenology 時併入
+function registerPhenoMats(sp, roles) {
+  (window.__phenoPending = window.__phenoPending || []).push({ sp, roles });
+}
+function addPhenoGround(parent, sp, x, y, z, rad) {
+  (window.__phenoGroundPending = window.__phenoGroundPending || []).push({ parent, sp, x, y, z, rad });
+}
+function registerLawnMat(mat) {
+  (window.__lawnMats = window.__lawnMats || []).push({ mat, base: mat.color.getHex(), textured: !!mat.map });
+}
+let _litterAlpha = null;
+function litterAlphaTexture() {
+  if (_litterAlpha) return _litterAlpha;
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 256, 256);
+  let sd = 5; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  for (let k = 0; k < 420; k++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * 118;          // 中心較密、外緣漸疏
+    const v = 150 + Math.floor(r() * 105) - Math.floor(d * 0.6);
+    if (v < 40) continue;
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.save(); ctx.translate(128 + Math.cos(a) * d, 128 + Math.sin(a) * d); ctx.rotate(r() * Math.PI);
+    ctx.beginPath(); ctx.ellipse(0, 0, 3 + r() * 4, 1.5 + r() * 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+  _litterAlpha = new THREE.CanvasTexture(c);
+  return _litterAlpha;
+}
+function groundMat(sp, role, color) {
+  const key = sp + '|' + role + '|' + color;
+  if (_phenoMatCache[key]) return _phenoMatCache[key];
+  const m = new THREE.MeshStandardMaterial({ color, roughness: 0.95, alphaMap: litterAlphaTexture(), transparent: true, alphaTest: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+  m.userData.phenoRole = role;
+  const st = phenoState(sp);
+  (st[role] = st[role] || []).push(m);
+  return (_phenoMatCache[key] = m);
+}
+function buildPhenoGround(parent, sp, x, y, z, rad) {
+  const ph = PHENO[sp]; if (!ph) return;
+  const out = [];
+  if (/[TDS]/.test(ph.leaf)) {
+    const c = new THREE.Color(ph.turn || 0xc9a23a).lerp(new THREE.Color(0x8a6a40), 0.4).getHex();
+    out.push(groundMat(sp, 'litter', c));
+  }
+  if (ph.flower && (ph.flower.dens || 0.6) >= 0.8) out.push(groundMat(sp, 'petal', ph.flower.color));
+  out.forEach((mat, i) => {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(rad * (i ? 0.8 : 1), 28), mat);
+    m.rotation.x = -Math.PI / 2; m.rotation.z = i * 1.3 + x;
+    m.position.set(x, y + 0.02 + i * 0.01, z);
+    m.receiveShadow = true;
+    m.userData.keepLevel = true;
+    parent.add(m);
+  });
+}
+function drainPhenoPending() {
+  (window.__phenoPending || []).splice(0).forEach(({ sp, roles }) => {
+    const st = phenoState(sp);
+    ['core', 'outer'].forEach(role => (roles[role] || []).forEach(m => st[role].set(m, m.color.getHex())));
+    (roles.flower || []).forEach(m => st.flower.push(m));
+    (roles.fruit || []).forEach(m => st.fruit.push(m));
+  });
+  (window.__phenoGroundPending || []).splice(0).forEach(g => buildPhenoGround(g.parent, g.sp, g.x, g.y, g.z, g.rad));
+}
+// 乾季（12～3 月）草坪轉黃綠，雨季恢復翠綠
+const LAWN_DRY = [0.55, 0.65, 0.5, 0.25, 0.05, 0, 0, 0, 0, 0.05, 0.15, 0.35];
+function applyLawnSeason(month) {
+  const f = LAWN_DRY[(month - 1) % 12];
+  (window.__lawnMats || []).forEach(({ mat, base, textured }) => {
+    _pc.setHex(base).lerp(_pc2.setHex(textured ? 0xe6d79a : 0xb4a96a), f * 0.55);
+    mat.color.copy(_pc);
+  });
+}
 
 let activeMonth = new Date().getMonth() + 1;
 const MONTH_SEASON = m => (m >= 3 && m <= 5 ? 'spring' : m >= 6 && m <= 8 ? 'summer' : m >= 9 && m <= 11 ? 'autumn' : 'winter');
@@ -24289,6 +24398,7 @@ function lowerCourtyardContents() {
 }
 
 function runStaticBatching(label) {
+  try { applyPhenology(phenoMonth()); } catch (err) { console.warn('[Pheno] skipped:', err); }   // 併入各建築新登錄之物候材質與地被
   try { lowerCourtyardContents(); } catch (err) { console.warn('[Courtyard] lowering skipped:', err); }
   if (new URLSearchParams(window.location.search).has('nobatch')) return;
   try {
