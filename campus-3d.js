@@ -2820,17 +2820,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
         // Interior columnar evergreen tree behind each bay (`牆內成排高聳常綠樹列`)
         const tx = bx;
         const tz = inwardSign * 1.35;
-        // v2.12.4 依街景：福木狀濃密直立長橢圓樹冠（高約 6.5 m），非圓錐針葉樹
-        addBox(grp, 0.2, 1.8, 0.2, trunkMat, tx, 0.9, tz, false);
-        const hT = 5.6 + ((i * 37) % 10) * 0.12;
-        for (let k = 0; k < 7; k++) {
-          const t = k / 6;
-          const rr = 1.05 * Math.sin(Math.PI * (0.15 + t * 0.75)) + 0.25;
-          const a = k * 2.4 + i;
-          const cl = addMesh(grp, new THREE.IcosahedronGeometry(rr * 0.8, 1), (k + i) % 2 ? treeFoliage1 : treeFoliage2,
-            tx + Math.cos(a) * rr * 0.25, 1.9 + t * (hT - 2.3), tz + Math.sin(a) * rr * 0.25);
-          cl.scale.set(1.0, 1.15, 1.0);
-        }
+        // v2.12.16：牆內福木列改由樹木普查登錄資料依實際座標建置
       }
 
       // 牆頂綠色菱形鐵絲網（球場段）
@@ -3077,7 +3067,6 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     const smallTermP = outAtX(85.6);
     treePit(smallTermP);
     smallLeafTerminalia(V(smallTermP.x, 0.14, smallTermP.z), 9.0);
-    tropicalAlmond(at(0.84), 7.4, 1.1);
     // 轉角大葉欖仁前之水泥電線桿（街景：立於花台矮牆外鋪面上，頂部路燈挑臂伸向 42 巷）
     {
       const poleMat = new THREE.MeshStandardMaterial({ color: 0x8f8a82, roughness: 0.85 });
@@ -10610,9 +10599,7 @@ function buildSouthBuilding() {
         }
       }
     };
-    slender(ax(5) - 2.6, zNorth - 2.4, 6.0, 0.9);    // 樓梯西側幼樹
-    slender(ax(9) + 0.4, zNorth - 2.0, 7.6, 1.0);    // 兩塔之間
-    slender(ax(11) - 2.2, zNorth - 2.5, 8.4, 1.45);  // 草綠塔西側中型喬木
+    // v2.12.16：其餘南棟前喬木（茄冬、樟樹、火焰木、竹柏、黃金風鈴木等）改依樹木普查登錄座標建置
   }
 
   // 14.8 中庭前景「回字形紅灰白幾何同心方塊」連鎖透水地磚廣場
@@ -16613,7 +16600,7 @@ function buildMainGateLayer() {
     }
     // 平面圖草坪內大喬木：舊換算將平面圖縱向壓縮（草坪北緣誤置於 x≈85），改以 PD() 修正至 x≈74
     const t1 = P2W(222, 330); t1.x = PD(330);
-    bigTree(t1.x, t1.z, 1.15);
+    // v2.12.16：草坪大喬木改依樹木普查登錄座標建置
 
     const stepMat = new THREE.MeshStandardMaterial({ color: 0xe9e7e0, roughness: 0.88 });
     // 平面圖白色踏石：自新南側門向東北弧形排列（9 枚）
@@ -17044,8 +17031,7 @@ function buildMainGateLayer() {
       }
       mg.add(pg);
     };
-    royalPalm(101.5, 10.0, 13.5, 0.2);
-    royalPalm(104.6, 12.6, 14.2, 1.1);
+    // v2.12.16：大王椰子改依樹木普查登錄座標建置
   }
 
     // ================================================================
@@ -17864,57 +17850,7 @@ function buildMainGateLayer() {
           cl.scale.set(1.35, 0.52, 1.35);
         }
       });
-      // 後方伴生高聳喬木 (附白色樹名牌)：照片中南草坪最高的一株，直幹約 6 m 處分枝，細葉疏朗的高聳樹冠（約 13 m）
-      {
-        const tx = 85.8, tz = 8.8;
-        const tg = new THREE.Group();
-        tg.position.set(tx, 0, tz);
-        addLimb(tg, V3(0, 0, 0), V3(0.15, 6.2, -0.1), 0.3, 0.2, trunkBrownMat, 9);
-        const tallLeafA = new THREE.MeshStandardMaterial({ color: 0x4f8636, roughness: 0.8 });
-        const tallLeafB = new THREE.MeshStandardMaterial({ color: 0x6a9a44, roughness: 0.8 });
-        [[0.4, 1.9, 0.5], [2.3, 2.1, 0.45], [4.2, 2.0, 0.5], [5.5, 1.6, 0.35]].forEach(([a, d, tl]) => {
-          const e = V3(0.15 + Math.cos(a) * d, 6.2 + d * 2.0, -0.1 + Math.sin(a) * d);
-          addLimb(tg, V3(0.15, 6.0, -0.1), e, 0.15, 0.06, trunkBrownMat, 6);
-          for (let k = 0; k < 7; k++) {
-            const sa = fcRnd() * Math.PI * 2, sr = fcRnd() * 1.8;
-            const cl = addMesh(tg, new THREE.IcosahedronGeometry(0.7 + fcRnd() * 0.5, 0), k % 2 ? tallLeafA : tallLeafB,
-              e.x + Math.cos(sa) * sr, e.y + (fcRnd() - 0.4) * 1.6, e.z + Math.sin(sa) * sr);
-            cl.scale.set(1.4, 0.7, 1.4);
-          }
-        });
-        mg.add(tg);
-        addBox(mg, 0.04, 0.22, 0.30, new THREE.MeshStandardMaterial({ color: 0xffffff }), tx - 0.31, 1.45, tz);
-      }
-
-      // 南側 5 格停車位旁（近校門）濃密遮蔭大樹：照片中遮住大王椰子下半部之圓厚樹冠，高約 9 m、冠幅約 8 m，
-      //   旁伴一株較小的同種樹；樹下為訪客停車牌與停放機車
-      {
-        const shadeA = new THREE.MeshStandardMaterial({ color: 0x2c5f2a, roughness: 0.84 });
-        const shadeB = new THREE.MeshStandardMaterial({ color: 0x3d7432, roughness: 0.82 });
-        const shadeC = new THREE.MeshStandardMaterial({ color: 0x4f8a3a, roughness: 0.8 });
-        const shadeTree = (tx, tz, s) => {
-          const g = new THREE.Group();
-          g.position.set(tx, 0, tz);
-          addLimb(g, V3(0, 0, 0), V3(-0.1 * s, 2.6 * s, 0.1 * s), 0.3 * s, 0.24 * s, trunkBrownMat, 9);
-          [[0.5, 1.0], [2.4, 1.1], [4.2, 0.95]].forEach(([a, tl]) => {
-            addLimb(g, V3(-0.1 * s, 2.5 * s, 0.1 * s), V3(Math.cos(a) * 1.8 * s, 4.8 * s, Math.sin(a) * 1.8 * s), 0.18 * s, 0.08 * s, trunkBrownMat, 6);
-          });
-          const mats = [shadeA, shadeB, shadeC];
-          const cl = (x, y, z, r, m) => { const c = addMesh(g, new THREE.DodecahedronGeometry(r, 1), m, x, y, z); c.scale.set(1.25, 0.78, 1.2); };
-          cl(0, 7.0 * s, 0, 2.3 * s, shadeC);
-          for (let k = 0; k < 7; k++) {
-            const a = (k / 7) * Math.PI * 2;
-            cl(Math.cos(a) * 2.6 * s, (5.6 + (k % 2) * 0.6) * s, Math.sin(a) * 2.5 * s, (1.8 + (k % 3) * 0.2) * s, mats[k % 3]);
-          }
-          for (let k = 0; k < 8; k++) {
-            const a = fcRnd() * Math.PI * 2, rr = fcRnd() * 3.2 * s;
-            cl(Math.cos(a) * rr, (5.0 + fcRnd() * 2.4) * s, Math.sin(a) * rr, (0.9 + fcRnd() * 0.5) * s, mats[k % 3]);
-          }
-          mg.add(g);
-        };
-        shadeTree(98.6, 7.0, 1.0);
-        shadeTree(103.4, 7.4, 0.78);
-      }
+      // v2.12.16：南草坪其餘喬木（樟樹、苦楝、可可椰子、水黃皮、黃椰子、扇葉蒲葵等）改依樹木普查登錄座標建置
     }
 
     // 3. 南草坪「母子」石雕與「耕心園」黑色刻字景觀石（依 2026 實景照片 29、30）
@@ -17967,17 +17903,7 @@ function buildMainGateLayer() {
       const bushM = addMesh(mg, new THREE.SphereGeometry(1.15, 10, 8), new THREE.MeshStandardMaterial({ color: 0x2d6628, roughness: 0.82 }), 88.8, 0.95, 13.8);
       bushM.scale.set(1.15, 0.9, 1.05);
 
-      // 斜幹造型榕樹 (位於 x = 94.8, z = 14.5，樹幹明顯向西北傾斜約 28 度)
-      const lx = 94.8, lz = 14.5;
-      const leanTrunk = addMesh(mg, new THREE.CylinderGeometry(0.24, 0.36, 3.6, 9), banyanTrunkMat, lx - 0.55, 1.65, lz - 0.25);
-      leanTrunk.rotation.z = 0.46;
-      leanTrunk.rotation.x = -0.15;
-      const leanCrownMat = new THREE.MeshStandardMaterial({ color: 0x36702d, roughness: 0.80 });
-      [[-1.2, 3.6, -0.4, 1.85], [-2.4, 3.4, -0.8, 1.55], [0.2, 3.8, 0.4, 1.65], [-1.0, 4.3, 0.6, 1.45]].forEach(([ox, oy, oz, r]) => {
-        const cl = addMesh(mg, new THREE.DodecahedronGeometry(r, 1), leanCrownMat, lx + ox, oy, lz + oz);
-        cl.scale.set(1.3, 0.72, 1.25);
-      });
-
+      const lx = 94.8, lz = 14.5;   // v2.12.16：斜幹樹改依普查資料（苦楝）建置，此處僅保留盆栽位置
       // 斜幹榕樹根部與北側圍牆邊之紅陶盆栽群 (Terracotta Flowerpots，照片 4 清晰可見)
       const potTerraMat = new THREE.MeshStandardMaterial({ color: 0xb85d3b, roughness: 0.75 });
       const potPlantMat = new THREE.MeshStandardMaterial({ color: 0x458536, roughness: 0.78 });
@@ -18924,15 +18850,10 @@ function buildLandscapeAndLighting() {
   { x: 109.6, z: -25.6, r: 2.6, species: 'flowering' },// 綠籬帶藍花楹 3
   { x: 108.8, z: -29.4, r: 2.2, species: 'flowering' },// 綠籬帶藍花楹 4
   { x: 83.1, z: -3.6, r: 1.6, species: 'flowering' },  // 前庭中央粗石低花台九重葛
-  { x: 85.8, z: 8.8, r: 3.4, species: 'broad' },       // 前庭南草坪高聳喬木 (白色樹名牌)
-  { x: 98.6, z: 7.0, r: 4.0, species: 'broad' },       // 南側停車位旁濃密遮蔭大樹
-  { x: 103.4, z: 7.4, r: 3.1, species: 'broad' },      // 南側停車位旁遮蔭樹 2
   { x: 80.5, z: 10.2, r: 3.2, species: 'broad' },      // 前庭南草坪附生鳥巢蕨小葉欖仁
-  { x: 96.8, z: 13.8, r: 3.6, species: 'broad' },      // 前庭南草坪斜幹造型榕樹
   { x: 58.5, z: -50.2, r: 2.2, species: 'broad' },     // 有機農場西端果樹與甘蔗叢
   { x: -38.5, z: -44.8, r: 4.2, species: 'broad' },     // 北棟廁所大樓西側樓梯北側（另一側）高大遮蔭大樹 (實景照片)
   { x: -39.8, z: -45.6, r: 2.4, species: 'flowering' }, // 北棟廁所大樓西側樓梯北側（另一側）優雅雞蛋花樹 (實景照片)
-  { x: -175.5, z: 27.5, r: 6.8, species: 'broad' }      // 運動場西側直線跑道與球場間百年大榕樹 (實景照片 135014.jpg)
 ].forEach(rec => campusTreeRecords.push(rec));
 
 // =========================================================================
@@ -18997,19 +18918,13 @@ function buildAthleticBanyanTree(tx, tz) {
   layerGroups.vegetation.add(bg);
 }
 
-buildAthleticBanyanTree(-175.5, 27.5); // 運動場百年大榕樹 (實景照片 135014.jpg)
-addTree(X(56) + 1.85, Z(90) + 3.80, 1.15, 'broad');
-addTree(-20.8, -12.8, 1.18, 'broad');
+// v2.12.16：原位於校園西牆外 (x≈−175) 之百年大榕樹與普查資料不符，停用
 // v2.12.15 依使用者標註之運動場實景照片：司令台（西側、面向東）周邊與跑道東側之命名樹木
 //   司令台右側（南）：麵包樹、大花紫薇；司令台左側（北）：桃花心木；
 //   跑道東側育樂樓前：三棵楓香；新棟前：兩棵印度紫檀
 const SPORTS_NAMED_TREES = [
   { x: -82.6, z: 15.2, r: 3.6, kind: 'breadfruit', name: '麵包樹' },
   { x: -83.4, z: 10.6, r: 3.4, kind: 'crapeMyrtle', name: '大花紫薇' },
-  { x: -81.6, z: -7.2, r: 6.6, kind: 'mahogany', name: '桃花心木' },
-  { x: -39.7, z: -9.5, r: 3.0, kind: 'sweetgum', name: '楓香' },
-  { x: -39.7, z: -2.2, r: 3.0, kind: 'sweetgum', name: '楓香' },
-  { x: -39.7, z: 5.6, r: 2.8, kind: 'sweetgum', name: '楓香' },
   { x: -40.1, z: 14.6, r: 5.8, kind: 'rosewood', name: '印度紫檀' },
   { x: -40.6, z: 23.4, r: 5.6, kind: 'rosewood', name: '印度紫檀' }
 ];
@@ -19039,7 +18954,7 @@ const treeZones = [
   [88, 308, 212, 438, 11, 'flowering'],  // SW Campus Lawn Buffer Grove (inside Rear Wall `(56,328)->(180,480)`, seen in Google Maps!)
   [215, 385, 365, 422, 8, 'broad']       // South Campus Lawn Buffer Grove (between PU Track `y=376` & South Rear Wall `(180,480)->(405,392)`)
 ];
-treeZones.forEach(([x1, y1, x2, y2, count, defaultType]) => {
+[].forEach(([x1, y1, x2, y2, count, defaultType]) => {   // v2.12.16 停用隨機林木
   for (let i = 0; i < count; i++) {
     const sp = (i % 3 === 0) ? 'flowering' : defaultType;
     const ppx = x1 + rnd() * (x2 - x1), ppy = y1 + rnd() * (y2 - y1);
@@ -19054,7 +18969,7 @@ treeZones.forEach(([x1, y1, x2, y2, count, defaultType]) => {
     if (tx > -85.0 && tx < -18.5 && tz > -58.0 && tz < 16.5) continue;
     // 【核心通視走廊保護】依 Google 街景實景圖：東棟大樓前庭迎賓廣場、挑高穿堂拱門與立面彩繪全線完全通透，禁止巨木遮蔽！
     if (tx > 66.0 && tx < 122.0 && tz > -14.0 && tz < 14.0) continue;
-    addTree(tx, tz, 0.78 + rnd() * 0.48, sp);
+    // v2.12.16：隨機林木停用，改依樹木普查登錄資料建置（CAMPUS_TREE_REGISTRY）
   }
 });
 
@@ -19074,61 +18989,323 @@ const northDrivewayShadeTrees = [
 ];
 // v2.12.7 依實景照片（北棟西側往後門）：紅磚北牆內側一排高大老樹，粗壯樹幹基部外露板根，樹冠茂密相連；
 //   樹下為稀疏草地與落葉。北棟北側車道與教室之間另有數株細高羽葉喬木（往東看停車場照片）
-(function buildNorthWallOldTrees() {
+// v2.12.16：北牆老樹列與北棟旁細高喬木改由樹木普查登錄資料（印度紫檀、黃金風鈴木、蘭嶼肉桂等）呈現
+
+// ============================================================================
+// v2.12.16 校園樹木普查登錄（縣立復興國小 樹木資料 2026-11-15 匯出，WGS84 座標）
+//   換算方式：以已知實景樹木與圍牆、建築線為控制點，經相似轉換（比例約 0.95、旋轉約 −7.4°）後，
+//   再依局部構造修正：福木列貼齊運動場西南斜牆內側、北界印度紫檀列貼齊北圍牆內側、楓香移至育樂樓西側步道、
+//   中庭南列移至南棟前草坡、南草坪樹木置於草坪內，並避開建築量體與車道。
+//   既有依照片精緻建模之樹木（前庭大榕樹、藍花楹、雞蛋花、龍柏、南棟前大葉欖仁、司令台大花紫薇與麵包樹、
+//   新棟前印度紫檀、南草坪小葉欖仁、幼兒園雞蛋花）沿用原模型，不重複建置。
+//   欄位：[樹木編號末 6 碼, 樹種, x, z, 傾斜]
+// ============================================================================
+const CAMPUS_TREE_REGISTRY = [
+  ["442163", "光蠟樹", -109.9, -10.7, 0],
+  ["442158", "光蠟樹", -109.4, -15.3, 0],
+  ["442152", "光蠟樹", -109.2, -20.9, 0],
+  ["442147", "臺灣櫸", -108, -24.3, 0],
+  ["442141", "臺灣櫸", -107.7, -29.5, 0],
+  ["442184", "光蠟樹", -107.5, -1.3, 0],
+  ["442110", "茄冬", -106.4, -53.9, 0],
+  ["442191", "緬梔", -105.3, 2.8, 0],
+  ["442201", "蘭嶼肉桂", -100.9, 10.1, 0],
+  ["442206", "緬梔", -100, 11.7, 0],
+  ["442220", "蘭嶼肉桂", -98.6, 16.9, 0],
+  ["839656", "七里香", -97, 29.6, 0],
+  ["442246", "蘭嶼肉桂", -95.6, 24.5, 0],
+  ["442251", "蘭嶼肉桂", -95.1, 27.4, 0],
+  ["442257", "蘭嶼肉桂", -94, 29.3, 0],
+  ["442264", "大葉桃花心木", -92.8, 32.1, 0],
+  ["839657", "七里香", -88.2, 55.2, 0],
+  ["442285", "藍花楹", -87.3, 48.2, 0],
+  ["442102", "蘭嶼肉桂", -84.5, -53.8, 0],
+  ["442253", "鳳凰木", -84.2, 61, 0],
+  ["442095", "蘭嶼肉桂", -80.5, -54.2, 0],
+  ["442339", "海南菜豆樹", -79.7, -33.6, 0],
+  ["442117", "大葉桃花心木", -79.3, -28, 0],
+  ["442232", "菲島福木", -80.5, 57.4, 0],
+  ["442269", "茄冬", -76.3, 49.4, 0],
+  ["442217", "菲島福木", -77.8, 55.9, 0],
+  ["442210", "菲島福木", -75.0, 54.3, 0],
+  ["442089", "印度紫檀", -70.7, -53.2, 0],
+  ["442202", "菲島福木", -71.7, 52.4, 0],
+  ["442196", "菲島福木", -68.7, 50.7, 0],
+  ["442085", "印度紫檀", -66.6, -53.2, 0],
+  ["442186", "菲島福木", -65.8, 49.1, 0],
+  ["442276", "可可椰子", -64.2, 51.2, 0],
+  ["442172", "菲島福木", -62.0, 46.9, 0],
+  ["442074", "黃金風鈴木", -58.9, -48.1, 0],
+  ["442161", "菲島福木", -59.0, 45.2, 0],
+  ["442059", "蘭嶼肉桂", -57.1, -54.9, 0],
+  ["442145", "菲島福木", -56.6, 43.9, 0],
+  ["442072", "黃金風鈴木", -54.6, -48.2, 0],
+  ["442055", "蘭嶼肉桂", -54.3, -55.0, 0],
+  ["442138", "菲島福木", -54.5, 42.7, 0],
+  ["442134", "菲島福木", -52.5, 41.6, 0],
+  ["442046", "印度紫檀", -50.4, -55.2, 0],
+  ["442129", "菲島福木", -51.0, 40.7, 0],
+  ["442070", "黃金風鈴木", -49.8, -48.0, 0],
+  ["442122", "菲島福木", -49.0, 39.6, 0],
+  ["442119", "菲島福木", -47.4, 38.7, 0],
+  ["442051", "印度紫檀", -46.3, -55, 0],
+  ["442112", "菲島福木", -45.9, 37.8, 0],
+  ["442106", "菲島福木", -44.4, 37.0, 0],
+  ["442049", "印度紫檀", -42.2, -55.1, 0],
+  ["442099", "菲島福木", -42.7, 36.0, 0],
+  ["442031", "風鈴木", -41.8, -47.9, 0],
+  ["442068", "菲島福木", -40.8, 34.9, 0],
+  ["442063", "蘭嶼肉桂", -37.7, 35.3, 0],
+  ["442016", "黃金風鈴木", -38.9, -35.0, 0],
+  ["442045", "印度紫檀", -36.8, -55.4, 0],
+  ["442022", "黃金風鈴木", -35.0, -38.8, 0],
+  ["442026", "黃金風鈴木", -36.2, -47.8, 0],
+  ["442043", "楓香", -39.7, -4.8, 0],
+  ["442035", "楓香", -39.7, -8.4, 0],
+  ["442030", "楓香", -39.7, -10.2, 0],
+  ["442020", "楓香", -39.7, -12.8, 0],
+  ["442040", "印度紫檀", -34.2, -55.6, 0],
+  ["442281", "雨豆樹", -30.4, 28.5, 0],
+  ["441981", "楓香", -30, -31.8, 0],
+  ["442007", "波羅蜜", -26.8, -48.0, 0],
+  ["441997", "緬梔", -26.5, -49.4, 0],
+  ["441990", "苦楝", -25.3, -48.5, 0],
+  ["442157", "金露花", -15, 6.8, 0],
+  ["442315", "印度紫檀", -13.1, -51.7, 0],
+  ["442139", "馬拉巴栗", -12.0, -23.9, 0],
+  ["442144", "樟樹", -12.7, -23.5, 0],
+  ["442133", "馬拉巴栗", -10.9, -23.8, 0],
+  ["442319", "印度紫檀", -10.1, -51.9, 0],
+  ["442150", "榕樹", -9.5, -19.8, 0],
+  ["839655", "桂花", -5.2, 4.5, 0],
+  ["442332", "風鈴木", -5.6, -55.5, 0],
+  ["442179", "金露花", -3.7, 7, 0],
+  ["442188", "龍柏", -1.6, 6.3, 0],
+  ["442323", "風鈴木", -1, -55.5, 0],
+  ["442123", "黃槿", 0.7, -23.5, 0],
+  ["442211", "樟樹", 2.5, 7.0, 0],
+  ["442204", "瓊崖海棠", 2.8, 6.8, 0],
+  ["442115", "水黃皮", 6.3, -22.3, 0],
+  ["442218", "茄冬", 11.2, 6.5, 0],
+  ["442107", "火焰木", 10.4, -21.1, 0],
+  ["442334", "印度紫檀", 12.7, -55.5, 0],
+  ["442330", "印度紫檀", 16.4, -55.5, 0],
+  ["442230", "黃金風鈴木", 15.5, 6.2, 0],
+  ["442100", "黃槿", 28, -17.7, 0],
+  ["442237", "火焰木", 30.3, 8.0, 0],
+  ["442092", "黃金風鈴木", 31.8, -17.4, 0],
+  ["442263", "樟樹", 32.2, 3.9, 0],
+  ["442252", "竹柏", 36.5, 6.8, 0],
+  ["441975", "印度紫檀", 49.7, -33.5, 0],
+  ["839658", "大葉羅漢松", 66.5, 18.6, 0],
+  ["839651", "臺灣海桐", 67.5, 18.6, 0],
+  ["442057", "水黃皮", 74.9, 17, 0],
+  ["442065", "可可椰子", 79.8, 18.4, 0],
+  ["839652", "田代氏石斑木", 85.4, -50.3, 0],
+  ["442082", "大王椰子", 86.6, 11.8, 0],
+  ["442025", "欖仁樹", 87.4, -39.3, 1],
+  ["442033", "蘭嶼肉桂", 88.1, -51.6, 0],
+  ["442076", "黃椰子", 89.5, 18.6, 0],
+  ["442019", "稜果榕", 89.5, -51.1, 0],
+  ["442013", "黃椰子", 89.8, -49.6, 0],
+  ["442029", "緬梔", 91.7, -52.3, 0],
+  ["442077", "扇葉蒲葵", 93.1, 13.2, 0],
+  ["442067", "樟樹", 94.1, 8.9, 0],
+  ["442103", "苦楝", 95.2, 15.9, 0],
+  ["442071", "大王椰子", 95.7, 14.1, 0],
+  ["441983", "陰香", 102.7, -34.8, 0]
+];
+
+(function buildRegistryTrees() {
   const grp = new THREE.Group();
-  const bark = new THREE.MeshStandardMaterial({ color: 0x4a3c30, roughness: 0.92 });
-  const leafA = new THREE.MeshStandardMaterial({ color: 0x2f5f2a, roughness: 0.82 });
-  const leafB = new THREE.MeshStandardMaterial({ color: 0x447a36, roughness: 0.8 });
-  const litter = new THREE.MeshStandardMaterial({ color: 0x8a7a55, roughness: 0.96 });
   const up = new THREE.Vector3(0, 1, 0);
-  let sd = 61; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
-  const limb = (a, b, r0, r1) => {
+  let sd = 977; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const matCache = {};
+  const M = (c, rough = 0.82) => (matCache[c] = matCache[c] || new THREE.MeshStandardMaterial({ color: c, roughness: rough }));
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const limb = (a, b, r0, r1, mat, seg = 7) => {
     const d = new THREE.Vector3().subVectors(b, a);
-    const m = addMesh(grp, new THREE.CylinderGeometry(r1, r0, d.length(), 8), bark, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    const m = addMesh(grp, new THREE.CylinderGeometry(r1, r0, d.length(), seg), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
     m.quaternion.setFromUnitVectors(up, d.normalize());
   };
-  const wallZ = Z(22);
-  // 牆邊落葉草帶
-  addBox(grp, 80, 0.03, 3.6, litter, -78, 0.05, wallZ + 2.0, false);
-  for (let tx = -44; tx > -118; tx -= 8.6 + r() * 2) {
-    const tz = wallZ + 2.0 + r() * 0.8, k = 0.9 + r() * 0.3;
-    const base = new THREE.Vector3(tx, 0, tz), top = new THREE.Vector3(tx + (r() - 0.5) * 0.6, 4.2 * k, tz + 0.2);
-    limb(base, top, 0.42 * k, 0.32 * k);
-    for (let b = 0; b < 5; b++) {                       // 外露板根
-      const a = (b / 5) * Math.PI * 2 + r();
-      const root = addBox(grp, 1.5 * k, 0.32 * k, 0.12, bark, tx + Math.cos(a) * 0.7 * k, 0.14 * k, tz + Math.sin(a) * 0.7 * k);
-      root.rotation.y = -a; root.rotation.z = 0.25;
+  const blob = (x, y, z, rad, mat, sx = 1.25, sy = 0.75, det = 0) => {
+    const m = addMesh(grp, new THREE.IcosahedronGeometry(rad, det), mat, x, y, z);
+    m.scale.set(sx, sy, sx); m.rotation.y = r() * 3;
+    return m;
+  };
+  // ---- 樹形家族 ----
+  // 闊葉樹：主幹 → 分叉 → nB 支主枝 → 枝端葉團
+  const broad = (x, z, o) => {
+    const lean = o.lean || 0;
+    const fork = V(x + lean, o.forkH, z);
+    limb(V(x, 0, z), fork, o.tr, o.tr * 0.78, o.bark, 9);
+    if (o.buttress) for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2 + r();
+      const rt = addBox(grp, o.tr * 3.2, o.tr * 0.8, 0.12, o.bark, x + Math.cos(a) * o.tr * 1.3, o.tr * 0.3, z + Math.sin(a) * o.tr * 1.3);
+      rt.rotation.y = -a; rt.rotation.z = 0.2;
     }
-    for (let b = 0; b < 4; b++) {
-      const a = (b / 4) * Math.PI * 2 + r();
-      const e = new THREE.Vector3(tx + Math.cos(a) * 3.2 * k, (7.8 + r() * 1.5) * k, tz + Math.sin(a) * 2.6 * k);
-      limb(top, e, 0.24 * k, 0.1 * k);
-      for (let c = 0; c < 5; c++) {
-        const ca = r() * Math.PI * 2, cr = r() * 2.2 * k;
-        const cl = addMesh(grp, new THREE.IcosahedronGeometry((1.2 + r() * 0.6) * k, 1), c % 2 ? leafA : leafB, e.x + Math.cos(ca) * cr, e.y + 0.6 * k + (r() - 0.4) * 1.4, e.z + Math.sin(ca) * cr * 0.8);
-        cl.scale.set(1.3, 0.75, 1.3);
+    if (o.roots) for (let k = 0; k < o.roots; k++) {           // 榕屬氣根
+      const a = r() * Math.PI * 2, rr = 0.6 + r() * o.spread * 0.7, h = 1 + r() * (o.forkH + 1);
+      addMesh(grp, new THREE.CylinderGeometry(0.015, 0.025, h, 4), o.bark, x + Math.cos(a) * rr, o.H * 0.55 - h / 2, z + Math.sin(a) * rr, false);
+    }
+    for (let b = 0; b < o.nB; b++) {
+      const a = (b / o.nB) * Math.PI * 2 + r() * 0.6;
+      const reach = o.spread * (0.7 + r() * 0.35);
+      const e = V(fork.x + Math.cos(a) * reach, o.H * (o.endY + r() * 0.1), z + Math.sin(a) * reach);
+      limb(fork, e, o.tr * 0.55, o.tr * 0.2, o.bark, 6);
+      for (let c = 0; c < o.nC; c++) {
+        const ca = r() * Math.PI * 2, cr = r() * o.leaf * 1.3;
+        blob(e.x + Math.cos(ca) * cr, e.y + o.leaf * 0.35 + (r() - 0.4) * o.leaf, e.z + Math.sin(ca) * cr, o.leaf * (0.75 + r() * 0.5), o.leaves[c % o.leaves.length], 1.25, o.flat, o.det || 0);
+      }
+      if (o.flowers && r() < 0.6) blob(e.x, e.y + o.leaf * 0.9, e.z, o.leaf * 0.35, o.flowers, 1.3, 0.5);
+    }
+    for (let c = 0; c < (o.top || 3); c++) {
+      const ca = r() * Math.PI * 2, cr = r() * o.spread * 0.55;
+      blob(fork.x + Math.cos(ca) * cr, o.H * 0.9 + r() * o.leaf * 0.6, z + Math.sin(ca) * cr, o.leaf * 1.05, o.leaves[c % o.leaves.length], 1.3, o.flat, o.det || 0);
+    }
+  };
+  // 分層水平枝（欖仁、馬拉巴栗）
+  const tiered = (x, z, o) => {
+    limb(V(x, 0, z), V(x, o.H, z), o.tr, o.tr * 0.35, o.bark, 9);
+    for (let t = 0; t < o.tiers; t++) {
+      const y = o.H * (0.35 + t * (0.6 / (o.tiers - 1)));
+      const reach = o.spread * (1 - t / (o.tiers + 1));
+      for (let b = 0; b < 5; b++) {
+        const a = (b / 5) * Math.PI * 2 + t * 0.7;
+        const e = V(x + Math.cos(a) * reach, y + 0.3, z + Math.sin(a) * reach);
+        limb(V(x, y, z), e, o.tr * 0.3, o.tr * 0.12, o.bark, 5);
+        for (let k = 0; k < 3; k++) blob(x + (e.x - x) * (0.5 + k * 0.22), e.y + 0.15, z + (e.z - z) * (0.5 + k * 0.22), o.leaf, o.leaves[(k + t) % o.leaves.length], 1.45, 0.42);
       }
     }
-  }
-  // 北棟北側車道與教室間細高羽葉喬木（深色細長樹幹，高處分枝，細碎稀疏樹冠）
-  const featherA = new THREE.MeshStandardMaterial({ color: 0x4f8a3a, roughness: 0.8 });
-  const featherB = new THREE.MeshStandardMaterial({ color: 0x69a046, roughness: 0.8 });
-  [[-30, -41.0], [-21, -41.1], [-8, -41.0], [6, -41.0], [22, -41.1], [38, -41.0]].forEach(([tx, tz], i) => {
-    const k = 0.95 + (i % 3) * 0.08;
-    const fork = new THREE.Vector3(tx + 0.3, 5.0 * k, tz);
-    limb(new THREE.Vector3(tx, 0, tz), fork, 0.2 * k, 0.15 * k);
-    for (let b = 0; b < 3; b++) {
-      const a = b * 2.1 + i;
-      const e = new THREE.Vector3(tx + Math.cos(a) * 2.2 * k, (9.0 + b * 0.6) * k, tz + Math.sin(a) * 1.4 * k);
-      limb(fork, e, 0.12 * k, 0.05 * k);
-      for (let c = 0; c < 8; c++) {
-        const ca = r() * Math.PI * 2, cr = r() * 1.9 * k;
-        const cl = addMesh(grp, new THREE.IcosahedronGeometry((0.45 + r() * 0.3) * k, 0), c % 2 ? featherA : featherB, e.x + Math.cos(ca) * cr, e.y + (r() - 0.3) * 1.2, e.z + Math.sin(ca) * cr * 0.7);
-        cl.scale.set(1.5, 0.55, 1.5);
-      }
+  };
+  // 直立柱狀／圓錐常綠（福木、蘭嶼肉桂、陰香、龍柏、竹柏、羅漢松）
+  const columnar = (x, z, o) => {
+    limb(V(x, 0, z), V(x, o.H * 0.4, z), o.tr, o.tr * 0.8, o.bark, 8);
+    const n = o.n || 8;
+    for (let k = 0; k < n; k++) {
+      const t = k / (n - 1);
+      const rad = o.w * (o.cone ? (1 - t * 0.75) : Math.sin(Math.PI * (0.18 + t * 0.7))) + 0.2;
+      const a = k * 2.4;
+      blob(x + Math.cos(a) * rad * 0.25, o.H * (0.3 + t * 0.66), z + Math.sin(a) * rad * 0.25, rad * 0.85, o.leaves[k % o.leaves.length], 1.0, o.cone ? 1.15 : 1.05, o.det || 0);
     }
+  };
+  // 棕櫚類
+  const palm = (x, z, o) => {
+    const trunkM = M(o.trunk);
+    const frondM = new THREE.MeshStandardMaterial({ color: o.frond, roughness: 0.8, side: THREE.DoubleSide });
+    const nStem = o.cluster || 1;
+    for (let s = 0; s < nStem; s++) {
+      const a = (s / nStem) * Math.PI * 2, off = nStem > 1 ? 0.5 : 0;
+      const H = o.H * (nStem > 1 ? 0.7 + r() * 0.4 : 1);
+      const bx = x + Math.cos(a) * off, bz = z + Math.sin(a) * off;
+      const top = V(bx + Math.cos(a) * (o.bend || 0), H, bz + Math.sin(a) * (o.bend || 0));
+      limb(V(bx, 0, bz), top, o.tr * 1.2, o.tr, trunkM, 10);
+      if (o.shaft) addMesh(grp, new THREE.CylinderGeometry(o.tr * 0.9, o.tr, 1.4, 10), M(0x5f8f3e), top.x, H + 0.7, top.z);
+      const ty = H + (o.shaft ? 1.3 : 0.1);
+      const nF = o.fan ? 16 : 12;
+      for (let f = 0; f < nF; f++) {
+        const fg = new THREE.Group();
+        fg.position.set(top.x, ty, top.z); fg.rotation.y = (f / nF) * Math.PI * 2 + r() * 0.3;
+        if (o.fan) {                                   // 扇葉
+          const leaf = new THREE.Mesh(new THREE.CircleGeometry(o.len * 0.55, 10, 0, Math.PI), frondM);
+          leaf.position.set(o.len * 0.5, 0.2 - (f % 3) * 0.3, 0); leaf.rotation.set(-Math.PI / 2 + 0.5, 0, -Math.PI / 2);
+          fg.add(leaf);
+        } else {
+          let px = 0, py = 0, tilt = 0.5 - (f % 3) * 0.25;
+          for (let k = 0; k < 4; k++) {
+            const seg = o.len / 4, dx = Math.cos(tilt) * seg, dy = Math.sin(tilt) * seg;
+            const leaf = new THREE.Mesh(new THREE.BoxGeometry(seg + 0.05, 0.03, 0.8 - k * 0.15), frondM);
+            leaf.position.set(px + dx / 2, py + dy / 2, 0); leaf.rotation.set(0.3 * (k % 2 ? 1 : -1), 0, tilt); leaf.castShadow = true;
+            fg.add(leaf); px += dx; py += dy; tilt -= 0.4;
+          }
+        }
+        grp.add(fg);
+      }
+      if (o.coconuts) for (let c = 0; c < 4; c++) addMesh(grp, new THREE.SphereGeometry(0.16, 8, 6), M(0x6b8a2e), top.x + Math.cos(c * 1.6) * 0.3, ty - 0.35, top.z + Math.sin(c * 1.6) * 0.3);
+    }
+  };
+  // 灌木狀小喬木（七里香、金露花、桂花、海桐、石斑木）
+  const shrub = (x, z, o) => {
+    if (o.stem) limb(V(x, 0, z), V(x, o.stem, z), 0.06, 0.05, M(0x6b5a48), 6);
+    for (let k = 0; k < 6; k++) {
+      const a = r() * Math.PI * 2, rr = r() * o.w * 0.45;
+      blob(x + Math.cos(a) * rr, (o.stem || 0) + o.w * 0.5 + r() * o.h * 0.5, z + Math.sin(a) * rr, o.w * (0.4 + r() * 0.2), o.leaves[k % o.leaves.length], 1.1, 0.9, 1);
+    }
+    if (o.flowers) for (let k = 0; k < 5; k++) blob(x + (r() - 0.5) * o.w * 0.8, (o.stem || 0) + o.h * (0.5 + r() * 0.45), z + (r() - 0.5) * o.w * 0.8, 0.09, o.flowers, 1, 1);
+  };
+  // 雞蛋花：燭台狀叉枝 + 枝端葉叢
+  const plumeria = (x, z, o) => {
+    const bark = M(0x8a7d6e), leafM = M(0x2f6e2f);
+    const base = V(x, 1.0, z);
+    limb(V(x, 0, z), base, 0.2, 0.17, bark, 8);
+    const fork = (p, a, tilt, len, rad, d) => {
+      const e = V(p.x + Math.cos(a) * Math.sin(tilt) * len, p.y + Math.cos(tilt) * len, p.z + Math.sin(a) * Math.sin(tilt) * len);
+      limb(p, e, rad, rad * 0.75, bark, 6);
+      if (d === 0) { blob(e.x, e.y + 0.2, e.z, 0.45, leafM, 1.3, 0.5); if (r() < 0.4) blob(e.x, e.y + 0.45, e.z, 0.12, M(0xfffbeb), 1, 0.6); return; }
+      fork(e, a - 0.6, tilt * 0.85, len * 0.75, rad * 0.75, d - 1); fork(e, a + 0.6, tilt * 0.85, len * 0.75, rad * 0.75, d - 1);
+    };
+    [0.3, 1.9, 3.4, 4.9].forEach(a => fork(base, a, 0.8, 1.1 * o.k, 0.11, 2));
+  };
+
+  const G = c => M(c), bDark = M(0x4a3d31), bGrey = M(0x7a7268), bLight = M(0x9a8f80), bRed = M(0x6b4a3a);
+  const SP = {
+    '菲島福木': (x, z) => columnar(x, z, { H: 7.5, tr: 0.18, w: 1.15, n: 8, bark: bDark, det: 1, leaves: [G(0x24502a), G(0x2e5e2f)] }),
+    '蘭嶼肉桂': (x, z) => columnar(x, z, { H: 6.5, tr: 0.16, w: 1.25, n: 7, bark: bDark, det: 1, leaves: [G(0x2f6a2f), G(0x6a5a2e), G(0x3c7535)] }),
+    '陰香':     (x, z) => columnar(x, z, { H: 8.5, tr: 0.2, w: 1.6, n: 8, bark: bDark, det: 1, leaves: [G(0x2f6a2f), G(0x7a5a35)] }),
+    '龍柏':     (x, z) => columnar(x, z, { H: 4.2, tr: 0.12, w: 1.0, n: 9, cone: true, bark: bDark, leaves: [G(0x1f4f26), G(0x2f6a2e)] }),
+    '竹柏':     (x, z) => columnar(x, z, { H: 6.5, tr: 0.14, w: 1.1, n: 8, cone: true, bark: bRed, leaves: [G(0x2c5f2c), G(0x3a6e32)] }),
+    '大葉羅漢松': (x, z) => columnar(x, z, { H: 5.0, tr: 0.13, w: 0.9, n: 8, cone: true, bark: bRed, leaves: [G(0x24502a), G(0x30602e)] }),
+    '印度紫檀': (x, z) => broad(x, z, { H: 12.5, forkH: 3.6, tr: 0.38, bark: bGrey, nB: 6, spread: 4.3, endY: 0.7, nC: 9, leaf: 1.2, flat: 0.62, top: 6, leaves: [G(0x355f2c), G(0x467235), G(0x58803c)] }),
+    '大葉桃花心木': (x, z) => broad(x, z, { H: 13, forkH: 3.2, tr: 0.42, bark: bDark, buttress: true, nB: 6, spread: 4.6, endY: 0.68, nC: 9, leaf: 1.45, flat: 0.72, top: 8, det: 1, leaves: [G(0x24502a), G(0x2f5f30), G(0x3a6c35)] }),
+    '榕樹':     (x, z) => broad(x, z, { H: 10, forkH: 2.6, tr: 0.5, bark: bDark, roots: 22, nB: 7, spread: 5.0, endY: 0.66, nC: 8, leaf: 1.4, flat: 0.7, top: 7, det: 1, leaves: [G(0x234f24), G(0x32692f), G(0x49823c)] }),
+    '稜果榕':   (x, z) => broad(x, z, { H: 7, forkH: 2.0, tr: 0.26, bark: bGrey, nB: 5, spread: 2.6, endY: 0.7, nC: 6, leaf: 1.0, flat: 0.75, det: 1, leaves: [G(0x2b5e2b), G(0x3b6e33)] }),
+    '樟樹':     (x, z) => broad(x, z, { H: 11, forkH: 2.8, tr: 0.36, bark: bDark, nB: 6, spread: 4.0, endY: 0.7, nC: 9, leaf: 1.25, flat: 0.78, top: 6, det: 1, leaves: [G(0x3d7232), G(0x4f8a3a), G(0x2f6a2c)] }),
+    '茄冬':     (x, z) => broad(x, z, { H: 10, forkH: 2.6, tr: 0.36, bark: bRed, nB: 6, spread: 3.6, endY: 0.7, nC: 8, leaf: 1.2, flat: 0.72, top: 5, det: 1, leaves: [G(0x2f6a2c), G(0x3f7a34)] }),
+    '雨豆樹':   (x, z) => broad(x, z, { H: 11, forkH: 2.4, tr: 0.45, bark: bDark, nB: 8, spread: 6.2, endY: 0.72, nC: 8, leaf: 1.35, flat: 0.5, top: 6, leaves: [G(0x3f7232), G(0x4f8238)] }),
+    '鳳凰木':   (x, z) => broad(x, z, { H: 9, forkH: 2.4, tr: 0.32, bark: bGrey, nB: 7, spread: 4.8, endY: 0.75, nC: 8, leaf: 1.05, flat: 0.45, top: 4, leaves: [G(0x4f8a36), G(0x62993f)] }),
+    '波羅蜜':   (x, z) => broad(x, z, { H: 9, forkH: 2.2, tr: 0.3, bark: bDark, nB: 5, spread: 2.8, endY: 0.72, nC: 7, leaf: 1.15, flat: 0.85, top: 4, det: 1, leaves: [G(0x24522a), G(0x2f5f2f)] }),
+    '瓊崖海棠': (x, z) => broad(x, z, { H: 7.5, forkH: 2.0, tr: 0.28, bark: bDark, nB: 5, spread: 2.5, endY: 0.72, nC: 7, leaf: 1.0, flat: 0.85, det: 1, leaves: [G(0x235428), G(0x2f6230)] }),
+    '水黃皮':   (x, z) => broad(x, z, { H: 8, forkH: 2.0, tr: 0.26, bark: bGrey, nB: 6, spread: 3.0, endY: 0.7, nC: 7, leaf: 1.0, flat: 0.72, leaves: [G(0x3f7a34), G(0x4f8a3a)] }),
+    '黃槿':     (x, z) => broad(x, z, { H: 6.5, forkH: 1.6, tr: 0.26, bark: bGrey, nB: 6, spread: 2.8, endY: 0.72, nC: 7, leaf: 1.0, flat: 0.75, det: 1, flowers: G(0xf5d742), leaves: [G(0x3c7a34), G(0x4a8a3a)] }),
+    '苦楝':     (x, z) => broad(x, z, { H: 9, forkH: 2.6, tr: 0.26, bark: bDark, nB: 5, spread: 3.4, endY: 0.76, nC: 8, leaf: 0.85, flat: 0.55, leaves: [G(0x5f9445), G(0x74a64e)] }),
+    '藍花楹':   (x, z) => broad(x, z, { H: 8.5, forkH: 3.0, tr: 0.22, bark: bDark, nB: 5, spread: 3.0, endY: 0.78, nC: 8, leaf: 0.8, flat: 0.5, leaves: [G(0x6f9e3f), G(0x86b04c)] }),
+    '火焰木':   (x, z) => broad(x, z, { H: 10, forkH: 3.4, tr: 0.26, bark: bGrey, nB: 5, spread: 2.6, endY: 0.8, nC: 7, leaf: 1.0, flat: 0.8, flowers: G(0xe8541a), leaves: [G(0x2f6a2c), G(0x3f7a34)] }),
+    '海南菜豆樹': (x, z) => broad(x, z, { H: 8, forkH: 2.6, tr: 0.22, bark: bGrey, nB: 5, spread: 2.2, endY: 0.78, nC: 7, leaf: 0.9, flat: 0.8, leaves: [G(0x3f8034), G(0x55913e)] }),
+    '光蠟樹':   (x, z) => broad(x, z, { H: 9, forkH: 3.0, tr: 0.22, bark: bLight, nB: 5, spread: 2.6, endY: 0.78, nC: 7, leaf: 0.85, flat: 0.65, leaves: [G(0x5a9142), G(0x6aa24a)] }),
+    '臺灣櫸':   (x, z) => broad(x, z, { H: 10, forkH: 2.8, tr: 0.24, bark: bLight, nB: 6, spread: 2.8, endY: 0.8, nC: 7, leaf: 0.85, flat: 0.75, leaves: [G(0x4f8a3a), G(0x62993f)] }),
+    '楓香':     (x, z) => broad(x, z, { H: 10, forkH: 4.2, tr: 0.2, bark: bLight, nB: 5, spread: 1.6, endY: 0.82, nC: 6, leaf: 0.9, flat: 0.95, leaves: [G(0x587f3a), G(0x6a8f40), G(0x7a9a46)] }),
+    '黃金風鈴木': (x, z) => broad(x, z, { H: 7, forkH: 2.2, tr: 0.2, bark: bGrey, nB: 5, spread: 2.4, endY: 0.78, nC: 6, leaf: 0.9, flat: 0.7, leaves: [G(0x4f8a3a), G(0x62993f)] }),
+    '風鈴木':   (x, z) => broad(x, z, { H: 8, forkH: 2.4, tr: 0.22, bark: bGrey, nB: 5, spread: 2.6, endY: 0.78, nC: 6, leaf: 0.95, flat: 0.7, leaves: [G(0x3f7a34), G(0x55913e)] }),
+    '欖仁樹':   (x, z, lean) => tiered(x + (lean ? 0.9 : 0), z, { H: 9, tr: 0.32, tiers: 4, spread: 3.4, leaf: 0.85, bark: bDark, leaves: [G(0x3c7431), G(0x55893a)] }),
+    '馬拉巴栗': (x, z) => tiered(x, z, { H: 6, tr: 0.18, tiers: 4, spread: 1.8, leaf: 0.6, bark: M(0x6f7a4a), leaves: [G(0x3f8034), G(0x55913e)] }),
+    '大王椰子': (x, z) => palm(x, z, { H: 12.5, tr: 0.24, trunk: 0xb4b0a6, frond: 0x3f7a35, len: 4.2, shaft: true }),
+    '可可椰子': (x, z) => palm(x, z, { H: 9, tr: 0.2, trunk: 0x8a7d6c, frond: 0x4f8a36, len: 4.0, bend: 0.9, coconuts: true }),
+    '黃椰子':   (x, z) => palm(x, z, { H: 4.5, tr: 0.08, trunk: 0xa8a050, frond: 0x6fa045, len: 2.2, cluster: 5 }),
+    '扇葉蒲葵': (x, z) => palm(x, z, { H: 6.5, tr: 0.18, trunk: 0x7a7066, frond: 0x3f7a35, len: 2.4, fan: true }),
+    '緬梔':     (x, z) => plumeria(x, z, { k: 1.0 }),
+    '七里香':   (x, z) => shrub(x, z, { w: 1.6, h: 2.2, stem: 0.5, leaves: [G(0x2f6a2c), G(0x3c7a32)], flowers: G(0xfffbeb) }),
+    '金露花':   (x, z) => shrub(x, z, { w: 1.4, h: 1.6, leaves: [G(0x7fae3a), G(0x95c040)], flowers: G(0x7a5ac8) }),
+    '桂花':     (x, z) => shrub(x, z, { w: 1.8, h: 2.6, stem: 0.6, leaves: [G(0x2b5a2a), G(0x376a31)], flowers: G(0xfff2a8) }),
+    '臺灣海桐': (x, z) => shrub(x, z, { w: 1.8, h: 2.0, stem: 0.4, leaves: [G(0x2f6a2c), G(0x3f7a34)], flowers: G(0xffffff) }),
+    '田代氏石斑木': (x, z) => shrub(x, z, { w: 1.5, h: 1.8, stem: 0.4, leaves: [G(0x2b5a2a), G(0x376a31)], flowers: G(0xffe4ec) })
+  };
+  const crownR = { '菲島福木': 1.3, '蘭嶼肉桂': 1.4, '龍柏': 1.0, '竹柏': 1.2, '大葉羅漢松': 1.0, '七里香': 0.9, '金露花': 0.8, '桂花': 1.0, '臺灣海桐': 1.0, '田代氏石斑木': 0.9, '黃椰子': 1.6, '扇葉蒲葵': 1.8, '可可椰子': 3.0, '大王椰子': 3.2, '雨豆樹': 6.5, '榕樹': 5.5, '大葉桃花心木': 5.5, '印度紫檀': 5.0, '樟樹': 4.5, '鳳凰木': 5.0 };
+  CAMPUS_TREE_REGISTRY.forEach(([id, sp, x, z, lean]) => {
+    const fn = SP[sp];
+    if (!fn) return;
+    const n0 = grp.children.length;
+    fn(x, z, lean);
+    // 依樹幹位置決定標高：下沉中庭內整株下移；全部標記 keepLevel，避免中庭下移程序拆散樹冠
+    const sink = inCourtyardSink(x, z) ? COURTYARD_SINK.D : 0;
+    for (let i = n0; i < grp.children.length; i++) {
+      const o = grp.children[i];
+      o.position.y -= sink;
+      o.traverse(c => { c.userData.keepLevel = true; });
+    }
+    campusTreeRecords.push({ x, z, r: crownR[sp] || 3.2, species: /椰|蒲葵/.test(sp) ? 'palm' : (/風鈴|緬梔|紫薇|火焰|鳳凰|藍花楹/.test(sp) ? 'flowering' : 'broad') });
   });
   layerGroups.vegetation.add(grp);
+  window.__registryTreeCount = CAMPUS_TREE_REGISTRY.length;
 })();
 (function buildSportsNamedTrees() {
   const grp = new THREE.Group();
@@ -19191,9 +19368,7 @@ const northDrivewayShadeTrees = [
   });
   layerGroups.vegetation.add(grp);
 })();
-northDrivewayShadeTrees.forEach(([tx, tz, sc, sp]) => {
-  addTree(tx, tz, sc, sp);
-});
+// v2.12.16：車道林蔭樹改由樹木普查登錄資料呈現（原 6 株通用樹停用）
 
 // Exterior Commuter Walkway Buffer Street Trees (`圍牆外通學步道緩衝帶行道樹`, positioned outside `V0(56,22)->V6(56,328)->V5(180,480)->V4(405,392)`)
 const commuterWalkwayTrees = [
