@@ -3014,6 +3014,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       g.position.set(p.x, 0, p.z);
       g.rotation.y = rot;
       g.scale.setScalar(sc);
+      g.position.y = p.y || 0;
       limb(g, V(0, 0, 0), V(0.1, h, 0), 0.26, 0.12, barkMat, 9);
       [[0.42, 3.0, 5], [0.6, 2.4, 5], [0.78, 1.7, 4], [0.92, 1.0, 4]].forEach(([fy, reach, nb], tier) => {
         for (let b = 0; b < nb; b++) {
@@ -3033,11 +3034,22 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     };
     // v2.12.12 依使用者標註之 2024 街景：近復興路轉角（電線桿旁）高大者為【大葉欖仁】，
     //   西側圓石桌旁為【小葉欖仁】；最西一株維持大葉欖仁
-    tropicalAlmond(at(0.2), 8.4, 0.6, 1.45);         // 轉角大葉欖仁：高約 12 m、冠幅約 11 m
+    // v2.12.14 依使用者說明：大葉欖仁與小葉欖仁皆生長於矮牆外之通學步道上（非校園內），樹下設樹穴；
+    //   小葉欖仁樹下即人行道石桌椅區
+    const outLine = offsetXZ(sampleXZCurve(FORECOURT_SOUTH_CURVE, 0.5), 1.7, 0, 1);
+    const outAtX = x => outLine.reduce((b, q) => Math.abs(q.x - x) < Math.abs(b.x - x) ? q : b, outLine[0]);
+    const treePit = q => {
+      addBox(segBg, 1.3, 0.03, 1.3, new THREE.MeshStandardMaterial({ color: 0x4a3f33, roughness: 0.95 }), q.x, 0.16, q.z, false);
+      addBox(segBg, 1.42, 0.06, 0.08, curbStoneMat, q.x, 0.17, q.z - 0.67, false); addBox(segBg, 1.42, 0.06, 0.08, curbStoneMat, q.x, 0.17, q.z + 0.67, false);
+      addBox(segBg, 0.08, 0.06, 1.42, curbStoneMat, q.x - 0.67, 0.17, q.z, false); addBox(segBg, 0.08, 0.06, 1.42, curbStoneMat, q.x + 0.67, 0.17, q.z, false);
+    };
+    const bigAlmondP = outAtX(95.0);      // 街景：緊鄰第二組石桌東側
+    treePit(bigAlmondP);
+    tropicalAlmond(V(bigAlmondP.x, 0.14, bigAlmondP.z), 8.4, 0.6, 1.45);   // 轉角大葉欖仁：高約 12 m、冠幅約 11 m
     // 小葉欖仁：通直灰褐主幹，枝條水平輪生成 5～6 層明顯分層的塔狀樹冠，細碎小葉平鋪於枝上、淺綠通透
     const smallLeafTerminalia = (p, h) => {
       const g = new THREE.Group();
-      g.position.set(p.x, 0, p.z);
+      g.position.set(p.x, p.y || 0, p.z);
       const greyBark = new THREE.MeshStandardMaterial({ color: 0x77706a, roughness: 0.88 });
       const leafA = new THREE.MeshStandardMaterial({ color: 0x6fa84a, roughness: 0.8 });
       const leafB = new THREE.MeshStandardMaterial({ color: 0x86b95a, roughness: 0.8 });
@@ -3062,13 +3074,14 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       }
       segBg.add(g);
     };
-    smallLeafTerminalia(at(0.56), 9.0);
+    const smallTermP = outAtX(85.6);
+    treePit(smallTermP);
+    smallLeafTerminalia(V(smallTermP.x, 0.14, smallTermP.z), 9.0);
     tropicalAlmond(at(0.84), 7.4, 1.1);
     // 轉角大葉欖仁前之水泥電線桿（街景：立於花台矮牆外鋪面上，頂部路燈挑臂伸向 42 巷）
     {
-      const p = at(0.2);
       const poleMat = new THREE.MeshStandardMaterial({ color: 0x8f8a82, roughness: 0.85 });
-      const px = p.x - 0.6, pz = p.z + 2.6;
+      const px = bigAlmondP.x + 1.3, pz = bigAlmondP.z + 1.1;     // 大葉欖仁東南側（近車道）
       addMesh(segBg, new THREE.CylinderGeometry(0.13, 0.18, 9.5, 12), poleMat, px, 4.9, pz);
       addBox(segBg, 1.6, 0.1, 0.1, poleMat, px, 9.0, pz);
       const steel = new THREE.MeshStandardMaterial({ color: 0xa8adb2, roughness: 0.35, metalness: 0.6 });
@@ -3082,7 +3095,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       // 磨石子圓石桌 ×2，各配 6 張圓柱石凳
       const terrazzoMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#bdb7ad', '#6b665f', '#f0ece4', false), roughness: 0.6 });
       const stoolMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#9c968d', '#55514b', '#dcd7cd', false), roughness: 0.75 });
-      [[87.8, 20.75], [91.6, 20.55]].forEach(([tx, tz], ti) => {
+      [[smallTermP.x + 2.6, smallTermP.z + 0.9], [smallTermP.x + 5.9, smallTermP.z + 0.75]].forEach(([tx, tz], ti) => {
         addMesh(segBg, new THREE.CylinderGeometry(0.62, 0.62, 0.07, 28), terrazzoMat, tx, 0.82, tz);
         addMesh(segBg, new THREE.CylinderGeometry(0.2, 0.26, 0.68, 14), stoolMat, tx, 0.46, tz);
         for (let k = 0; k < 6; k++) {
@@ -3095,14 +3108,16 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       const coverGreen = new THREE.MeshStandardMaterial({ color: 0x1f8a64, roughness: 0.6 });
       const scooterBlack = new THREE.MeshStandardMaterial({ color: 0x24272c, roughness: 0.4, metalness: 0.4 });
       // 機車車身沿南北向（與緣石垂直）停放，直接以世界座標建立
-      const y0 = 0.14, zc = 22.55;
-      [[82.6, coverGrey], [83.5, coverGreen]].forEach(([sx, m]) => {
+      // 街景：加蓋機車（灰、綠）與兩輛黑色機車並排停靠於石桌北側花台矮牆前
+      const y0 = 0.14, wz = x => outAtX(x).z - 0.75;
+      [[smallTermP.x + 2.4, coverGrey], [smallTermP.x + 3.3, coverGreen]].forEach(([sx, m]) => {
+        const zc = wz(sx);
         const body = addMesh(segBg, new THREE.SphereGeometry(0.5, 12, 8), m, sx, y0 + 0.55, zc);
         body.scale.set(0.48, 1.0, 1.45);
         addBox(segBg, 0.42, 0.3, 1.35, m, sx, y0 + 0.2, zc);
       });
-      {
-        const sx = 84.5;
+      [smallTermP.x + 4.4, smallTermP.x + 5.1].forEach(sx => {
+        const zc = wz(sx);
         [-0.62, 0.62].forEach(wz => {
           const w = addMesh(segBg, new THREE.TorusGeometry(0.2, 0.06, 6, 14), scooterBlack, sx, y0 + 0.24, zc + wz);
           w.rotation.y = Math.PI / 2;
@@ -3110,10 +3125,10 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
         addBox(segBg, 0.36, 0.35, 1.3, scooterBlack, sx, y0 + 0.5, zc);
         addBox(segBg, 0.34, 0.12, 0.6, scooterBlack, sx, y0 + 0.74, zc + 0.2);
         addBox(segBg, 0.3, 0.55, 0.22, scooterBlack, sx, y0 + 0.85, zc - 0.5);
-      }
+      });
       // 道路反射鏡（橘框凸面鏡、黑白斑馬紋立桿）
       const mg2 = new THREE.Group();
-      mg2.position.set(78.2, 0.14, 23.9);
+      mg2.position.set(smallTermP.x - 1.4, 0.14, smallTermP.z + 2.2);   // 小葉欖仁西側人行道緣
       mg2.rotation.y = -0.6;
       const poleW = new THREE.MeshStandardMaterial({ color: 0xf3f4f6, roughness: 0.5 });
       const poleK = new THREE.MeshStandardMaterial({ color: 0x1f2125, roughness: 0.5 });
