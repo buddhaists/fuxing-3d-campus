@@ -12058,6 +12058,8 @@ function buildWestBuilding() {
     {
       const kxP2 = -31.0, kxB2 = -17.6;                      // 凸出部／西翼東緣、東翼東緣
       const zP1 = -34.68, zB1 = -30.18;                      // 凸出部北緣、廚房北牆（＝長巷南緣）
+      // v2.12.45 依實景照片 5149／5147：凸出部（穿廊）位於銀色遮雨棚正南、電梯塔西南角，向東移至 x −33.0～−27.9
+      const pX1 = -33.0, pX2 = -27.9;
       const zAlleyN = -34.38;                                // 長巷北緣（電梯南面，世界 z ≈ −40.4）
       const stTileMat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 });   // 穿廊與長巷地坪
       const box = (x1, x2, y1, y2, z1, z2, m, cast = true) => addBox(g, x2 - x1, y2 - y1, z2 - z1, m, (x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2, cast);
@@ -12071,15 +12073,15 @@ function buildWestBuilding() {
       });
       box(kWestX + 0.02, -33.62, 0, y2F - 0.02, nwNorthZ + 0.02, kNorthZ - 0.02, kitchenTileMat);
       // 2) 北側凸出部：2F 房間、1F 東西向穿廊（四角與中間白磁磚方柱、磨石地坪、平頂天花）
-      box(kWestX, kxP2, y2F, kH, zP1, zB1, kitchenTileMat); roofCap(kWestX, kxP2, zP1, zB1, kH);
-      box(kWestX - 0.05, kxP2 + 0.05, y2F - 0.30, y2F, zP1 - 0.05, zB1, mats.slab);
-      box(kWestX + 0.1, kxP2 - 0.1, y2F - 0.36, y2F - 0.30, zP1 + 0.1, zB1 - 0.1, passageCeilingMat, false);
-      box(kWestX, kxP2, 0, y1F, zP1, zB1, stTileMat, false);
+      box(pX1, pX2, y2F, kH, zP1, zB1, kitchenTileMat); roofCap(pX1, pX2, zP1, zB1, kH);
+      box(pX1 - 0.05, pX2 + 0.05, y2F - 0.30, y2F, zP1 - 0.05, zB1, mats.slab);
+      box(pX1 + 0.1, pX2 - 0.1, y2F - 0.36, y2F - 0.30, zP1 + 0.1, zB1 - 0.1, passageCeilingMat, false);
+      box(pX1, pX2, 0, y1F, zP1, zB1, stTileMat, false);
       // v2.12.44 依實景照片 5149／5148／5147：西北角與東北角白磁磚圓柱，穿廊向西、北（銀色遮雨棚）、東（綠色長巷）三面開敞
-      [[kWestX + 0.36, zP1 + 0.36], [kxP2 - 0.36, zP1 + 0.36]].forEach(([px, pz]) => addMesh(g, new THREE.CylinderGeometry(0.32, 0.32, y2F - 0.30, 20), colTileMat, px, (y2F - 0.30) / 2, pz));
+      [[pX1 + 0.36, zP1 + 0.36], [pX2 - 0.36, zP1 + 0.36]].forEach(([px, pz]) => addMesh(g, new THREE.CylinderGeometry(0.32, 0.32, y2F - 0.30, 20), colTileMat, px, (y2F - 0.30) / 2, pz));
       // 穿廊南側為廚房西翼外牆：不銹鋼鐵捲門
-      box(kWestX + 1.2, kWestX + 4.0, y1F, y1F + 2.6, zB1 - 0.06, zB1 - 0.02, stainlessMat, false);
-      for (let k = 0; k < 13; k++) box(kWestX + 1.2, kWestX + 4.0, y1F + 0.1 + k * 0.2, y1F + 0.12 + k * 0.2, zB1 - 0.08, zB1 - 0.06, darkMetalMat, false);
+      box(pX1 + 0.8, pX1 + 3.6, y1F, y1F + 2.6, zB1 - 0.06, zB1 - 0.02, stainlessMat, false);
+      for (let k = 0; k < 13; k++) box(pX1 + 0.8, pX1 + 3.6, y1F + 0.1 + k * 0.2, y1F + 0.12 + k * 0.2, zB1 - 0.08, zB1 - 0.06, darkMetalMat, false);
       // 3) 窗戶（霧面多格鋁窗）
       const winN = (x1, x2, zFace, ys, n0) => {
         const n = n0 || Math.max(1, Math.floor((x2 - x1) / 2.6));
@@ -12102,10 +12104,10 @@ function buildWestBuilding() {
         }
       };
       const F2 = [[y2F + 1.65, 1.35]], F12 = [[y1F + 1.75, 1.10], [y2F + 1.65, 1.35]];
-      winN(kWestX, kxP2, zP1, F2, 2);                        // 凸出部北面 2F
-      winX(kWestX, zP1, zB1, [[y2F + 1.75, 1.85]], -1, 1);   // 凸出部西面 2F 田字大窗（照片 5166/5167）
+      winN(pX1, pX2, zP1, F2, 2);                            // 凸出部北面 2F
+      winX(pX1, zP1, zB1, [[y2F + 1.75, 1.85]], -1, 1);      // 凸出部西面 2F 田字大窗（照片 5166/5167/5143）
       winX(kWestX, zB1, nwNorthZ, F12, -1);                  // 西翼南段西面
-      winN(kxP2, kxB2, zB1, F2);                             // 廚房北牆 2F（照片 5162）
+      winN(pX2, kxB2, zB1, F2);                             // 廚房北牆 2F（照片 5162）
       // 東翼東面（面向中庭，照片 4928）：2F 素牆；1F 一扇鐵窗與一具排風扇
       winX(kxB2, zB1, kNorthZ, [[y1F + 2.05, 0.75]], 1, 1);
       for (let k = 0; k < 7; k++) box(kxB2 + 0.07, kxB2 + 0.10, y1F + 1.70, y1F + 2.42, (zB1 + kNorthZ) / 2 - 0.85 + k * 0.28, (zB1 + kNorthZ) / 2 - 0.82 + k * 0.28, darkMetalMat, false);
@@ -12117,7 +12119,7 @@ function buildWestBuilding() {
       const canopyGreen = new THREE.MeshStandardMaterial({ color: 0x62a88c, roughness: 0.42, metalness: 0.1, transparent: true, opacity: 0.82, depthWrite: false, side: THREE.DoubleSide });
       const frameMat = new THREE.MeshStandardMaterial({ color: 0x8a9096, roughness: 0.4, metalness: 0.6 });
       const silverRoof = new THREE.MeshStandardMaterial({ color: 0xc3c9ce, roughness: 0.32, metalness: 0.55, side: THREE.DoubleSide });
-      const cx1 = kxP2, cx2 = -21.0, cH = 3.25;
+      const cx1 = pX2, cx2 = -21.0, cH = 3.25;
       box(cx1, cx2, cH, cH + 0.04, zAlleyN + 0.35, zB1, canopyGreen, false);
       { const edge = addMesh(g, new THREE.CylinderGeometry(0.42, 0.42, cx2 - cx1, 16, 1, true, 0, Math.PI / 2), canopyGreen, (cx1 + cx2) / 2, cH - 0.42, zAlleyN + 0.35, false); edge.rotation.z = Math.PI / 2; edge.rotation.y = Math.PI; }
       for (let x = cx1; x <= cx2 + 0.01; x += (cx2 - cx1) / 6) box(x - 0.04, x + 0.04, cH + 0.04, cH + 0.10, zAlleyN + 0.35, zB1, frameMat, false);
@@ -12126,16 +12128,16 @@ function buildWestBuilding() {
       box(cx1, cx2, 0, 0.05, zAlleyN, zB1, stTileMat, false);
       box(cx1, cx2, 0.05, 0.07, zB1 - 0.75, zB1 - 0.45, darkMetalMat, false);
       // 廚房北牆：兩座圓弧不銹鋼排油煙罩、角落直立排煙方管（高出屋頂）、不銹鋼儲物櫃
-      [-28.6, -25.4].forEach(hx => {
+      [-26.4, -24.0].forEach(hx => {
         box(hx - 0.75, hx + 0.75, 2.45, 3.05, zB1 - 0.9, zB1, stainlessMat);
         const hood = addMesh(g, new THREE.CylinderGeometry(0.45, 0.45, 1.5, 14, 1, false, 0, Math.PI), stainlessMat, hx, 2.45, zB1 - 0.45, false); hood.rotation.z = Math.PI / 2;
       });
-      box(kxP2 + 0.15, kxP2 + 0.75, 2.2, kH + 2.2, zB1 - 0.55, zB1 - 0.05, stainlessMat);
-      box(kxP2 + 0.05, kxP2 + 0.85, kH + 2.2, kH + 2.6, zB1 - 0.65, zB1 + 0.05, stainlessMat);
-      [-23.6, -21.8].forEach(cxm => box(cxm - 0.85, cxm + 0.85, 0.1, 1.85, zB1 - 0.8, zB1 - 0.05, stainlessMat));
+      box(pX2 + 0.15, pX2 + 0.75, 2.2, kH + 2.2, zB1 - 0.55, zB1 - 0.05, stainlessMat);
+      box(pX2 + 0.05, pX2 + 0.85, kH + 2.2, kH + 2.6, zB1 - 0.65, zB1 + 0.05, stainlessMat);
+      [-22.2, -20.4].forEach(cxm => box(cxm - 0.85, cxm + 0.85, 0.1, 1.85, zB1 - 0.8, zB1 - 0.05, stainlessMat));
       // 5) 電梯西門前銀色圓弧遮雨棚與不銹鋼欄杆（照片 4921 俯視：L 形，東緣貼電梯塔西牆，東南角缺口為落水管與水溝）
       //    世界座標 x −33.6～−28.1、z −45.4～−40.7；東南缺口 x −30.1～−28.1、z −42.5～−40.7
-      const sx1 = -33.6, sx2 = -28.1, sz1 = -39.38, sz2 = zP1, sH = 2.95, nx = -30.1, nz = -36.48;
+      const sx1 = -33.2, sx2 = -28.1, sz1 = -39.38, sz2 = zP1, sH = 2.95, nx = -30.1, nz = -36.48;
       const roofPart = (x1, x2, z1, z2) => box(x1, x2, sH, sH + 0.05, z1, z2, silverRoof, false);
       roofPart(sx1, sx2, sz1, nz); roofPart(sx1, nx, nz, sz2);
       const curl = (len, x, z, alongX, rotZ) => {                       // 圓弧下彎收邊
@@ -19321,7 +19323,7 @@ const CAMPUS_TREE_REGISTRY = [
   ["442030", "楓香", -39.7, -8.3, 0],
   ["442040", "印度紫檀", -38.2, -71.1, 0],
   ["442281", "雨豆樹", -33.9, 26.0, 0],
-  ["441981", "楓香", -39.2, -37.0, 0],
+  ["441981", "楓香", -36.8, -37.3, 0],
   ["442007", "波羅蜜", -30.7, -58.4, 0],
   ["441997", "緬梔", -30.5, -59.8, 0],
   ["441990", "苦楝", -29.2, -58.6, 0],
