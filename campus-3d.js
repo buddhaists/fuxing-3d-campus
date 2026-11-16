@@ -4316,20 +4316,17 @@ function buildNorthBuilding() {
     {
       const stainlessMat = stainlessRailMat;
 
-      // A. 鮮黃色垂直色塊 (1F~2F 西南立面)
-      const yelW = 1.95, yelH = 4.35;
-      const yelX = wcL + 0.35 + yelW / 2;
-      const yelY = baseH + 1.15 + yelH / 2;
-      addBox(g, yelW, yelH, 0.06, toiletYellowMat, yelX, yelY, zWcSouth + 0.03);
-      // 黃色塊邊界深色分割線
+      // v2.12.46 依實景照片（西南方仰拍）：南立面西側由上而下為 3F 小紅塊、2F～3F 高藍塊、1F 黃塊、地面紅色踢腳帶
+      const yelW = 1.30, yelH = baseH + FH - 0.55;                  // 1F 黃塊（壁燈定位沿用）
+      const blkX = wcL + 0.35 + yelW / 2, zF = zWcSouth + 0.03;
+      addBox(g, yelW, 0.55, 0.06, toiletRedMat, blkX, 0.275, zF);                                   // 地面紅色踢腳帶
+      addBox(g, yelW, yelH, 0.06, toiletYellowMat, blkX, 0.55 + yelH / 2, zF);                     // 1F 黃塊
+      const blueY1 = baseH + FH + 0.35, blueY2 = baseH + 2 * FH + 0.85;
+      addBox(g, yelW, blueY2 - blueY1, 0.06, toiletBlueMat, blkX, (blueY1 + blueY2) / 2, zF);       // 2F～3F 高藍塊
+      addBox(g, yelW, 0.75, 0.06, toiletRedMat, blkX, blueY2 + 0.55, zF + 0.005);                    // 3F 小紅塊
+      // 色塊邊界深色分割線
       addBox(g, 0.035, towerWallH, 0.04, ironGrilleMat, wcL + 0.35 + yelW, towerWallH / 2, zWcSouth + 0.02);
       addBox(g, 0.035, towerWallH, 0.04, ironGrilleMat, wcL + 0.35, towerWallH / 2, zWcSouth + 0.02);
-
-      // B. 3F 左上方鮮紅色矩形色塊 (#d81c42)
-      const redW = 1.65, redH = 1.95;
-      const redX = wcL + 0.35 + redW / 2;
-      const redY = baseH + 2 * FH + 1.45 + redH / 2;
-      addBox(g, redW, redH, 0.06, toiletRedMat, redX, redY, zWcSouth + 0.035);
 
       // C. 太陽能 LED 戶外壁燈 (Photo 1 實景 · 黃色塊壁面斜臂固定支架)
       const lampX = wcL + 0.35 + yelW * 0.58;
@@ -12062,6 +12059,7 @@ function buildWestBuilding() {
       const pX1 = -33.0, pX2 = -27.9;
       const zAlleyN = -34.38;                                // 長巷北緣（電梯南面，世界 z ≈ −40.4）
       const stTileMat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 });   // 穿廊與長巷地坪
+      const frameMat0 = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.4, metalness: 0.6 });   // 路燈支架
       const box = (x1, x2, y1, y2, z1, z2, m, cast = true) => addBox(g, x2 - x1, y2 - y1, z2 - z1, m, (x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2, cast);
       const roofCap = (x1, x2, z1, z2, top) => {
         box(x1 - 0.12, x2 + 0.12, top - 0.06, top + 0.16, z1 - 0.12, z2 + 0.12, whiteTileMat);
@@ -12106,6 +12104,12 @@ function buildWestBuilding() {
       const F2 = [[y2F + 1.65, 1.35]], F12 = [[y1F + 1.75, 1.10], [y2F + 1.65, 1.35]];
       winN(pX1, pX2, zP1, F2, 2);                            // 凸出部北面 2F
       winX(pX1, zP1, zB1, [[y2F + 1.75, 1.85]], -1, 1);      // 凸出部西面 2F 田字大窗（照片 5166/5167/5143）
+      // v2.12.46 照片 5147：凸出部西面 2F 斜臂太陽能路燈（燈頭朝外、上方太陽能板）
+      { const lz = zP1 + 0.9, ly = y2F + 1.2;
+        box(pX1 - 0.06, pX1, ly - 0.35, ly + 0.35, lz - 0.08, lz + 0.08, frameMat0, false);
+        const arm = addBox(g, 1.1, 0.06, 0.06, frameMat0, pX1 - 0.5, ly + 0.45, lz); arm.rotation.z = -0.55;
+        box(pX1 - 1.15, pX1 - 0.75, ly + 0.72, ly + 0.80, lz - 0.30, lz + 0.30, darkMetalMat, false);
+        box(pX1 - 0.95, pX1 - 0.35, ly + 0.95, ly + 0.99, lz - 0.32, lz + 0.32, darkMetalMat, false); }
       winX(kWestX, zB1, nwNorthZ, F12, -1);                  // 西翼南段西面
       winN(pX2, kxB2, zB1, F2);                             // 廚房北牆 2F（照片 5162）
       // 東翼東面（面向中庭，照片 4928）：2F 素牆；1F 一扇鐵窗與一具排風扇
