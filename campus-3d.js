@@ -1152,7 +1152,8 @@ const CAMPUS_PERIMETER_PX = [
   [955, 22],  // V1: NE Corner (Xingan St & Fuxing Rd)
   [955, 326], // V2: SE Corner (Fuxing Rd & Jianxing S. Rd Lane 42)
   [772, 320], // V3: 學校新南側門 (建興南路42巷 · 東棟大樓右側)
-  [496, 318], // V4: 學校舊南側門 (建興南路42巷 · 南棟興學樓西端)
+  [715, 294.9], // V3a: 南棟東端（v2.12.34 南棟北移後南緣折點）
+  [496, 294.9], // V4: 學校舊南側門 (建興南路42巷 · 南棟興學樓西端)
   [438, 374], // V4b: 幼兒園大門東柱 / 南圍牆折角 (建興南路42巷)
   [367, 374], // V5: 幼兒園西端 / 運動場南側圍牆交界
   [180, 480], // V6: 運動場西南尖端
@@ -1165,6 +1166,7 @@ const WEST_WALL_PX = [[65.7, -67.6], [51.4, 149.4], [39.2, 158.8], [45, 193.7], 
 const NORTH_WALL_PX = [[65.7, -67.6], [955, 22]];
 const northWallZAt = x => { const [a, b] = NORTH_WALL_PX; const t = (x - X(a[0])) / (X(b[0]) - X(a[0])); return Z(a[1]) + t * (Z(b[1]) - Z(a[1])); };
 const WEST_ROAD_PTS = [[-38.0, -44.5], [-38.0, -67.6], [-108.0, -75.2], [-113.5, -70.0], [-116.0, -67.1]];   // v2.12.33 北棟西端以西：沿北牆內側步道通往學校後門（依航照）
+const SOUTH_SHIFT = -6.0;   // v2.12.34 南棟依航照與普查樹木整體北移 6 m（南緣圍牆、人行道、道路同步）
 const TRACK_CFG = { cx: -60.8, cz: -9.5, rx: 19.5, straight: 52 };   // v2.12.33 PU 跑道（依對位航照）
 const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) { const [x1, y1] = WEST_WALL_PX[i], [x2, y2] = WEST_WALL_PX[i + 1]; if (py >= Math.min(y1, y2) && py <= Math.max(y1, y2)) return x1 + (x2 - x1) * (py - y1) / ((y2 - y1) || 1); } return WEST_WALL_PX[0][0]; };
 
@@ -1371,7 +1373,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [X(955), Z(235), 9.5], // 復興路正門
     [X(955), Z(74),  5.0], // 東側門
     [X(772), Z(320), 4.5], // 學校新南側門 (東棟大樓右側)
-    [X(657), Z(318), 4.8], // 學校舊南側門 (南棟大樓東側 1F 興學樓大字下通道後面)
+    [X(657), Z(294.9), 4.8], // 學校舊南側門 (南棟大樓東側 1F 興學樓大字下通道後面)
     [X(429), Z(374), 4.5], // 幼兒園大門 (新棟大樓南側大門)
     [X(62.44), Z(-18.1),  5.0], // 學校後門（v2.12.33 依使用者航照標示）
     [X(79.4), Z(260.4), 4.2]  // 司令台後小門
@@ -1404,14 +1406,16 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   addBufferedRoadSegment(X(367), Z(374), X(438), Z(374), 1, 3.0, 8.8, true, [0.87]);
 
   // Segment 4b: Along Kindergarten East Stepped Wall to South Building West Corner (`V4b(438,374) -> V4(496,318)`)
-  addCommuterWalkwayStrip(X(438), Z(374), X(496), Z(318), 1, 3.0, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
-  addBufferedRoadSegment(X(438), Z(374), X(496), Z(318), 1, 3.0, 8.8, true, [], { innerRed: true });
+  addCommuterWalkwayStrip(X(438), Z(374), X(496), Z(294.9), 1, 3.0, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
+  addBufferedRoadSegment(X(438), Z(374), X(496), Z(294.9), 1, 3.0, 8.8, true, [], { innerRed: true });
 
   // Segment 5: Along South Building (南棟興學樓) & East Building South Facade to 學校新南側門 (`V4(496,318) -> V3(772,320)`)
   // v2.12.4 依 2024 街景：南棟前七彩欄杆外仍有約 2.4 m 淨寬人行道（含行道樹），人行道加寬至 4.8 m；
   //          灰褐方形地磚、淡紫色緣石，校園側路緣為紅線
-  addCommuterWalkwayStrip(X(496), Z(318), X(772), Z(320), 1, 4.8, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
-  addBufferedRoadSegment(X(496), Z(318), X(772), Z(320), 1, 4.8, 8.6, true, [0.08, 0.94], { innerRed: true });
+  addCommuterWalkwayStrip(X(496), Z(294.9), X(715), Z(294.9), 1, 4.8, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
+  addCommuterWalkwayStrip(X(715), Z(294.9), X(772), Z(320), 1, 4.8, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
+  addBufferedRoadSegment(X(496), Z(294.9), X(715), Z(294.9), 1, 4.8, 8.6, true, [0.08], { innerRed: true });
+  addBufferedRoadSegment(X(715), Z(294.9), X(772), Z(320), 1, 4.8, 8.6, true, [0.9], { innerRed: true });
 
   // Segment 6: From 學校新南側門 (東棟大樓右側) to Southeast Corner (`V3(772,320) -> V2(955,326)`)
   // v2.12.3 依 2024 街景：此段人行道為灰褐方形地磚、緣石漆淡紫色，臨路側無花箱
@@ -3216,7 +3220,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   }
 
   // 學校舊南側門 (興安街 / 建興南路34巷 · 南棟興學樓西端後方穿堂，依照片精準重建)
-  buildOldSouthGate(X(657), Z(318));
+  buildOldSouthGate(X(657), Z(294.9));
 }
 
 // 北鄰國立屏東高工校地（v2.12.6 依 Google 空拍：復興國小北側圍牆外即屏工運動場，牆外為草地，無步道與民宅）
@@ -9747,7 +9751,7 @@ function buildSouthBuilding() {
   //   - 軸線 C' (zCoreSouth): 教室南外牆 (教室主體進深 600 cm = 6.00 m)
   //   - 軸線 D (zSouth): 南側前走廊外緣 (前走廊深 350 cm = 3.50 m，臨建興南路42巷)
   // ============================================================================
-  const zSouth = Z(318);                // 軸線 D (20.28m)
+  const zSouth = Z(318) + SOUTH_SHIFT;  // 軸線 D（原 20.28m，v2.12.34 北移 6 m → 14.28m）
   const zCoreSouth = zSouth - 3.50;     // 軸線 C' (16.78m)
   const zCoreNorth = zCoreSouth - 6.00; // 軸線 B (10.78m)
   const zNorth = zCoreNorth - 2.00;     // 軸線 A (8.78m)
@@ -19152,23 +19156,23 @@ const CAMPUS_TREE_REGISTRY = [
   ["442150", "榕樹", -9.5, -19.8, 0],
   ["839655", "桂花", -5.2, 4.5, 0],
   ["442332", "風鈴木", -8.5, -58.3, 0],
-  ["442179", "金露花", -3.7, 7, 0],
-  ["442188", "龍柏", -1.6, 6.3, 0],
+  ["442179", "金露花", -3.7, 1.0, 0],
+  ["442188", "龍柏", -1.6, 0.3, 0],
   ["442323", "風鈴木", -3.7, -57.2, 0],
   ["442123", "黃槿", 0.7, -23.5, 0],
-  ["442211", "樟樹", 2.5, 7.0, 0],
-  ["442204", "瓊崖海棠", 2.8, 6.8, 0],
+  ["442211", "樟樹", 2.5, 1.0, 0],
+  ["442204", "瓊崖海棠", 2.8, 0.8, 0],
   ["442115", "水黃皮", 6.3, -22.3, 0],
-  ["442218", "茄冬", 11.2, 6.5, 0],
+  ["442218", "茄冬", 11.2, 0.5, 0],
   ["442107", "火焰木", 10.4, -21.1, 0],
   ["442334", "印度紫檀", 11.5, -66.1, 0],
   ["442330", "印度紫檀", 15.5, -65.7, 0],
-  ["442230", "黃金風鈴木", 15.5, 6.2, 0],
+  ["442230", "黃金風鈴木", 15.5, 0.2, 0],
   ["442100", "黃槿", 28, -17.7, 0],
-  ["442237", "火焰木", 30.3, 8.0, 0],
+  ["442237", "火焰木", 30.3, 2.0, 0],
   ["442092", "黃金風鈴木", 31.8, -17.4, 0],
-  ["442263", "樟樹", 32.2, 3.9, 0],
-  ["442252", "竹柏", 36.5, 6.8, 0],
+  ["442263", "樟樹", 32.2, -2.1, 0],
+  ["442252", "竹柏", 36.5, 0.8, 0],
   ["441975", "印度紫檀", 49.7, -33.5, 0],
   ["839658", "大葉羅漢松", 66.5, 18.6, 0],
   ["839651", "臺灣海桐", 67.5, 18.6, 0],
@@ -21253,8 +21257,8 @@ function getClassroomCorridorView(lm, floorKey, rm, worldPos) {
     t = [wx, eyeY - 0.20, -30.5];
   } else if (lmId === 'south-building') {
     // 南棟・興學樓：前走廊位於北側（面向中庭花園，走廊軸線 Z ≈ 8.78~10.78m），視線朝南 (+Z) 正對教室前門窗與新配備課桌椅黑板
-    p = [wx, eyeY + 0.25, 6.8];
-    t = [wx, eyeY - 0.20, 13.8];
+    p = [wx, eyeY + 0.25, 6.8 + SOUTH_SHIFT];
+    t = [wx, eyeY - 0.20, 13.8 + SOUTH_SHIFT];
   } else if (lmId === 'west-building') {
     // 西棟・育樂樓：前走廊位於東側（面向中庭花園，走廊軸線 X ≈ -25.7m），視線朝西 (-X) 正對教室前走廊與內部空間
     p = [-21.8, eyeY + 0.25, wz];
@@ -22943,7 +22947,7 @@ function updateMinimap() {
 
   let svgHtml = `
     <polygon points="${X(40)},${Z(8)} ${X(972)},${Z(8)} ${X(972)},${Z(336)} ${X(770)},${Z(330)} ${X(494)},${Z(328)} ${X(438)},${Z(384)} ${X(365)},${Z(384)} ${X(176)},${Z(498)} ${X(40)},${Z(334)}" fill="none" stroke="rgba(197,118,94,0.55)" stroke-width="1.2" stroke-dasharray="2 2"/>
-    <polygon points="${X(65.7)},${Z(-67.6)} ${X(955)},${Z(22)} ${X(955)},${Z(326)} ${X(772)},${Z(320)} ${X(496)},${Z(318)} ${X(438)},${Z(374)} ${X(367)},${Z(374)} ${X(180)},${Z(480)} ${X(152.9)},${Z(437.2)} ${X(134.6)},${Z(381.8)} ${X(105.2)},${Z(308.8)} ${X(76.2)},${Z(245.3)} ${X(45)},${Z(193.7)} ${X(39.2)},${Z(158.8)} ${X(51.4)},${Z(149.4)}" fill="none" stroke="${isNight ? '#8bc7b0' : '#315b4e'}" stroke-width="1.5" opacity="0.85"/>
+    <polygon points="${X(65.7)},${Z(-67.6)} ${X(955)},${Z(22)} ${X(955)},${Z(326)} ${X(772)},${Z(320)} ${X(715)},${Z(294.9)} ${X(496)},${Z(294.9)} ${X(438)},${Z(374)} ${X(367)},${Z(374)} ${X(180)},${Z(480)} ${X(152.9)},${Z(437.2)} ${X(134.6)},${Z(381.8)} ${X(105.2)},${Z(308.8)} ${X(76.2)},${Z(245.3)} ${X(45)},${Z(193.7)} ${X(39.2)},${Z(158.8)} ${X(51.4)},${Z(149.4)}" fill="none" stroke="${isNight ? '#8bc7b0' : '#315b4e'}" stroke-width="1.5" opacity="0.85"/>
     <polygon points="${X(58)},${Z(24)} ${X(412)},${Z(24)} ${X(412)},${Z(386)} ${X(403)},${Z(390)} ${X(180)},${Z(477)} ${X(58)},${Z(327)}" fill="${isNight ? 'rgba(54,94,68,0.38)' : 'rgba(165,208,148,0.45)'}" stroke="none"/>
     <rect x="${X(224)}" y="${Z(120)}" width="${128 * S}" height="${256 * S}" rx="${64 * S}" fill="none" stroke="#c85a40" stroke-width="3.2" opacity="0.85"/>
   `;
@@ -24484,6 +24488,7 @@ function lowerCourtyardContents() {
     let a = o, lm = '';
     while (a && !lm) { lm = a.userData?.landmarkId || ''; a = a.parent; }
     if (SKIP.has(lm)) return;
+    if (lm === 'south-building' && (_cbox.max.y > 0.3 || o.userData.keepLevel)) return;   // v2.12.34 南棟北移：僅下移貼地地磚帶
     _cbox.setFromObject(o);
     if (_cbox.isEmpty() || _cbox.min.y < -0.3) return;
     if (_cbox.min.x < C.x1 || _cbox.max.x > C.x2 || _cbox.min.z < C.z1 || _cbox.max.z > C.z2) return;
