@@ -12075,7 +12075,7 @@ function buildWestBuilding() {
         for (let i = 0; i < n; i++) {
           const wx = x1 + (x2 - x1) * (i + 0.5) / n;
           ys.forEach(([wy, wh]) => {
-            const wm = addMesh(g, new THREE.PlaneGeometry(1.85, wh), winFrost6Mat, wx, wy, zFace - 0.04, false); wm.rotation.y = Math.PI;
+            const wm = addMesh(g, new THREE.PlaneGeometry(1.85, wh), winFrost6Mat, wx, wy, zFace - 0.08, false); wm.rotation.y = Math.PI;   // 玻璃面置於窗框外側
             box(wx - 0.96, wx + 0.96, wy - wh / 2 - 0.04, wy + wh / 2 + 0.04, zFace - 0.06, zFace + 0.02, darkMetalMat, false);
           });
         }
@@ -12085,7 +12085,7 @@ function buildWestBuilding() {
         for (let i = 0; i < n; i++) {
           const wz = z1 + (z2 - z1) * (i + 0.5) / n;
           ys.forEach(([wy, wh]) => {
-            const wm = addMesh(g, new THREE.PlaneGeometry(1.85, wh), winFrost6Mat, xFace + sign * 0.04, wy, wz, false); wm.rotation.y = sign * Math.PI / 2;
+            const wm = addMesh(g, new THREE.PlaneGeometry(1.85, wh), winFrost6Mat, xFace + sign * 0.08, wy, wz, false); wm.rotation.y = sign * Math.PI / 2;
             box(xFace + (sign > 0 ? -0.02 : -0.06), xFace + (sign > 0 ? 0.06 : 0.02), wy - wh / 2 - 0.04, wy + wh / 2 + 0.04, wz - 0.96, wz + 0.96, darkMetalMat, false);
           });
         }
@@ -19301,7 +19301,7 @@ const CAMPUS_TREE_REGISTRY = [
   ["442030", "楓香", -39.7, -8.3, 0],
   ["442040", "印度紫檀", -38.2, -71.1, 0],
   ["442281", "雨豆樹", -33.9, 26.0, 0],
-  ["441981", "楓香", -36.5, -37.0, 0],
+  ["441981", "楓香", -39.2, -37.0, 0],
   ["442007", "波羅蜜", -30.7, -58.4, 0],
   ["441997", "緬梔", -30.5, -59.8, 0],
   ["441990", "苦楝", -29.2, -58.6, 0],
