@@ -12038,15 +12038,15 @@ function buildWestBuilding() {
     });
 
     // v2.12.40 廚房增建擴建段（依航照 ③：北棟前方、西棟北端之 2 層白磁磚建物，1F 廚房、2F 儲藏室與教室）
-    //   北棟北移後原夾在北棟電梯與西棟之間的空間釋出；依航照外框（世界 x −32.2～−17.7、z −40.7～−29.4，東北角內凹至 z −36.2）
-    //   以西棟局部座標（世界 − (3.3, −6.02)）補建兩個量體：A 西翼（北伸）、B 東翼（向東伸至中庭西緣）
+    //   北棟北移後原夾在北棟電梯與西棟之間的空間釋出；依航照外框（世界 x −35.5～−17.6、z −40.7～−26.0，東北角內凹至 z −36.2）
+    //   以西棟局部座標（世界 − (0, −6.02)）補建兩個量體：A 西翼（北伸）、B 東翼（向東伸至中庭西緣）
     {
       const kxA1 = -35.5, kxA2 = -30.6, kzA1 = -34.68;        // A 西翼：北緣（局部）
-      const kxB2 = -21.0, kzB1 = -30.18;                       // B 東翼：東緣、北緣（局部）
+      const kxB2 = -17.6, kzB1 = -30.18;                       // B 東翼：東緣（緊鄰中庭西緣擋土牆）、北緣（局部）
       const parts = [
         [kxA1, kxA2, kzA1, nwNorthZ],                          // A：x −35.5～−30.6、z −34.68～−23.35
         [-33.6, kxA2, nwNorthZ, kNorthZ],                      // A2：補 NW 翼與 B 之間
-        [kxA2, kxB2, kzB1, kNorthZ]                            // B：x −30.6～−21.0、z −30.18～−20.0
+        [kxA2, kxB2, kzB1, kNorthZ]                            // B：x −30.6～−17.6、z −30.18～−20.0
       ];
       parts.forEach(([x1, x2, z1, z2]) => {
         const w = x2 - x1, d = z2 - z1, cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
@@ -22330,7 +22330,7 @@ const LOCAL_BUILDING_OBSTACLES = [
   { xf: EAST_XF, minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(233),       maxZ: Z(315) + 0.5 },
   { xf: WEST_XF, minX: -38.11 - 0.65, maxX: -24.31 + 0.65, minZ: -23.35 - 0.65, maxZ: 15.918 + 0.65 },
   { xf: WEST_XF, minX: -35.5 - 0.5, maxX: -30.6, minZ: -34.68 - 0.5, maxZ: -23.35 },
-  { xf: WEST_XF, minX: -30.6, maxX: -21.0 + 0.5, minZ: -30.18 - 0.5, maxZ: -20.0 }
+  { xf: WEST_XF, minX: -30.6, maxX: -17.6 + 0.3, minZ: -30.18 - 0.5, maxZ: -20.0 }
 ];
 
 // Collision footprint exclusions: allow walking inside North Building (愛悅樓) Front/Rear corridors, Central Stairwell, Basement & Lightwells!
