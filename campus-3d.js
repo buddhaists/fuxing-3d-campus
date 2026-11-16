@@ -18909,6 +18909,9 @@ function buildOrganicFarm() {
     const tz = roadZ - 2.0 - 0.6 - (bb.max.z - bb.min.z) / 2;
     ofg.rotation.y = th;
     ofg.position.set(c.x - (c.x * cs + c.z * sn), 0, tz - (-c.x * sn + c.z * cs));
+    // v2.12.40 沿車道方向東移 5.5 m，讓出停車棚東端（依航照：農場緊接停車棚東側）
+    const ux = 59.8 / Math.hypot(59.8, 9.4), uz = 9.4 / Math.hypot(59.8, 9.4);
+    ofg.position.x += 5.5 * ux; ofg.position.z += 5.5 * uz;
   }
   layerGroups.buildings.add(ofg);
   clickableGroups.push(ofg);
