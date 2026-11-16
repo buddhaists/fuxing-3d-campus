@@ -1165,7 +1165,8 @@ const CAMPUS_PERIMETER_PX = [
 const WEST_WALL_PX = [[65.7, -67.6], [51.4, 149.4], [39.2, 158.8], [45, 193.7], [76.2, 245.3], [105.2, 308.8], [134.6, 381.8], [152.9, 437.2], [180, 480]];
 const NORTH_WALL_PX = [[65.7, -67.6], [955, 22]];
 const northWallZAt = x => { const [a, b] = NORTH_WALL_PX; const t = (x - X(a[0])) / (X(b[0]) - X(a[0])); return Z(a[1]) + t * (Z(b[1]) - Z(a[1])); };
-const WEST_ROAD_PTS = [[-38.0, -44.5], [-38.0, -67.6], [-108.0, -75.2], [-113.5, -70.0], [-116.0, -67.1]];   // v2.12.33 北棟西端以西：沿北牆內側步道通往學校後門（依航照）
+const WEST_ROAD_PTS = [[113.5, -45.0], [53.7, -54.4], [-11.3, -61.1], [-36.0, -64.0], [-50.5, -66.6], [-89.8, -72.7], [-102.8, -73.9], [-114.4, -67.5]];   // v2.12.37 北側車道（依使用者航照標示）：東側門→沿北牆→學校後門
+const NORTH_SPUR_PTS = [[-36.0, -64.0], [-36.0, -43.5]];   // 北棟西端往南支線   // v2.12.33 北棟西端以西：沿北牆內側步道通往學校後門（依航照）
 const SOUTH_SHIFT = -6.0;   // v2.12.34 南棟依航照與普查樹木整體北移 6 m（南緣圍牆、人行道、道路同步）
 const TRACK_CFG = { cx: -60.8, cz: -9.5, rx: 19.5, straight: 52 };   // v2.12.33 PU 跑道（依對位航照）
 const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) { const [x1, y1] = WEST_WALL_PX[i], [x2, y2] = WEST_WALL_PX[i + 1]; if (py >= Math.min(y1, y2) && py <= Math.max(y1, y2)) return x1 + (x2 - x1) * (py - y1) / ((y2 - y1) || 1); } return WEST_WALL_PX[0][0]; };
@@ -18342,65 +18343,21 @@ function buildNorthCarport() {
   // -------------------------------------------------------------------------
 
   // 【A. 東段柏油車道】(x = -21.32m 至 x = +115.18m，寬 6.4m，中心 z = -43.5m)
-  const driveMinX = X(430), driveMaxX = X(955), driveCx = (driveMinX + driveMaxX) / 2;
-  const driveZ = -43.5, driveW = 6.4;
-  const eastRoadLen = driveMaxX - driveMinX; // 136.5m
-  // v2.12.7 依實景照片：北側車道為斑駁淺灰水泥路面（非柏油），雙向白色箭頭，無中央虛線
+  // v2.12.37 依使用者於航照標示之車道：東側門→沿北牆斜向直線→北棟西端→沿北牆至學校後門（單一折線，寬 4 m），另於北棟西端設往南支線
   const wornConcreteMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#a3a19c', '#7d7b77', '#bdbab4', false), roughness: 0.92 });
-  wornConcreteMat.map.repeat.set(eastRoadLen / 3, driveW / 3);
-  addBox(layerGroups.roads, eastRoadLen, 0.10, driveW, wornConcreteMat, driveCx, 0.05, driveZ, false);
-  // 平貼路面的箭頭三角（dir = +1 朝東、-1 朝西）
+  wornConcreteMat.map.repeat.set(1, 1);
   const flatArrowHeadGeo = dir => {
     const sh = new THREE.Shape();
     sh.moveTo(0, -0.6); sh.lineTo(0, 0.6); sh.lineTo(dir * 1.1, 0); sh.closePath();
     const g = new THREE.ShapeGeometry(sh); g.rotateX(-Math.PI / 2); return g;
   };
 
-  // 車道南緣紅磚路緣石 (照片 2、3 草坪北緣與車道交界紅磚緣石，x = 50.0m 至 115.0m)
-  addBox(layerGroups.roads, 65.0, 0.15, 0.28, new THREE.MeshStandardMaterial({ color: 0xa8584c, roughness: 0.85 }), 82.5, 0.075, driveZ + driveW / 2, false);
-  // 車道南緣白色路面邊線 (Solid White Edge Line)
-  addBox(layerGroups.roads, eastRoadLen, 0.012, 0.15, lineWhiteMat, driveCx, 0.104, driveZ + driveW / 2 - 0.15, false);
-  // 車道北緣停放區劃分白線
-  addBox(layerGroups.roads, eastRoadLen, 0.012, 0.15, lineWhiteMat, driveCx, 0.104, driveZ - driveW / 2 + 0.15, false);
-
-  // 實景照片 20261110_135208.jpg：柏油車道路面白色直行/指示標線箭頭 (東向車流)
-  [-12.0, 18.0, 48.0, 78.0, 102.0].forEach(ax => {
-    // 箭頭桿身
-    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.105, driveZ + 0.9, false);
-    // 箭頭頭部 (指向東向 +X)
-    addMesh(layerGroups.roads, flatArrowHeadGeo(1), lineWhiteMat, ax + 1.2, 0.106, driveZ + 0.9, false);
-  });
-
-  // 西向車流地面箭頭標線 (指向西向 -X，西行出入動線)
-  [2.0, 32.0, 62.0, 92.0].forEach(ax => {
-    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.105, driveZ - 0.9, false);
-    addMesh(layerGroups.roads, flatArrowHeadGeo(-1), lineWhiteMat, ax - 1.2, 0.106, driveZ - 0.9, false);
-  });
-
-
-  // 【B. 中段過渡車道】(x = -21.32m 至 x = -38.0m，微斜過渡通過北棟西端與電梯/廁所北側)
-  const transX1 = driveMinX, transX2 = -38.0;
-  const transZ1 = driveZ, transZ2 = -44.5;
-  const transCx = (transX1 + transX2) / 2;
-  const transCz = (transZ1 + transZ2) / 2;
-  const transDx = transX2 - transX1;
-  const transDz = transZ2 - transZ1;
-  const transLen = Math.hypot(transDx, transDz);
-  const transAng = Math.atan2(transDz, -transDx);
-  {
-    const transGrp = new THREE.Group();
-    transGrp.position.set(transCx, 0.05, transCz);
-    transGrp.rotation.y = transAng;
-    addBox(transGrp, transLen, 0.10, 5.0, wornConcreteMat, 0, 0, 0, false);
-    layerGroups.roads.add(transGrp);
-  }
-
   // 【C. 西段平整水泥混凝土車道】(x = -38.0m 至 x = -118.56m 直通後門，寬 4.8m，中心 z = -44.5m，北側貫通車道)
   // 實景照片 20261110_135221.jpg：淺灰平整水泥路面、橫向伸縮割縫、水泥路緣石、綠意草坪緩衝帶
   const westRoadX1 = -38.0, westRoadX2 = X(56.8); // v2.12.24 依衛星圖西牆
   const westRoadLen = Math.abs(westRoadX2 - westRoadX1); // 80.56m
   const westRoadCx = (westRoadX1 + westRoadX2) / 2; // -78.28m
-  const westRoadZ = -44.5, westRoadW = 3.0;   // v2.12.33 沿北牆步道寬 3 m
+  const westRoadZ = -44.5, westRoadW = 4.0;   // v2.12.37 車道寬約 4 m（依航照標示）
 
   const concreteRoadMat = new THREE.MeshStandardMaterial({ color: 0xd6d3cc, roughness: 0.88 }); // 平整淺灰刷紋水泥
   const jointSeamMat    = new THREE.MeshStandardMaterial({ color: 0x3d4147, roughness: 0.95 }); // 瀝青填縫伸縮縫
@@ -18411,8 +18368,11 @@ function buildNorthCarport() {
   // v2.12.25 依校園樹木分布衛星圖：西段水泥車道自北棟西端斜向西北，沿北圍牆內側（距牆約 4.5 m）通往西北角後門；
   //   排球場、籃球場與草地位於車道南側（原東西向直線車道會穿過北移後之排球場）
   const westRoadPts = WEST_ROAD_PTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
-  for (let i = 0; i < westRoadPts.length - 1; i++) {
-    const p1 = westRoadPts[i], p2 = westRoadPts[i + 1];
+  const spurPts = NORTH_SPUR_PTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
+  const roadSegs = [];
+  for (let i = 0; i < westRoadPts.length - 1; i++) roadSegs.push([westRoadPts[i], westRoadPts[i + 1], true]);
+  roadSegs.push([spurPts[0], spurPts[1], false]);
+  for (const [p1, p2, main] of roadSegs) {
     const L = p1.distanceTo(p2);
     const sg = new THREE.Group();
     sg.position.set((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
@@ -18421,13 +18381,27 @@ function buildNorthCarport() {
     addBox(sg, L + 0.1, 0.010, 0.035, jointSeamMat, 0, 0.106, 0, false);
     for (let jx = -L / 2 + 2.2; jx < L / 2 - 1; jx += 4.5) addBox(sg, 0.045, 0.012, westRoadW - 0.08, jointSeamMat, jx, 0.107, 0, false);
     [-1, 1].forEach(sd => addBox(sg, L + 0.1, 0.16, 0.22, curbMat, 0, 0.085, sd * (westRoadW / 2 + 0.11), false));
+    if (main && L > 25) {                                // 雙向白色箭頭（沿車道方向）
+      for (let ax = -L / 2 + 8; ax < L / 2 - 8; ax += 26) {
+        addBox(sg, 2.4, 0.015, 0.22, lineWhiteMat, ax, 0.112, 0.75, false);
+        addMesh(sg, flatArrowHeadGeo(-1), lineWhiteMat, ax - 1.2, 0.113, 0.75, false).scale.setScalar(0.8);
+        addBox(sg, 2.4, 0.015, 0.22, lineWhiteMat, ax + 9, 0.112, -0.75, false);
+        addMesh(sg, flatArrowHeadGeo(1), lineWhiteMat, ax + 10.2, 0.113, -0.75, false).scale.setScalar(0.8);
+      }
+    }
     layerGroups.roads.add(sg);
+  }
+  // v2.12.37 車道與北棟之間帶狀草地（依使用者說明：草地加樹木）
+  {
+    const stripMat = new THREE.MeshStandardMaterial({ color: 0x6f9f4f, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    registerLawnMat(stripMat);
+    flatXZPoly([new THREE.Vector3(-33.8, 0, -61.4), new THREE.Vector3(-11.3, 0, -58.8), new THREE.Vector3(52.4, 0, -52.2), new THREE.Vector3(52.4, 0, -40.6), new THREE.Vector3(-33.8, 0, -40.6)], stripMat, 0.07, layerGroups.roads, 0.2);
   }
   // 車道西端與西北角後門平順交會區
   { const e = westRoadPts[westRoadPts.length - 1]; addBox(layerGroups.roads, 4.0, 0.09, 6.8, concreteRoadMat, e.x - 1.0, 0.052, e.z, false); }
 
   // 藍色浪板單層鋼構大車棚 (實景相片 135208.jpg 天藍色烤漆方管鋼架柱梁、深藍浪板屋頂與停放機車汽車)
-  const sw = (705 - 430) * S, sd = 22 * S, scx = X((430 + 705) / 2), scz = Z(42);
+  const sw = 89.1, sd = 22 * S, scx = X((430 + 705) / 2), scz = Z(42);   // v2.12.37 長約 89 m（依航照標示），建完後整組旋轉移至北牆與車道之間
   // v2.12.7 依實景照片：淺灰鍍鋅浪板單斜屋頂（臨車道側高約 3.6 m、往北牆側降低），深灰鋼柱，
   //   每跨屋架下緣交替漆藍色與青綠色方管橫梁；地坪水泥、白線劃設垂直停車格
   const roofMetalMat = new THREE.MeshStandardMaterial({ color: 0xc9cdd0, roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide });
@@ -18446,7 +18420,7 @@ function buildNorthCarport() {
   }
   const nBays = 12;
   for (let i = 0; i <= nBays; i++) {
-    const colX = X(430) + i * (sw / nBays);
+    const colX = scx - sw / 2 + i * (sw / nBays);
     addBox(cp, 0.2, frontH - 0.1, 0.2, colMat, colX, (frontH - 0.1) / 2, scz + sd / 2 - 0.3);
     addBox(cp, 0.2, frontH - roofRise - 0.1, 0.2, colMat, colX, (frontH - roofRise - 0.1) / 2, scz - sd / 2 + 0.3);
     const beam = addBox(cp, 0.16, 0.28, sd + 0.6, i % 2 ? tealBeamMat : cyanBeamMat, colX, frontH - roofRise / 2 - 0.22, scz);
@@ -18455,11 +18429,11 @@ function buildNorthCarport() {
   addBox(cp, sw, 0.26, 0.16, cyanBeamMat, scx, frontH - 0.2, scz + sd / 2 - 0.3);
   // 白色停車格線（車頭朝車道）
   const stallW = 2.5;
-  for (let lx = X(430); lx <= X(705) + 0.01; lx += stallW) addBox(cp, 0.1, 0.012, sd - 0.4, lineWhiteMat, lx, 0.125, scz, false);
+  for (let lx = scx - sw / 2; lx <= scx + sw / 2 + 0.01; lx += stallW) addBox(cp, 0.1, 0.012, sd - 0.4, lineWhiteMat, lx, 0.125, scz, false);
   addBox(cp, sw, 0.012, 0.1, lineWhiteMat, scx, 0.125, scz + sd / 2 - 0.2, false);
   const carColors = [0x9ea3a8, 0x2b2e33, 0xe8e9eb, 0x627078, 0xd8d4c8, 0x8a8f96];
   for (let c = 0; c < 6; c++) {
-    const carX = X(430) + stallW * (1.5 + c * (c < 3 ? 1 : 2.4)), carZ = scz;
+    const carX = scx - sw / 2 + stallW * (1.5 + c * (c < 3 ? 1.6 : 3.2)), carZ = scz;
     const cMat = new THREE.MeshStandardMaterial({ color: carColors[c % carColors.length], roughness: 0.35, metalness: 0.25 });
     addBox(cp, 1.8, 0.6, 4.4, cMat, carX, 0.6, carZ);
     addBox(cp, 1.6, 0.5, 2.2, cMat, carX, 1.15, carZ - 0.1);
@@ -18470,11 +18444,16 @@ function buildNorthCarport() {
     });
   }
   for (let b = 0; b < 16; b++) {
-    const bikeX = X(600 + b * 6.5);
+    const bikeX = scx + sw * 0.22 + b * 1.69;
     addBox(cp, 0.14, 0.78, 1.55, mats.railBlue, bikeX, 0.45, scz);
   }
 
   cp.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'carport'; });
+  {                                                   // v2.12.37 旋轉約 5.3° 與北牆平行，中心移至 (13.55, -62.6)
+    const th = -0.09218, c = Math.cos(th), s_ = Math.sin(th);
+    cp.rotation.y = th;
+    cp.position.set(13.55 - (scx * c + scz * s_), 0, -62.6 - (-scx * s_ + scz * c));
+  }
   layerGroups.buildings.add(cp);
   clickableGroups.push(cp);
   landmarkGroupMap.set('carport', cp);
@@ -18799,6 +18778,14 @@ function buildOrganicFarm() {
   }
 
   ofg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'organic-farm'; });
+  {   // v2.12.37 北側車道改沿北牆斜行：農場整組轉為與車道平行，置於車道南側（車道南緣以南約 1 m）
+    const bb = new THREE.Box3().setFromObject(ofg), c = bb.getCenter(new THREE.Vector3());
+    const th = -Math.atan2(9.4, 59.8), cs = Math.cos(th), sn = Math.sin(th);
+    const roadZ = -54.4 + (c.x - 53.7) * (9.4 / 59.8);
+    const tz = roadZ + 2.0 + 1.0 + (bb.max.z - bb.min.z) / 2;
+    ofg.rotation.y = th;
+    ofg.position.set(c.x - (c.x * cs + c.z * sn), 0, tz - (-c.x * sn + c.z * cs));
+  }
   layerGroups.buildings.add(ofg);
   clickableGroups.push(ofg);
   landmarkGroupMap.set('organic-farm', ofg);
@@ -19150,14 +19137,14 @@ const CAMPUS_TREE_REGISTRY = [
   ["441997", "緬梔", -30.5, -59.8, 0],
   ["441990", "苦楝", -29.2, -58.6, 0],
   ["442157", "金露花", -17.9, -5.8, 0],
-  ["442315", "印度紫檀", -16.4, -59.3, 0],
+  ["442315", "印度紫檀", -16.5, -58.6, 0],
   ["442139", "馬拉巴栗", -12.0, -23.9, 0],
   ["442144", "樟樹", -15.8, -24.0, 0],
   ["442133", "馬拉巴栗", -10.9, -23.8, 0],
-  ["442319", "印度紫檀", -13.3, -58.8, 0],
+  ["442319", "印度紫檀", -13.4, -58.2, 0],
   ["442150", "榕樹", -12.4, -24.0, 0],
   ["839655", "桂花", -8.8, -5.5, 0],
-  ["442332", "風鈴木", -8.5, -58.3, 0],
+  ["442332", "風鈴木", -8.6, -57.7, 0],
   ["442179", "金露花", -6.1, -5.3, 0],
   ["442188", "龍柏", -4.0, -8.0, 0],
   ["442323", "風鈴木", -3.7, -57.2, 0],
@@ -19167,8 +19154,8 @@ const CAMPUS_TREE_REGISTRY = [
   ["442115", "水黃皮", 4.1, -24.0, 0],
   ["442218", "茄冬", 6.1, -7.7, 0],
   ["442107", "火焰木", 8.4, -24.0, 0],
-  ["442334", "印度紫檀", 10.6, -57.3, 0],
-  ["442330", "印度紫檀", 14.5, -56.0, 0],
+  ["442334", "印度紫檀", 10.4, -55.7, 0],
+  ["442330", "印度紫檀", 14.4, -55.3, 0],
   ["442230", "黃金風鈴木", 17.2, -3.5, 0],
   ["442100", "黃槿", 26.9, -22.8, 0],
   ["442237", "火焰木", 29.5, -1.3, 0],
@@ -19178,7 +19165,7 @@ const CAMPUS_TREE_REGISTRY = [
   ["441975", "印度紫檀", 49.7, -33.5, 0],
   ["839658", "大葉羅漢松", 66.5, 18.6, 0],
   ["839651", "臺灣海桐", 67.5, 18.6, 0],
-  ["442057", "水黃皮", 74.9, 17, 0],
+  ["442057", "水黃皮", 74.9, 17.0, 0],
   ["442065", "可可椰子", 79.8, 18.4, 0],
   ["839652", "田代氏石斑木", 86.8, -58.5, 0],
   ["442082", "大王椰子", 86.6, 11.8, 0],
@@ -21982,7 +21969,7 @@ const ROUTE_NODES = {
   'command-stage':   [166, 208],
   'ball-courts':     [122, 145],
   'east-gate':       [955, 73],
-  'carport':         [568, 73],
+  'carport':         [564, 6],
   'driveway-mid':    [370, 85],
   'west-back-gate':  [62.44, -18.1]
 };
