@@ -10,6 +10,11 @@ const X = (typeof window !== "undefined" && window.X) || (px => (px - OX) * S);
 const Z = (typeof window !== "undefined" && window.Z) || (py => (py - OY) * S);
 
 const LANDMARKS = (typeof window !== "undefined" && window.LANDMARKS) ? window.LANDMARKS : [];
+// v2.12.40 北棟／東棟／西棟定位轉換（定義於 campus-ui.js；局部座標 ⇄ 世界座標）
+const IDENT_XF = { th: 0, rotY: 0, toWorld: (x, z) => [x, z], toLocal: (x, z) => [x, z], apply: o => o };
+const NORTH_XF = window.NORTH_XF || IDENT_XF, EAST_XF = window.EAST_XF || IDENT_XF, WEST_XF = window.WEST_XF || IDENT_XF;
+const lmToWorld = window.lmToWorld || ((id, x, z) => [x, z]);
+const BUILDING_XF_ROT = id => (window.BUILDING_XF && window.BUILDING_XF[id]) ? window.BUILDING_XF[id].rotY : 0;
 
 const LAYER_CONFIG = [
   { key: 'labels', name: '地點名稱', desc: '在地圖上顯示 13 處精選地標浮動標註', icon: '🏷️' },
@@ -1034,9 +1039,35 @@ function addBox(parent, w, h, d, mat, x, y, z, cast = true) {
 // 3. BUILD GROUND, COMMUTER WALKWAY BUFFER, ROADS, COURTYARD, BOUNDARY & CONTEXT
 // ============================================================================
 // 下沉中庭（v2.12.0）：中庭比東棟穿堂低約 0.9 m、比前庭低約 0.75 m（依現場：穿堂前僅一階，中庭低於穿堂約 1 m）
-const COURTYARD_SINK = { x1: -17.2, x2: 52.6, z1: -24.0, z2: 2.7, D: 0.75 };   // v2.12.35 南緣隨南棟、新棟北移 6 m（原 8.7）
+// v2.12.40 下沉中庭改為四邊形：北緣沿北棟南側採光井外緣（北棟局部 z = −24.0），東緣沿東棟後走廊（東棟局部 x = 52.6），
+//   西緣 x = −17.2、南緣 z = 2.7 不變；x1..x2 / z1..z2 為外接矩形
+const COURTYARD_SINK = (() => {
+  const XW = -17.2, ZS = 2.7, ZN_LOCAL = -24.0, XE_LOCAL = 52.6;
+  const nA = NORTH_XF.toWorld(-60, ZN_LOCAL), nB = NORTH_XF.toWorld(80, ZN_LOCAL);
+  const eA = EAST_XF.toWorld(XE_LOCAL, -60), eB = EAST_XF.toWorld(XE_LOCAL, 40);
+  const zOn = (a, b, x) => a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]);
+  const xOn = (a, b, z) => a[0] + (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]);
+  const cross = (p1, p2, p3, p4) => {
+    const d = (p1[0] - p2[0]) * (p3[1] - p4[1]) - (p1[1] - p2[1]) * (p3[0] - p4[0]);
+    const a = p1[0] * p2[1] - p1[1] * p2[0], b = p3[0] * p4[1] - p3[1] * p4[0];
+    return [(a * (p3[0] - p4[0]) - (p1[0] - p2[0]) * b) / d, (a * (p3[1] - p4[1]) - (p1[1] - p2[1]) * b) / d];
+  };
+  const NW = [XW, zOn(nA, nB, XW)], NE = cross(nA, nB, eA, eB), SE = [xOn(eA, eB, ZS), ZS], SW = [XW, ZS];
+  const poly = [NW, NE, SE, SW];   // 順時針（俯視，z 向南）
+  return { poly, x1: XW, x2: Math.max(NE[0], SE[0]), z1: Math.min(NW[1], NE[1]), z2: ZS, D: 0.75 };
+})();
 window.COURTYARD_SINK = COURTYARD_SINK;
-const inCourtyardSink = (x, z, m = 0) => x >= COURTYARD_SINK.x1 - m && x <= COURTYARD_SINK.x2 + m && z >= COURTYARD_SINK.z1 - m && z <= COURTYARD_SINK.z2 + m;
+// 凸四邊形內判斷；m > 0 外擴、m < 0 內縮
+const inCourtyardSink = (x, z, m = 0) => {
+  const P = COURTYARD_SINK.poly;
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length];
+    const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
+    // 順時針多邊形（x 向東、z 向南）：內側為邊向量之右手側 → 叉積 ≥ 0
+    if ((ex * (z - a[1]) - ez * (x - a[0])) / L < -m) return false;
+  }
+  return true;
+};
 window.inCourtyardSink = inCourtyardSink;
 
 // Base terrain（中庭範圍挖空，另以下沉中庭地基與擋土牆圍塑）
@@ -1044,10 +1075,17 @@ window.inCourtyardSink = inCourtyardSink;
   const baseMat = new THREE.MeshStandardMaterial({ color: 0x8eb374, roughness: 0.92 });
   registerLawnMat(baseMat);
   const C = COURTYARD_SINK, E = 490;
-  [[-E, E, -E, C.z1], [-E, E, C.z2, E], [-E, C.x1, C.z1, C.z2], [C.x2, E, C.z1, C.z2]].forEach(([x1, x2, z1, z2]) =>
-    addBox(layerGroups.roads, x2 - x1, 0.2, z2 - z1, baseMat, (x1 + x2) / 2, -0.14, (z1 + z2) / 2, false));
+  // v2.12.40 中庭四邊形挖空（形狀座標 y = −世界 z）
+  const baseShape = new THREE.Shape([[-E, -E], [E, -E], [E, E], [-E, E]].map(([x, z]) => new THREE.Vector2(x, -z)));
+  baseShape.holes.push(new THREE.Path(C.poly.map(([x, z]) => new THREE.Vector2(x, -z))));
+  const baseGeo = new THREE.ExtrudeGeometry(baseShape, { depth: 0.2, bevelEnabled: false });
+  baseGeo.rotateX(-Math.PI / 2); baseGeo.translate(0, -0.24, 0);
+  const baseMesh = new THREE.Mesh(baseGeo, baseMat); baseMesh.receiveShadow = true;
+  layerGroups.roads.add(baseMesh);
   // 下沉中庭地基（頂面略低於中庭鋪面）
-  addBox(layerGroups.roads, C.x2 - C.x1, 0.3, C.z2 - C.z1, new THREE.MeshStandardMaterial({ color: 0x9a968c, roughness: 0.9 }), (C.x1 + C.x2) / 2, -C.D - 0.16, (C.z1 + C.z2) / 2, false);
+  const fGeo = new THREE.ExtrudeGeometry(new THREE.Shape(C.poly.map(([x, z]) => new THREE.Vector2(x, -z))), { depth: 0.3, bevelEnabled: false });
+  fGeo.rotateX(-Math.PI / 2); fGeo.translate(0, -C.D - 0.31, 0);
+  layerGroups.roads.add(new THREE.Mesh(fGeo, new THREE.MeshStandardMaterial({ color: 0x9a968c, roughness: 0.9 })));
 }
 
 // Procedural Campus Green Lawn Texture (`運動場與後圍牆間的校園草地緩衝區` 自然草皮紋理)
@@ -1182,7 +1220,7 @@ const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) 
   innerShape.closePath();
   {
     const C = COURTYARD_SINK, hole = new THREE.Path();   // 形狀座標：y = −世界 z
-    hole.moveTo(C.x1, -C.z1); hole.lineTo(C.x1, -C.z2); hole.lineTo(C.x2, -C.z2); hole.lineTo(C.x2, -C.z1); hole.closePath();
+    C.poly.forEach(([x, z], i) => (i ? hole.lineTo(x, -z) : hole.moveTo(x, -z))); hole.closePath();   // v2.12.40 四邊形
     innerShape.holes.push(hole);
   }
   const innerGroundMesh = new THREE.Mesh(
@@ -1445,22 +1483,35 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   cg.userData = { landmarkId: 'courtyard-plaza' };
   const cw = (712 - 445) * S, cd = (278 - 145) * S;
   const cx = X((445 + 712) / 2), cz = Z((145 + 278) / 2);
-  const brickMat = new THREE.MeshStandardMaterial({ map: makeCourtyardBrickTexture(), roughness: 0.82 });
-  addBox(cg, cw, 0.16, cd, brickMat, cx, 0.08, cz, false);
+  // v2.12.40 花磚鋪面改依下沉中庭四邊形鋪設（北棟北移後中庭向北延伸）；紋理沿用原尺度（每片 cw/12 × cd/8）
+  const brickTex = makeCourtyardBrickTexture();
+  brickTex.repeat.set(12 / cw, 8 / cd); brickTex.offset.set(-(cx - cw / 2) * 12 / cw, -(cz - cd / 2) * 8 / cd);
+  const brickMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.82 });
+  {
+    const bGeo = new THREE.ShapeGeometry(new THREE.Shape(COURTYARD_SINK.poly.map(([x, z]) => new THREE.Vector2(x, -z))));
+    bGeo.rotateX(-Math.PI / 2);
+    // ShapeGeometry 之 UV 為形狀座標 (x, −z)；改成 (x, z) 使紋理方向與原鋪面一致
+    const uv = bGeo.attributes.uv, pos = bGeo.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i), pos.getZ(i));
+    const bm = new THREE.Mesh(bGeo, brickMat); bm.position.y = 0.16; bm.receiveShadow = true;
+    cg.add(bm);
+  }
 
   // Courtyard Central Open Space (Curved mounds and authentic dinosaur are accurately integrated at South Building)
   const grassMoundMat = new THREE.MeshStandardMaterial({ color: 0x67a353, roughness: 0.85 });
   registerLawnMat(grassMoundMat);
   const curbWhiteMat = new THREE.MeshStandardMaterial({ color: 0xeeede6, roughness: 0.72 });
 
+  // v2.12.40 北棟前花台、灌木與黑色地墊以北棟局部座標建置，隨北棟定位轉換
+  const nfg = new THREE.Group(); cg.add(nfg);
   // Raised White-Curbed Rectangular Green Lawn Planters in front of North Building (matching north_elevation.png & p3.jpg!)
-  addBox(cg, 17.5, 0.42, 4.2, curbWhiteMat, -9.8, 0.21, -21.2);
-  addBox(cg, 16.7, 0.46, 3.5, grassMoundMat, -9.8, 0.23, -21.2, false);
-  addBox(cg, 3.8, 0.42, 4.2, curbWhiteMat, 22.2, 0.21, -21.2);
-  addBox(cg, 3.2, 0.46, 3.5, grassMoundMat, 22.2, 0.23, -21.2, false);
+  addBox(nfg, 17.5, 0.42, 4.2, curbWhiteMat, -9.8, 0.21, -21.2);
+  addBox(nfg, 16.7, 0.46, 3.5, grassMoundMat, -9.8, 0.23, -21.2, false);
+  addBox(nfg, 3.8, 0.42, 4.2, curbWhiteMat, 22.2, 0.21, -21.2);
+  addBox(nfg, 3.2, 0.46, 3.5, grassMoundMat, 22.2, 0.23, -21.2, false);
   const darkMatPad = new THREE.MeshStandardMaterial({ color: 0x35393e, roughness: 0.88 });
-  addBox(cg, 5.8, 0.20, 4.2, darkMatPad, 27.2, 0.10, -21.2, false);
-  addBox(cg, 9.6, 0.28, 0.45, curbWhiteMat, 25.3, 0.14, -23.4);
+  addBox(nfg, 5.8, 0.20, 4.2, darkMatPad, 27.2, 0.10, -21.2, false);
+  addBox(nfg, 9.6, 0.28, 0.45, curbWhiteMat, 25.3, 0.14, -23.4);
 
   // Manicured Round Shrubs & Red Foliage Bushes in front of North Building (修剪球形灌木與變葉木 per p3.jpg)
   const shrubGreenMat = new THREE.MeshStandardMaterial({ color: 0x2d6824, roughness: 0.75 });
@@ -1473,8 +1524,9 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [21.5,  -21.2, 0.92, shrubGreenMat],
     [23.0,  -21.0, 0.82, shrubRedMat]
   ];
+  NORTH_XF.apply(nfg);
   shrubPositions.forEach(([sx, sz, r, m]) => {
-    const shMesh = addMesh(cg, new THREE.SphereGeometry(r, 16, 14), m, sx, 0.45 + r * 0.9, sz);
+    const shMesh = addMesh(nfg, new THREE.SphereGeometry(r, 16, 14), m, sx, 0.45 + r * 0.9, sz);
     shMesh.scale.set(1.0, 1.15, 0.95);
   });
 
@@ -1520,29 +1572,35 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       if (cur < a2) segs.push([cur, a2]);
       return segs;
     };
+    // v2.12.40 北側擋土牆與台階改以北棟局部座標建置（局部 z = −24.0），整組隨北棟定位轉換
+    const ngrp = new THREE.Group(); grp.add(ngrp);
+    const ZN = -24.0;
+    const nwL = NORTH_XF.toLocal(C.poly[0][0], C.poly[0][1]), neL = NORTH_XF.toLocal(C.poly[1][0], C.poly[1][1]);
     const wall = (side, b1, b2) => {
       const L = b2 - b1, m = (b1 + b2) / 2;
       if (side === 'N' || side === 'S') {
-        const z = side === 'N' ? C.z1 - t / 2 : C.z2 + t / 2;
-        addBox(grp, L, H, t, wallMat, m, yC + H / 2, z);
-        addBox(grp, L, 0.06, t + 0.08, capMat, m, yT + 0.03, z);
+        const z = side === 'N' ? ZN - t / 2 : C.z2 + t / 2;
+        const tg = side === 'N' ? ngrp : grp;
+        addBox(tg, L, H, t, wallMat, m, yC + H / 2, z);
+        addBox(tg, L, 0.06, t + 0.08, capMat, m, yT + 0.03, z);
       } else {
         const x = C.x1 - t / 2;
         addBox(grp, t, H, L, wallMat, x, yC + H / 2, m);
         addBox(grp, t + 0.08, 0.06, L, capMat, x, yT + 0.03, m);
       }
     };
-    run('N', C.x1 - t, C.x2).forEach(([a, b]) => wall('N', a, b));
-    run('S', C.x1 - t, C.x2).forEach(([a, b]) => wall('S', a, b));
-    run('W', C.z1, C.z2).forEach(([a, b]) => wall('W', a, b));
+    run('N', nwL[0] - t, neL[0]).forEach(([a, b]) => wall('N', a, b));
+    run('S', C.x1 - t, C.poly[2][0]).forEach(([a, b]) => wall('S', a, b));
+    run('W', C.poly[0][1], C.z2).forEach(([a, b]) => wall('W', a, b));
     // 台階：自中庭邊緣向內下行
     const flight = (side, c, w) => {
       for (let k = 0; k < n; k++) {
         const top = yT - k * r, d = (k + 0.5) * tr;
         if (side === 'N' || side === 'S') {
-          const z = side === 'N' ? C.z1 + d : C.z2 - d;
-          addBox(grp, w, top - yC, tr, stepMat, c, yC + (top - yC) / 2, z);
-          addBox(grp, w, 0.012, 0.04, noseMat, c, top + 0.006, z + (side === 'N' ? tr / 2 - 0.02 : -(tr / 2 - 0.02)), false);
+          const z = side === 'N' ? ZN + d : C.z2 - d;
+          const tg = side === 'N' ? ngrp : grp;
+          addBox(tg, w, top - yC, tr, stepMat, c, yC + (top - yC) / 2, z);
+          addBox(tg, w, 0.012, 0.04, noseMat, c, top + 0.006, z + (side === 'N' ? tr / 2 - 0.02 : -(tr / 2 - 0.02)), false);
         } else {
           const x = C.x1 + d;
           addBox(grp, tr, top - yC, w, stepMat, x, yC + (top - yC) / 2, c);
@@ -1551,6 +1609,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       }
     };
     Object.entries(flights).forEach(([side, list]) => list.forEach(([c, w]) => flight(side, c, w)));
+    NORTH_XF.apply(ngrp);
     grp.traverse(o => { o.userData.keepLevel = true; });
     layerGroups.roads.add(grp);
   }
@@ -1858,6 +1917,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   }
 
   pg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'playground-zone'; });
+  NORTH_XF.apply(pg);   // v2.12.40 遊戲區位於北棟前採光井外緣以南約 6 m，隨北棟定位轉換
   layerGroups.sports.add(pg);
   clickableGroups.push(pg);
   landmarkGroupMap.set('playground-zone', pg);
@@ -3479,7 +3539,7 @@ function buildNorthBuilding() {
   const northDetailGroup = new THREE.Group();
   northDetailGroup.name = 'north-detail-group';
   g.add(northDetailGroup);
-  registerLOD('north-building', [14.5, 6, -30], northDetailGroup, 68);
+  registerLOD('north-building', ((c) => [c[0], 6, c[1]])(NORTH_XF.toWorld(14.5, -30)), northDetailGroup, 68);   // v2.12.40 LOD 中心換算世界座標
 
   // ==========================================================================
   // EXACT 19-AXIS CAD STRUCTURAL GRID (`軸線 ① ~ ⑲`, Total Span = 8980 cm):
@@ -4048,7 +4108,7 @@ function buildNorthBuilding() {
     // 依 CAD 建築平面圖：北牆對齊 F 軸 (zb - 1.30 ~ -40.00，與西側後走廊樓梯北外牆齊平且共壁！)
     // 南牆對齊 C1 軸 (深 7.80m = 280+220+280cm)，南側緊鄰西側電梯高塔
     const wcD = 7.80;
-    const zWcNorth = zb - 1.30;                    // F 軸 (~ -45.205m，與西側後走廊樓梯齊平共壁)
+    const zWcNorth = zb - 2.80;                    // F 軸：v2.12.40 依平面圖 F–D2 280 cm（D2 ≈ E 軸），與西側後走廊樓梯方盒北緣 (zb − 2.90) 約略齊平
     const zWcSouth = zWcNorth + wcD;               // C1 軸 (~ -37.405m)
     const wcCz = (zWcNorth + zWcSouth) / 2;        // 幾何中心 Z (~ -41.305m)
     const towerWallH = baseH + 3 * FH;             // 12.35m
@@ -4499,7 +4559,7 @@ function buildNorthBuilding() {
     const stTreadMat    = new THREE.MeshStandardMaterial({ color: 0xb5b3ad, roughness: 0.85 });
     const cabinetMat    = new THREE.MeshStandardMaterial({ color: 0x8a929a, roughness: 0.50, metalness: 0.45 });
 
-    const zWcNorth = zb - 1.30;                    // F 軸 (-40.005m)
+    const zWcNorth = zb - 2.80;                    // F 軸 (v2.12.40 依平面圖)
     const zWcSouth = zWcNorth + 7.80;              // C1 軸 (-32.205m)
 
     // -------------------------------------------------------------
@@ -4573,6 +4633,7 @@ function buildNorthBuilding() {
     //       緊貼主廚房北外牆向東延伸至中庭，頂覆青綠色半透明採光罩（北緣圓弧下垂收邊、北側一列方鋼立柱），
     //       牆側配置兩座圓弧形不銹鋼排油煙罩、不銹鋼防鼠儲物櫃與垂直排煙方管。
     // -------------------------------------------------------------
+    const _kcStart = g.children.length;
     {
       const sageGreenCanopyMat = new THREE.MeshStandardMaterial({
         color: 0x62967a,
@@ -4830,6 +4891,8 @@ function buildNorthBuilding() {
       const wellX = -27.20, wellZ = -24.60;
       addBox(g, 2.20, 1.15, 0.24, new THREE.MeshStandardMaterial({ color: 0x7c7870, roughness: 0.88 }), wellX, 0.575, wellZ);
     }
+    // v2.12.40 北棟依航照北移後，廚房增建改建於西棟群組（擴建至航照 ③ 範圍），原掛於北棟的廚房北面／東面遮雨棚已被擴建量體包覆，故移除
+    g.remove(...g.children.slice(_kcStart));
 
     // (已依 1102001 截圖指示移除北棟西側外牆多餘之梯廳外露量體與樓地板)
     // -------------------------------------------------------------
@@ -6913,6 +6976,7 @@ function buildNorthBuilding() {
   addBox(g, 18, 0.22, 4.5, mats.solar, (ax(13) + ax(17)) / 2, H + 0.4, cz - 1.2);
 
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'north-building'; });
+  NORTH_XF.apply(g);   // v2.12.40 依平面圖＋航照：①～⑳ 整棟北移約 11.5 m、東移約 6 m、順時針轉 5.1°
   layerGroups.buildings.add(g);
   clickableGroups.push(g);
   landmarkGroupMap.set('north-building', g);
@@ -6925,7 +6989,7 @@ function buildEastBuilding() {
   const eastDetailGroup = new THREE.Group();
   eastDetailGroup.name = 'east-detail-group';
   g.add(eastDetailGroup);
-  registerLOD('east-building', [58.8, 6, Z(201)], eastDetailGroup, 68);
+  registerLOD('east-building', ((c) => [c[0], 6, c[1]])(EAST_XF.toWorld(58.8, Z(201))), eastDetailGroup, 68);   // v2.12.40
 
   // ---------- 測繪尺寸系統 (圖面單位：公分；世界單位：與校園地圖 S=0.26 比例一致) ----------
   const z1 = Z(88), z2 = Z(315), L = z2 - z1, czm = (z1 + z2) / 2;
@@ -9482,6 +9546,7 @@ function buildEastBuilding() {
   }
 
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'east-building'; });
+  EAST_XF.apply(g);    // v2.12.40 依航照：整棟順時針轉 6.0°，北端東移約 6 m 以銜接北棟 ⑳
   layerGroups.buildings.add(g);
   clickableGroups.push(g);
   landmarkGroupMap.set('east-building', g);
@@ -11106,8 +11171,9 @@ function buildWestBuilding() {
 
   // 10 Column Z coordinates for the 9 Main Bays (`zCol[0]` South -> `zCol[9]` North)
   // v2.12.35 依航照：西棟南端止於 z≈9.9（新棟北移 6 m 後之北面），9 跨等比縮短（×0.80），北端維持不變
-  const BAY_SPANS = [2.98, 3.00, 3.00, 4.00, 4.00, 4.10, 3.00, 3.00, 3.03].map(v => v * (30.11 + SOUTH_SHIFT) / 30.11);
-  const zCol = [15.918 + SOUTH_SHIFT];
+  // v2.12.40 恢復原始 9 跨長度（30.11 m）；整棟以 WEST_XF 北移 6.02 m 後南端落在 z 9.9（新棟北面）
+  const BAY_SPANS = [2.98, 3.00, 3.00, 4.00, 4.00, 4.10, 3.00, 3.00, 3.03];
+  const zCol = [15.918];
   for (let i = 0; i < BAY_SPANS.length; i++) {
     zCol.push(Number((zCol[i] - BAY_SPANS[i]).toFixed(4)));
   }
@@ -11971,6 +12037,61 @@ function buildWestBuilding() {
       addBox(g, 1.92, 1.42, 0.08, darkMetalMat, wx, y2F + 1.65, kNorthZ - 0.02);
     });
 
+    // v2.12.40 廚房增建擴建段（依航照 ③：北棟前方、西棟北端之 2 層白磁磚建物，1F 廚房、2F 儲藏室與教室）
+    //   北棟北移後原夾在北棟電梯與西棟之間的空間釋出；依航照外框（世界 x −32.2～−17.7、z −40.7～−29.4，東北角內凹至 z −36.2）
+    //   以西棟局部座標（世界 − (3.3, −6.02)）補建兩個量體：A 西翼（北伸）、B 東翼（向東伸至中庭西緣）
+    {
+      const kxA1 = -35.5, kxA2 = -30.6, kzA1 = -34.68;        // A 西翼：北緣（局部）
+      const kxB2 = -21.0, kzB1 = -30.18;                       // B 東翼：東緣、北緣（局部）
+      const parts = [
+        [kxA1, kxA2, kzA1, nwNorthZ],                          // A：x −35.5～−30.6、z −34.68～−23.35
+        [-33.6, kxA2, nwNorthZ, kNorthZ],                      // A2：補 NW 翼與 B 之間
+        [kxA2, kxB2, kzB1, kNorthZ]                            // B：x −30.6～−21.0、z −30.18～−20.0
+      ];
+      parts.forEach(([x1, x2, z1, z2]) => {
+        const w = x2 - x1, d = z2 - z1, cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
+        addBox(g, w, kH, d, kitchenTileMat, cx, kH / 2, cz);
+        addBox(g, w + 0.24, 0.22, d + 0.24, whiteTileMat, cx, kH + 0.05, cz);
+        addBox(g, w + 0.12, 0.14, d + 0.12, colTileMat, cx, kH + 0.20, cz);
+        addBox(g, w + 0.06, 0.24, 0.10, mats.slab, cx, y2F - 0.12, z1 - 0.05);       // 2F 樓板外露線（北面）
+      });
+      // 北立面（A 北面、B 北面）1F 廚房鐵窗、2F 霧面採光窗
+      const northWins = (x1, x2, zFace) => {
+        const n = Math.max(1, Math.floor((x2 - x1) / 2.6));
+        for (let i = 0; i < n; i++) {
+          const wx = x1 + (x2 - x1) * (i + 0.5) / n;
+          [[y1F + 1.75, 1.10], [y2F + 1.65, 1.35]].forEach(([wy, wh]) => {
+            const wm = addMesh(g, new THREE.PlaneGeometry(1.85, wh), winFrost6Mat, wx, wy, zFace - 0.04, false);
+            wm.rotation.y = Math.PI;
+            addBox(g, 1.92, wh + 0.07, 0.08, darkMetalMat, wx, wy, zFace - 0.02);
+          });
+        }
+      };
+      northWins(kxA1, kxA2, kzA1);
+      northWins(kxA2, kxB2, kzB1);
+      // 東立面（B 東面，面向中庭）與西立面（A 西面，面向操場）
+      const sideWins = (xFace, z1, z2, sign) => {
+        const n = Math.max(1, Math.floor((z2 - z1) / 2.6));
+        for (let i = 0; i < n; i++) {
+          const wz = z1 + (z2 - z1) * (i + 0.5) / n;
+          [[y1F + 1.75, 1.10], [y2F + 1.65, 1.35]].forEach(([wy, wh]) => {
+            const wm = addMesh(g, new THREE.PlaneGeometry(1.85, wh), winFrost6Mat, xFace + sign * 0.04, wy, wz, false);
+            wm.rotation.y = sign * Math.PI / 2;
+            addBox(g, 0.08, wh + 0.07, 1.92, darkMetalMat, xFace + sign * 0.02, wy, wz);
+          });
+        }
+      };
+      sideWins(kxB2, kzB1, kNorthZ, 1);
+      sideWins(kxA1, kzA1, nwNorthZ, -1);
+      // 1F 東面廚房進貨門（不銹鋼門扇）與紅褐色磁磚踢腳
+      addBox(g, 0.06, 2.30, 1.80, stainlessMat, kxB2 + 0.03, y1F + 1.15, (kzB1 + kNorthZ) / 2 + 1.6);
+      addBox(g, 0.28, 0.90, kNorthZ - kzB1, dadoBrickMat, kxB2 - 0.14 + 0.28, y1F + 0.45, (kzB1 + kNorthZ) / 2);
+      addBox(g, 0.28, 0.90, nwNorthZ - kzA1, dadoBrickMat, kxA1 + 0.14 - 0.28, y1F + 0.45, (kzA1 + nwNorthZ) / 2);
+      // 屋頂水塔與排油煙設備
+      addBox(g, 1.6, 1.4, 1.6, stainlessMat, (kxA1 + kxA2) / 2, kH + 0.95, kzA1 + 2.0);
+      addBox(g, 1.1, 1.15, 1.05, stainlessMat, (kxA2 + kxB2) / 2, kH + 0.85, kzB1 + 2.2);
+    }
+
     // E. 廚房 2F 屋頂不銹鋼商業排油煙風管與防雨罩
     const hoods = [
       { hx: kWestX + 1.65, hz: -18.85, hw: 1.15, hh: 1.25, hd: 1.05, hy: kH },
@@ -11997,6 +12118,7 @@ function buildWestBuilding() {
   }
 
     g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'west-building'; });
+  WEST_XF.apply(g);    // v2.12.40 依航照：恢復原始 9 跨長度後整棟（含北側廚房增建）北移 6.02 m（南端仍接新棟北面 z 9.9，東西向不動以對齊新棟軸線 ④）
   layerGroups.buildings.add(g);
   clickableGroups.push(g);
   landmarkGroupMap.set('west-building', g);
@@ -18395,7 +18517,8 @@ function buildNorthCarport() {
   {
     const stripMat = new THREE.MeshStandardMaterial({ color: 0x6f9f4f, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     registerLawnMat(stripMat);
-    flatXZPoly([new THREE.Vector3(-33.8, 0, -61.4), new THREE.Vector3(-11.3, 0, -58.8), new THREE.Vector3(52.4, 0, -52.2), new THREE.Vector3(52.4, 0, -40.6), new THREE.Vector3(-33.8, 0, -40.6)], stripMat, 0.07, layerGroups.roads, 0.2);
+    // v2.12.40 北棟依航照北移：草地帶改止於北棟後側採光井（E 軸外 2 m）與廁所大樓、後走廊樓梯北緣
+    flatXZPoly([[-33.8, -61.4], [-11.3, -58.8], [52.4, -52.2], [52.4, -49.3], [-18.5, -55.6], [-18.5, -57.8], [-33.8, -59.6]].map(([x, z]) => new THREE.Vector3(x, 0, z)), stripMat, 0.07, layerGroups.roads, 0.2);
   }
   // 車道西端與西北角後門平順交會區
   { const e = westRoadPts[westRoadPts.length - 1]; addBox(layerGroups.roads, 4.0, 0.09, 6.8, concreteRoadMat, e.x - 1.0, 0.052, e.z, false); }
@@ -18778,11 +18901,12 @@ function buildOrganicFarm() {
   }
 
   ofg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'organic-farm'; });
-  {   // v2.12.37 北側車道改沿北牆斜行：農場整組轉為與車道平行，置於車道南側（車道南緣以南約 1 m）
+  {   // v2.12.37 北側車道改沿北牆斜行：農場整組轉為與車道平行
+    // v2.12.40 北棟、東棟依航照北移後車道南側已無空間；依航照標示改置於車道北側、停車棚東邊，緊貼北牆內側（車道北緣以北約 0.6 m）
     const bb = new THREE.Box3().setFromObject(ofg), c = bb.getCenter(new THREE.Vector3());
     const th = -Math.atan2(9.4, 59.8), cs = Math.cos(th), sn = Math.sin(th);
     const roadZ = -54.4 + (c.x - 53.7) * (9.4 / 59.8);
-    const tz = roadZ + 2.0 + 1.0 + (bb.max.z - bb.min.z) / 2;
+    const tz = roadZ - 2.0 - 0.6 - (bb.max.z - bb.min.z) / 2;
     ofg.rotation.y = th;
     ofg.position.set(c.x - (c.x * cs + c.z * sn), 0, tz - (-c.x * sn + c.z * cs));
   }
@@ -19125,44 +19249,44 @@ const CAMPUS_TREE_REGISTRY = [
   ["442016", "黃金風鈴木", -41.8, -50.8, 0],
   ["442045", "印度紫檀", -40.9, -71.4, 0],
   ["442022", "黃金風鈴木", -40.9, -55.3, 0],
-  ["442026", "黃金風鈴木", -40.9, -60.2, 0],
+  ["442026", "黃金風鈴木", -40.6, -60.2, 0],
   // 依照片：育樂樓西側跑道外三棵楓香等距分布（第四筆登錄 442020 現場未見，略去）
   ["442043", "楓香", -39.7, 5.8, 0],
   ["442035", "楓香", -39.7, -0.6, 0],
   ["442030", "楓香", -39.7, -8.3, 0],
   ["442040", "印度紫檀", -38.2, -71.1, 0],
   ["442281", "雨豆樹", -33.9, 26.0, 0],
-  ["441981", "楓香", -30.0, -31.8, 0],
+  ["441981", "楓香", -36.5, -37.0, 0],
   ["442007", "波羅蜜", -30.7, -58.4, 0],
   ["441997", "緬梔", -30.5, -59.8, 0],
   ["441990", "苦楝", -29.2, -58.6, 0],
   ["442157", "金露花", -17.9, -5.8, 0],
-  ["442315", "印度紫檀", -16.5, -58.6, 0],
-  ["442139", "馬拉巴栗", -12.0, -23.9, 0],
-  ["442144", "樟樹", -15.8, -24.0, 0],
-  ["442133", "馬拉巴栗", -10.9, -23.8, 0],
-  ["442319", "印度紫檀", -13.4, -58.2, 0],
-  ["442150", "榕樹", -12.4, -24.0, 0],
+  ["442315", "印度紫檀", -16.5, -58.8, 0],
+  ["442139", "馬拉巴栗", -15.8, -31.0, 0],
+  ["442144", "樟樹", -15.8, -28.5, 0],
+  ["442133", "馬拉巴栗", -13.9, -34.7, 0],
+  ["442319", "印度紫檀", -13.3, -58.4, 0],
+  ["442150", "榕樹", -12.4, -24.7, 0],
   ["839655", "桂花", -8.8, -5.5, 0],
-  ["442332", "風鈴木", -8.6, -57.7, 0],
+  ["442332", "風鈴木", -8.6, -57.9, 0],
   ["442179", "金露花", -6.1, -5.3, 0],
   ["442188", "龍柏", -4.0, -8.0, 0],
   ["442323", "風鈴木", -3.7, -57.2, 0],
-  ["442123", "黃槿", -1.7, -24.0, 0],
+  ["442123", "黃槿", -1.7, -28.7, 0],
   ["442211", "樟樹", 0.4, -5.5, 0],
   ["442204", "瓊崖海棠", 0.7, -6.2, 0],
-  ["442115", "水黃皮", 4.1, -24.0, 0],
+  ["442115", "水黃皮", 4.1, -27.4, 0],
   ["442218", "茄冬", 6.1, -7.7, 0],
-  ["442107", "火焰木", 8.4, -24.0, 0],
-  ["442334", "印度紫檀", 10.4, -55.7, 0],
-  ["442330", "印度紫檀", 14.4, -55.3, 0],
+  ["442107", "火焰木", 8.4, -26.2, 0],
+  ["442334", "印度紫檀", 10.5, -55.9, 0],
+  ["442330", "印度紫檀", 14.4, -55.5, 0],
   ["442230", "黃金風鈴木", 17.2, -3.5, 0],
   ["442100", "黃槿", 26.9, -22.8, 0],
   ["442237", "火焰木", 29.5, -1.3, 0],
   ["442092", "黃金風鈴木", 30.9, -22.6, 0],
   ["442263", "樟樹", 31.4, -5.3, 0],
   ["442252", "竹柏", 33.2, -6.6, 0],
-  ["441975", "印度紫檀", 49.7, -33.5, 0],
+  ["441975", "印度紫檀", 55.1, -50.6, 0],
   ["839658", "大葉羅漢松", 66.5, 18.6, 0],
   ["839651", "臺灣海桐", 67.5, 18.6, 0],
   ["442057", "水黃皮", 74.9, 17.0, 0],
@@ -20741,13 +20865,10 @@ function updateSelectionOutline(landmarkId) {
   const [x1, y1, x2, y2] = lm.pxBounds;
   const w = (x2 - x1) * S + 2.2, d = (y2 - y1) * S + 2.2;
   const cx = X((x1 + x2) / 2), cz = Z((y1 + y2) / 2);
-  const ringGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(cx - w / 2, 0.32, cz - d / 2),
-    new THREE.Vector3(cx + w / 2, 0.32, cz - d / 2),
-    new THREE.Vector3(cx + w / 2, 0.32, cz + d / 2),
-    new THREE.Vector3(cx - w / 2, 0.32, cz + d / 2),
-    new THREE.Vector3(cx - w / 2, 0.32, cz - d / 2)
-  ]);
+  const ringGeo = new THREE.BufferGeometry().setFromPoints([[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([sx, sz]) => {
+    const [rx, rz] = lmToWorld(lm, cx + sx * w / 2, cz + sz * d / 2);   // v2.12.40 依建築定位轉換
+    return new THREE.Vector3(rx, 0.32, rz);
+  }));
   const ringLine = new THREE.Line(ringGeo, new THREE.LineBasicMaterial({ color: 0x923c32, linewidth: 2 }));
   selectionOutlineGroup.add(ringLine);
 }
@@ -20802,11 +20923,8 @@ function buildSceneLabels() {
           rEl.dataset.shortText = shortDisp;
           rEl.textContent = rEl.dataset.fullText;
           rEl.title = `${lm.name} · ${floorKey === 'B1' ? 'BF' : floorKey} · ${rm.name}（單擊對焦詳情，雙擊進入 3D 走廊視角）`;
-          const worldPos = new THREE.Vector3(
-            bx0 + rm.rx * bw,
-            ry,
-            Z((y1 + y2) / 2) + rm.rz * bd
-          );
+          const [pwx, pwz] = lmToWorld(lm, bx0 + rm.rx * bw, Z((y1 + y2) / 2) + rm.rz * bd);   // v2.12.40
+          const worldPos = new THREE.Vector3(pwx, ry, pwz);
           rEl.addEventListener('click', e => {
             e.stopPropagation();
             selectedId = lm.id;
@@ -21235,8 +21353,13 @@ function getClassroomCorridorView(lm, floorKey, rm, worldPos) {
   const lmId = lm?.id || '';
   const flNum = floorKey === 'B1' ? -0.5 : (floorKey === '1F' ? 0 : (floorKey === '2F' ? 1 : 2));
   const eyeY = (worldPos ? worldPos.y : flNum * 3.5 + 2.4) + 0.35;
-  const wx = worldPos ? worldPos.x : (lm?.center ? lm.center[0] : 0);
-  const wz = worldPos ? worldPos.z : (lm?.center ? lm.center[2] : 0);
+  // v2.12.40 北棟／東棟／西棟：於建築局部座標計算視角後再換回世界座標
+  const _xf = (window.BUILDING_XF || {})[lmId];
+  const [wx, wz] = (() => {
+    const x0 = worldPos ? worldPos.x : (lm?.center ? lm.center[0] : 0);
+    const z0 = worldPos ? worldPos.z : (lm?.center ? lm.center[2] : 0);
+    return _xf ? _xf.toLocal(x0, z0) : [x0, z0];
+  })();
 
   let p, t;
 
@@ -21266,6 +21389,7 @@ function getClassroomCorridorView(lm, floorKey, rm, worldPos) {
     t = [wx, eyeY, wz];
   }
 
+  if (_xf) [p, t].forEach(v => { const [a, b] = _xf.toWorld(v[0], v[2]); v[0] = a; v[2] = b; });
   return { p, t };
 }
 
@@ -21276,8 +21400,13 @@ function getClassroomBirdEyeView(lm, floorKey, rm, worldPos) {
   const lmId = lm?.id || '';
   const flNum = floorKey === 'B1' ? -0.5 : (floorKey === '1F' ? 0 : (floorKey === '2F' ? 1 : 2));
   const ry = worldPos ? worldPos.y : (flNum * 3.5 + 2.4);
-  const wx = worldPos ? worldPos.x : (lm?.center ? lm.center[0] : 0);
-  const wz = worldPos ? worldPos.z : (lm?.center ? lm.center[2] : 0);
+  // v2.12.40 北棟／東棟／西棟：於建築局部座標計算視角後再換回世界座標
+  const _xf = (window.BUILDING_XF || {})[lmId];
+  const [wx, wz] = (() => {
+    const x0 = worldPos ? worldPos.x : (lm?.center ? lm.center[0] : 0);
+    const z0 = worldPos ? worldPos.z : (lm?.center ? lm.center[2] : 0);
+    return _xf ? _xf.toLocal(x0, z0) : [x0, z0];
+  })();
 
   let p, t;
 
@@ -21307,6 +21436,7 @@ function getClassroomBirdEyeView(lm, floorKey, rm, worldPos) {
     t = [wx, ry || 3.0, wz];
   }
 
+  if (_xf) [p, t].forEach(v => { const [a, b] = _xf.toWorld(v[0], v[2]); v[0] = a; v[2] = b; });
   return { p, t };
 }
 
@@ -21362,7 +21492,8 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
         const ry = floorNum * 3.5 + 2.4;
         const foundRm = Object.values(lm.rooms).flat().find(r => r.code === highlightRoomCode);
         if (foundRm) {
-          const wPos = new THREE.Vector3(bx0 + foundRm.rx * bw, ry, Z((y1 + y2) / 2) + foundRm.rz * bd);
+          const [pwx, pwz] = lmToWorld(lm, bx0 + foundRm.rx * bw, Z((y1 + y2) / 2) + foundRm.rz * bd);
+          const wPos = new THREE.Vector3(pwx, ry, pwz);
           pin = { pos: wPos, room: foundRm, floorKey: initialFloor };
         }
       }
@@ -21399,7 +21530,7 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
       syncFloorButtons(activePlanFloor);
     }
     const [x1, y1, x2, y2] = lm.pxBounds;
-    const cx = X((x1 + x2) / 2), cz = Z((y1 + y2) / 2);
+    const [cx, cz] = lmToWorld(lm, X((x1 + x2) / 2), Z((y1 + y2) / 2));
     const pin = highlightRoomCode ? roomPinElements.find(p => p.code === highlightRoomCode) : null;
     const tx = pin ? pin.pos.x : cx;
     const tz = pin ? pin.pos.z : cz;
@@ -21514,7 +21645,8 @@ function renderDetailCard(lm, activeFloor = '1F') {
             const bx0 = X(x1);
             const floorNum = currentFloor === 'B1' ? -0.5 : (currentFloor === '1F' ? 0 : (currentFloor === '2F' ? 1 : 2));
             const ry = floorNum * 3.5 + 2.4;
-            const worldPos = new THREE.Vector3(bx0 + rm.rx * bw, ry, Z((y1 + y2) / 2) + rm.rz * bd);
+            const [pwx, pwz] = lmToWorld(lm, bx0 + rm.rx * bw, Z((y1 + y2) / 2) + rm.rz * bd);
+            const worldPos = new THREE.Vector3(pwx, ry, pwz);
             focusClassroom(lm, currentFloor, rm, worldPos);
           }
         }
@@ -22180,8 +22312,9 @@ function placeCameraOnRoute(t) {
 // 10. COLLISION-AWARE FIRST-PERSON GROUND WALK (`PKU-3D FirstPerson` class)
 // ============================================================================
 // Solid building obstacle footprints (excluding open plazas/tracks and East Breezeway passage)
+// v2.12.40 北棟由局部座標專屬判斷；西棟、東棟改以局部座標障礙盒（見下方 LOCAL_BUILDING_OBSTACLES）
 const SOLID_BUILDING_OBSTACLES = LANDMARKS
-  .filter(lm => ['north-building', 'south-building', 'west-building', 'new-building'].includes(lm.id) && lm.pxBounds)
+  .filter(lm => ['south-building', 'new-building'].includes(lm.id) && lm.pxBounds)
   .map(lm => {
     const [x1, y1, x2, y2] = lm.pxBounds;
     return {
@@ -22191,18 +22324,23 @@ const SOLID_BUILDING_OBSTACLES = LANDMARKS
       maxZ: Z(y2) + 0.65
     };
   });
-// Add East Building North & South wings while leaving the 1F Central Breezeway (`Z(185)..Z(225)`) open for walking!
-SOLID_BUILDING_OBSTACLES.push(
-  { minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(88) - 0.5,  maxZ: Z(199) },
-  { minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(233),       maxZ: Z(315) + 0.5 }
-);
+// 局部座標障礙盒：東棟南北兩翼（保留 1F 中央穿堂 Z(199)..Z(233) 可通行）、西棟主體與北側廚房增建（含 v2.12.40 擴建段）
+const LOCAL_BUILDING_OBSTACLES = [
+  { xf: EAST_XF, minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(88) - 0.5,  maxZ: Z(199) },
+  { xf: EAST_XF, minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(233),       maxZ: Z(315) + 0.5 },
+  { xf: WEST_XF, minX: -38.11 - 0.65, maxX: -24.31 + 0.65, minZ: -23.35 - 0.65, maxZ: 15.918 + 0.65 },
+  { xf: WEST_XF, minX: -35.5 - 0.5, maxX: -30.6, minZ: -34.68 - 0.5, maxZ: -23.35 },
+  { xf: WEST_XF, minX: -30.6, maxX: -21.0 + 0.5, minZ: -30.18 - 0.5, maxZ: -20.0 }
+];
 
 // Collision footprint exclusions: allow walking inside North Building (愛悅樓) Front/Rear corridors, Central Stairwell, Basement & Lightwells!
 function isWalkPointAllowed(wx, wz) {
   if (wx < -125 || wx > 130 || wz < -60 || wz > 80) return false;
 
-  // North Building (愛悅樓):
+  // North Building (愛悅樓)：v2.12.40 以北棟局部座標判斷
   const C = window.NORTH_COLLISION;
+  const [wx0, wz0] = [wx, wz];
+  [wx, wz] = NORTH_XF.toLocal(wx0, wz0);
   if (C && wx > C.x1 - 0.2 && wx < C.eastX + 0.2 && wz > C.zb - 1.95 && wz < C.zf + 2.65) {
     // If exploring Basement (camera Y <= 1.55m): allow full basement rooms, central stair lobby, and lightwells!
     if (typeof camera !== 'undefined' && camera.position.y <= 1.55) {
@@ -22226,20 +22364,21 @@ function isWalkPointAllowed(wx, wz) {
 
   // West Building (育樂樓): allow walking along 1F East Corridor (`-27.04..-24.31`), 1F West Corridor (`-38.11..-34.13`),
   // and through the 4-bay open 1F Breezeway (`川堂`, `z = -14.19..-1.06`) & North Entrance Corridor (`z = -16.84..-14.19`)!
-  if (wx >= -38.8 && wx <= -23.0 && wz >= -24.0 && wz <= 10.2) {   // v2.12.35 西棟南端 9.9
-    if (wx >= -27.1 && wx <= -24.0 && wz >= -17.9 && wz <= 9.9) return true; // 1F/2F/3F East Front Corridor
-    if (wx >= -38.3 && wx <= -34.0 && wz >= -17.9 && wz <= 9.9) return true; // 1F/2F/3F West Rear Corridor
+  // v2.12.40 以西棟局部座標判斷（恢復原始 9 跨，南端局部 15.918）
+  [wx, wz] = WEST_XF.toLocal(wx0, wz0);
+  if (wx >= -38.8 && wx <= -23.0 && wz >= -24.0 && wz <= 16.2) {
+    if (wx >= -27.1 && wx <= -24.0 && wz >= -17.9 && wz <= 15.9) return true; // 1F/2F/3F East Front Corridor
+    if (wx >= -38.3 && wx <= -34.0 && wz >= -17.9 && wz <= 15.9) return true; // 1F/2F/3F West Rear Corridor
     if (wz >= -17.90 && wz <= -1.05 && wx >= -38.3 && wx <= -24.0) return true; // 1F 川堂, East-Up Staircase & Right-Turn Passage
   }
+  [wx, wz] = [wx0, wz0];
 
   // New Building <-> South Building `⑩–⑪` Shared Corridor (`wx = -6.72..-4.22`, `wz = 8.78..24.15`): allow walking through the south picket gate and shared corridor!
   if (wx >= -6.85 && wx <= -4.10 && wz >= 8.20 + SOUTH_SHIFT && wz <= 24.50 + SOUTH_SHIFT) return true;
 
   // Remaining solid building obstacles (north-building box is handled above)
-  return !SOLID_BUILDING_OBSTACLES.some(b => {
-    if (b.minX < -20 && b.maxX > 50 && b.minZ < -35 && b.maxZ > -28) return false;
-    return wx > b.minX && wx < b.maxX && wz > b.minZ && wz < b.maxZ;
-  });
+  if (LOCAL_BUILDING_OBSTACLES.some(b => { const [lx, lz] = b.xf.toLocal(wx, wz); return lx > b.minX && lx < b.maxX && lz > b.minZ && lz < b.maxZ; })) return false;
+  return !SOLID_BUILDING_OBSTACLES.some(b => wx > b.minX && wx < b.maxX && wz > b.minZ && wz < b.maxZ);
 }
 
 function syncWalkHUD() {
@@ -22669,8 +22808,7 @@ function renderPlanSvg() {
           const pin = roomPinElements.find(p => p.code === rm.code && p.floorKey === flKey);
           const isAct = activeRoomCode === rm.code;
           const hex = isAct ? 0xd93829 : (catColorHex[pin?.catClass] || 0x315b4e);
-          const wx = bx0 + rm.rx * bw;
-          const wz = bz0 + rm.rz * bd;
+          const [wx, wz] = lmToWorld(lm, bx0 + rm.rx * bw, bz0 + rm.rz * bd);
 
           const slabGeo = new THREE.BoxGeometry(slabW, 0.24, slabD);
           const slabMat = new THREE.MeshBasicMaterial({
@@ -22680,6 +22818,7 @@ function renderPlanSvg() {
           });
           const slabMesh = new THREE.Mesh(slabGeo, slabMat);
           slabMesh.position.set(wx, flSlabY, wz);
+          slabMesh.rotation.y = BUILDING_XF_ROT(lm.id);
           slabMesh.userData = { landmarkId: lm.id, roomCode: rm.code, floorKey: flKey, isPlanRoomSlab: true };
           planRooms3DGroup.add(slabMesh);
 
@@ -22687,6 +22826,7 @@ function renderPlanSvg() {
           const edges = new THREE.EdgesGeometry(slabGeo);
           const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: isAct ? 0xffffff : 0xfaf8f2 }));
           line.position.copy(slabMesh.position);
+          line.rotation.y = slabMesh.rotation.y;
           planRooms3DGroup.add(line);
         });
       });
@@ -22701,7 +22841,8 @@ function renderPlanSvg() {
       el.classList.add('plan-bldg-header');
       if (txtSpan) txtSpan.textContent = customHeader;
       const [x1, y1, x2, y2] = lm.pxBounds;
-      pos.set(X((x1 + x2) / 2), cfg.slabY + 1.2, Z(y1) - 3.2);
+      const [hx, hz] = lmToWorld(lm, X((x1 + x2) / 2), Z(y1) - 3.2);
+      pos.set(hx, cfg.slabY + 1.2, hz);
     } else {
       el.classList.remove('plan-bldg-header');
       if (txtSpan) txtSpan.textContent = lm.name;
@@ -22949,9 +23090,10 @@ function updateMinimap() {
   LANDMARKS.forEach(lm => {
     if (!lm.pxBounds || lm.id === 'courtyard-plaza' || lm.id === 'sports-track') return;
     const [x1, y1, x2, y2] = lm.pxBounds;
-    const rx = X(x1), ry = Z(y1), rw = (x2 - x1) * S, rh = (y2 - y1) * S;
     const isSel = selectedId === lm.id;
-    svgHtml += `<rect data-mid="${lm.id}" x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="1.5" fill="${isSel ? '#923c32' : bFill}" stroke="${isSel ? '#faf8f2' : bStroke}" stroke-width="${isSel ? 1.8 : 1}"/>`;
+    // v2.12.40 依建築定位轉換後以多邊形繪製
+    const pts = [[X(x1), Z(y1)], [X(x2), Z(y1)], [X(x2), Z(y2)], [X(x1), Z(y2)]].map(([px, pz]) => lmToWorld(lm, px, pz).map(v => v.toFixed(2)).join(',')).join(' ');
+    svgHtml += `<polygon data-mid="${lm.id}" points="${pts}" fill="${isSel ? '#923c32' : bFill}" stroke="${isSel ? '#faf8f2' : bStroke}" stroke-width="${isSel ? 1.8 : 1}"/>`;
   });
 
   const cx = THREE.MathUtils.clamp(camera.position.x, -120, 125);
@@ -23893,12 +24035,15 @@ renderer.setAnimationLoop(mainLoopFn = now => {
       } else if (walkState.keys.down) {
         camera.position.y = Math.max(-0.78, camera.position.y - vSpeed);
       } else {
+        // v2.12.40 北棟／西棟已依航照定位：樓梯判斷改用各棟局部座標
+        const [_nX, _nZ] = NORTH_XF.toLocal(camera.position.x, camera.position.z);
+        const [_wX, _wZ] = WEST_XF.toLocal(camera.position.x, camera.position.z);
         // Automatic Stair Climbing inside North Building Central Stairwell (⑪–⑫: X from 17.0 to 23.0, Z from -38.5 to -26.5)
-        const inStairwell = (camera.position.x >= 17.0 && camera.position.x <= 23.0 && camera.position.z >= -38.5 && camera.position.z <= -26.5);
+        const inStairwell = (_nX >= 17.0 && _nX <= 23.0 && _nZ >= -38.5 && _nZ <= -26.5);
         if (inStairwell) {
           // Downward flight to Basement on west run (x <= 20.0, z from -26.0 to -32.5, y < 3.20)
-          if (camera.position.x <= 20.0 && camera.position.y < 3.20 && camera.position.z >= -32.5 && camera.position.z <= -26.0) {
-            const bfProg = (-26.0 - camera.position.z) / 6.0; // 0 at 1F (z=-26.0), 1 at BF (z=-32.0)
+          if (_nX <= 20.0 && camera.position.y < 3.20 && _nZ >= -32.5 && _nZ <= -26.0) {
+            const bfProg = (-26.0 - _nZ) / 6.0; // 0 at 1F (z=-26.0), 1 at BF (z=-32.0)
             const targetY = THREE.MathUtils.lerp(2.97, -0.78, THREE.MathUtils.clamp(bfProg, 0, 1));
             camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
           } else {
@@ -23906,40 +24051,40 @@ renderer.setAnimationLoop(mainLoopFn = now => {
             // West flight (x <= 20.0): goes up from north (Z=-35.0) to south (Z=-26.5)
             const curFloor = Math.floor(Math.max(0, (camera.position.y - 1.72 - 1.25) / 3.6));
             const floorBaseY = 1.25 + curFloor * 3.6 + 1.72;
-            const isEastUp = camera.position.x > 20.0;
-            if (isEastUp && camera.position.z <= -26.5 && camera.position.z >= -35.0) {
-              const stairProgress = (-26.5 - camera.position.z) / 8.5; // 0 to 1
+            const isEastUp = _nX > 20.0;
+            if (isEastUp && _nZ <= -26.5 && _nZ >= -35.0) {
+              const stairProgress = (-26.5 - _nZ) / 8.5; // 0 to 1
               const targetY = floorBaseY + THREE.MathUtils.clamp(stairProgress, 0, 1) * 1.8;
               camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
-            } else if (!isEastUp && camera.position.z >= -35.0 && camera.position.z <= -26.5) {
-              const stairProgress = (camera.position.z - (-35.0)) / 8.5; // 0 to 1
+            } else if (!isEastUp && _nZ >= -35.0 && _nZ <= -26.5) {
+              const stairProgress = (_nZ - (-35.0)) / 8.5; // 0 to 1
               const targetY = floorBaseY + 1.8 + THREE.MathUtils.clamp(stairProgress, 0, 1) * 1.8;
               camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
             }
           }
         }
         // Stepped Garden Planters descent to Basement South Lightwell (X: -26.5..-17.5 & 32.0..43.0, Z: -21.65..-19.15)
-        const inSteppedPlanter = (camera.position.z >= -21.65 && camera.position.z <= -19.15 &&
-          ((camera.position.x >= -26.5 && camera.position.x <= -17.5) || (camera.position.x >= 32.0 && camera.position.x <= 43.0)));
+        const inSteppedPlanter = (_nZ >= -21.65 && _nZ <= -19.15 &&
+          ((_nX >= -26.5 && _nX <= -17.5) || (_nX >= 32.0 && _nX <= 43.0)));
         if (inSteppedPlanter) {
-          const pProg = (camera.position.z - (-19.25)) / (-2.40); // 0 at south ground, 1 at sunken lightwell
+          const pProg = (_nZ - (-19.25)) / (-2.40); // 0 at south ground, 1 at sunken lightwell
           const targetY = THREE.MathUtils.lerp(1.72, -0.78, THREE.MathUtils.clamp(pProg, 0, 1));
           camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
         }
         // Automatic Stair Climbing inside West Building North Staircase (東面上樓：X from -26.80 to -32.15, Z from -16.05 to -14.19)
-        const inWestNorthStair = (camera.position.x >= -32.25 && camera.position.x <= -26.70 && camera.position.z >= -16.05 && camera.position.z <= -14.19);
+        const inWestNorthStair = (_wX >= -32.25 && _wX <= -26.70 && _wZ >= -16.05 && _wZ <= -14.19);
         if (inWestNorthStair) {
           const curFloor = (camera.position.y - 1.72 >= 3.80) ? 1 : 0;
           const baseFloorY = (curFloor === 0 ? 0.25 : 3.95) + 1.72;
           const riseH = (curFloor === 0 ? 3.70 : 3.75);
-          const stairProgress = (-26.80 - camera.position.x) / 5.35; // 0 (East) to 1 (West)
+          const stairProgress = (-26.80 - _wX) / 5.35; // 0 (East) to 1 (West)
           const targetY = baseFloorY + THREE.MathUtils.clamp(stairProgress, 0, 1) * riseH;
           camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
         }
         // 北棟西側後走廊戶外直梯：地面 9 階入口踏步、三段西→東直梯與兩端方盒平台（v2.11 新幾何）
         const NS = window.NORTH_REAR_STAIR;
         if (NS) {
-          const px = camera.position.x, pz = camera.position.z, eye = 1.72;
+          const px = _nX, pz = _nZ, eye = 1.72;
           const feet = camera.position.y - eye;
           let targetFeet = null;
           if (pz <= NS.zFlightN && pz >= NS.zBoxNorth && px >= NS.xs && px <= NS.eX0 && feet < NS.baseH + 1.0) {
@@ -23959,7 +24104,7 @@ renderer.setAnimationLoop(mainLoopFn = now => {
       // 下沉中庭：進入中庭範圍時視高隨地面下降，離開時回復（東棟坡道／台階由其本身邏輯處理）
       {
         const inC = inCourtyardSink(camera.position.x, camera.position.z, -0.4);
-        const onRamp = window.EAST_REAR_RAMP && camera.position.x > window.EAST_REAR_RAMP.xA1 - 0.3;
+        const onRamp = window.EAST_REAR_RAMP && EAST_XF.toLocal(camera.position.x, camera.position.z)[0] > window.EAST_REAR_RAMP.xA1 - 0.3;   // v2.12.40 東棟局部座標
         if (inC && !onRamp && camera.position.y < 2.8) { camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72 - COURTYARD_SINK.D, 0.18); walkState.sunk = true; }
         else if (!inC && walkState.sunk && camera.position.y < 1.6) { camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72, 0.18); if (Math.abs(camera.position.y - 1.72) < 0.02) walkState.sunk = false; }
       }
@@ -24480,7 +24625,9 @@ function lowerCourtyardContents() {
     if (lm === 'south-building' && (_cbox.max.y > 0.3 || o.userData.keepLevel)) return;   // v2.12.34 南棟北移：僅下移貼地地磚帶
     _cbox.setFromObject(o);
     if (_cbox.isEmpty() || _cbox.min.y < -0.3) return;
-    if (_cbox.min.x < C.x1 || _cbox.max.x > C.x2 || _cbox.min.z < C.z1 || _cbox.max.z > C.z2) return;
+    // v2.12.40 四邊形中庭：外接盒四角皆須位於中庭內
+    if (!inCourtyardSink(_cbox.min.x, _cbox.min.z) || !inCourtyardSink(_cbox.max.x, _cbox.min.z) ||
+        !inCourtyardSink(_cbox.min.x, _cbox.max.z) || !inCourtyardSink(_cbox.max.x, _cbox.max.z)) return;
     todo.push(o);
   }));
   todo.forEach(o => {

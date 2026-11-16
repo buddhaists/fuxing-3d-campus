@@ -6,6 +6,48 @@ const S = 0.26, OX = 512, OY = 240;
 const X = px => (px - OX) * S;
 const Z = py => (py - OY) * S;
 
+// v2.12.40 依北棟建築平面圖與航照定位：北棟、東棟整棟平移＋旋轉，西棟（含北側廚房增建）平移。
+// 建築本體程式仍以「局部座標」（原模型座標）建置，群組套用此轉換後落到航照位置；
+// 步行碰撞、教室標籤、鏡頭位置等以 toLocal / toWorld 互換。
+// 角度 th 為平面圖上順時針（x 往東時 z 往南增加）之度數；pc 為局部旋轉中心，tc 為其世界座標落點。
+function makeBuildingXf(thDeg, pc, tc) {
+  const th = thDeg * Math.PI / 180, c = Math.cos(th), s = Math.sin(th);
+  const toWorld = (x, z) => {
+    const dx = x - pc[0], dz = z - pc[1];
+    return [tc[0] + dx * c - dz * s, tc[1] + dx * s + dz * c];
+  };
+  const toLocal = (x, z) => {
+    const dx = x - tc[0], dz = z - tc[1];
+    return [pc[0] + dx * c + dz * s, pc[1] - dx * s + dz * c];
+  };
+  const origin = toWorld(0, 0);
+  return {
+    th, rotY: -th, toWorld, toLocal,
+    // 將「以局部座標建置」的群組放到世界位置（保留原有 y）
+    apply(obj) { obj.rotation.y = -th; obj.position.x = origin[0]; obj.position.z = origin[1]; return obj; }
+  };
+}
+// 北棟：③～⑱ 教室主體對齊航照外框（殘差 < 0.8 m），⑳ 銜接東棟
+const NORTH_XF = makeBuildingXf(5.074, [8.2846, -32.44], [14.525, -43.975]);
+// 東棟：依航照外框旋轉約 6°，北端東移約 6 m
+const EAST_XF = makeBuildingXf(5.967, [58.89, -10.0], [62.0, -12.45]);
+// 西棟（含北側廚房增建）：恢復原始 9 跨長度（30.11 m）後北移 6.02 m，南端仍接新棟北面 (z 9.9)；東西向維持與新棟軸線 ④ 對齊
+const WEST_XF = makeBuildingXf(0, [0, 0], [0, -6.02]);
+const BUILDING_XF = {
+  'north-building': NORTH_XF, 'playground-zone': NORTH_XF,
+  'east-building': EAST_XF, 'breezeway-hub': EAST_XF,
+  'west-building': WEST_XF
+};
+window.BUILDING_XF = BUILDING_XF;
+window.NORTH_XF = NORTH_XF; window.EAST_XF = EAST_XF; window.WEST_XF = WEST_XF;
+// 地標局部座標 → 世界座標（無轉換者原樣傳回）
+function lmToWorld(lmOrId, x, z) {
+  const id = typeof lmOrId === 'string' ? lmOrId : lmOrId?.id;
+  const xf = BUILDING_XF[id];
+  return xf ? xf.toWorld(x, z) : [x, z];
+}
+window.lmToWorld = lmToWorld;
+
 const LANDMARKS = [
   {
     id: 'north-building',
@@ -393,7 +435,7 @@ const LANDMARKS = [
     floors: '戶外景觀廣場',
     height: '地面層',
     basis: '北棟正面圖＋實景照片＋空拍圖',
-    pxBounds: [445, 145, 712, 278],
+    pxBounds: [445, 93, 734, 278],   // v2.12.40 北棟北移後中庭向北延伸
     center: [X(578), 3.0, Z(211)],
     summary: '由北棟、東棟、南棟、西棟四面環抱的校園核心開放空間。地面鋪設極具辨識度的紅、白、深灰三色「回字形幾何透水花磚」，愛悅樓前方配置白磁磚邊框長方綠草花台與深灰安全地墊，中庭兩側隆起翠綠草坡並栽植大樹，草坡旁還佇立著深受學童喜愛的綠色雷龍雕塑。',
     photos: [
@@ -813,6 +855,14 @@ window.OY = OY;
 window.X = X;
 window.Z = Z;
 window.LANDMARKS = LANDMARKS;
+// v2.12.40 北棟／東棟／西棟／遊戲區：中心點與預設視角原以局部座標撰寫，載入時換算到世界座標
+LANDMARKS.forEach(lm => {
+  const xf = BUILDING_XF[lm.id];
+  if (!xf) return;
+  const tw = v => { if (Array.isArray(v) && v.length === 3) { const [x, z] = xf.toWorld(v[0], v[2]); v[0] = +x.toFixed(2); v[2] = +z.toFixed(2); } };
+  tw(lm.center);
+  Object.values(lm.views || {}).forEach(vw => { tw(vw.p); tw(vw.t); });
+});
 
 let activeGsesTab = 'spots'; // 'spots' | 'buildings' | 'classrooms'
 
