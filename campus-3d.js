@@ -4563,15 +4563,17 @@ function buildNorthBuilding() {
     const zWcSouth = zWcNorth + 7.80;              // C1 軸 (-32.205m)
 
     // -------------------------------------------------------------
-    // A. 北棟西側電梯高塔 (Elevator Tower · 精準坐落於 Bay ②–③ 軸線)
-    //    依 CAD 1F 平面圖：位於軸線 ② 與 ③ 之間，緊鄰教室群西側，自前走廊南外牆向南凸出
+    // A. 北棟西側電梯高塔 (Elevator Tower · 跨 Bay ①–③ 南側)
+    //    依 CAD 1F 平面圖與航照：位於廁所大樓以南、前走廊西端外側，緊鄰教室群西側
     // -------------------------------------------------------------
-    const elevWestX = b2L + 1.25;                          // ~ -29.66m (Bay ②–③ 靠東側，留出西側通道)
+    // v2.12.41 依 1F 平面圖（電梯框約 ①+2.8 m～③、E 軸以南 8.9～13.6 m）與使用者航照標示（北棟前走廊西端外側）：
+    //   電梯塔寬約 7.4 m（①+3.0 m 至 ③ 前）、北緣在教室前牆（C 軸）以北 1.7 m、南緣超出前走廊外緣約 0.4 m
+    const elevWestX = ax(1) + 3.00;                        // ~ -33.91m
     const elevEastX = b2R - 0.12;                          // ~ -26.54m
-    const elevW = elevEastX - elevWestX;                   // ~ 3.12m
-    const elevCx = (elevWestX + elevEastX) / 2;            // ~ -28.10m
-    const elevNorthZ = zf - 0.25;                          // ~ -26.425m (緊貼前走廊)
-    const elevSouthZ = -23.90;                             // 向南延伸至 -23.90m (深度 2.525m，與西棟廚房增建保持 3.90m 適當天井庭院棟距！)
+    const elevW = elevEastX - elevWestX;                   // ~ 7.37m
+    const elevCx = (elevWestX + elevEastX) / 2;            // ~ -30.23m
+    const elevNorthZ = zCoreFront - 1.70;                  // ~ -30.375m
+    const elevSouthZ = zf + 0.40;                          // ~ -25.775m (深度約 4.6m)
     const elevD = Math.abs(elevSouthZ - elevNorthZ);       // 2.525m
     const elevCz = (elevNorthZ + elevSouthZ) / 2;
     const elevMainH = baseH + 3 * FH + 0.95;               // ~ 13.00m (三層主井體)
