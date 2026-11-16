@@ -12059,7 +12059,7 @@ function buildWestBuilding() {
       const kxP2 = -31.0, kxB2 = -17.6;                      // 凸出部／西翼東緣、東翼東緣
       const zP1 = -34.68, zB1 = -30.18;                      // 凸出部北緣、廚房北牆（＝長巷南緣）
       // v2.12.45 依實景照片 5149／5147：凸出部（穿廊）位於銀色遮雨棚正南、電梯塔西南角，向東移至 x −33.0～−27.9
-      const pX1 = -33.0, pX2 = -27.9;
+      const pX1 = kWestX, pX2 = -27.9;   // v2.12.48 依照片 5166／5167：凸出部西牆與西棟、廚房西側外牆同一平面（x −38.11）
       const zAlleyN = -34.38;                                // 長巷北緣（電梯南面，世界 z ≈ −40.4）
       const stTileMat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 });   // 穿廊與長巷地坪
       const frameMat0 = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.4, metalness: 0.6 });   // 路燈支架
@@ -12144,7 +12144,7 @@ function buildWestBuilding() {
       [-22.2, -20.4].forEach(cxm => box(cxm - 0.85, cxm + 0.85, 0.1, 1.85, zB1 - 0.8, zB1 - 0.05, stainlessMat));
       // 5) 電梯西門前銀色圓弧遮雨棚與不銹鋼欄杆（照片 4921 俯視：L 形，東緣貼電梯塔西牆，東南角缺口為落水管與水溝）
       //    世界座標 x −33.6～−28.1、z −45.4～−40.7；東南缺口 x −30.1～−28.1、z −42.5～−40.7
-      const sx1 = -35.4, sx2 = -28.1, sz1 = -39.38, sz2 = zP1, sH = 2.95, nx = -30.1, nz = -36.48;
+      const sx1 = kWestX, sx2 = -28.1,   /* v2.12.48 遮雨棚前緣切齊西棟與廚房西側外牆 */ sz1 = -39.38, sz2 = zP1, sH = 2.95, nx = -30.1, nz = -36.48;
       const roofPart = (x1, x2, z1, z2) => box(x1, x2, sH, sH + 0.05, z1, z2, silverRoof, false);
       roofPart(sx1, sx2, sz1, nz); roofPart(sx1, nx, nz, sz2);
       const curl = (len, x, z, alongX, rotZ) => {                       // 圓弧下彎收邊
@@ -19343,7 +19343,7 @@ const CAMPUS_TREE_REGISTRY = [
   ["442030", "楓香", -39.7, -8.3, 0],
   ["442040", "印度紫檀", -38.2, -71.1, 0],
   ["442281", "雨豆樹", -33.9, 26.0, 0],
-  ["441981", "楓香", -36.8, -37.3, 0],
+  ["441981", "楓香", -39.2, -37.0, 0],
   ["442007", "波羅蜜", -30.7, -58.4, 0],
   ["441997", "緬梔", -30.5, -59.8, 0],
   ["441990", "苦楝", -29.2, -58.6, 0],
