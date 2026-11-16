@@ -12060,9 +12060,9 @@ function buildWestBuilding() {
       const zP1 = -34.68, zB1 = -30.18;                      // 凸出部北緣、廚房北牆（＝長巷南緣）
       // v2.12.45 依實景照片 5149／5147：凸出部（穿廊）位於銀色遮雨棚正南、電梯塔西南角，向東移至 x −33.0～−27.9
       const pX1 = kWestX, pX2 = -34.4;   // v2.12.49 東緣維持世界 x −27.9（電梯塔西南角）   // v2.12.48 依照片 5166／5167：凸出部西牆與西棟、廚房西側外牆同一平面（x −38.11）
-      const zAlleyN = -34.38;                                // 長巷北緣（電梯南面，世界 z ≈ −40.4）
+      const zAlleyN = -35.30;   // v2.12.51 旋轉後長巷北緣接電梯塔南面                                // 長巷北緣（電梯南面，世界 z ≈ −40.4）
       const stTileMat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 });   // 穿廊與長巷地坪
-      const frameMat0 = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.4, metalness: 0.6 });   // 路燈支架
+      const frameMat0 = new THREE.MeshStandardMaterial({ color: 0x8e8676, roughness: 0.4, metalness: 0.5 });   // 香檳色鋁框   // 路燈支架
       const box = (x1, x2, y1, y2, z1, z2, m, cast = true) => addBox(g, x2 - x1, y2 - y1, z2 - z1, m, (x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2, cast);
       const roofCap = (x1, x2, z1, z2, top) => {
         box(x1 - 0.12, x2 + 0.12, top - 0.06, top + 0.16, z1 - 0.12, z2 + 0.12, whiteTileMat);
@@ -12105,13 +12105,14 @@ function buildWestBuilding() {
         }
       };
       const F2 = [[y2F + 1.65, 1.35]], F12 = [[y1F + 1.75, 1.10], [y2F + 1.65, 1.35]];
+      const winGlassBright = new THREE.MeshStandardMaterial({ color: 0xe4ebef, roughness: 0.18, metalness: 0.15 });   // v2.12.51 明亮霧面玻璃
       // v2.12.50 照片 82／84：凸出部 2F 北面為一排橫向長窗、西面為 2×2 田字轉角大窗
       { const wy = y2F + 2.15, wh = 1.05, n = 3, L = (pX2 - pX1) - 0.6;
         for (let i = 0; i < n; i++) { const wx = pX1 + 0.3 + L * (i + 0.5) / n;
-          const wm = addMesh(g, new THREE.PlaneGeometry(L / n - 0.12, wh), winFrost6Mat, wx, wy, zP1 - 0.08, false); wm.rotation.y = Math.PI;
+          const wm = addMesh(g, new THREE.PlaneGeometry(L / n - 0.12, wh), winGlassBright, wx, wy, zP1 - 0.08, false); wm.rotation.y = Math.PI;
           box(wx - L / n / 2, wx + L / n / 2, wy - wh / 2 - 0.05, wy + wh / 2 + 0.05, zP1 - 0.06, zP1 + 0.02, frameMat0, false); } }
       { const wz = (zP1 + zB1) / 2, wy = y2F + 1.95, W2 = 3.0, H2 = 2.5;
-        const wm = addMesh(g, new THREE.PlaneGeometry(W2, H2), winFrost6Mat, pX1 - 0.08, wy, wz, false); wm.rotation.y = -Math.PI / 2;
+        const wm = addMesh(g, new THREE.PlaneGeometry(W2, H2), winGlassBright, pX1 - 0.08, wy, wz, false); wm.rotation.y = -Math.PI / 2;
         box(pX1 - 0.10, pX1, wy - H2 / 2 - 0.06, wy + H2 / 2 + 0.06, wz - W2 / 2 - 0.06, wz + W2 / 2 + 0.06, frameMat0, false);
         box(pX1 - 0.12, pX1 - 0.08, wy - H2 / 2, wy + H2 / 2, wz - 0.05, wz + 0.05, frameMat0, false);
         box(pX1 - 0.12, pX1 - 0.08, wy - 0.05, wy + 0.05, wz - W2 / 2, wz + W2 / 2, frameMat0, false); }
@@ -19355,7 +19356,7 @@ const CAMPUS_TREE_REGISTRY = [
   ["442007", "波羅蜜", -30.7, -58.4, 0],
   ["441997", "緬梔", -30.5, -59.8, 0],
   ["441990", "苦楝", -29.2, -58.6, 0],
-  ["442157", "金露花", -16.7, -5.8, 0],
+  ["442157", "金露花", -17.9, -5.8, 0],
   ["442315", "印度紫檀", -16.5, -58.8, 0],
   ["442139", "馬拉巴栗", -15.8, -31.0, 0],
   ["442144", "樟樹", -15.8, -28.5, 0],
