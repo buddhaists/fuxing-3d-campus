@@ -1148,7 +1148,7 @@ function flatXZPoly(points, mat, y, parent, uvScale = 0.1) {
 // The Rear Perimeter Wall (`V0 -> V6 -> V5 -> V4`) encloses 100% of the Sports Ground (`08`) & Ball Courts (`09`)
 // with a wide, continuous Campus Green Lawn Buffer Zone (`校園草地緩衝區域`) between the sports ground and the wall!
 const CAMPUS_PERIMETER_PX = [
-  [56, 22],   // V0: NW Rear Wall Corner (Xingan St & Jianxing S. Rd Lane 50)
+  [65.7, -67.6], // V0: NW 角（v2.12.24 依校園樹木分布衛星圖：北牆自東端往西漸偏北，西北角較原模型偏北約 23 m）
   [955, 22],  // V1: NE Corner (Xingan St & Fuxing Rd)
   [955, 326], // V2: SE Corner (Fuxing Rd & Jianxing S. Rd Lane 42)
   [772, 320], // V3: 學校新南側門 (建興南路42巷 · 東棟大樓右側)
@@ -1156,8 +1156,17 @@ const CAMPUS_PERIMETER_PX = [
   [438, 374], // V4b: 幼兒園大門東柱 / 南圍牆折角 (建興南路42巷)
   [367, 374], // V5: 幼兒園西端 / 運動場南側圍牆交界
   [180, 480], // V6: 運動場西南尖端
-  [56, 328]   // V7: 運動場西角 (建興南路50巷)
+  [152.9, 437.2], [134.6, 381.8], [105.2, 308.8], [76.2, 245.3],   // 西牆斜段（依衛星圖）
+  [45, 193.7], [39.2, 158.8], [51.4, 149.4]                         // 西牆中段外凸與北段直牆南端
 ];
+
+// v2.12.24 依校園樹木分布衛星圖之圍牆線（平面圖像素座標）
+const WEST_WALL_PX = [[65.7, -67.6], [51.4, 149.4], [39.2, 158.8], [45, 193.7], [76.2, 245.3], [105.2, 308.8], [134.6, 381.8], [152.9, 437.2], [180, 480]];
+const NORTH_WALL_PX = [[65.7, -67.6], [955, 22]];
+const northWallZAt = x => { const [a, b] = NORTH_WALL_PX; const t = (x - X(a[0])) / (X(b[0]) - X(a[0])); return Z(a[1]) + t * (Z(b[1]) - Z(a[1])); };
+const WEST_ROAD_PTS = [[-38.0, -44.5], [-38.0, -67.6], [-108.0, -75.2], [-113.5, -70.0], [-116.0, -67.1]];   // v2.12.33 北棟西端以西：沿北牆內側步道通往學校後門（依航照）
+const TRACK_CFG = { cx: -60.8, cz: -9.5, rx: 19.5, straight: 52 };   // v2.12.33 PU 跑道（依對位航照）
+const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) { const [x1, y1] = WEST_WALL_PX[i], [x2, y2] = WEST_WALL_PX[i + 1]; if (py >= Math.min(y1, y2) && py <= Math.max(y1, y2)) return x1 + (x2 - x1) * (py - y1) / ((y2 - y1) || 1); } return WEST_WALL_PX[0][0]; };
 
 // 1) Campus Inner Ground Polygon Slab & Full Sports Ground Campus Lawn Buffer Zone (`校園草地緩衝區域`)
 {
@@ -1185,12 +1194,14 @@ const CAMPUS_PERIMETER_PX = [
   // Full Campus Green Lawn Buffer Zone (`運動場與學校後圍牆之間的校園草地緩衝區域`)
   // Covers the entire western/rear campus inside the Rear Perimeter Wall (`V0 -> V6 -> V5 -> V4`) around the PU Track & Courts!
   const sportsTurfPts = [
-    [58, 24],   // NW corner inside North & West Rear Walls
-    [412, 24],  // North edge along rear of North Building (`愛悅樓`)
+    // v2.12.25 依衛星圖新圍牆線內縮約 0.5 m：西北角草地、排球場北側草地一併鋪設
+    [68, -64.5],  // NW corner
+    [412, -30],   // North edge along north wall
+    [412, 24],    // 北棟後方
     [412, 340], // East edge along West Building (`專科大樓`) & New Wing (`幼兒園`)
     [367, 372], // SE corner inside Sports Ground Rear Wall
     [180, 477], // SW tip inside Sports Ground Rear Wall
-    [58, 327]   // West corner inside West Rear Wall
+    [154, 434], [136.5, 380], [107.5, 306.5], [78.5, 243], [47.5, 193], [41.5, 159.5], [53.5, 149]
   ];
   const turfShape = new THREE.Shape();
   sportsTurfPts.forEach(([px, py], idx) => {
@@ -1362,18 +1373,25 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [X(772), Z(320), 4.5], // 學校新南側門 (東棟大樓右側)
     [X(657), Z(318), 4.8], // 學校舊南側門 (南棟大樓東側 1F 興學樓大字下通道後面)
     [X(429), Z(374), 4.5], // 幼兒園大門 (新棟大樓南側大門)
-    [X(56),  Z(90),  5.0], // 西側後門
-    [X(56),  Z(256), 4.2]  // 司令台後小門
+    [X(62.44), Z(-18.1),  5.0], // 學校後門（v2.12.33 依使用者航照標示）
+    [X(79.4), Z(260.4), 4.2]  // 司令台後小門
   ];
 
   // (A) West Rear Wall Perimeter (`建興南路 50 巷` & `建興南路`):
   // v2.12.9：西側人行道為斑駁灰色水泥（牆外另有低矮花台，於圍牆建模中配置），無路邊花箱；沿圍牆側劃設路邊停車格
-  addCommuterWalkwayStrip(X(56), Z(22), X(56), Z(328), 1, 3.2, false, gateExclusionZones, false, { tileTex: makeSpeckledGraniteTexture('#a4a29d', '#6d6b67', '#c3c0ba', false), tileRepeatM: 3.0 });
-  addBufferedRoadSegment(X(56), Z(10), X(56), Z(332), 1, 3.2, 9.6, true, [0.25, 0.78], { parked: [[0.4, 0x2b2d31], [0.5, 0xe5e7eb], [0.6, 0x8a8f96], [0.86, 0xc9c2a8], [0.93, 0xf0f0f0]] });
+  // v2.12.23：西牆改為「直段＋三段斜牆」（依校園樹木分布圖），人行道與道路沿新牆線分段配置
+  {
+    const tile = { tileTex: makeSpeckledGraniteTexture('#a4a29d', '#6d6b67', '#c3c0ba', false), tileRepeatM: 3.0 };
+    const WP = WEST_WALL_PX;
+    for (let i = 0; i < WP.length - 1; i++) {
+      const [ax1, ay1] = WP[i], [ax2, ay2] = WP[i + 1];
+      addCommuterWalkwayStrip(X(ax1), Z(ay1), X(ax2), Z(ay2), 1, 3.2, false, gateExclusionZones, false, tile);
+      addBufferedRoadSegment(X(ax1), Z(ay1 - (i === 0 ? 30 : 0)), X(ax2), Z(ay2), 1, 3.2, 9.6, true, i === 0 ? [0.55] : [], i === 0 ? { parked: [[0.62, 0x2b2d31], [0.7, 0xe5e7eb], [0.78, 0x8a8f96], [0.9, 0xc9c2a8]] } : {});
+    }
+  }
 
   // Segment 2: Along Southwest Rear Wall of Sports Ground (`V7(56,328) -> V6(180,480)`)
-  addCommuterWalkwayStrip(X(56), Z(328), X(180), Z(480), 1, 3.2, true, gateExclusionZones);
-  addBufferedRoadSegment(X(42), Z(310), X(196), Z(500), 1, 3.2, 10.0, true, [0.85]);
+  // （西南斜段已併入上方西牆分段）
 
   // (B) South/Southeast Rear Wall of Sports Ground (`建興南路 42 巷` 運動場後圍牆外通學步道與馬路, `V6(180,480) -> V5(367,374)`):
   // v2.12.4 依 2024 街景：灰褐方形地磚窄人行道、淡紫色緣石，無花箱與短柱；臨圍牆側路邊停車
@@ -2339,25 +2357,28 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   // 1) North Perimeter Wall (`V0(56,22) -> V1(955,22)`)
   // v2.12.7 依實景照片（北棟西側往後門）：與屏東高工相隔之北側圍牆為清水紅磚牆，高約 2.1 m，每約 3.2 m 一道凸出磚柱，無壓頂石與綠籬
   {
-    const x1 = X(56), x2 = X(955), z = Z(22), len = x2 - x1;
+    const p1 = new THREE.Vector3(X(NORTH_WALL_PX[0][0]), 0, Z(NORTH_WALL_PX[0][1])), p2 = new THREE.Vector3(X(NORTH_WALL_PX[1][0]), 0, Z(NORTH_WALL_PX[1][1]));
+    const len = p1.distanceTo(p2);
     const brickTex = makeTaiwaneseRedBrickTexture();
     brickTex.wrapS = brickTex.wrapT = THREE.RepeatWrapping;
     brickTex.repeat.set(len / 3, 1);
     const nbMat = new THREE.MeshStandardMaterial({ map: brickTex, color: 0x9a7268, roughness: 0.92 });
     const pierTex = makeTaiwaneseRedBrickTexture(); pierTex.wrapS = pierTex.wrapT = THREE.RepeatWrapping; pierTex.repeat.set(0.2, 1);
     const nbPierMat = new THREE.MeshStandardMaterial({ map: pierTex, color: 0x8c665c, roughness: 0.92 });
-    const g = new THREE.Group();
-    addBox(g, len, 0.18, 0.34, wallBaseMat, (x1 + x2) / 2, 0.09, z);
-    addBox(g, len, 2.0, 0.24, nbMat, (x1 + x2) / 2, 1.1, z);
-    addBox(g, len, 0.06, 0.28, nbPierMat, (x1 + x2) / 2, 2.13, z);
-    for (let px = x1; px <= x2 + 0.01; px += len / Math.round(len / 3.2)) {
-      addBox(g, 0.36, 2.22, 0.42, nbPierMat, px, 1.11, z);
-    }
+    const g = new THREE.Group();                         // 沿斜向北牆線建置（v2.12.24）
+    g.position.set((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
+    g.rotation.y = -Math.atan2(p2.z - p1.z, p2.x - p1.x);
+    addBox(g, len, 0.18, 0.34, wallBaseMat, 0, 0.09, 0);
+    addBox(g, len, 2.0, 0.24, nbMat, 0, 1.1, 0);
+    addBox(g, len, 0.06, 0.28, nbPierMat, 0, 2.13, 0);
+    const nP = Math.round(len / 3.2);
+    for (let k = 0; k <= nP; k++) addBox(g, 0.36, 2.22, 0.42, nbPierMat, -len / 2 + k * len / nP, 1.11, 0);
     layerGroups.boundary.add(g);
   }
 
   // 2) School West Rear Perimeter Wall (`V0(56,22) -> V6(56,328)`, enclosing the West Campus Lawn Buffer, Ball Courts & Command Stage)
-  addMasonryWallRun(X(56), Z(22), X(56), Z(73), wallSportsMat, true, -1, true);
+  addMasonryWallRun(X(65.7), Z(-67.6), X(63.23), Z(-30.1), wallSportsMat, true, -1, true);
+  addMasonryWallRun(X(61.65), Z(-6.1), X(54.19), Z(107), wallSportsMat, true, -1, true);   // v2.12.33 學校後門位於西牆北段（依航照標示）
 
   // ==========================================================================
   // 西側學校後門 (`學校西側的後門_可以看到西棟大樓與北棟大樓.jpg` 1:1 實景精準建模)
@@ -2751,14 +2772,27 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     landmarkGroupMap.set('west-sports-gate', swg);
   }
 
-  buildWestBackGate(X(56), Z(90)); // 西側學校後門 (建興南路50巷)
+  buildWestBackGate(X(62.44), Z(-18.1)); // 學校後門（v2.12.33 依使用者航照標示，接沿北牆步道）
   // v2.12.9 依 2024 街景與實景照片（建興南路 35 號前、司令台後小門）：運動場西側圍牆與南側同款——
   //   寬白漆龜裂柱墩＋玫瑰紅多層線腳柱頭、其間白色直條欄杆（局部鏽蝕），球場段牆頂加綠色菱形鐵絲網；
   //   牆外為低矮水泥花台（灌木與雜草），司令台後為單扇白色直條小門
-  const backGateZ = Z(256), backGateHalf = 0.95;
-  addSportsSouthWallRun(X(56), Z(107), X(56), backGateZ - backGateHalf, -1, { upperMesh: true, planter: true });
-  buildCommandStageBackGate(X(56), backGateZ, backGateHalf);
-  addSportsSouthWallRun(X(56), backGateZ + backGateHalf, X(56), Z(328), -1, { planter: true });
+  // v2.12.24 依衛星圖：北段直牆（球場段加鐵絲網）→ 中段外凸 → 三段斜牆至西南尖角；司令台後小門位於第一段斜牆、司令台正後方
+  const backGateHalf = 0.95;
+  addSportsSouthWallRun(X(54.9), Z(107), X(51.4), Z(149.4), -1, { upperMesh: true, planter: true });
+  addSportsSouthWallRun(X(51.4), Z(149.4), X(39.2), Z(158.8), -1, { planter: true });
+  addSportsSouthWallRun(X(39.2), Z(158.8), X(45), Z(193.7), -1, { planter: true });
+  addSportsSouthWallRun(X(45), Z(193.7), X(76.2), Z(245.3), -1, { planter: true });
+  {
+    const a = new THREE.Vector3(X(76.2), 0, Z(245.3)), b = new THREE.Vector3(X(105.2), 0, Z(308.8));
+    const L = a.distanceTo(b), dir = b.clone().sub(a).normalize();
+    const gc = a.clone().addScaledVector(dir, (5.3 - a.z) / dir.z);      // v2.12.33 依使用者航照標示
+    const ga = gc.clone().addScaledVector(dir, -(backGateHalf + 0.3)), gb = gc.clone().addScaledVector(dir, backGateHalf + 0.3);
+    addSportsSouthWallRun(a.x, a.z, ga.x, ga.z, -1, { planter: true });
+    buildCommandStageBackGate(gc.x, gc.z, backGateHalf, Math.atan2(dir.x, dir.z));
+    addSportsSouthWallRun(gb.x, gb.z, b.x, b.z, -1, { planter: true });
+  }
+  addSportsSouthWallRun(X(105.2), Z(308.8), X(134.6), Z(381.8), -1, { planter: true });
+  addSportsSouthWallRun(X(134.6), Z(381.8), X(152.9), Z(437.2), -1, { planter: true });
 
   // 3) School Southwest & South Sports Ground Perimeter Walls (`運動場四週_南側圍牆.jpg`:
   //    Wide white-painted masonry piers + terracotta-rose multi-tiered molded classical capitals +
@@ -2865,7 +2899,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
 
   // 司令台後小門：兩側白漆柱墩之間單扇白色直條鐵門（高約 1.6 m），門旁公告牌，門外為水泥坡道，
   //   南側花台轉角立黑黃斑紋桿之橘框凸面鏡（v2.12.9 依實景照片）
-  function buildCommandStageBackGate(gx, gz, half) {
+  function buildCommandStageBackGate(gx, gz, half, rotY = 0) {
     const gg = new THREE.Group();
     gg.userData = { landmarkId: 'west-sports-gate' };
     const white = new THREE.MeshStandardMaterial({ color: 0xf4f5f2, roughness: 0.45, metalness: 0.3 });
@@ -2906,12 +2940,18 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     mg.add(new THREE.Mesh(new THREE.TorusGeometry(0.39, 0.04, 8, 24), new THREE.MeshStandardMaterial({ color: 0xb4532a, roughness: 0.5 })));
     gg.add(mg);
     gg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'west-sports-gate'; });
-    layerGroups.boundary.add(gg);
+    if (rotY) {                                          // 斜向牆段：以門中心為軸旋轉
+      const pivot = new THREE.Group();
+      pivot.position.set(gx, 0, gz); pivot.rotation.y = rotY;
+      pivot.userData = { landmarkId: 'west-sports-gate' };
+      gg.position.set(-gx, 0, -gz); pivot.add(gg);
+      layerGroups.boundary.add(pivot);
+    } else layerGroups.boundary.add(gg);
     clickableGroups.push(gg);
     landmarkGroupMap.set('west-sports-gate', gg);
   }
 
-  addSportsSouthWallRun(X(56), Z(328), X(180), Z(480), -1, { planter: true, banner: 0.06 });
+  addSportsSouthWallRun(X(152.9), Z(437.2), X(180), Z(480), -1, { planter: true, banner: 0.06 });
   addSportsSouthWallRun(X(180), Z(480), X(367), Z(374), -1, { planter: true });
 
   // 5) East Perimeter Wall (`V1(955,22) -> V2(955,326)`)
@@ -3185,12 +3225,12 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
 {
   const pg = new THREE.Group();
   pg.userData = { landmarkId: 'ptivs-grounds' };
-  const wallZ = Z(22);
-  const x1 = X(40), x2 = X(972), zN = wallZ - 125;
+  // v2.12.24：北牆依衛星圖改為斜線（西端偏北），屏工草地與跑道隨之北移
+  const x1 = X(40), x2 = X(972), zN = Z(22) - 150;
   const grassMat = new THREE.MeshStandardMaterial({ color: 0x7fa452, roughness: 0.92 });
-  addBox(pg, x2 - x1, 0.06, wallZ - 0.4 - zN, grassMat, (x1 + x2) / 2, 0.0, (wallZ - 0.4 + zN) / 2, false);
+  flatXZPoly([new THREE.Vector3(x1, 0, northWallZAt(x1) - 0.4), new THREE.Vector3(x2, 0, northWallZAt(x2) - 0.4), new THREE.Vector3(x2, 0, zN), new THREE.Vector3(x1, 0, zN)], grassMat, 0.03, pg, 0.1);
   // 跑道
-  const tcx = -28, tcz = wallZ - 48, straight = 92, R = 30, laneW = 7.2;
+  const tcx = -28, tcz = northWallZAt(-28) - 44, straight = 92, R = 30, laneW = 7.2;
   const stadium = (r) => {
     const sh = new THREE.Shape();
     sh.moveTo(-straight / 2, -r);
@@ -3222,7 +3262,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   const leafA = new THREE.MeshStandardMaterial({ color: 0x3d6e35, roughness: 0.82 });
   const leafB = new THREE.MeshStandardMaterial({ color: 0x4f8540, roughness: 0.8 });
   for (let tx = x1 + 6; tx < x2 - 4; tx += 11) {
-    const tz = wallZ - 3.2 - ((tx * 7) % 3);
+    const tz = northWallZAt(tx) - 3.2 - ((tx * 7) % 3);
     const sc = 0.85 + (((tx * 13) % 10) / 30);
     addMesh(pg, new THREE.CylinderGeometry(0.2 * sc, 0.3 * sc, 3.4 * sc, 8), trunkM, tx, 1.7 * sc, tz);
     [[0, 4.6, 0, 2.2], [1.4, 4.0, 0.6, 1.7], [-1.3, 4.1, -0.5, 1.8], [0.2, 5.4, -0.3, 1.6]].forEach(([ox, oy, oz, r], k) => {
@@ -3249,7 +3289,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [735, 436, 785, 500, 11.0], [805, 434, 865, 498, 13.5], [872, 434, 935, 498, 10.5],
     [345, 482, 435, 542, 9.5],  [445, 460, 515, 520, 11.5], [235, 522, 325, 578, 10.0],
     // West of Jianxing S. Rd Lane 50 & Jianxing S. Rd (shifted west of the Commuter Walkway + Road buffer!)
-    [-75, 85, -16, 160, 10.0], [-75, 175, -16, 250, 12.5], [-75, 265, -16, 345, 9.5], [-55, 365, 12, 440, 10.5],
+    [-75, 60, -16, 140, 10.0], [-80, 175, -25, 240, 12.5], [-25, 280, 35, 345, 9.5], [10, 380, 75, 440, 10.5],   // v2.12.24 依衛星圖西牆
     // East across Fuxing Rd
     [1180, 80, 1260, 175, 14.0], [1180, 195, 1260, 295, 11.5], [1180, 315, 1260, 405, 15.0],
     // Southwest/South High-Rise Residential Apartment Towers (實景照片 135447.jpg & 135708.jpg 西南側外圍 10~12 層紅磚瓷磚高層住宅大樓)
@@ -14533,7 +14573,8 @@ function buildSportsLayer() {
   // 6 跑道紅 PU、白色標線、外環平整水泥通學步道、內場草皮、跳遠專用紅橡膠助跑道、木質起跳板、長條跳遠沙坑、螢光橘色交通錐與排水溝格柵)
   const tg = new THREE.Group();
   tg.userData = { landmarkId: 'sports-track' };
-  const cx = X(288), cz = Z(248), rx = 64 * S, straight = 128 * S;
+  // v2.12.33 依對位航照：外圈約 39×91 m（原 33×67 m），中心北移約 12 m；東緣緊鄰西棟（育樂樓）
+  const cx = TRACK_CFG.cx, cz = TRACK_CFG.cz, rx = TRACK_CFG.rx, straight = TRACK_CFG.straight;
   const makeStadiumShape = r => {
     const s = new THREE.Shape(), hs = straight / 2;
     s.moveTo(-r, -hs); s.lineTo(-r, hs);
@@ -14546,7 +14587,7 @@ function buildSportsLayer() {
   // 1) 跑道外環校園水泥通學人行步道 (實景照片 20261110_135221.jpg：外圍平整淺灰水泥休閒與通學步道，寬約 2.6m)
   const outerWalkwayMat = new THREE.MeshStandardMaterial({ color: 0xdcd8d0, roughness: 0.85, side: THREE.DoubleSide });
   const outerWalkwayMesh = new THREE.Mesh(
-    new THREE.ShapeGeometry(makeStadiumShape(rx + 3.8), 48),
+    new THREE.ShapeGeometry(makeStadiumShape(rx + 2.4), 48),
     outerWalkwayMat
   );
   outerWalkwayMesh.rotation.x = -Math.PI / 2;
@@ -14617,7 +14658,7 @@ function buildSportsLayer() {
   const lawnBenchCoords = [
     [X(232), Z(412), -0.38], [X(282), Z(408), -0.38], [X(332), Z(392), -0.38],
     [X(142), Z(355), 0.88],  [X(172), Z(395), 0.88],
-    [X(78),  Z(155), Math.PI / 2], [X(78), Z(235), Math.PI / 2]
+    [X(70),  Z(100), Math.PI / 2]
   ];
   lawnBenchCoords.forEach(([bx, bz, rotY]) => {
     const bGrp = new THREE.Group();
@@ -14738,7 +14779,7 @@ function buildSportsLayer() {
   // =========================================================================
   // 2) 雙面戶外標準籃球場 (四周無高架鐵欄網，由開闊綠草坪環繞，實景照片 20261110_135714.jpg & 160224.jpg)
   // =========================================================================
-  const bx = X((112 + 172) / 2), bz = Z((178 + 288) / 2), bw = (172 - 112) * S, bd = (288 - 178) * S;
+  const bx = X((112 + 172) / 2), bz = Z((178 + 288) / 2), bw = (172 - 112) * S, bd = (288 - 178) * S;   // v2.12.23 隨西牆斜段東移 2.5 m
   const courtDarkGreenMat = new THREE.MeshStandardMaterial({ color: 0x3d7054, roughness: 0.82 }); // 實景照片耐磨深綠球場
   const courtLightGreenMat = new THREE.MeshStandardMaterial({ color: 0x4f8868, roughness: 0.80 }); // 亮綠三分線外區
   const courtKeyMat = new THREE.MeshStandardMaterial({ color: 0xb84e38, roughness: 0.75 }); // 陶紅禁區油漆區
@@ -14895,7 +14936,17 @@ function buildSportsLayer() {
   });
 
   bg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'ball-courts'; });
-  layerGroups.sports.add(bg);
+  // v2.12.25 依使用者於校園樹木分布衛星圖之標註：排球場與籃球場緊貼西牆內側、與西牆平行（約 5.9°），
+  //   整組北移約 22 m（排球場北側為草地，西北角茄苳旁）；以兩球場中心連線中點為軸整組旋轉平移
+  {
+    const P = new THREE.Vector3(-96.05, 0, -14.1), Q = new THREE.Vector3(-103.25, 0, -35.8);
+    const pivot = new THREE.Group();
+    pivot.position.copy(Q); pivot.rotation.y = -0.103;
+    pivot.userData = { landmarkId: 'ball-courts' };
+    bg.position.set(-P.x, 0, -P.z);
+    pivot.add(bg);
+    layerGroups.sports.add(pivot);
+  }
   clickableGroups.push(bg);
   landmarkGroupMap.set('ball-courts', bg);
 
@@ -15013,7 +15064,7 @@ function makeROCFlagTexture() {
   // 10 Command Stage & Flagpoles (`司令台` 雙層洗石子挑簷、半月形洗石子拱額、動物彩繪磁磚台座壁畫、「復興國小」雙幅童趣舞台布幕與三階升旗台)
   const sg = new THREE.Group();
   sg.userData = { landmarkId: 'command-stage' };
-  const sx = X(192), sz = Z(252);
+  const sx = -89.8, sz = -8.2;   // v2.12.33 依航照標示：籃球場東側、面向跑道
 
   // 實景照片萃取之「復興國小」雙幅舞台背景布幕與台座白鷺鷥彩繪磁磚壁畫 Base64 貼圖
   window.STAGE_CURTAIN_DATA = "data:image/jpeg;base64,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";
@@ -18340,10 +18391,10 @@ function buildNorthCarport() {
 
   // 【C. 西段平整水泥混凝土車道】(x = -38.0m 至 x = -118.56m 直通後門，寬 4.8m，中心 z = -44.5m，北側貫通車道)
   // 實景照片 20261110_135221.jpg：淺灰平整水泥路面、橫向伸縮割縫、水泥路緣石、綠意草坪緩衝帶
-  const westRoadX1 = -38.0, westRoadX2 = X(56); // -118.56m
+  const westRoadX1 = -38.0, westRoadX2 = X(56.8); // v2.12.24 依衛星圖西牆
   const westRoadLen = Math.abs(westRoadX2 - westRoadX1); // 80.56m
   const westRoadCx = (westRoadX1 + westRoadX2) / 2; // -78.28m
-  const westRoadZ = -44.5, westRoadW = 4.8;
+  const westRoadZ = -44.5, westRoadW = 3.0;   // v2.12.33 沿北牆步道寬 3 m
 
   const concreteRoadMat = new THREE.MeshStandardMaterial({ color: 0xd6d3cc, roughness: 0.88 }); // 平整淺灰刷紋水泥
   const jointSeamMat    = new THREE.MeshStandardMaterial({ color: 0x3d4147, roughness: 0.95 }); // 瀝青填縫伸縮縫
@@ -18351,30 +18402,23 @@ function buildNorthCarport() {
   const lawnBufferMat   = new THREE.MeshStandardMaterial({ color: 0x5e9146, roughness: 0.92 }); // 車道與跑道間草坪緩衝帶
   registerLawnMat(lawnBufferMat);
 
-  // 水泥混凝土路面主體 (高出地表 0.055m，避免與底層 z-fight)
-  addBox(layerGroups.roads, westRoadLen, 0.10, westRoadW, concreteRoadMat, westRoadCx, 0.055, westRoadZ, false);
-
-  // 橫向伸縮縫 (Transverse Contraction Joints，實景照片 20261110_135221.jpg 每 4.5m 規律切縫)
-  for (let jx = westRoadX1 - 4.5; jx > westRoadX2 + 1.0; jx -= 4.5) {
-    addBox(layerGroups.roads, 0.045, 0.012, westRoadW - 0.08, jointSeamMat, jx, 0.061, westRoadZ, false);
+  // v2.12.25 依校園樹木分布衛星圖：西段水泥車道自北棟西端斜向西北，沿北圍牆內側（距牆約 4.5 m）通往西北角後門；
+  //   排球場、籃球場與草地位於車道南側（原東西向直線車道會穿過北移後之排球場）
+  const westRoadPts = WEST_ROAD_PTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
+  for (let i = 0; i < westRoadPts.length - 1; i++) {
+    const p1 = westRoadPts[i], p2 = westRoadPts[i + 1];
+    const L = p1.distanceTo(p2);
+    const sg = new THREE.Group();
+    sg.position.set((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
+    sg.rotation.y = -Math.atan2(p2.z - p1.z, p2.x - p1.x);
+    addBox(sg, L + westRoadW * 0.6, 0.10, westRoadW, concreteRoadMat, 0, 0.055, 0, false);
+    addBox(sg, L + 0.1, 0.010, 0.035, jointSeamMat, 0, 0.106, 0, false);
+    for (let jx = -L / 2 + 2.2; jx < L / 2 - 1; jx += 4.5) addBox(sg, 0.045, 0.012, westRoadW - 0.08, jointSeamMat, jx, 0.107, 0, false);
+    [-1, 1].forEach(sd => addBox(sg, L + 0.1, 0.16, 0.22, curbMat, 0, 0.085, sd * (westRoadW / 2 + 0.11), false));
+    layerGroups.roads.add(sg);
   }
-  // 縱向中央切縫 (Longitudinal Centerline Joint)
-  addBox(layerGroups.roads, westRoadLen, 0.010, 0.035, jointSeamMat, westRoadCx, 0.060, westRoadZ, false);
-
-  // 南側與北側水泥路緣石 (Curbs，高出路面 0.08m，寬 0.22m)
-  const southCurbZ = westRoadZ + westRoadW / 2 + 0.11; // -37.44m
-  const northCurbZ = westRoadZ - westRoadW / 2 - 0.11; // -42.86m
-  addBox(layerGroups.roads, westRoadLen, 0.16, 0.22, curbMat, westRoadCx, 0.085, southCurbZ, false);
-  addBox(layerGroups.roads, westRoadLen, 0.16, 0.22, curbMat, westRoadCx, 0.085, northCurbZ, false);
-
-  // 車道南緣與運動場外圍人行步道之間的綠意草坪緩衝帶 (Lawn Buffer Strip，照片 135221.jpg 實景)
-  // 由南側路緣石 z=-37.33m 延伸至跑道外圍步道邊緣 z=-35.0m，寬度約 2.33m
-  const lawnBufferZ = (southCurbZ + 0.11 + -35.0) / 2; // -36.16m
-  const lawnBufferW = Math.abs(-35.0 - (southCurbZ + 0.11)); // 2.33m
-  addBox(layerGroups.roads, westRoadLen + 2.0, 0.08, lawnBufferW, lawnBufferMat, westRoadCx, 0.045, lawnBufferZ, false);
-
-  // 【車道西端與西側學校後門平順交會區】(西側後門鋪面交界引導)
-  addBox(layerGroups.roads, 4.0, 0.09, 6.8, concreteRoadMat, westRoadX2 + 2.0, 0.052, -39.0, false);
+  // 車道西端與西北角後門平順交會區
+  { const e = westRoadPts[westRoadPts.length - 1]; addBox(layerGroups.roads, 4.0, 0.09, 6.8, concreteRoadMat, e.x - 1.0, 0.052, e.z, false); }
 
   // 藍色浪板單層鋼構大車棚 (實景相片 135208.jpg 天藍色烤漆方管鋼架柱梁、深藍浪板屋頂與停放機車汽車)
   const sw = (705 - 430) * S, sd = 22 * S, scx = X((430 + 705) / 2), scz = Z(42);
@@ -18951,8 +18995,8 @@ function buildAthleticBanyanTree(tx, tz) {
 //   跑道東側育樂樓前：三棵楓香；新棟前：兩棵印度紫檀
 const SPORTS_NAMED_TREES = [
   // v2.12.17 依使用者照片：兩樹緊鄰跑道西側直道外緣草地（司令台南側），麵包樹在南、大花紫薇在北
-  { x: -79.0, z: 14.6, r: 3.6, kind: 'breadfruit', name: '麵包樹' },
-  { x: -79.2, z: 10.2, r: 3.4, kind: 'crapeMyrtle', name: '大花紫薇' },
+  { x: -84.4, z: 14.6, r: 3.6, kind: 'breadfruit', name: '麵包樹' },     // v2.12.33 跑道放大後移至西側步道外緣
+  { x: -84.6, z: 10.2, r: 3.4, kind: 'crapeMyrtle', name: '大花紫薇' },
   { x: -40.1, z: 14.6, r: 5.8, kind: 'rosewood', name: '印度紫檀' },
   { x: -40.6, z: 23.4, r: 5.6, kind: 'rosewood', name: '印度紫檀' }
 ];
@@ -19030,95 +19074,95 @@ const northDrivewayShadeTrees = [
 //   欄位：[樹木編號末 6 碼, 樹種, x, z, 傾斜]
 // ============================================================================
 const CAMPUS_TREE_REGISTRY = [
-  ["442163", "光蠟樹", -109.9, -10.7, 0],
-  ["442158", "光蠟樹", -109.4, -15.3, 0],
-  ["442152", "光蠟樹", -109.2, -20.9, 0],
-  ["442147", "臺灣櫸", -108, -24.3, 0],
-  ["442141", "臺灣櫸", -107.7, -29.5, 0],
-  ["442184", "光蠟樹", -107.5, -1.3, 0],
-  ["442110", "茄冬", -106.4, -53.9, 0],
-  ["442191", "緬梔", -105.3, 2.8, 0],
-  ["442201", "蘭嶼肉桂", -100.9, 10.1, 0],
-  ["442206", "緬梔", -100, 11.7, 0],
-  ["442220", "蘭嶼肉桂", -98.6, 16.9, 0],
-  ["839656", "七里香", -97, 29.6, 0],
-  ["442246", "蘭嶼肉桂", -95.6, 24.5, 0],
-  ["442251", "蘭嶼肉桂", -95.1, 27.4, 0],
-  ["442257", "蘭嶼肉桂", -94, 29.3, 0],
-  ["442264", "大葉桃花心木", -92.8, 32.1, 0],
-  ["839657", "七里香", -88.2, 55.2, 0],
-  ["442285", "藍花楹", -87.3, 48.2, 0],
-  ["442102", "蘭嶼肉桂", -84.5, -53.8, 0],
-  ["442253", "鳳凰木", -84.2, 61, 0],
-  ["442095", "蘭嶼肉桂", -80.5, -54.2, 0],
-  ["442339", "海南菜豆樹", -79.7, -33.6, 0],
-  ["442117", "大葉桃花心木", -80.0, -18.0, 0],   // 依照片：司令台北側、籃球場與排球場交界前方，緊鄰跑道
+  ["442163", "光蠟樹", -117.3, -14.3, 0],
+  ["442158", "光蠟樹", -116.9, -19.2, 0],
+  ["442152", "光蠟樹", -116.7, -25.0, 0],
+  ["442147", "臺灣櫸", -115.4, -28.6, 0],
+  ["442141", "臺灣櫸", -115.2, -34.0, 0],
+  ["442184", "光蠟樹", -114.7, -4.5, 0],
+  ["442110", "茄冬", -114.0, -59.6, 0],
+  ["442191", "緬梔", -112.3, -0.3, 0],
+  ["442201", "蘭嶼肉桂", -107.7, 7.3, 0],
+  ["442206", "緬梔", -106.8, 9.0, 0],
+  ["442220", "蘭嶼肉桂", -105.2, 14.4, 0],
+  ["839656", "七里香", -100.9, 26.7, 0],
+  ["442246", "蘭嶼肉桂", -102.1, 22.3, 0],
+  ["442251", "蘭嶼肉桂", -101.4, 25.4, 0],
+  ["442257", "蘭嶼肉桂", -100.4, 27.3, 0],
+  ["442264", "大葉桃花心木", -99.0, 30.3, 0],
+  ["839657", "七里香", -89.6, 52.4, 0],
+  ["442285", "藍花楹", -92.3, 46.7, 0],
+  ["442102", "蘭嶼肉桂", -91.2, -76.5, 0],
+  ["442253", "鳳凰木", -86.6, 58.9, 0],
+  ["442095", "蘭嶼肉桂", -87.0, -76.0, 0],
+  ["442339", "海南菜豆樹", -86.0, -38.6, 0],
+  ["442117", "大葉桃花心木", -85.0, -24.0, 0],   // 依照片：司令台北側、籃球場與排球場交界前方，緊鄰跑道
   ["442232", "菲島福木", -80.5, 57.4, 0],
-  ["442269", "茄冬", -76.3, 49.4, 0],
+  ["442269", "茄冬", -81.6, 48.2, 0],
   ["442217", "菲島福木", -77.8, 55.9, 0],
   ["442210", "菲島福木", -75.0, 54.3, 0],
-  ["442089", "印度紫檀", -70.7, -53.2, 0],
+  ["442089", "印度紫檀", -76.7, -75.0, 0],
   ["442202", "菲島福木", -71.7, 52.4, 0],
   ["442196", "菲島福木", -68.7, 50.7, 0],
-  ["442085", "印度紫檀", -66.6, -53.2, 0],
+  ["442085", "印度紫檀", -72.3, -74.6, 0],
   ["442186", "菲島福木", -65.8, 49.1, 0],
-  ["442276", "可可椰子", -64.2, 51.2, 0],
+  ["442276", "可可椰子", -69.0, 50.0, 0],
   ["442172", "菲島福木", -62.0, 46.9, 0],
-  ["442074", "黃金風鈴木", -58.9, -48.1, 0],
+  ["442074", "黃金風鈴木", -64.4, -65.6, 0],
   ["442161", "菲島福木", -59.0, 45.2, 0],
-  ["442059", "蘭嶼肉桂", -57.1, -54.9, 0],
+  ["442059", "蘭嶼肉桂", -62.4, -73.6, 0],
   ["442145", "菲島福木", -56.6, 43.9, 0],
-  ["442072", "黃金風鈴木", -54.6, -48.2, 0],
-  ["442055", "蘭嶼肉桂", -54.3, -55.0, 0],
+  ["442072", "黃金風鈴木", -59.8, -64.7, 0],
+  ["442055", "蘭嶼肉桂", -59.4, -73.3, 0],
   ["442138", "菲島福木", -54.5, 42.7, 0],
   ["442134", "菲島福木", -52.5, 41.6, 0],
-  ["442046", "印度紫檀", -50.4, -55.2, 0],
+  ["442046", "印度紫檀", -55.3, -72.9, 0],
   ["442129", "菲島福木", -51.0, 40.7, 0],
-  ["442070", "黃金風鈴木", -49.8, -48.0, 0],
+  ["442070", "黃金風鈴木", -54.8, -63.4, 0],
   ["442122", "菲島福木", -49.0, 39.6, 0],
   ["442119", "菲島福木", -47.4, 38.7, 0],
-  ["442051", "印度紫檀", -46.3, -55, 0],
+  ["442051", "印度紫檀", -49.7, -72.3, 0],
   ["442112", "菲島福木", -45.9, 37.8, 0],
   ["442106", "菲島福木", -44.4, 37.0, 0],
-  ["442049", "印度紫檀", -42.2, -55.1, 0],
+  ["442049", "印度紫檀", -46.6, -72.0, 0],
   ["442099", "菲島福木", -42.7, 36.0, 0],
-  ["442031", "風鈴木", -41.8, -47.9, 0],
+  ["442031", "風鈴木", -44.4, -62.5, 0],
   ["442068", "菲島福木", -40.8, 34.9, 0],
   ["442063", "蘭嶼肉桂", -37.7, 35.3, 0],
   ["442016", "黃金風鈴木", -38.9, -35.0, 0],
-  ["442045", "印度紫檀", -36.8, -55.4, 0],
+  ["442045", "印度紫檀", -41.0, -71.4, 0],
   ["442022", "黃金風鈴木", -35.0, -38.8, 0],
-  ["442026", "黃金風鈴木", -36.2, -47.8, 0],
+  ["442026", "黃金風鈴木", -40.6, -60.2, 0],
   // 依照片：育樂樓西側跑道外三棵楓香等距分布（第四筆登錄 442020 現場未見，略去）
   ["442043", "楓香", -39.7, 5.8, 0],
   ["442035", "楓香", -39.7, -0.6, 0],
   ["442030", "楓香", -39.7, -8.3, 0],
-  ["442040", "印度紫檀", -34.2, -55.6, 0],
+  ["442040", "印度紫檀", -38.2, -71.1, 0],
   ["442281", "雨豆樹", -30.4, 28.5, 0],
-  ["441981", "楓香", -30, -31.8, 0],
-  ["442007", "波羅蜜", -26.8, -48.0, 0],
-  ["441997", "緬梔", -26.5, -49.4, 0],
-  ["441990", "苦楝", -25.3, -48.5, 0],
+  ["441981", "楓香", -30.0, -31.8, 0],
+  ["442007", "波羅蜜", -30.7, -58.4, 0],
+  ["441997", "緬梔", -30.5, -59.8, 0],
+  ["441990", "苦楝", -29.2, -58.6, 0],
   ["442157", "金露花", -15, 6.8, 0],
-  ["442315", "印度紫檀", -13.1, -51.7, 0],
+  ["442315", "印度紫檀", -15.4, -68.8, 0],
   ["442139", "馬拉巴栗", -12.0, -23.9, 0],
   ["442144", "樟樹", -12.7, -23.5, 0],
   ["442133", "馬拉巴栗", -10.9, -23.8, 0],
-  ["442319", "印度紫檀", -10.1, -51.9, 0],
+  ["442319", "印度紫檀", -12.3, -68.5, 0],
   ["442150", "榕樹", -9.5, -19.8, 0],
   ["839655", "桂花", -5.2, 4.5, 0],
-  ["442332", "風鈴木", -5.6, -55.5, 0],
+  ["442332", "風鈴木", -8.5, -58.3, 0],
   ["442179", "金露花", -3.7, 7, 0],
   ["442188", "龍柏", -1.6, 6.3, 0],
-  ["442323", "風鈴木", -1, -55.5, 0],
+  ["442323", "風鈴木", -3.7, -57.2, 0],
   ["442123", "黃槿", 0.7, -23.5, 0],
   ["442211", "樟樹", 2.5, 7.0, 0],
   ["442204", "瓊崖海棠", 2.8, 6.8, 0],
   ["442115", "水黃皮", 6.3, -22.3, 0],
   ["442218", "茄冬", 11.2, 6.5, 0],
   ["442107", "火焰木", 10.4, -21.1, 0],
-  ["442334", "印度紫檀", 12.7, -55.5, 0],
-  ["442330", "印度紫檀", 16.4, -55.5, 0],
+  ["442334", "印度紫檀", 11.5, -66.1, 0],
+  ["442330", "印度紫檀", 15.5, -65.7, 0],
   ["442230", "黃金風鈴木", 15.5, 6.2, 0],
   ["442100", "黃槿", 28, -17.7, 0],
   ["442237", "火焰木", 30.3, 8.0, 0],
@@ -19468,7 +19512,7 @@ const streetLightCoords = [
   // v2.12.10：南棟／新棟前（中庭南緣）實景無路燈，原 3 支移除
   [X(382), Z(200)], [X(382), Z(295)], [X(208), Z(200)], [X(208), Z(295)],
   // Commuter Walkway Buffer Streetlights (`後圍牆外通學步道照明燈`)
-  [X(46), Z(165)], [X(46), Z(312)], [X(118), Z(422)], [X(255), Z(464)], [X(368), Z(418)], [X(615), Z(376)], [X(845), Z(374)]
+  [X(44), Z(80)], [X(40), Z(140)], [X(118), Z(422)], [X(255), Z(464)], [X(368), Z(418)], [X(615), Z(376)], [X(845), Z(374)]
 ];
 const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffe4a0 });
 streetLightCoords.forEach(([lx, lz]) => {
@@ -19511,7 +19555,7 @@ const pedestrianAgents = [];
     // Loop 4: Running Track Oval (Students jogging on the 200m PU track inside the Rear Wall & Campus Lawn Buffer Zone)
     (() => {
       const pts = [];
-      const cx = X(288), cz = Z(248), r = 56 * S, hs = 64 * S;
+      const cx = TRACK_CFG.cx, cz = TRACK_CFG.cz, r = TRACK_CFG.rx - 3.0, hs = TRACK_CFG.straight / 2;   // v2.12.33 跑道依航照
       for (let i = 0; i < 16; i++) {
         const a = (i / 16) * Math.PI * 2;
         pts.push([cx + Math.cos(a) * r, cz + Math.sin(a) * (r + hs)]);
@@ -19520,8 +19564,8 @@ const pedestrianAgents = [];
     })(),
     // Loop 5: Exterior Commuter Walkway Buffer (`後圍牆外通學步道師生步行路線`: 西側後門 -> 運動場西側通學步道 -> 西南轉角 -> 建興南路42巷通學步道 -> 南側門)
     [
-      [X(46), Z(90)], [X(46), Z(328)], [X(174), Z(490)], [X(406), Z(402)], [X(506), Z(380)],
-      [X(722), Z(373)], [X(506), Z(380)], [X(406), Z(402)], [X(174), Z(490)], [X(46), Z(328)]
+      [X(46), Z(90)], [X(34), Z(180)], [X(174), Z(490)], [X(406), Z(402)], [X(506), Z(380)],
+      [X(722), Z(373)], [X(506), Z(380)], [X(406), Z(402)], [X(174), Z(490)], [X(34), Z(180)]
     ]
   ];
 
@@ -21929,12 +21973,12 @@ const ROUTE_NODES = {
   'new-south-gate':  [772, 320],
   'track-east':      [382, 235],
   'sports-track':    [294, 255],
-  'command-stage':   [192, 268],
-  'ball-courts':     [145, 205],
+  'command-stage':   [166, 208],
+  'ball-courts':     [122, 145],
   'east-gate':       [955, 73],
   'carport':         [568, 73],
   'driveway-mid':    [370, 85],
-  'west-back-gate':  [56, 90]
+  'west-back-gate':  [62.44, -18.1]
 };
 
 const ROUTE_EDGES = [
@@ -22899,7 +22943,7 @@ function updateMinimap() {
 
   let svgHtml = `
     <polygon points="${X(40)},${Z(8)} ${X(972)},${Z(8)} ${X(972)},${Z(336)} ${X(770)},${Z(330)} ${X(494)},${Z(328)} ${X(438)},${Z(384)} ${X(365)},${Z(384)} ${X(176)},${Z(498)} ${X(40)},${Z(334)}" fill="none" stroke="rgba(197,118,94,0.55)" stroke-width="1.2" stroke-dasharray="2 2"/>
-    <polygon points="${X(56)},${Z(22)} ${X(955)},${Z(22)} ${X(955)},${Z(326)} ${X(772)},${Z(320)} ${X(496)},${Z(318)} ${X(438)},${Z(374)} ${X(367)},${Z(374)} ${X(180)},${Z(480)} ${X(56)},${Z(328)}" fill="none" stroke="${isNight ? '#8bc7b0' : '#315b4e'}" stroke-width="1.5" opacity="0.85"/>
+    <polygon points="${X(65.7)},${Z(-67.6)} ${X(955)},${Z(22)} ${X(955)},${Z(326)} ${X(772)},${Z(320)} ${X(496)},${Z(318)} ${X(438)},${Z(374)} ${X(367)},${Z(374)} ${X(180)},${Z(480)} ${X(152.9)},${Z(437.2)} ${X(134.6)},${Z(381.8)} ${X(105.2)},${Z(308.8)} ${X(76.2)},${Z(245.3)} ${X(45)},${Z(193.7)} ${X(39.2)},${Z(158.8)} ${X(51.4)},${Z(149.4)}" fill="none" stroke="${isNight ? '#8bc7b0' : '#315b4e'}" stroke-width="1.5" opacity="0.85"/>
     <polygon points="${X(58)},${Z(24)} ${X(412)},${Z(24)} ${X(412)},${Z(386)} ${X(403)},${Z(390)} ${X(180)},${Z(477)} ${X(58)},${Z(327)}" fill="${isNight ? 'rgba(54,94,68,0.38)' : 'rgba(165,208,148,0.45)'}" stroke="none"/>
     <rect x="${X(224)}" y="${Z(120)}" width="${128 * S}" height="${256 * S}" rx="${64 * S}" fill="none" stroke="#c85a40" stroke-width="3.2" opacity="0.85"/>
   `;
