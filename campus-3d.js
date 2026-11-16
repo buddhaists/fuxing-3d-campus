@@ -1034,7 +1034,7 @@ function addBox(parent, w, h, d, mat, x, y, z, cast = true) {
 // 3. BUILD GROUND, COMMUTER WALKWAY BUFFER, ROADS, COURTYARD, BOUNDARY & CONTEXT
 // ============================================================================
 // 下沉中庭（v2.12.0）：中庭比東棟穿堂低約 0.9 m、比前庭低約 0.75 m（依現場：穿堂前僅一階，中庭低於穿堂約 1 m）
-const COURTYARD_SINK = { x1: -17.2, x2: 52.6, z1: -24.0, z2: 8.7, D: 0.75 };
+const COURTYARD_SINK = { x1: -17.2, x2: 52.6, z1: -24.0, z2: 2.7, D: 0.75 };   // v2.12.35 南緣隨南棟、新棟北移 6 m（原 8.7）
 window.COURTYARD_SINK = COURTYARD_SINK;
 const inCourtyardSink = (x, z, m = 0) => x >= COURTYARD_SINK.x1 - m && x <= COURTYARD_SINK.x2 + m && z >= COURTYARD_SINK.z1 - m && z <= COURTYARD_SINK.z2 + m;
 window.inCourtyardSink = inCourtyardSink;
@@ -11104,8 +11104,9 @@ function buildWestBuilding() {
   const westCorCx = (xWest + xCoreWest) / 2;     // -36.12 m
 
   // 10 Column Z coordinates for the 9 Main Bays (`zCol[0]` South -> `zCol[9]` North)
-  const BAY_SPANS = [2.98, 3.00, 3.00, 4.00, 4.00, 4.10, 3.00, 3.00, 3.03];
-  const zCol = [15.918];
+  // v2.12.35 依航照：西棟南端止於 z≈9.9（新棟北移 6 m 後之北面），9 跨等比縮短（×0.80），北端維持不變
+  const BAY_SPANS = [2.98, 3.00, 3.00, 4.00, 4.00, 4.10, 3.00, 3.00, 3.03].map(v => v * (30.11 + SOUTH_SHIFT) / 30.11);
+  const zCol = [15.918 + SOUTH_SHIFT];
   for (let i = 0; i < BAY_SPANS.length; i++) {
     zCol.push(Number((zCol[i] - BAY_SPANS[i]).toFixed(4)));
   }
@@ -14349,8 +14350,8 @@ function buildNewBuilding() {
   //    (1:1 with `新棟正面立圖_南向.jpg` & `新棟南向正面_右手邊45度側面001.jpg`)
   // ==========================================================================
   {
-    const zWall = 34.80; // Southern perimeter wall line along the street
-    const zMeet = 20.28; // 南棟南牆面標高
+    const zWall = 34.80 - SOUTH_SHIFT; // 南側圍牆（v2.12.35 新棟群組北移後仍落在 z=34.8 之街道圍牆線）
+    const zMeet = 20.28; // 南棟南牆面標高（局部座標；群組北移後與南棟同為 14.28）
     const gateX1 = -24.20, gateX2 = -19.20; // 5.0m wide Kindergarten Main Gate opening
     const wallYellowMat  = new THREE.MeshStandardMaterial({ color: 0xf4df8e, roughness: 0.72 });
     const capGoldMat     = new THREE.MeshStandardMaterial({ color: 0xe5b53c, roughness: 0.58 });
@@ -14566,6 +14567,7 @@ function buildNewBuilding() {
   }
 
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'new-building'; });
+  g.position.z = SOUTH_SHIFT;   // v2.12.35 依航照新棟整棟北移 6 m（與南棟一致）
   layerGroups.buildings.add(g);
   clickableGroups.push(g);
   landmarkGroupMap.set('new-building', g);
@@ -19147,14 +19149,14 @@ const CAMPUS_TREE_REGISTRY = [
   ["442007", "波羅蜜", -30.7, -58.4, 0],
   ["441997", "緬梔", -30.5, -59.8, 0],
   ["441990", "苦楝", -29.2, -58.6, 0],
-  ["442157", "金露花", -15, 6.8, 0],
+  ["442157", "金露花", -15.0, 0.8, 0],
   ["442315", "印度紫檀", -15.4, -68.8, 0],
   ["442139", "馬拉巴栗", -12.0, -23.9, 0],
   ["442144", "樟樹", -12.7, -23.5, 0],
   ["442133", "馬拉巴栗", -10.9, -23.8, 0],
   ["442319", "印度紫檀", -12.3, -68.5, 0],
   ["442150", "榕樹", -9.5, -19.8, 0],
-  ["839655", "桂花", -5.2, 4.5, 0],
+  ["839655", "桂花", -5.2, -1.5, 0],
   ["442332", "風鈴木", -8.5, -58.3, 0],
   ["442179", "金露花", -3.7, 1.0, 0],
   ["442188", "龍柏", -1.6, 0.3, 0],
@@ -21269,8 +21271,8 @@ function getClassroomCorridorView(lm, floorKey, rm, worldPos) {
     t = [58.5, eyeY - 0.20, wz];
   } else if (lmId === 'new-building') {
     // 新棟・幼兒園：前走廊位於北側（面向中庭與草皮區，走廊軸線 Z ≈ 16.0~19.0m），視線朝南 (+Z) 正對幼兒園活動室教室
-    p = [wx, eyeY + 0.25, 13.8];
-    t = [wx, eyeY - 0.20, 21.6];
+    p = [wx, eyeY + 0.25, 13.8 + SOUTH_SHIFT];
+    t = [wx, eyeY - 0.20, 21.6 + SOUTH_SHIFT];
   } else {
     // 通用開放場域或其它空間備用視角
     p = [wx, eyeY + 1.2, wz + 6.5];
@@ -22237,14 +22239,14 @@ function isWalkPointAllowed(wx, wz) {
 
   // West Building (育樂樓): allow walking along 1F East Corridor (`-27.04..-24.31`), 1F West Corridor (`-38.11..-34.13`),
   // and through the 4-bay open 1F Breezeway (`川堂`, `z = -14.19..-1.06`) & North Entrance Corridor (`z = -16.84..-14.19`)!
-  if (wx >= -38.8 && wx <= -23.0 && wz >= -24.0 && wz <= 16.2) {
-    if (wx >= -27.1 && wx <= -24.0 && wz >= -17.9 && wz <= 15.9) return true; // 1F/2F/3F East Front Corridor
-    if (wx >= -38.3 && wx <= -34.0 && wz >= -17.9 && wz <= 15.9) return true; // 1F/2F/3F West Rear Corridor
+  if (wx >= -38.8 && wx <= -23.0 && wz >= -24.0 && wz <= 10.2) {   // v2.12.35 西棟南端 9.9
+    if (wx >= -27.1 && wx <= -24.0 && wz >= -17.9 && wz <= 9.9) return true; // 1F/2F/3F East Front Corridor
+    if (wx >= -38.3 && wx <= -34.0 && wz >= -17.9 && wz <= 9.9) return true; // 1F/2F/3F West Rear Corridor
     if (wz >= -17.90 && wz <= -1.05 && wx >= -38.3 && wx <= -24.0) return true; // 1F 川堂, East-Up Staircase & Right-Turn Passage
   }
 
   // New Building <-> South Building `⑩–⑪` Shared Corridor (`wx = -6.72..-4.22`, `wz = 8.78..24.15`): allow walking through the south picket gate and shared corridor!
-  if (wx >= -6.85 && wx <= -4.10 && wz >= 8.20 && wz <= 24.50) return true;
+  if (wx >= -6.85 && wx <= -4.10 && wz >= 8.20 + SOUTH_SHIFT && wz <= 24.50 + SOUTH_SHIFT) return true;
 
   // Remaining solid building obstacles (north-building box is handled above)
   return !SOLID_BUILDING_OBSTACLES.some(b => {
