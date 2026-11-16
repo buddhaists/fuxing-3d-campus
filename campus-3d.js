@@ -19832,6 +19832,8 @@ let planShowExt = true;
 let planShowPaths = true;
 let planShowTrees = true;
 let planShowImg = false;
+let planShowSat = false;   // v2.12.32 疊加空拍底圖（校園樹木資訊平臺航照，已依樹木普查座標對位）
+let _satTex = null;
 
 const plan3DOverlayGroup = new THREE.Group();
 const planRooms3DGroup = new THREE.Group();
@@ -22572,6 +22574,15 @@ function renderPlanSvg() {
 
   // 4) Update 3D Official Floor Plan Texture Overlay (`☐ 疊加官方原圖`)
   while (planImg3DGroup.children.length) planImg3DGroup.remove(planImg3DGroup.children[0]);
+  if (planShowSat) {
+    // 空拍底圖：涵蓋模型座標 x −140～130 m、z −100～78 m（assets/sat_aligned.jpg，每公尺 5 像素）
+    if (!_satTex) { _satTex = new THREE.TextureLoader().load('./assets/sat_aligned.jpg', () => requestRender(4)); _satTex.colorSpace = THREE.SRGBColorSpace; }
+    const satMesh = new THREE.Mesh(new THREE.PlaneGeometry(270, 178), new THREE.MeshBasicMaterial({ map: _satTex, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide }));
+    satMesh.rotation.x = -Math.PI / 2;
+    satMesh.position.set(-5, 0.4, -11);
+    satMesh.renderOrder = 5;
+    planImg3DGroup.add(satMesh);
+  }
   if (planShowImg) {
     const tex = getPlanOverlayTexture(activePlanFloor);
     const imgPlaneGeo = new THREE.PlaneGeometry(1024 * S, 745 * S);
@@ -22826,6 +22837,11 @@ document.getElementById('plan-show-trees')?.addEventListener('change', e => {
   planShowTrees = e.target.checked;
   renderPlanSvg();
   showToast(planShowTrees ? '已顯示 3D 校園樹冠綠植' : '已隱藏 3D 校園樹冠（可清楚檢視 1F 走廊）');
+});
+document.getElementById('plan-show-sat')?.addEventListener('change', e => {
+  planShowSat = e.target.checked;
+  renderPlanSvg();
+  showToast(planShowSat ? '已疊加校園空拍底圖（依樹木普查座標對位，可比對模型與實景）' : '已關閉空拍底圖');
 });
 document.getElementById('plan-show-img')?.addEventListener('change', e => {
   planShowImg = e.target.checked;

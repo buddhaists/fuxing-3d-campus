@@ -43,7 +43,7 @@ window.__updateProgress(15, '正在啟動三維校園引擎...');
 if ('serviceWorker' in navigator) {
   window.addEventListener('DOMContentLoaded', () => {
     window.__updateProgress(25, '校園核心樣式就緒...');
-    navigator.serviceWorker.register('./sw.js?v=2.12.31').then(reg => {
+    navigator.serviceWorker.register('./sw.js?v=2.12.32').then(reg => {
       reg.update();
     }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -76,7 +76,7 @@ document.addEventListener('click', function(e) {
 </script>
 <!-- modulepreload 必須放在 importmap 之後，否則瀏覽器會在 import map 生效前解析 "three" 而失敗 -->
 <link rel="modulepreload" href="./vendor/three/three.module.js">
-<link rel="modulepreload" href="./campus-3d.js?v=2.12.31">
+<link rel="modulepreload" href="./campus-3d.js?v=2.12.32">
 <style>
   /* ==========================================================================
      PKU-3D ("燕园 · 循图，走进燕园") Editorial Design System
@@ -2919,6 +2919,7 @@ document.addEventListener('click', function(e) {
     <label class="plan-check" title="在 3D 俯視中顯示校園步道動線與校門"><input type="checkbox" id="plan-show-paths" checked /> 步道網路</label>
     <label class="plan-check" title="切換 3D 樹木綠植顯示（取消勾選可清楚檢視 1F 走廊）"><input type="checkbox" id="plan-show-trees" checked /> 樹冠綠帶</label>
     <label class="plan-check" title="在 3D 樓層高度直接疊加 115 學年度官方平面圖原圖"><input type="checkbox" id="plan-show-img" /> 疊加官方原圖</label>
+    <label class="plan-check" title="疊加校園樹木資訊平臺之航照空拍圖（已依樹木普查座標對位），用來比對模型與實景"><input type="checkbox" id="plan-show-sat" /> 疊加空拍底圖</label>
     <button type="button" class="plan-action-btn" id="plan-open-lightbox" title="彈窗檢視 5 張 115 學年度官方平面圖高解析原圖">🔍 原圖檢視</button>
     <button type="button" class="plan-action-btn" id="plan-download-btn" title="下載當前樓層平面布局圖">⬇ 下載圖紙</button>
   </div>
@@ -3648,6 +3649,6 @@ document.addEventListener('click', function(e) {
 <script src="./vendor/qrcode.min.js"></script>
 <script src="./data/spots.js"></script>
 <script src="./campus-ui.js?v=2.10.1"></script>
-<script type="module" src="./campus-3d.js?v=2.12.31"></script>
+<script type="module" src="./campus-3d.js?v=2.12.32"></script>
 </body>
 </html>
