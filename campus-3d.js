@@ -4579,34 +4579,29 @@ function buildNorthBuilding() {
 
     // 主體白色二丁掛井體 (包含機房頂部女兒牆壓頂)
     // v2.12.43 依操場實景照片 5375：北半部為細高電梯井塔，南半部梯廳量體較低（約 3F 女兒牆高）
-    const elevNorthD = 2.6, elevLowH = baseH + 3 * FH;
-    addBox(g, elevW, elevMainH, elevNorthD, whiteTileFine, elevCx, elevMainH / 2, elevNorthZ + elevNorthD / 2);
-    addBox(g, elevW, elevLowH, elevD - elevNorthD, whiteTileFine, elevCx, elevLowH / 2, elevNorthZ + elevNorthD + (elevD - elevNorthD) / 2);
-    addBox(g, elevW + 0.12, 0.14, elevD - elevNorthD + 0.08, columnTileFine, elevCx, elevLowH + 0.07, elevNorthZ + elevNorthD + (elevD - elevNorthD) / 2);
-    // v2.12.41 依實景照片：僅西側電梯井（約 3.6 m 見方）向上突出成細高機房塔，東側梯廳與北棟屋頂齊高
+    // v2.12.44 依實景照片 5141／5143／5147：北側為較低之 3 層開敞梯廳（西面每層方形開口），南側為細高電梯井塔（頂部通風小窗、1F 西面電梯門）
+    const elevLowH = baseH + 3 * FH;
+    const loggiaD = 2.0, shaftD = elevD - loggiaD;
+    const loggiaCz = elevNorthZ + loggiaD / 2, shaftCz = elevNorthZ + loggiaD + shaftD / 2;
+    addBox(g, elevW, elevLowH, loggiaD, whiteTileFine, elevCx, elevLowH / 2, loggiaCz);
+    addBox(g, elevW + 0.12, 0.14, loggiaD + 0.08, columnTileFine, elevCx, elevLowH + 0.07, loggiaCz);
+    addBox(g, elevW, elevMainH, shaftD, whiteTileFine, elevCx, elevMainH / 2, shaftCz);
     const shaftW = 3.6, shaftCx = elevWestX + shaftW / 2;
-    const shaftCz = elevNorthZ + elevNorthD / 2;
-    addBox(g, shaftW, elevPentH - elevMainH, elevNorthD, whiteTileFine, shaftCx, elevMainH + (elevPentH - elevMainH) / 2, shaftCz);
-    addBox(g, shaftW + 0.10, 0.14, elevNorthD + 0.10, columnTileFine, shaftCx, elevPentH + 0.07, shaftCz);
-
-    // 頂部機房百葉窗 (南立面與西立面)
-    addBox(g, 0.85, 0.75, 0.10, ironGrilleMat, shaftCx, elevPentH - 0.75, elevNorthZ + elevNorthD + 0.05);
+    addBox(g, shaftW, elevPentH - elevMainH, shaftD, whiteTileFine, shaftCx, elevMainH + (elevPentH - elevMainH) / 2, shaftCz);
+    addBox(g, shaftW + 0.10, 0.14, shaftD + 0.10, columnTileFine, shaftCx, elevPentH + 0.07, shaftCz);
+    // 頂部機房通風小窗 (西立面與南立面)
+    addBox(g, 0.85, 0.75, 0.10, ironGrilleMat, shaftCx, elevPentH - 0.75, elevNorthZ + elevD + 0.05);
     addBox(g, 0.10, 0.75, 0.85, ironGrilleMat, elevWestX - 0.04, elevPentH - 0.75, shaftCz);
 
-    // 2F 與 3F 西側連通採光通風開敞洞口 (Loggia Openings per Photos 1, 2, 3)
-    // 實景特徵：白磁磚矮牆欄杆 (高0.95m) + 不銹鋼防墜扶手 + 寬1.15m 挑高2.15m 開敞洞口，內部透出梯廳進深
-    for (let fl = 1; fl <= 2; fl++) {
-      const fy = baseH + fl * FH;
-      const portalW = 1.15, portalH = 2.15;
-      const parapetH = 0.95;
-      const lintelH = FH - parapetH - portalH; // ~0.50m
-      // 下方白色二丁掛矮牆與不銹鋼扶手
-      addBox(g, 0.24, parapetH, portalW, whiteTileFine, elevWestX + 0.10, fy + parapetH / 2, elevCz);
-      addBox(g, 0.05, 0.05, portalW, stainlessRailMat, elevWestX + 0.10, fy + parapetH + 0.025, elevCz);
-      // 上方白色二丁掛過樑
-      addBox(g, 0.24, lintelH, portalW, whiteTileFine, elevWestX + 0.10, fy + FH - lintelH / 2, elevCz);
-      // 洞口內部深色背景格柵 (微退縮 0.20m，保留梯廳空間感)
-      addBox(g, 0.04, portalH - 0.10, portalW - 0.06, ironGrilleMat, elevWestX + 0.25, fy + parapetH + portalH / 2, elevCz);
+    // 北側梯廳西面 1F～3F 方形開敞洞口（內部深色梯廳、下緣白磁磚矮牆）
+    {
+      const openMat = new THREE.MeshStandardMaterial({ color: 0x5d5f5c, roughness: 0.9 });
+      for (let fl = 0; fl <= 2; fl++) {
+        const fy = baseH + fl * FH;
+        const oW = loggiaD - 0.70, oH = 2.25, sill = fl === 0 ? 0.45 : 0.95;
+        addBox(g, 0.06, oH, oW, openMat, elevWestX - 0.02, fy + sill + oH / 2 - 0.2, loggiaCz);
+        addBox(g, 0.08, 0.06, oW + 0.06, columnTileFine, elevWestX - 0.05, fy + sill - 0.23, loggiaCz);
+      }
     }
 
     // 1F 電梯門廳 (西牆面向遮雨棚觀景平台通道 · Photo 2 & Image 4 實景)
@@ -4614,15 +4609,15 @@ function buildNorthBuilding() {
       const doorW_z = 1.35, doorH = 2.25;
       const doorX = elevWestX - 0.02;
       // 西向門扇與門套
-      addBox(g, 0.08, doorH + 0.12, doorW_z + 0.24, steelPostMat, doorX + 0.02, (doorH + 0.12) / 2, elevCz);
-      addBox(g, 0.04, doorH, doorW_z, stainlessMat, doorX - 0.01, doorH / 2, elevCz);
-      addBox(g, 0.05, doorH, 0.02, ironGrilleMat, doorX - 0.02, doorH / 2, elevCz);
+      addBox(g, 0.08, doorH + 0.12, doorW_z + 0.24, steelPostMat, doorX + 0.02, (doorH + 0.12) / 2, shaftCz);
+      addBox(g, 0.04, doorH, doorW_z, stainlessMat, doorX - 0.01, doorH / 2, shaftCz);
+      addBox(g, 0.05, doorH, 0.02, ironGrilleMat, doorX - 0.02, doorH / 2, shaftCz);
       // 電梯樓層標牌「1」（黃底黑字 per Photo 2 / Image 4）
-      const signZ = elevCz + doorW_z / 2 + 0.28;
+      const signZ = shaftCz + doorW_z / 2 + 0.28;
       addBox(g, 0.03, 0.32, 0.26, new THREE.MeshStandardMaterial({ color: 0xf5c914, roughness: 0.35 }), doorX - 0.02, 1.72, signZ);
       addBox(g, 0.035, 0.20, 0.06, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 }), doorX - 0.025, 1.72, signZ);
       // 電梯外召按鈕盒
-      addBox(g, 0.03, 0.22, 0.10, stainlessMat, doorX - 0.02, 1.35, elevCz - doorW_z / 2 - 0.22);
+      addBox(g, 0.03, 0.22, 0.10, stainlessMat, doorX - 0.02, 1.35, shaftCz - doorW_z / 2 - 0.22);
 
       // 南立面備用門扇
       const sDoorZ = elevSouthZ - 0.02;
@@ -12080,7 +12075,8 @@ function buildWestBuilding() {
       box(kWestX - 0.05, kxP2 + 0.05, y2F - 0.30, y2F, zP1 - 0.05, zB1, mats.slab);
       box(kWestX + 0.1, kxP2 - 0.1, y2F - 0.36, y2F - 0.30, zP1 + 0.1, zB1 - 0.1, passageCeilingMat, false);
       box(kWestX, kxP2, 0, y1F, zP1, zB1, stTileMat, false);
-      [[kWestX + 0.28, zP1 + 0.28], [kxP2 - 0.28, zP1 + 0.28], [(kWestX + kxP2) / 2, zP1 + 0.28]].forEach(([px, pz]) => box(px - 0.28, px + 0.28, 0, y2F - 0.30, pz - 0.28, pz + 0.28, colTileMat));
+      // v2.12.44 依實景照片 5149／5148／5147：西北角與東北角白磁磚圓柱，穿廊向西、北（銀色遮雨棚）、東（綠色長巷）三面開敞
+      [[kWestX + 0.36, zP1 + 0.36], [kxP2 - 0.36, zP1 + 0.36]].forEach(([px, pz]) => addMesh(g, new THREE.CylinderGeometry(0.32, 0.32, y2F - 0.30, 20), colTileMat, px, (y2F - 0.30) / 2, pz));
       // 穿廊南側為廚房西翼外牆：不銹鋼鐵捲門
       box(kWestX + 1.2, kWestX + 4.0, y1F, y1F + 2.6, zB1 - 0.06, zB1 - 0.02, stainlessMat, false);
       for (let k = 0; k < 13; k++) box(kWestX + 1.2, kWestX + 4.0, y1F + 0.1 + k * 0.2, y1F + 0.12 + k * 0.2, zB1 - 0.08, zB1 - 0.06, darkMetalMat, false);
