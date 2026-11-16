@@ -31,8 +31,9 @@ function makeBuildingXf(thDeg, pc, tc) {
 const NORTH_XF = makeBuildingXf(5.074, [8.2846, -32.44], [14.525, -43.975]);
 // 東棟：依航照外框旋轉約 6°，北端東移約 6 m
 const EAST_XF = makeBuildingXf(5.967, [58.89, -10.0], [62.0, -12.45]);
-// 西棟（含北側廚房增建）：恢復原始 9 跨長度（30.11 m）後北移 6.02 m，南端仍接新棟北面 (z 9.9)；東西向維持與新棟軸線 ④ 對齊
-const WEST_XF = makeBuildingXf(0, [0, 0], [0, -6.02]);
+// 西棟（含北側廚房增建）：恢復原始 9 跨長度（30.11 m）後北移 6.02 m，南端仍接新棟北面 (z 9.9)；
+// v2.12.49 依航照與實景照片 5166／5167 整排東移 3.5 m（西側外牆 x −34.61）
+const WEST_XF = makeBuildingXf(0, [0, 0], [3.5, -6.02]);
 const BUILDING_XF = {
   'north-building': NORTH_XF, 'playground-zone': NORTH_XF,
   'east-building': EAST_XF, 'breezeway-hub': EAST_XF,

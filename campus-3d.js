@@ -12056,10 +12056,10 @@ function buildWestBuilding() {
     //   西端「北側凸出部」2F 為房間、1F 為東西向穿廊（向西通往操場）；電梯西門前另有銀色圓弧遮雨棚與不銹鋼欄杆。
     //   座標為西棟局部座標（世界 z − 6.02）；世界座標：凸出部北緣 z −40.7、廚房北牆 z −36.2、東緣 x −17.6
     {
-      const kxP2 = -31.0, kxB2 = -17.6;                      // 凸出部／西翼東緣、東翼東緣
+      const kxP2 = -31.0, kxB2 = -21.1;   // v2.12.49 東翼東緣維持世界 x −17.6（中庭西緣）                      // 凸出部／西翼東緣、東翼東緣
       const zP1 = -34.68, zB1 = -30.18;                      // 凸出部北緣、廚房北牆（＝長巷南緣）
       // v2.12.45 依實景照片 5149／5147：凸出部（穿廊）位於銀色遮雨棚正南、電梯塔西南角，向東移至 x −33.0～−27.9
-      const pX1 = kWestX, pX2 = -27.9;   // v2.12.48 依照片 5166／5167：凸出部西牆與西棟、廚房西側外牆同一平面（x −38.11）
+      const pX1 = kWestX, pX2 = -31.4;   // v2.12.49 東緣維持世界 x −27.9（電梯塔西南角）   // v2.12.48 依照片 5166／5167：凸出部西牆與西棟、廚房西側外牆同一平面（x −38.11）
       const zAlleyN = -34.38;                                // 長巷北緣（電梯南面，世界 z ≈ −40.4）
       const stTileMat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 });   // 穿廊與長巷地坪
       const frameMat0 = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.4, metalness: 0.6 });   // 路燈支架
@@ -12126,7 +12126,7 @@ function buildWestBuilding() {
       const canopyGreen = new THREE.MeshStandardMaterial({ color: 0x62a88c, roughness: 0.42, metalness: 0.1, transparent: true, opacity: 0.82, depthWrite: false, side: THREE.DoubleSide });
       const frameMat = new THREE.MeshStandardMaterial({ color: 0x8a9096, roughness: 0.4, metalness: 0.6 });
       const silverRoof = new THREE.MeshStandardMaterial({ color: 0xc3c9ce, roughness: 0.32, metalness: 0.55, side: THREE.DoubleSide });
-      const cx1 = pX2, cx2 = -21.0, cH = 3.25;
+      const cx1 = pX2, cx2 = -24.5, cH = 3.25;
       box(cx1, cx2, cH, cH + 0.04, zAlleyN + 0.35, zB1, canopyGreen, false);
       { const edge = addMesh(g, new THREE.CylinderGeometry(0.42, 0.42, cx2 - cx1, 16, 1, true, 0, Math.PI / 2), canopyGreen, (cx1 + cx2) / 2, cH - 0.42, zAlleyN + 0.35, false); edge.rotation.z = Math.PI / 2; edge.rotation.y = Math.PI; }
       for (let x = cx1; x <= cx2 + 0.01; x += (cx2 - cx1) / 6) box(x - 0.04, x + 0.04, cH + 0.04, cH + 0.10, zAlleyN + 0.35, zB1, frameMat, false);
@@ -12135,16 +12135,16 @@ function buildWestBuilding() {
       box(cx1, cx2, 0, 0.05, zAlleyN, zB1, stTileMat, false);
       box(cx1, cx2, 0.05, 0.07, zB1 - 0.75, zB1 - 0.45, darkMetalMat, false);
       // 廚房北牆：兩座圓弧不銹鋼排油煙罩、角落直立排煙方管（高出屋頂）、不銹鋼儲物櫃
-      [-26.4, -24.0].forEach(hx => {
+      [-28.6, -26.2].forEach(hx => {
         box(hx - 0.75, hx + 0.75, 2.45, 3.05, zB1 - 0.9, zB1, stainlessMat);
         const hood = addMesh(g, new THREE.CylinderGeometry(0.45, 0.45, 1.5, 14, 1, false, 0, Math.PI), stainlessMat, hx, 2.45, zB1 - 0.45, false); hood.rotation.z = Math.PI / 2;
       });
       box(pX2 + 0.15, pX2 + 0.75, 2.2, kH + 2.2, zB1 - 0.55, zB1 - 0.05, stainlessMat);
       box(pX2 + 0.05, pX2 + 0.85, kH + 2.2, kH + 2.6, zB1 - 0.65, zB1 + 0.05, stainlessMat);
-      [-22.2, -20.4].forEach(cxm => box(cxm - 0.85, cxm + 0.85, 0.1, 1.85, zB1 - 0.8, zB1 - 0.05, stainlessMat));
+      [-24.6, -22.8].forEach(cxm => box(cxm - 0.85, cxm + 0.85, 0.1, 1.85, zB1 - 0.8, zB1 - 0.05, stainlessMat));
       // 5) 電梯西門前銀色圓弧遮雨棚與不銹鋼欄杆（照片 4921 俯視：L 形，東緣貼電梯塔西牆，東南角缺口為落水管與水溝）
       //    世界座標 x −33.6～−28.1、z −45.4～−40.7；東南缺口 x −30.1～−28.1、z −42.5～−40.7
-      const sx1 = kWestX, sx2 = -28.1,   /* v2.12.48 遮雨棚前緣切齊西棟與廚房西側外牆 */ sz1 = -39.38, sz2 = zP1, sH = 2.95, nx = -30.1, nz = -36.48;
+      const sx1 = kWestX, sx2 = -31.6,   /* v2.12.48 遮雨棚前緣切齊西棟與廚房西側外牆 */ sz1 = -39.38, sz2 = zP1, sH = 2.95, nx = -33.6, nz = -36.48;
       const roofPart = (x1, x2, z1, z2) => box(x1, x2, sH, sH + 0.05, z1, z2, silverRoof, false);
       roofPart(sx1, sx2, sz1, nz); roofPart(sx1, nx, nz, sz2);
       const curl = (len, x, z, alongX, rotZ) => {                       // 圓弧下彎收邊
@@ -12202,7 +12202,7 @@ function buildWestBuilding() {
   }
 
     g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'west-building'; });
-  WEST_XF.apply(g);    // v2.12.40 依航照：恢復原始 9 跨長度後整棟（含北側廚房增建）北移 6.02 m（南端仍接新棟北面 z 9.9，東西向不動以對齊新棟軸線 ④）
+  WEST_XF.apply(g);    // v2.12.40 恢復原始 9 跨長度後整棟（含北側廚房增建）北移 6.02 m；v2.12.49 再東移 3.5 m（依航照與實景照片）
   layerGroups.buildings.add(g);
   clickableGroups.push(g);
   landmarkGroupMap.set('west-building', g);
@@ -19343,7 +19343,7 @@ const CAMPUS_TREE_REGISTRY = [
   ["442030", "楓香", -39.7, -8.3, 0],
   ["442040", "印度紫檀", -38.2, -71.1, 0],
   ["442281", "雨豆樹", -33.9, 26.0, 0],
-  ["441981", "楓香", -39.2, -37.0, 0],
+  ["441981", "楓香", -35.7, -37.0, 0],
   ["442007", "波羅蜜", -30.7, -58.4, 0],
   ["441997", "緬梔", -30.5, -59.8, 0],
   ["441990", "苦楝", -29.2, -58.6, 0],
@@ -22418,7 +22418,7 @@ const LOCAL_BUILDING_OBSTACLES = [
   { xf: WEST_XF, minX: -38.11 - 0.65, maxX: -24.31 + 0.65, minZ: -23.35 - 0.65, maxZ: 15.918 + 0.65 },
   // v2.12.41 廚房：西翼南段與東翼（北側凸出部 1F 為穿廊、長巷可通行）
   { xf: WEST_XF, minX: -38.11 - 0.5, maxX: -31.0, minZ: -30.18 - 0.4, maxZ: -23.35 },
-  { xf: WEST_XF, minX: -31.0, maxX: -17.6 + 0.3, minZ: -30.18 - 0.4, maxZ: -20.0 }
+  { xf: WEST_XF, minX: -31.0, maxX: -21.1 + 0.3, minZ: -30.18 - 0.4, maxZ: -20.0 }
 ];
 
 // Collision footprint exclusions: allow walking inside North Building (愛悅樓) Front/Rear corridors, Central Stairwell, Basement & Lightwells!
