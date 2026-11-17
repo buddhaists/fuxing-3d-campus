@@ -24328,6 +24328,22 @@ renderer.setAnimationLoop(mainLoopFn = now => {
           if (targetFeet !== null) camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetFeet + eye, 0.18);
         }
       }
+      // v2.12.69 新棟北側入口階梯、1F 走廊平台、連通樓梯與北走廊之自動升降（新棟建置局部座標，僅 1F）
+      if (!walkState.keys.up && !walkState.keys.down && camera.position.y < 3.2) {
+        const [nx, nz0] = NEW_XF.toLocal(camera.position.x, camera.position.z), nz = nz0 - SOUTH_SHIFT;
+        const zF = 13.398, zStair0 = zF - 6 * 0.34, entCx = -19.58;
+        let feet = null;
+        if (nz >= zStair0 && nz < zF && nx >= entCx - 1.30 && nx <= entCx + 1.30) feet = 0.72 * THREE.MathUtils.clamp((nz - zStair0) / (zF - zStair0), 0, 1);   // 入口階梯
+        else if (nz >= zStair0 && nz < 13.633 && nx >= -24.31 && nx < entCx + 1.30) feet = 0.72;                                                                   // 1F 走廊平台、入口平台
+        else if (nz >= 13.633 && nz <= 15.918 && nx >= -27.04 && nx <= -6.7) {
+          if (nx < -24.31) feet = 0.40;                                                                     // 西棟端下層平台
+          else if (nx < -21.51) feet = 0.40 + 0.80 * (nx + 24.31) / 2.80;                                    // 連通樓梯 8 階
+          else feet = 1.20;                                                                                  // 新棟 1F 北走廊
+        }
+        if (feet !== null) camera.position.y = THREE.MathUtils.lerp(camera.position.y, feet + 1.72, 0.2);
+        else if (camera.position.y > 1.75 && camera.position.y < 3.0 && walkState.__newRaised) camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72, 0.2);
+        walkState.__newRaised = feet !== null || camera.position.y > 1.76;
+      }
       // 下沉中庭：進入中庭範圍時視高隨地面下降，離開時回復（東棟坡道／台階由其本身邏輯處理）
       {
         const inC = inCourtyardSink(camera.position.x, camera.position.z, -0.4);
