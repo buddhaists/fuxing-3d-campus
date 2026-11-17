@@ -7984,7 +7984,7 @@ function buildEastBuilding() {
     const yTop = yBreezeFloor, yGround = yCourtGround;          // 穿堂地坪 → 中庭地面
     const zN = stairZ_Max + 0.10;                                // 北端（緊鄰穿堂大台階南側）
     const zS = cz(AXIS_CM[4]) + 0.75;                            // 南端（興學樓北側綠籬前）
-    const laneW = 1.60;
+    const laneW = 2.10;   // v2.12.78 依照片加寬（原 1.60 m）
     const xC1 = xW0 - laneW, xC2 = xW0;                          // 內側 Run C
     const xB1 = xW0 - 2 * laneW, xB2 = xC1;                      // 中間 Run B
     const xA1 = xW0 - 3 * laneW - 0.15, xA2 = xB1;               // 外側 Run A（略向西凸出）
@@ -8029,10 +8029,11 @@ function buildEastBuilding() {
     slopeSurface(xB1, xB2, zNland, y1, zS, y2);
     // 3) 外側整面高洗石子擋土牆（頂面高出坡面約 0.15 m，壓頂分隔線），北端圓弧轉角
     const wallT = 0.26;
-    fillBlock(xB1 - wallT, xB1, zN + wallT, y1 + 0.15, zS - 0.6, yOnB(zS - 0.6) + 0.15);
+    const wallUp = 0.55;   // v2.12.78 依照片：擋土牆頂面高出坡面約 0.55 m（實心矮牆，上方再立欄杆）
+    fillBlock(xB1 - wallT, xB1, zN + wallT, y1 + wallUp, zS - 0.6, yOnB(zS - 0.6) + wallUp);
     addBox(g, wallT + 0.04, 0.03, zS - zN - 0.9, new THREE.MeshStandardMaterial({ color: 0xa9a7a0, roughness: 0.9 }), xB1 - wallT / 2, (y1 + yOnB(zS)) / 2 - 0.12, (zN + zS) / 2, false).rotation.x = -Math.atan2(y2 - y1, zS - zNland) * 0.6;
     {
-      const hN = y1 + 0.15 - yGround;
+      const hN = y1 + wallUp - yGround;
       addMesh(g, new THREE.CylinderGeometry(wallT, wallT, hN, 18, 1, false, Math.PI, Math.PI / 2), graniteMat, xB1, yGround + hN / 2, zN + wallT);
       addBox(g, 0.02, hN, wallT, graniteMat, xB1 - 0.01, yGround + hN / 2, zN + wallT / 2);
     }
@@ -8073,8 +8074,21 @@ function buildEastBuilding() {
     railing(xC2 - 0.06, zNland, y1, zCtop, yTop, { side: -0.09 });                         // Run C 內側扶手
     railing(xC1, zNland, y1, zCtop, yTop, { side: 0.09 });                                 // Run C / Run B 之間
     railing(xC1, zCtop, yTop, zS, yTop, { handrail: false });                              // 頂端平臺西緣
-    railing(xB1 - wallT / 2, zN + 0.3, y1 + 0.15, zNland, y1 + 0.15, { side: 0.12 });      // 北端平臺外緣（擋土牆頂）
-    railing(xB1 - wallT / 2, zNland, y1 + 0.15, zS - 0.6, yOnB(zS - 0.6) + 0.15, { side: 0.12 });   // Run B 外緣
+    railing(xB1 - wallT / 2, zN + 0.3, y1 + wallUp, zNland, y1 + wallUp, { side: 0.12 });      // 北端平臺外緣（擋土牆頂）
+    railing(xB1 - wallT / 2, zNland, y1 + wallUp, zS - 0.6, yOnB(zS - 0.6) + wallUp, { side: 0.12 });
+    // v2.12.78 依照片 123／127：坡道落地處與興學樓前為紅褐色連鎖磚地坪（至草地邊）
+    {
+      const tc = document.createElement('canvas'); tc.width = tc.height = 256; const cx = tc.getContext('2d');
+      cx.fillStyle = '#8a7a74'; cx.fillRect(0, 0, 256, 256);
+      const cols = ['#9b5a50', '#8e4f47', '#a6655a', '#7f4a43', '#b07568', '#94564c'];
+      let sd = 5; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let y = 0; y < 256; y += 32) for (let x = -((y / 32) % 2) * 32; x < 256; x += 64) { cx.fillStyle = cols[Math.floor(rr() * cols.length)]; cx.fillRect(x + 2, y + 2, 60, 28); }
+      const tt = new THREE.CanvasTexture(tc); tt.wrapS = tt.wrapT = THREE.RepeatWrapping; tt.colorSpace = THREE.SRGBColorSpace;
+      const px1 = xB1 - 4.6, px2 = xC2, pz1 = zS - 4.2, pz2 = zS + 1.6;
+      tt.repeat.set((px2 - px1) / 1.6, (pz2 - pz1) / 1.6);
+      const pv = addBox(g, px2 - px1, 0.05, pz2 - pz1, new THREE.MeshStandardMaterial({ map: tt, roughness: 0.88 }), (px1 + px2) / 2, yGround + 0.03, (pz1 + pz2) / 2, false);
+      pv.renderOrder = 1;
+    }   // Run B 外緣
     railingX(zN + 0.05, xB1 - 0.08, xC2, y1);                                              // 北端平臺北緣
     // 國際無障礙標誌牌（照片：北端外側欄杆上、面向中庭）
     {
