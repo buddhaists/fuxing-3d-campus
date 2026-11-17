@@ -13001,9 +13001,9 @@ function makeTerracottaTilePatternTexture() {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 256;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#c65338';
+  ctx.fillStyle = '#b8735c';   // v2.12.63 依照片 95：霧面磚紅（較原橘紅柔和）
   ctx.fillRect(0, 0, 256, 256);
-  ctx.strokeStyle = '#9e3b24';
+  ctx.strokeStyle = '#94573f';
   ctx.lineWidth = 3;
   for (let r = 0; r < 8; r++) {
     const y = r * 32;
@@ -13055,9 +13055,9 @@ function buildNewBuilding() {
   const whiteTileMat     = mats.wallTile;
   const darkCopingMat    = new THREE.MeshStandardMaterial({ color: 0x45494e, roughness: 0.65 });
   const terracottaBoxMat = new THREE.MeshStandardMaterial({ map: makeTerracottaTilePatternTexture(), roughness: 0.68 });
-  const greenDiamondMat  = new THREE.MeshStandardMaterial({ color: 0x1c5e3a, roughness: 0.42, metalness: 0.15 });
+  const greenDiamondMat  = new THREE.MeshStandardMaterial({ color: 0x2f6d68, roughness: 0.42, metalness: 0.15 });   // v2.12.63 照片 95：小型青綠菱形磁磚
   const diamondRimMat    = new THREE.MeshStandardMaterial({ color: 0xf4f1e8, roughness: 0.55 });
-  const roofTileRedMat   = new THREE.MeshStandardMaterial({ color: 0xb84630, roughness: 0.62 });
+  const roofTileRedMat   = new THREE.MeshStandardMaterial({ color: 0x8e959b, roughness: 0.45, metalness: 0.45 });   // v2.12.63 照片 95：灰色金屬浪板緩坡屋頂（原紅瓦）
   const greenBlindMat    = new THREE.MeshStandardMaterial({ color: 0x289c4e, roughness: 0.58, side: THREE.DoubleSide });
   const acUnitMat        = new THREE.MeshStandardMaterial({ color: 0xdcdad2, roughness: 0.55, metalness: 0.2 });
   const pvcPipeMat       = new THREE.MeshStandardMaterial({ color: 0xf7f7f5, roughness: 0.35 });
@@ -13089,10 +13089,10 @@ function buildNewBuilding() {
     // 45° Rotated Square (Diamond) Green Tile Medallion in the center
     const dGroup = new THREE.Group();
     dGroup.position.set(cx, cy, cz + faceDirZ * (boxD / 2 + 0.025));
-    const rimMesh = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.56, 0.04), diamondRimMat);
+    const rimMesh = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.04), diamondRimMat);
     rimMesh.rotation.z = Math.PI / 4;
     dGroup.add(rimMesh);
-    const gemMesh = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.06), greenDiamondMat);
+    const gemMesh = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.27, 0.06), greenDiamondMat);
     gemMesh.rotation.z = Math.PI / 4;
     dGroup.add(gemMesh);
     g.add(dGroup);
