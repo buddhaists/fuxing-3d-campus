@@ -12133,10 +12133,10 @@ function buildWestBuilding() {
     //   座標為西棟局部座標（世界 z − 6.02）；世界座標：凸出部北緣 z −40.7、廚房北牆 z −36.2、東緣 x −17.6
     {
       const kxP2 = -31.0, kxB2 = -23.22;   // v2.12.49 東翼東緣維持世界 x −17.6（中庭西緣）                      // 凸出部／西翼東緣、東翼東緣
-      const zP1 = -34.68, zB1 = -30.18;                      // 凸出部北緣、廚房北牆（＝長巷南緣）
+      const zP1 = -31.68, zB1 = -27.18;   // v2.12.58 局部座標 +3 m（世界位置不變，緊鄰電梯）                      // 凸出部北緣、廚房北牆（＝長巷南緣）
       // v2.12.45 依實景照片 5149／5147：凸出部（穿廊）位於銀色遮雨棚正南、電梯塔西南角，向東移至 x −33.0～−27.9
       const pX1 = kWestX, pX2 = -33.52;   // v2.12.49 東緣維持世界 x −27.9（電梯塔西南角）   // v2.12.48 依照片 5166／5167：凸出部西牆與西棟、廚房西側外牆同一平面（x −38.11）
-      const zAlleyN = -35.30;   // v2.12.51 旋轉後長巷北緣接電梯塔南面                                // 長巷北緣（電梯南面，世界 z ≈ −40.4）
+      const zAlleyN = -32.30;   // v2.12.51 旋轉後長巷北緣接電梯塔南面                                // 長巷北緣（電梯南面，世界 z ≈ −40.4）
       const stTileMat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 });   // 穿廊與長巷地坪
       const frameMat0 = new THREE.MeshStandardMaterial({ color: 0x8e8676, roughness: 0.4, metalness: 0.5 });   // 香檳色鋁框   // 路燈支架
       const box = (x1, x2, y1, y2, z1, z2, m, cast = true) => addBox(g, x2 - x1, y2 - y1, z2 - z1, m, (x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2, cast);
@@ -12232,7 +12232,7 @@ function buildWestBuilding() {
       [-25.9, -24.3].forEach(cxm => box(cxm - 0.85, cxm + 0.85, 0.1, 1.85, zB1 - 0.8, zB1 - 0.05, stainlessMat));
       // 5) 電梯西門前銀色圓弧遮雨棚與不銹鋼欄杆（照片 4921 俯視：L 形，東緣貼電梯塔西牆，東南角缺口為落水管與水溝）
       //    世界座標 x −33.6～−28.1、z −45.4～−40.7；東南缺口 x −30.1～−28.1、z −42.5～−40.7
-      const sx1 = kWestX, sx2 = -33.72,   /* v2.12.48 遮雨棚前緣切齊西棟與廚房西側外牆 */ sz1 = -39.38, sz2 = zP1, sH = 2.95, nx = -35.02, nz = -36.48;
+      const sx1 = kWestX, sx2 = -33.72,   /* v2.12.48 遮雨棚前緣切齊西棟與廚房西側外牆 */ sz1 = -36.38, sz2 = zP1, sH = 2.95, nx = -35.02, nz = -33.48;
       const roofPart = (x1, x2, z1, z2) => box(x1, x2, sH, sH + 0.05, z1, z2, silverRoof, false);
       roofPart(sx1, sx2, sz1, nz); roofPart(sx1, nx, nz, sz2);
       const curl = (len, x, z, alongX, rotZ) => {                       // 圓弧下彎收邊
@@ -22513,8 +22513,8 @@ const LOCAL_BUILDING_OBSTACLES = [
   { xf: EAST_XF, minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(233),       maxZ: Z(315) + 0.5 },
   { xf: WEST_XF, minX: -38.11 - 0.65, maxX: -24.31 + 0.65, minZ: -23.35 - 0.65, maxZ: 15.918 + 0.65 },
   // v2.12.41 廚房：西翼南段與東翼（北側凸出部 1F 為穿廊、長巷可通行）
-  { xf: WEST_XF, minX: -38.11 - 0.5, maxX: -31.0, minZ: -30.18 - 0.4, maxZ: -23.35 },
-  { xf: WEST_XF, minX: -31.0, maxX: -23.22 + 0.3, minZ: -30.18 - 0.4, maxZ: -20.0 }
+  { xf: WEST_XF, minX: -38.11 - 0.5, maxX: -31.0, minZ: -27.18 - 0.4, maxZ: -23.35 },
+  { xf: WEST_XF, minX: -31.0, maxX: -23.22 + 0.3, minZ: -27.18 - 0.4, maxZ: -20.0 }
 ];
 
 // Collision footprint exclusions: allow walking inside North Building (愛悅樓) Front/Rear corridors, Central Stairwell, Basement & Lightwells!
