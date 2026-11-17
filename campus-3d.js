@@ -13614,35 +13614,23 @@ function buildNewBuilding() {
       const yWestBase = (f === 1 ? 3.95 : 7.70) + 0.45;
       const yEastBase = (f === 1 ? 5.85 : 9.40) + 0.45;
 
-      // C.1 斜向白色二丁掛實體側板護牆 (沿著梯段斜升)
-      const slopeShape = new THREE.Shape();
-      slopeShape.moveTo(xStairWest, f * FH);
-      slopeShape.lineTo(xTopLandEast, f * FH);
-      slopeShape.lineTo(xTopLandEast, yEastBase);
-      slopeShape.lineTo(xStairWest, yWestBase);
-      slopeShape.closePath();
-
-      const slopeGeom = new THREE.ExtrudeGeometry(slopeShape, { depth: 0.26, bevelEnabled: false });
-      const slopeMesh = new THREE.Mesh(slopeGeom, whiteTileMat);
-      slopeMesh.position.set(0, 0, zF);
-      g.add(slopeMesh);
-
-      // C.2 斜牆深灰水泥壓頂 (Dark Coping)
-      const sDx = xTopLandEast - xStairWest;
-      const sDy = yEastBase - yWestBase;
-      const sLen = Math.hypot(sDx, sDy);
-      const sPitch = Math.atan2(sDy, sDx);
-      const copingMesh = new THREE.Mesh(new THREE.BoxGeometry(sLen + 0.08, 0.08, 0.32), darkCopingMat);
-      copingMesh.position.set((xStairWest + xTopLandEast) / 2, (yWestBase + yEastBase) / 2 + 0.04, facadeZ);
-      copingMesh.rotation.z = sPitch;
-      g.add(copingMesh);
-
-      // C.3 上方橫貫整跨之深灰清水混凝土防雨結構過梁
-      addBox(g, xTopLandEast - xStairWest + 0.2, 0.52, 0.38, exposedConcreteBeamMat, (xStairWest + xTopLandEast) / 2, fy + FH - 0.26, facadeZ);
-
+      // v2.12.66 依使用者照片：梯間正面 2F／3F 為整面水平白磁磚矮牆（下為深灰樓板邊梁、上為深色壓頂），取代原斜向側板
+      {
+        const yFl = f === 1 ? 5.85 : 9.40, wx1 = xStairWest, wx2 = stX2, ww = wx2 - wx1, wcx = (wx1 + wx2) / 2;
+        addBox(g, ww + 0.2, 0.52, 0.40, exposedConcreteBeamMat, wcx, yFl - 0.26, facadeZ);
+        addBox(g, ww, 1.20, 0.26, whiteTileMat, wcx, yFl + 0.60, facadeZ);
+        addBox(g, ww + 0.08, 0.08, 0.34, darkCopingMat, wcx, yFl + 1.24, facadeZ);
+      }
       // C.4 兩端結構支撐方柱 (Axis 4 與 Axis 6)
       addBox(g, 0.44, FH - 0.52, 0.44, whiteTileMat, xStairWest + 0.22, fy + (FH - 0.52) / 2, facadeZ);
       addBox(g, 0.44, FH - 0.52, 0.44, whiteTileMat, xTopLandEast - 0.22, fy + (FH - 0.52) / 2, facadeZ);
+    }
+
+    // v2.12.66 依使用者照片：梯間 1F 入口西側為白磁磚矮牆（深色壓頂）直抵西棟轉角
+    {
+      const lwx1 = xStairWest, lwx2 = entCx - 1.20;
+      addBox(g, lwx2 - lwx1, 1.15, 0.26, whiteTileMat, (lwx1 + lwx2) / 2, 0.575, facadeZ);
+      addBox(g, lwx2 - lwx1 + 0.06, 0.08, 0.34, darkCopingMat, (lwx1 + lwx2) / 2, 1.19, facadeZ);
     }
 
     // ------------------------------------------------------------------------
