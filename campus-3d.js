@@ -11624,6 +11624,15 @@ function buildWestBuilding() {
     addBox(g, 0.28, parapetH, mainD, whiteTileMat, xEast - 0.14, yRF + parapetH / 2, mainCz);
     addBox(g, 0.28, parapetH, mainD, whiteTileMat, xWest + 0.14, yRF + parapetH / 2, mainCz);
     addBox(g, totalW, parapetH, 0.28, whiteTileMat, (xWest + xEast) / 2, yRF + parapetH / 2, zSouth - 0.14);
+    // v2.12.53 依操場實景照片 81：3F 屋頂西側與南側挑出約 0.6 m 之平屋簷，簷口紅色收邊帶
+    {
+      const eaveRedMat = new THREE.MeshStandardMaterial({ color: 0xc23a2e, roughness: 0.55 });
+      const eaveY = yRF + parapetH + 0.10;
+      addBox(g, 0.62, 0.20, mainD + 0.62, whiteTileMat, xWest - 0.17, eaveY, mainCz + 0.31);
+      addBox(g, 0.06, 0.26, mainD + 0.66, eaveRedMat, xWest - 0.50, eaveY, mainCz + 0.31);
+      addBox(g, totalW + 0.62, 0.20, 0.62, whiteTileMat, (xWest + xEast) / 2 - 0.31, eaveY, zSouth + 0.17);
+      addBox(g, totalW + 0.68, 0.26, 0.06, eaveRedMat, (xWest + xEast) / 2 - 0.31, eaveY, zSouth + 0.50);
+    }
     addBox(g, 0.06, 1.35, 0.06, darkMetalMat, xEast - 0.14, yRF + parapetH + 0.65, -6.66);
     addMesh(g, new THREE.ConeGeometry(0.24, 0.42, 12), whiteDoorMat, xEast + 0.05, yRF + parapetH + 1.25, -6.66).rotation.z = Math.PI / 2;
     [-35.8, -33.6].forEach(wx => {
@@ -12124,7 +12133,9 @@ function buildWestBuilding() {
         const arm = addBox(g, 1.1, 0.06, 0.06, frameMat0, pX1 - 0.5, ly + 0.45, lz); arm.rotation.z = -0.55;
         box(pX1 - 1.15, pX1 - 0.75, ly + 0.72, ly + 0.80, lz - 0.30, lz + 0.30, darkMetalMat, false);
         box(pX1 - 0.95, pX1 - 0.35, ly + 0.95, ly + 0.99, lz - 0.32, lz + 0.32, darkMetalMat, false); }
-      winX(kWestX, zB1, nwNorthZ, F12, -1);                  // 西翼南段西面
+      // v2.12.53 照片 81：廚房西翼面向操場 1F 為一排小橫窗、2F 僅一扇窗
+      winX(kWestX, zB1, nwNorthZ, [[y1F + 2.35, 0.55]], -1, 3);
+      winX(kWestX, zB1, nwNorthZ, [[y2F + 1.65, 1.20]], -1, 1);
       winN(pX2, kxB2, zB1, F2);                             // 廚房北牆 2F（照片 5162）
       // 東翼東面（面向中庭，照片 4928）：2F 素牆；1F 一扇鐵窗與一具排風扇
       winX(kxB2, zB1, kNorthZ, [[y1F + 2.05, 0.75]], 1, 1);
