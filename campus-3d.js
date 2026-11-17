@@ -7988,18 +7988,24 @@ function buildEastBuilding() {
     const xC1 = xW0 - laneW, xC2 = xW0;                          // 內側 Run C
     const xB1 = xW0 - 2 * laneW, xB2 = xC1;                      // 中間 Run B
     const xA1 = xW0 - 3 * laneW - 0.15, xA2 = xB1;               // 外側 Run A（略向西凸出）
-    const topLen = 2.0, landN = 1.6, landS = 1.6;
+    const topLen = 2.0, landN = 1.6, landS = 2.1;
     const zCtop = zS - topLen;                                   // Run C 南端（頂端平臺北緣）
     const zNland = zN + landN;                                   // 北端轉折平臺南緣
     const zSland = zS - landS;                                   // 南端轉折平臺北緣
     const zAexit = zSland - 5.0;                                 // Run A 出口（西立面中段）
-    // v2.12.77 依使用者實景照片（123～127）：坡道為兩道折返——內側 Run C 自南端頂端平臺沿東棟後牆向北下坡至北端轉折平臺，
-    //   外側 Run B 自北端平臺向南下坡，於南端（興學樓前紅磚地坪、草地旁）落地；外側為整面高洗石子擋土牆，北端圓弧收邊緊鄰穿堂大台階
-    const lenC = zCtop - zNland, lenB = zS - zNland;
-    const tot = lenC + lenB;
-    const y1 = yTop - (yTop - yGround) * lenC / tot;             // 北端平臺高程
-    const y2 = yGround;
-    const yOnB = z => y1 + (y2 - y1) * (z - zNland) / lenB;
+    // v2.12.79 依使用者標示照片 128／129：
+    //   ・黃框（外側 Run Y）：自中段地面由北往南上升至南端轉折平臺（僅南半段）
+    //   ・紅框（內側 Run R，貼後走廊）：轉折後由南往北上升，於北端（穿堂大台階旁）抵達東棟後走廊
+    //   ・北半段 Run R 西側為直接面向中庭之高大洗石子擋土牆（北端最高、圓弧收邊）
+    const topN = 1.6;
+    const zLand = zS - landS;                         // 南端轉折平臺北緣
+    const zTopS = zN + topN;                          // Run R 北端頂部平臺南緣
+    const zY0 = (zN + zS) / 2 - 0.5;                  // Run Y 地面起點（立面中段）
+    const lenR = zLand - zTopS, lenY = zLand - zY0;
+    const yMid = yGround + (yTop - yGround) * lenY / (lenR + lenY);
+    const y1 = yMid, y2 = yGround;
+    const yOnR = z => yMid + (yTop - yMid) * (zLand - z) / lenR;
+    const yOnY = z => yGround + (yMid - yGround) * (z - zY0) / lenY;
     const graniteMat = new THREE.MeshStandardMaterial({ map: makeTerrazzoTexture ? makeTerrazzoTexture() : null, color: 0xa9a6a0, roughness: 0.86, side: THREE.DoubleSide });   // v2.12.77 灰色抿石子（照片）；擠出量體法線朝內，需雙面材質才看得見（原坡道量體因此不顯示）
     const rampSurfMat = new THREE.MeshStandardMaterial({ color: 0xb4b1aa, roughness: 0.92 });
     const stainlessMat = new THREE.MeshStandardMaterial({ color: 0xc4cacf, roughness: 0.26, metalness: 0.85 });
@@ -8018,28 +8024,27 @@ function buildEastBuilding() {
     };
     // 1) 架高 1F 後走廊
     addBox(g, xB - xW0 - 0.04, yTop - y0, zS + 0.9 - (zN - 0.1), passageFloorMat, (xW0 + xB) / 2, y0 + (yTop - y0) / 2, (zS + 0.9 + zN - 0.1) / 2, false);
-    // 2) 頂端平臺（Run C 南端）、Run C、北端轉折平臺、Run B
-    fillBlock(xC1, xC2, zCtop, yTop, zS, yTop);
-    addBox(g, xC2 - xC1 - 0.02, 0.04, topLen, rampSurfMat, (xC1 + xC2) / 2, yTop + 0.02, (zCtop + zS) / 2, false);
-    fillBlock(xC1, xC2, zNland, y1, zCtop, yTop);
-    slopeSurface(xC1, xC2, zNland, y1, zCtop, yTop);
-    fillBlock(xB1, xC2, zN, y1, zNland, y1);
-    addBox(g, xC2 - xB1 - 0.02, 0.04, landN, rampSurfMat, (xB1 + xC2) / 2, y1 + 0.02, (zN + zNland) / 2, false);
-    fillBlock(xB1, xB2, zNland, y1, zS, y2);
-    slopeSurface(xB1, xB2, zNland, y1, zS, y2);
-    // 3) 外側整面高洗石子擋土牆（頂面高出坡面約 0.15 m，壓頂分隔線），北端圓弧轉角
-    const wallT = 0.26;
-    const wallUp = 0.55;   // v2.12.78 依照片：擋土牆頂面高出坡面約 0.55 m（實心矮牆，上方再立欄杆）
-    fillBlock(xB1 - wallT, xB1, zN + wallT, y1 + wallUp, zS - 0.6, yOnB(zS - 0.6) + wallUp);
-    addBox(g, wallT + 0.04, 0.03, zS - zN - 0.9, new THREE.MeshStandardMaterial({ color: 0xa9a7a0, roughness: 0.9 }), xB1 - wallT / 2, (y1 + yOnB(zS)) / 2 - 0.12, (zN + zS) / 2, false).rotation.x = -Math.atan2(y2 - y1, zS - zNland) * 0.6;
+    // 2) Run R（內側）：南端平臺 → 北端頂部平臺；Run Y（外側）：中段地面 → 南端平臺
+    fillBlock(xC1, xC2, zN, yTop, zTopS, yTop);
+    addBox(g, xC2 - xC1 - 0.02, 0.04, topN, rampSurfMat, (xC1 + xC2) / 2, yTop + 0.02, (zN + zTopS) / 2, false);
+    fillBlock(xC1, xC2, zTopS, yTop, zLand, yMid);
+    slopeSurface(xC1, xC2, zTopS, yTop, zLand, yMid);
+    fillBlock(xB1, xC2, zLand, yMid, zS, yMid);
+    addBox(g, xC2 - xB1 - 0.02, 0.04, landS, rampSurfMat, (xB1 + xC2) / 2, yMid + 0.02, (zLand + zS) / 2, false);
+    fillBlock(xB1, xB2, zY0, yGround, zLand, yMid);
+    slopeSurface(xB1, xB2, zY0, yGround, zLand, yMid);
+    // 3) 擋土牆：北半段 Run R 西側高牆（頂高出坡面 0.55 m，北端圓弧）；Run Y 外側矮牆；Run R / Run Y 之間分隔牆
+    const wallT = 0.26, wallUp = 0.55;
+    fillBlock(xC1 - wallT, xC1, zN + wallT, yTop + wallUp, zY0, yOnR(zY0) + wallUp);
     {
-      const hN = y1 + wallUp - yGround;
-      addMesh(g, new THREE.CylinderGeometry(wallT, wallT, hN, 18, 1, false, Math.PI, Math.PI / 2), graniteMat, xB1, yGround + hN / 2, zN + wallT);
-      addBox(g, 0.02, hN, wallT, graniteMat, xB1 - 0.01, yGround + hN / 2, zN + wallT / 2);
+      const hN = yTop + wallUp - yGround;
+      addMesh(g, new THREE.CylinderGeometry(wallT, wallT, hN, 18, 1, false, Math.PI, Math.PI / 2), graniteMat, xC1, yGround + hN / 2, zN + wallT);
+      addBox(g, xC1 - (xC1 - wallT) + 0.02, hN, wallT, graniteMat, xC1 + 0.01 - wallT / 2, yGround + hN / 2, zN + wallT / 2);
     }
-    // 南端出口側緣石
-    addBox(g, 0.18, 0.18, 0.9, graniteMat, xB1 - 0.09, yGround + 0.09, zS - 0.45);
-    addBox(g, xC2 - (xC1 - 0.0), yTop + 0.12 - yGround, 0.22, graniteMat, (xC1 + xC2) / 2, (yTop + 0.12 + yGround) / 2, zS + 0.11);
+    fillBlock(xC1 - 0.18, xC1, zY0, yOnR(zY0) + 0.12, zLand, yMid + 0.12);                 // Run R / Run Y 分隔緣牆
+    fillBlock(xB1 - 0.20, xB1, zY0, yGround + 0.20, zLand, yMid + 0.20);                    // Run Y 外側矮緣
+    addBox(g, 0.20, yMid + 0.20 - yGround, landS, graniteMat, xB1 - 0.10, (yMid + 0.20 + yGround) / 2, (zLand + zS) / 2);
+    addBox(g, xC2 - xB1 + 0.2, yTop + 0.12 - yGround, 0.22, graniteMat, (xB1 + xC2) / 2, (yTop + 0.12 + yGround) / 2, zS + 0.11);
     // 4) 不鏽鋼欄杆：垂直欄柱＋雙層扶手（內扶手 U 形支架）
     const railing = (x, za, ya, zb_, yb_, opts = {}) => {
       const h = opts.h || 0.95, dz = zb_ - za, dy = yb_ - ya, len = Math.hypot(dz, dy), ang = -Math.atan2(dy, dz);
@@ -8070,12 +8075,14 @@ function buildEastBuilding() {
       const nP = Math.max(3, Math.round(len / 0.12));
       for (let i = 0; i <= nP; i++) addBox(eastDetailGroup, i % 10 === 0 ? 0.045 : 0.024, h - 0.05, i % 10 === 0 ? 0.045 : 0.024, stainlessMat, xa + len * i / nP, y + 0.05 + (h - 0.05) / 2, z, false);
     };
-    railing(xC2 + 0.02, zN, yTop, zS, yTop, { handrail: false });                          // 後走廊西緣
-    railing(xC2 - 0.06, zNland, y1, zCtop, yTop, { side: -0.09 });                         // Run C 內側扶手
-    railing(xC1, zNland, y1, zCtop, yTop, { side: 0.09 });                                 // Run C / Run B 之間
-    railing(xC1, zCtop, yTop, zS, yTop, { handrail: false });                              // 頂端平臺西緣
-    railing(xB1 - wallT / 2, zN + 0.3, y1 + wallUp, zNland, y1 + wallUp, { side: 0.12 });      // 北端平臺外緣（擋土牆頂）
-    railing(xB1 - wallT / 2, zNland, y1 + wallUp, zS - 0.6, yOnB(zS - 0.6) + wallUp, { side: 0.12 });
+    railing(xC2 + 0.02, zN, yTop, zS, yTop, { handrail: false });                                      // 後走廊西緣
+    railing(xC2 - 0.06, zTopS, yTop, zLand, yMid, { side: -0.09 });                                    // Run R 內側扶手
+    railing(xC1 - wallT / 2, zN + 0.3, yTop + wallUp, zY0, yOnR(zY0) + wallUp, { side: 0.12 });        // 北半段高牆頂欄杆
+    railing(xC1 - 0.09, zY0, yOnR(zY0) + 0.12, zLand, yMid + 0.12, { side: 0.09 });                     // Run R / Run Y 之間
+    railing(xB1 - 0.10, zY0 + 0.25, yGround + 0.22, zLand, yMid + 0.20, { side: 0.10 });               // Run Y 外緣
+    railing(xB1 - 0.10, zLand, yMid + 0.20, zS, yMid + 0.20, { handrail: false });                     // 南端平臺外緣
+    railing(xB2 + 0.05, zY0 + 0.25, yGround, zLand, yMid, { side: -0.09, posts: false });             // Run Y 內扶手
+    railingX(zN + 0.05, xC1 - wallT, xC2, yTop);                                                       // 北端頂部平臺北緣
     // v2.12.78 依照片 123／127：坡道落地處與興學樓前為紅褐色連鎖磚地坪（至草地邊）
     {
       const tc = document.createElement('canvas'); tc.width = tc.height = 256; const cx = tc.getContext('2d');
@@ -8084,7 +8091,7 @@ function buildEastBuilding() {
       let sd = 5; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
       for (let y = 0; y < 256; y += 32) for (let x = -((y / 32) % 2) * 32; x < 256; x += 64) { cx.fillStyle = cols[Math.floor(rr() * cols.length)]; cx.fillRect(x + 2, y + 2, 60, 28); }
       const tt = new THREE.CanvasTexture(tc); tt.wrapS = tt.wrapT = THREE.RepeatWrapping; tt.colorSpace = THREE.SRGBColorSpace;
-      const px1 = xB1 - 4.6, px2 = xC2, pz1 = zS - 4.2, pz2 = zS + 1.6;
+      const px1 = xB1 - 4.6, px2 = xB1 - 0.2, pz1 = zY0 - 1.5, pz2 = zS + 1.6;
       tt.repeat.set((px2 - px1) / 1.6, (pz2 - pz1) / 1.6);
       const pv = addBox(g, px2 - px1, 0.05, pz2 - pz1, new THREE.MeshStandardMaterial({ map: tt, roughness: 0.88 }), (px1 + px2) / 2, yGround + 0.03, (pz1 + pz2) / 2, false);
       pv.renderOrder = 1;
@@ -8093,10 +8100,10 @@ function buildEastBuilding() {
     // 國際無障礙標誌牌（照片：北端外側欄杆上、面向中庭）
     {
       const wcSignMat = new THREE.MeshBasicMaterial({ map: makeWheelchairSignTexture() });
-      const sign = addMesh(g, new THREE.PlaneGeometry(0.45, 0.45), wcSignMat, xB1 - 0.12, y1 + 0.70, zN + 0.65, false);
+      const sign = addMesh(g, new THREE.PlaneGeometry(0.45, 0.45), wcSignMat, xC1 - wallT / 2 - 0.12, yTop + wallUp + 0.62, zN + 1.4, false);
       sign.rotation.y = -Math.PI / 2;
     }
-    window.EAST_REAR_RAMP = { xA1: xB1 - 0.26, xB1, xC1, xC2, zN, zS, zNland, zSland: zS, zCtop, zAexit: zS, y1, y2, yTop, yGround };   // v2.12.77
+    window.EAST_REAR_RAMP = { xA1: xB1 - 0.20, xB1, xC1, xC2, zN, zS, zNland: zTopS, zSland: zLand, zCtop: zLand, zAexit: zY0, y1, y2, yTop, yGround };   // v2.12.79
   }
   // 以上台階與坡道已依下沉中庭標高建置：標記為不再下移
   g.children.slice(keepMarkG).forEach(o => o.traverse(c => { c.userData.keepLevel = true; }));
