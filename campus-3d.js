@@ -8076,6 +8076,20 @@ function buildEastBuilding() {
       for (let i = 0; i <= nP; i++) addBox(eastDetailGroup, i % 10 === 0 ? 0.045 : 0.024, h - 0.05, i % 10 === 0 ? 0.045 : 0.024, stainlessMat, xa + len * i / nP, y + 0.05 + (h - 0.05) / 2, z, false);
     };
     railing(xC2 + 0.02, zN, yTop, zS, yTop, { handrail: false });                                      // 後走廊西緣
+    // v2.12.80 依東棟 1F 平面圖與照片 126：後走廊西緣（坡道內側欄杆後）設一條洗石子矮花台，台內常綠灌木與觀葉植栽
+    {
+      const pz1 = zTopS + 0.4, pz2 = zS - 0.6, pw = 0.62, px = xC2 + 0.06 + pw / 2;
+      addBox(g, pw, 0.42, pz2 - pz1, graniteMat, px, yTop + 0.21, (pz1 + pz2) / 2);
+      addBox(g, pw - 0.12, 0.02, pz2 - pz1 - 0.12, new THREE.MeshStandardMaterial({ color: 0x5b4a3a, roughness: 0.95 }), px, yTop + 0.43, (pz1 + pz2) / 2, false);
+      const pm = [0x2f6a2c, 0x3f7f35, 0x568f3e, 0x2a5a28].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }));
+      let sd = 31; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let z = pz1 + 0.3; z < pz2 - 0.2; z += 0.55) {
+        const h = 0.35 + rr() * 0.5;
+        const b = addMesh(g, new THREE.IcosahedronGeometry(0.24 + rr() * 0.1, 1), pm[Math.floor(rr() * 4)], px + (rr() - 0.5) * 0.15, yTop + 0.43 + h * 0.6, z);
+        b.scale.set(1.0, 1.0 + h, 1.1);
+        if (rr() < 0.35) { const lf = addMesh(g, new THREE.ConeGeometry(0.06, 0.7, 5), pm[1], px, yTop + 0.8, z + 0.2); lf.rotation.z = 0.2; }
+      }
+    }
     railing(xC2 - 0.06, zTopS, yTop, zLand, yMid, { side: -0.09 });                                    // Run R 內側扶手
     railing(xC1 - wallT / 2, zN + 0.3, yTop + wallUp, zY0, yOnR(zY0) + wallUp, { side: 0.12 });        // 北半段高牆頂欄杆
     railing(xC1 - 0.09, zY0, yOnR(zY0) + 0.12, zLand, yMid + 0.12, { side: 0.09 });                     // Run R / Run Y 之間
