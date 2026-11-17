@@ -3354,9 +3354,8 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     // South of Jianxing S. Rd Lane 42 (shifted south of the Commuter Walkway + Road buffer!)
     [540, 438, 595, 502, 10.5], [602, 438, 655, 502, 12.0], [662, 438, 725, 502, 10.5],
     [735, 436, 785, 500, 11.0], [805, 434, 865, 498, 13.5], [872, 434, 935, 498, 10.5],
-    [345, 482, 435, 542, 9.5],  [445, 460, 515, 520, 11.5], [235, 522, 325, 578, 10.0],
+    [445, 460, 515, 520, 11.5],   // v2.12.70 42巷西南段與 50巷／建興南路沿線改由下方街屋列產生
     // West of Jianxing S. Rd Lane 50 & Jianxing S. Rd (shifted west of the Commuter Walkway + Road buffer!)
-    [-75, 60, -16, 140, 10.0], [-80, 175, -25, 240, 12.5], [-25, 280, 35, 345, 9.5], [10, 380, 75, 440, 10.5],   // v2.12.24 依衛星圖西牆
     // East across Fuxing Rd
     [1180, 80, 1260, 175, 14.0], [1180, 195, 1260, 295, 11.5], [1180, 315, 1260, 405, 15.0],
     // Southwest/South High-Rise Residential Apartment Towers (實景照片 135447.jpg & 135708.jpg 西南側外圍 10~12 層紅磚瓷磚高層住宅大樓)
@@ -3381,6 +3380,56 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       addBox(layerGroups.context, w * 0.65, 2.2, d * 0.65, ctxTerracottaRoof, cx, h + 1.25, cz);
     } else {
       addMesh(layerGroups.context, new THREE.CylinderGeometry(0.65, 0.65, 1.5, 10), steelTankMat, cx + w * 0.22, h + 1.05, cz - d * 0.18);
+    }
+  });
+}
+
+// v2.12.70 依 Google 衛星圖：建興南路50巷、建興南路（西側斜段）與建興南路42巷（運動場南側）對面連棟街屋
+//   沿各路段外側（人行道＋車道＋對側騎樓 1.6 m 之外）依面寬 4～7 m 分割透天厝，進深 11～15 m、2～4 層，
+//   避開既有高樓量體；屋頂部分加設鐵皮斜頂或水塔
+{
+  const rowMats = [0xe2ddd1, 0xd3cfc6, 0xe6e1d8, 0xcfc9bd, 0xe8d8cf, 0xd6dde0, 0xdcd3c1].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.84 }));
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x8c9399, roughness: 0.8 });
+  const sheetMats = [0x6f8fa6, 0xa95c4a, 0x9aa3a8].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.55, metalness: 0.35, side: THREE.DoubleSide }));
+  const winMat = new THREE.MeshStandardMaterial({ color: 0x55636b, roughness: 0.45 });
+  const shutterMat = new THREE.MeshStandardMaterial({ color: 0xb9bec2, roughness: 0.5, metalness: 0.4 });
+  const tankMat = new THREE.MeshStandardMaterial({ color: 0xc4cacd, roughness: 0.35, metalness: 0.65 });
+  const avoid = [[-85, 450, -5, 545], [25, 510, 115, 600], [125, 520, 215, 610], [445, 460, 515, 520]].map(([a, b, c, d]) => [X(a), Z(b), X(c), Z(d)]);
+  const WP = WEST_WALL_PX;
+  // 西牆短折段合併為兩直段（50巷南北段、建興南路斜段），街屋列較連續
+  const segs = [
+    [X(WP[0][0]), Z(WP[0][1]), X(WP[2][0]), Z(WP[2][1]), 3.2 + 0.35 + 9.6],
+    [X(WP[2][0]), Z(WP[2][1]), X(WP[8][0]), Z(WP[8][1]), 3.2 + 0.35 + 9.6]
+  ];
+  segs.push([X(166), Z(486), X(374), Z(371), 2.2 + 0.35 + 8.4]);
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const placed = [];
+  segs.forEach(([x1, z1, x2, z2, off], si) => {
+    const dx = x2 - x1, dz = z2 - z1, L = Math.hypot(dx, dz); if (L < 6) return;
+    const ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
+    let t = 2.5;
+    while (t < L - 3) {
+      const fw = 4 + rnd() * 3, dp = 11 + rnd() * 4, fl = 2 + Math.floor(rnd() * 3), h = fl * 3.3 + 0.6;
+      if (t + fw > L - 1.5) break;
+      const front = off + 1.6, cx = x1 + ux * (t + fw / 2) + nx * (front + dp / 2), cz = z1 + uz * (t + fw / 2) + nz * (front + dp / 2);
+      const r = Math.hypot(fw, dp) / 2;
+      const hit = avoid.some(([a, b, c, d]) => cx > a - r && cx < c + r && cz > b - r && cz < d + r) || placed.some(([px, pz, pr, ps]) => ps !== si && Math.hypot(px - cx, pz - cz) < (pr + r) * 0.6);
+      if (!hit) {
+        placed.push([cx, cz, r, si]);
+        const grp = new THREE.Group(); grp.position.set(cx, 0, cz); grp.rotation.y = -Math.atan2(uz, ux);
+        const mat = rowMats[Math.floor(rnd() * rowMats.length)];
+        addBox(grp, fw - 0.12, h, dp, mat, 0, h / 2, 0);
+        addBox(grp, fw + 0.1, 0.22, dp + 0.2, roofMat, 0, h + 0.11, 0);
+        const fz = -dp / 2 - 0.03;   // 臨路立面（局部 −z 朝道路）
+        addBox(grp, fw * 0.82, 2.6, 0.06, shutterMat, 0, 1.3, fz, false);   // 1F 鐵捲門
+        for (let k = 1; k < fl; k++) addBox(grp, fw * 0.7, 1.2, 0.06, winMat, 0, k * 3.3 + 1.7, fz, false);
+        addBox(grp, fw - 0.12, 0.18, 1.0, mat, 0, 3.15, -dp / 2 - 0.5);   // 2F 雨遮
+        if (rnd() < 0.55) { const sm = sheetMats[Math.floor(rnd() * 3)], sh = addBox(grp, fw + 0.2, 0.06, dp * 0.6, sm, 0, h + 1.1, dp * 0.15); sh.rotation.x = 0.12; addBox(grp, fw - 0.4, 1.0, dp * 0.55, mat, 0, h + 0.6, dp * 0.15); }
+        else addMesh(grp, new THREE.CylinderGeometry(0.6, 0.6, 1.4, 10), tankMat, fw * 0.2, h + 0.9, dp * 0.25);
+        grp.traverse(o => { if (o.isMesh) { o.castShadow = false; } });
+        layerGroups.context.add(grp);
+      }
+      t += fw;
     }
   });
 }
