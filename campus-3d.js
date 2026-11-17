@@ -13274,7 +13274,7 @@ function buildNewBuilding() {
     // 梯塔主體結構側牆與頂板 (西側山牆、東側隔牆、頂部結構板)
     // 西側在 1F~3F 為通往西棟之連通樓梯通道，徹底移除阻擋 1F/2F/3F 之實體封閉牆！僅在屋頂層 (y >= yRF) 保留梯塔山牆：
     addBox(g, 0.38, stTopY - yRF, stD, whiteTileMat, stX1 + 0.19, (yRF + stTopY) / 2, stCz);
-    addBox(g, 0.38, stTopY, stD, whiteTileMat, stX2 - 0.19, stTopY / 2, stCz);
+    addBox(g, 0.38, stTopY - yRF, stD, whiteTileMat, stX2 - 0.19, (yRF + stTopY) / 2, stCz);   // v2.12.68 依 1F～3F 平面圖：梯間東側與坡道／北走廊相通，僅屋頂層保留隔牆
     addBox(g, stW, 0.35, stD, mats.roof, stCx, stTopY, stCz);
 
     // 梯塔頂部：磁磚牆體 + 深灰梁帶 + 低坡度鋼板屋頂與銀白包邊 (照片 3F 以上梯間頂部)
@@ -13378,8 +13378,10 @@ function buildNewBuilding() {
       addBox(g, tw, landingY, zF - tzF, mats.concrete, tcx, landingY / 2, (zF + tzF) / 2);
       addBox(g, tw, landingY + 1.05, 0.24, whiteTileMat, tcx, (landingY + 1.05) / 2, tzF + 0.12);
       addBox(g, tw + 0.06, 0.08, 0.30, darkCopingMat, tcx, landingY + 1.09, tzF + 0.12);
-      addBox(g, 0.24, landingY + 1.05, zF - tzF, whiteTileMat, tx2 - 0.12, (landingY + 1.05) / 2, (zF + tzF) / 2);
-      addBox(g, 0.30, 0.08, zF - tzF + 0.06, darkCopingMat, tx2 - 0.12, landingY + 1.09, (zF + tzF) / 2);
+      // 階梯側端牆僅沿梯段下半，保留入口平台往西通往 1F 走廊平台之通道（v2.12.68 步行測試）
+      const cz2 = zF - 1.0;
+      addBox(g, 0.24, landingY + 1.05, cz2 - tzF, whiteTileMat, tx2 - 0.12, (landingY + 1.05) / 2, (cz2 + tzF) / 2);
+      addBox(g, 0.30, 0.08, cz2 - tzF + 0.06, darkCopingMat, tx2 - 0.12, landingY + 1.09, (cz2 + tzF) / 2);
     }
     for (const side of [1]) {
       const cheekX = entCx + side * 1.66;
@@ -22547,7 +22549,7 @@ const LOCAL_BUILDING_OBSTACLES = [
   ...LANDMARKS.filter(lm => lm.id === 'new-building' && lm.pxBounds).map(lm => { const [x1, y1, x2, y2] = lm.pxBounds; return { xf: NEW_XF, minX: X(x1) - 0.65, maxX: X(x2) + 0.65, minZ: Z(y1) - 0.65, maxZ: Z(y2) + 0.65 }; }),
   { xf: EAST_XF, minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(88) - 0.5,  maxZ: Z(199) },
   { xf: EAST_XF, minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(233),       maxZ: Z(315) + 0.5 },
-  { xf: WEST_XF, minX: -38.11 - 0.65, maxX: -24.31 + 0.65, minZ: -23.35 - 0.65, maxZ: 15.918 + 0.65 },
+  { xf: WEST_XF, minX: -38.25, maxX: -24.0, minZ: -23.35 - 0.65, maxZ: 15.918 + 0.65 },   // v2.12.68 東緣止於東走廊外緣（柱廊開放），避免走廊旁出現不可通行窄帶
   // v2.12.41 廚房：西翼南段與東翼（北側凸出部 1F 為穿廊、長巷可通行）
   { xf: WEST_XF, minX: -38.11 - 0.5, maxX: -31.0, minZ: -27.18 - 0.4, maxZ: -23.35 },
   { xf: WEST_XF, minX: -31.0, maxX: -23.22 + 0.3, minZ: -27.18 - 0.4, maxZ: -20.0 }
@@ -22592,6 +22594,9 @@ function isWalkPointAllowed(wx, wz) {
     if (wz >= -17.90 && wz <= -1.05 && wx >= -38.3 && wx <= -24.0) return true; // 1F 川堂, East-Up Staircase & Right-Turn Passage
   }
   [wx, wz] = [wx0, wz0];
+  // v2.12.68 新棟北側：1F 入口階梯、入口平台與西側 1F 走廊平台、北走廊、西棟↔新棟連通樓梯可通行（新棟建置局部座標）
+  { const [nx, nz0] = NEW_XF.toLocal(wx0, wz0), nz = nz0 - SOUTH_SHIFT;
+    if (nx >= -27.1 && nx <= -6.7 && nz >= 13.398 - 2.4 && nz <= 15.918) return true; }
 
   // New Building <-> South Building `⑩–⑪` Shared Corridor (`wx = -6.72..-4.22`, `wz = 8.78..24.15`): allow walking through the south picket gate and shared corridor!
   { const [nx, nz] = NEW_XF.toLocal(wx, wz); if (nx >= -6.85 && nx <= -4.10 && nz >= 8.20 + SOUTH_SHIFT && nz <= 24.50 + SOUTH_SHIFT) return true; }
@@ -22666,6 +22671,8 @@ function startWalkMode(startPos = null, lookTarget = null, keepRoute = false) {
   syncWalkHUD();
   showToast('已進入第一人稱校園地面步行模式（身高 1.72m · 自動避開建築牆體）');
 }
+
+window.__walk = { start: (...a) => startWalkMode(...a), exit: () => exitWalkMode(), state: walkState, allowed: (x, z) => isWalkPointAllowed(x, z) };   // v2.12.68 自動化步行測試用
 
 function exitWalkMode() {
   if (!walkState.active) return;
