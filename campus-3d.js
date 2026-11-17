@@ -12,7 +12,7 @@ const Z = (typeof window !== "undefined" && window.Z) || (py => (py - OY) * S);
 const LANDMARKS = (typeof window !== "undefined" && window.LANDMARKS) ? window.LANDMARKS : [];
 // v2.12.40 北棟／東棟／西棟定位轉換（定義於 campus-ui.js；局部座標 ⇄ 世界座標）
 const IDENT_XF = { th: 0, rotY: 0, toWorld: (x, z) => [x, z], toLocal: (x, z) => [x, z], apply: o => o };
-const NORTH_XF = window.NORTH_XF || IDENT_XF, EAST_XF = window.EAST_XF || IDENT_XF, WEST_XF = window.WEST_XF || IDENT_XF;
+const NORTH_XF = window.NORTH_XF || IDENT_XF, EAST_XF = window.EAST_XF || IDENT_XF, WEST_XF = window.WEST_XF || IDENT_XF, NEW_XF = window.NEW_XF || IDENT_XF;
 const lmToWorld = window.lmToWorld || ((id, x, z) => [x, z]);
 const BUILDING_XF_ROT = id => (window.BUILDING_XF && window.BUILDING_XF[id]) ? window.BUILDING_XF[id].rotY : 0;
 
@@ -13563,19 +13563,7 @@ function buildNewBuilding() {
       addMesh(g, new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12), whiteMetalMat, xStairWest + stairBayW / 2, yNew + 2.45, stairZ, false);
     });
 
-    // v2.12.62 西棟依航照與實測移位後，西棟南端與新棟北面之間留有 1～3 m 斜向間隙：
-    //   以白磁磚實體量體補實（西棟南面線 → 新棟北面 zE），但保留東側【西棟東走廊 ↔ 連通樓梯】通道（x > xCoreEast）不封閉
-    {
-      const fillMat = new THREE.MeshStandardMaterial({ color: 0xe4e8eb, roughness: 0.6 });
-      const sh = new THREE.Shape([[-36.70, 12.63], [xCoreEast, 13.49], [xCoreEast, zE], [-36.70, zE]].map(([x, z]) => new THREE.Vector2(x, -z)));
-      const geo = new THREE.ExtrudeGeometry(sh, { depth: 12.05, bevelEnabled: false });
-      geo.rotateX(-Math.PI / 2);
-      const m = new THREE.Mesh(geo, fillMat); m.castShadow = m.receiveShadow = true; g.add(m);
-      // 西向（操場側）實牆灰色分割線與屋頂女兒牆壓頂
-      addBox(g, 0.34, 0.16, zE - 12.63 + 0.2, whiteMetalMat, -36.70 + 0.05, 12.13, (12.63 + zE) / 2);
-      // 連通樓梯下層平台上方之 2F／3F 樓板與屋頂板（銜接西棟東走廊）
-      [3.95, 7.70, 11.30].forEach(yy => addBox(g, xStairWest - xCoreEast, 0.24, stairClearDepth + 0.40, terrazzoStepMat, wLandingCx, yy - 0.27, stairZ));
-    }
+    // v2.12.64 新棟北移 3 m 後已與西棟南端相接，移除 v2.12.62 之斜向補實量體
     // v2.12.62 依照片 90／92：連通樓梯南側白色粉刷牆，沿梯段斜向之暗紅色踢腳帶
     {
       const redSkirt = new THREE.MeshStandardMaterial({ color: 0x7a2630, roughness: 0.7 });
@@ -14662,7 +14650,7 @@ function buildNewBuilding() {
   //    (1:1 with `新棟正面立圖_南向.jpg` & `新棟南向正面_右手邊45度側面001.jpg`)
   // ==========================================================================
   {
-    const zWall = 34.80 - SOUTH_SHIFT; // 南側圍牆（v2.12.35 新棟群組北移後仍落在 z=34.8 之街道圍牆線）
+    const zWall = 34.80 - SOUTH_SHIFT - NEW_XF.toWorld(0, 0)[1]; // v2.12.64 新棟再北移 3 m，圍牆仍在街道線；南側圍牆（v2.12.35 新棟群組北移後仍落在 z=34.8 之街道圍牆線）
     const zMeet = 20.28; // 南棟南牆面標高（局部座標；群組北移後與南棟同為 14.28）
     const gateX1 = -24.20, gateX2 = -19.20; // 5.0m wide Kindergarten Main Gate opening
     const wallYellowMat  = new THREE.MeshStandardMaterial({ color: 0xf4df8e, roughness: 0.72 });
@@ -14879,7 +14867,7 @@ function buildNewBuilding() {
   }
 
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'new-building'; });
-  g.position.z = SOUTH_SHIFT;   // v2.12.35 依航照新棟整棟北移 6 m（與南棟一致）
+  g.position.z = SOUTH_SHIFT + NEW_XF.toWorld(0, 0)[1];   // v2.12.35 北移 6 m；v2.12.64 依航照與照片再北移 3 m
   layerGroups.buildings.add(g);
   clickableGroups.push(g);
   landmarkGroupMap.set('new-building', g);
@@ -22514,7 +22502,7 @@ function placeCameraOnRoute(t) {
 // Solid building obstacle footprints (excluding open plazas/tracks and East Breezeway passage)
 // v2.12.40 北棟由局部座標專屬判斷；西棟、東棟改以局部座標障礙盒（見下方 LOCAL_BUILDING_OBSTACLES）
 const SOLID_BUILDING_OBSTACLES = LANDMARKS
-  .filter(lm => ['south-building', 'new-building'].includes(lm.id) && lm.pxBounds)
+  .filter(lm => ['south-building'].includes(lm.id) && lm.pxBounds)
   .map(lm => {
     const [x1, y1, x2, y2] = lm.pxBounds;
     return {
@@ -22526,6 +22514,7 @@ const SOLID_BUILDING_OBSTACLES = LANDMARKS
   });
 // 局部座標障礙盒：東棟南北兩翼（保留 1F 中央穿堂 Z(199)..Z(233) 可通行）、西棟主體與北側廚房增建（含 v2.12.40 擴建段）
 const LOCAL_BUILDING_OBSTACLES = [
+  ...LANDMARKS.filter(lm => lm.id === 'new-building' && lm.pxBounds).map(lm => { const [x1, y1, x2, y2] = lm.pxBounds; return { xf: NEW_XF, minX: X(x1) - 0.65, maxX: X(x2) + 0.65, minZ: Z(y1) - 0.65, maxZ: Z(y2) + 0.65 }; }),
   { xf: EAST_XF, minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(88) - 0.5,  maxZ: Z(199) },
   { xf: EAST_XF, minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(233),       maxZ: Z(315) + 0.5 },
   { xf: WEST_XF, minX: -38.11 - 0.65, maxX: -24.31 + 0.65, minZ: -23.35 - 0.65, maxZ: 15.918 + 0.65 },
@@ -22575,7 +22564,7 @@ function isWalkPointAllowed(wx, wz) {
   [wx, wz] = [wx0, wz0];
 
   // New Building <-> South Building `⑩–⑪` Shared Corridor (`wx = -6.72..-4.22`, `wz = 8.78..24.15`): allow walking through the south picket gate and shared corridor!
-  if (wx >= -6.85 && wx <= -4.10 && wz >= 8.20 + SOUTH_SHIFT && wz <= 24.50 + SOUTH_SHIFT) return true;
+  { const [nx, nz] = NEW_XF.toLocal(wx, wz); if (nx >= -6.85 && nx <= -4.10 && nz >= 8.20 + SOUTH_SHIFT && nz <= 24.50 + SOUTH_SHIFT) return true; }
 
   // Remaining solid building obstacles (north-building box is handled above)
   if (LOCAL_BUILDING_OBSTACLES.some(b => { const [lx, lz] = b.xf.toLocal(wx, wz); return lx > b.minX && lx < b.maxX && lz > b.minZ && lz < b.maxZ; })) return false;

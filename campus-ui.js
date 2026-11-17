@@ -34,13 +34,16 @@ const EAST_XF = makeBuildingXf(5.967, [58.89, -10.0], [62.0, -12.45]);
 // 西棟（含北側廚房增建）：恢復原始 9 跨長度（30.11 m）後北移 6.02 m，南端仍接新棟北面 (z 9.9)；
 // v2.12.49 依航照與實景照片 5166／5167 整排東移 3.5 m（西側外牆 x −34.61）
 const WEST_XF = makeBuildingXf(5.074, [-38.11, -34.68], [-32.222, -43.766]);   // v2.12.58 依照片 86 與航照：三層樓本體沿棟軸北移 3 m（廚房增建縮短 3 m）   // v2.12.54 使用者實測：西棟西牆線（遮雨棚前緣）比廁所大樓西牆向西 1.35 m   // v2.12.51 以凸出部西北角為軸、與北棟同角度順時針轉 5.07°（航照：南端偏西）   // v2.12.50 再東移 3 m（遮雨棚進深約 3.5 m，依實景照片與航照 ③）
+// 新棟：v2.12.64 依航照與實景照片 4634／4897／4900 整棟再北移 3 m（北面 z≈6.9，與西棟西南角相接）；局部座標＝v2.12.63 之世界座標
+const NEW_XF = makeBuildingXf(0, [0, 0], [0, -3.0]);
 const BUILDING_XF = {
+  'new-building': NEW_XF,
   'north-building': NORTH_XF, 'playground-zone': NORTH_XF,
   'east-building': EAST_XF, 'breezeway-hub': EAST_XF,
   'west-building': WEST_XF
 };
 window.BUILDING_XF = BUILDING_XF;
-window.NORTH_XF = NORTH_XF; window.EAST_XF = EAST_XF; window.WEST_XF = WEST_XF;
+window.NORTH_XF = NORTH_XF; window.EAST_XF = EAST_XF; window.WEST_XF = WEST_XF; window.NEW_XF = NEW_XF;
 // 地標局部座標 → 世界座標（無轉換者原樣傳回）
 function lmToWorld(lmOrId, x, z) {
   const id = typeof lmOrId === 'string' ? lmOrId : lmOrId?.id;
