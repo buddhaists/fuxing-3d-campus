@@ -11516,6 +11516,12 @@ function buildWestBuilding() {
     for (let k = 1; k < 4; k++) addBox(g, 0.07, 0.52, 0.04, darkMetalMat, xWest - 0.06, y1F + 2.45, bz - sw / 2 + k * sw / 4, false);
   }
 
+  // v2.12.59 西棟南端與新棟北面交界：三層樓北移 3 m 後西側留出約 1 m 斜向空隙，以同高度白磁磚外牆與屋頂補實
+  {
+    const fz1 = zCol[0], fz2 = zCol[0] + 1.2, fh = yRF + parapetH;
+    addBox(g, totalW, fh, fz2 - fz1, whiteTileMat, (xWest + xEast) / 2, fh / 2, (fz1 + fz2) / 2);
+  }
+
   // ==========================================================================
   // 4. 2F & 3F CLASSROOM CORE (`西棟大樓_2F/3F建築平面圖.jpg`)
   // ==========================================================================
@@ -11905,28 +11911,20 @@ function buildWestBuilding() {
         addBox(g, westCorW, 0.02, stairBayD - 0.08, stairLandingTerrazzo, westCorCx, fy + 0.01, stairBayCz);
         
         // 操場側（西向 x = xWest）依據 20261110_160131.jpg 與 20261110_160152.jpg 實景重構為連續二丁掛白磁磚外牆：
-        if (fl === 2) {
-          // 2F: 白色二丁掛磁磚連續外牆 + 4格採光窗（無縫銜接西棟 2F 與廚房增建 2F 連續立面）
-          addBox(g, 0.26, 1.15, stairBayD, whiteTileMat, xWest + 0.14, fy + 1.15 / 2, stairBayCz);
-          addBox(g, 0.26, fh - 2.60, stairBayD, whiteTileMat, xWest + 0.14, fy + 2.60 + (fh - 2.60) / 2, stairBayCz);
-          const pierD = (stairBayD - 2.35) / 2;
-          addBox(g, 0.26, 1.45, pierD, whiteTileMat, xWest + 0.14, fy + 1.15 + 1.45 / 2, zStairSouth - pierD / 2);
-          addBox(g, 0.26, 1.45, pierD, whiteTileMat, xWest + 0.14, fy + 1.15 + 1.45 / 2, zStairNorth + pierD / 2);
-          const w2F_Stair = addMesh(g, new THREE.PlaneGeometry(2.35, 1.40), winFrost4Mat, xWest - 0.06, fy + 1.15 + 1.40 / 2, stairBayCz, false);
-          w2F_Stair.rotation.y = -Math.PI / 2;
-          addBox(g, 0.08, 1.45, 2.40, darkMetalMat, xWest + 0.01, fy + 1.15 + 1.45 / 2, stairBayCz);
-        } else {
-          // 3F: 白色二丁掛磁磚外牆 + 延續西棟 3F 全線淺綠色水平遮陽百葉與採光窗
-          addBox(g, 0.26, 1.15, stairBayD, whiteTileMat, xWest + 0.14, fy + 1.15 / 2, stairBayCz);
-          addBox(g, 0.26, fh - 2.95, stairBayD, whiteTileMat, xWest + 0.14, fy + 2.95 + (fh - 2.95) / 2, stairBayCz);
-          for (let lv = 0; lv < 5; lv++) {
-            const ly = fy + 1.35 + lv * 0.38;
-            const louver = addBox(g, 0.42, 0.04, stairBayD - 0.08, greenLouverMat, xWest - 0.08, ly, stairBayCz);
-            louver.rotation.z = -0.22;
+        // v2.12.59 依照片 86／81：北端樓梯間 2F、3F 面向操場為開放走廊（白磁磚矮牆＋天藍扶手，上緣大樑），可見內部樓梯
+        {
+          const pH = 1.06, beamH = 0.48;
+          addBox(g, 0.24, pH, stairBayD - 0.2, whiteTileMat, xWest + 0.14, fy + pH / 2, stairBayCz);
+          addBox(g, 0.38, beamH, stairBayD, whiteTileMat, xWest + 0.19, fy + fh - beamH / 2 - 0.12, stairBayCz);
+          addBox(g, 0.045, 0.045, stairBayD - 0.3, skyBlueRailMat, xWest + 0.14, fy + pH + 0.22, stairBayCz);
+          addBox(g, 0.035, 0.035, stairBayD - 0.3, skyBlueRailMat, xWest + 0.14, fy + pH + 0.11, stairBayCz);
+          for (let p = -1; p <= 1; p++) addBox(g, 0.04, 0.24, 0.04, skyBlueRailMat, xWest + 0.14, fy + pH + 0.12, stairBayCz + p * (stairBayD * 0.34));
+          if (fl === 3) {   // 3F 百葉延續
+            for (let bl = 0; bl < 9; bl++) addBox(g, 0.10, 0.05, stairBayD - 0.1, greenLouverMat, xWest + 0.06, fy + fh - 0.48 - 0.86 + 0.05 + bl * 0.096, stairBayCz).rotation.z = 0.12;
           }
-          const w3F_Stair = addMesh(g, new THREE.PlaneGeometry(2.35, 1.50), win4x3Mat, xWest - 0.03, fy + 1.15 + 1.50 / 2, stairBayCz, false);
-          w3F_Stair.rotation.y = -Math.PI / 2;
-          addBox(g, 0.08, 1.55, 2.40, darkMetalMat, xWest + 0.05, fy + 1.15 + 1.55 / 2, stairBayCz);
+          // 開口內側陰影（樓梯間內牆）
+          const sh = addMesh(g, new THREE.PlaneGeometry(stairBayD - 0.5, fh - 0.4), new THREE.MeshBasicMaterial({ color: 0x6a6f75 }), xCoreWest - 0.03, fy + (fh - 0.4) / 2, stairBayCz, false);
+          sh.rotation.y = -Math.PI / 2;
         }
         addBox(g, 0.46, fh - 0.20, 0.46, colTileMat, xWest + 0.23, fy + (fh - 0.20) / 2, zStairNorth + 0.23);
         addBox(g, 0.42, fh - 0.20, 0.42, colTileMat, xCoreWest,    fy + (fh - 0.20) / 2, zStairNorth + 0.21);
