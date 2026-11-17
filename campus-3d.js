@@ -1194,7 +1194,7 @@ const CAMPUS_PERIMETER_PX = [
   [772, 320], // V3: 學校新南側門 (建興南路42巷 · 東棟大樓右側)
   [715, 294.9], // V3a: 南棟東端（v2.12.34 南棟北移後南緣折點）
   [496, 294.9], // V4: 學校舊南側門 (建興南路42巷 · 南棟興學樓西端)
-  [438, 374], // V4b: 幼兒園大門東柱 / 南圍牆折角 (建興南路42巷)
+  // v2.12.74 依衛星圖：幼兒園南側圍牆沿 42 巷為單一斜線，移除 V4b 折角
   [367, 374], // V5: 幼兒園西端 / 運動場南側圍牆交界
   [180, 480], // V6: 運動場西南尖端
   [152.9, 437.2], [134.6, 381.8], [105.2, 308.8], [76.2, 245.3],   // 西牆斜段（依衛星圖）
@@ -1380,12 +1380,13 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     rGrp.rotation.y = ang;
 
     // Asphalt road bed (`柏油馬路`)
-    addBox(rGrp, len + 8.0, 0.10, roadW, asphaltMat, 0, 0.04, 0, false);
+    const ext = opts.ext !== undefined ? opts.ext : 8.0;   // v2.12.74 圓弧短段延伸量
+    addBox(rGrp, len + ext, 0.10, roadW, asphaltMat, 0, 0.04, 0, false);
     // White road edge lines (`道路雙側白邊線`)
     // 校園側（內側）邊線：opts.innerRed 依街景改為緊貼緣石之紅色禁止臨時停車線
-    if (opts.innerRed) addBox(rGrp, len + 7.6, 0.115, 0.16, roadRedLineMat, 0, 0.055, -outSign * (roadW / 2 - 0.14), false);
-    else addBox(rGrp, len + 7.6, 0.115, 0.18, lineWhiteMat, 0, 0.055, -outSign * (roadW / 2 - 0.45), false);
-    addBox(rGrp, len + 7.6, 0.115, 0.18, lineWhiteMat, 0, 0.055, outSign * (roadW / 2 - 0.45), false);
+    if (opts.innerRed) addBox(rGrp, len + ext - 0.4, 0.115, 0.16, roadRedLineMat, 0, 0.055, -outSign * (roadW / 2 - 0.14), false);
+    else addBox(rGrp, len + ext - 0.4, 0.115, 0.18, lineWhiteMat, 0, 0.055, -outSign * (roadW / 2 - 0.45), false);
+    addBox(rGrp, len + ext - 0.4, 0.115, 0.18, lineWhiteMat, 0, 0.055, outSign * (roadW / 2 - 0.45), false);
     // 沿校園側緣石路邊停車（opts.parked：沿路段位置 0..1 與車色）
     (opts.parked || []).forEach(([t, color], i) => {
       const car = buildParkedSedan(color, i);
@@ -1416,7 +1417,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [X(955), Z(74),  5.0], // 東側門
     [X(772), Z(320), 4.5], // 學校新南側門 (東棟大樓右側)
     [X(657), Z(294.9), 4.8], // 學校舊南側門 (南棟大樓東側 1F 興學樓大字下通道後面)
-    [X(429), Z(374), 4.5], // 幼兒園大門 (新棟大樓南側大門)
+    [X(367) + 16.1 / Math.hypot(1, (Z(294.9) - Z(374)) / (X(496) - X(367))), Z(374) + 16.1 * ((Z(294.9) - Z(374)) / (X(496) - X(367))) / Math.hypot(1, (Z(294.9) - Z(374)) / (X(496) - X(367))), 4.5], // 幼兒園大門（v2.12.74 隨圍牆斜線）
     [X(62.44), Z(-18.1),  5.0], // 學校後門（v2.12.33 依使用者航照標示）
     [X(79.4), Z(260.4), 4.2]  // 司令台後小門
   ];
@@ -1443,18 +1444,34 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   addBufferedRoadSegment(X(166), Z(486), X(374), Z(371), 1, 2.2, 8.4, true, [0.10, 0.90], { parked: [[0.24, 0x2b2d31], [0.34, 0x8a8f96], [0.47, 0xe5e7eb], [0.66, 0x1f3a5f], [0.76, 0x9ca3af]] });
 
   // (C) Kindergarten & South Building Commuter Walkway (`建興南路 42 巷` 通學步道與馬路):
-  // Segment 4a: Along Kindergarten Front Wall & Main Gate (`V5(367,374) -> V4b(438,374)`)
-  addCommuterWalkwayStrip(X(367), Z(374), X(438), Z(374), 1, 3.0, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
-  addBufferedRoadSegment(X(367), Z(374), X(438), Z(374), 1, 3.0, 6.0, false, [0.87], { innerRed: true });   // v2.12.73 依街景：42巷為約 6 m 單一車道、無中線
-
-  // Segment 4b: Along Kindergarten East Stepped Wall to South Building West Corner (`V4b(438,374) -> V4(496,318)`)
-  addCommuterWalkwayStrip(X(438), Z(374), X(496), Z(294.9), 1, 3.0, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
-  addBufferedRoadSegment(X(438), Z(374), X(496), Z(294.9), 1, 3.0, 6.0, false, [], { innerRed: true });
+  // v2.12.74 依衛星圖：42 巷自運動場南側一路斜向東北，沿幼兒園南牆直抵南棟西端，再以約 R=22 m 圓弧轉為東西向
+  {
+    const A = [X(367), Z(374)], B = [X(496), Z(294.9)], C = [X(715), Z(294.9)];
+    const R = 22, d1 = [B[0] - A[0], B[1] - A[1]], L1 = Math.hypot(...d1), u1 = [d1[0] / L1, d1[1] / L1], u2 = [1, 0];
+    const th = Math.acos(u1[0] * u2[0] + u1[1] * u2[1]), T = R * Math.tan(th / 2);
+    const P1 = [B[0] - u1[0] * T, B[1] - u1[1] * T], P2 = [B[0] + T, B[1]];
+    const tile = { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true };
+    window.__LANE42_ARC = { A, P1, B, P2, C, R };
+    addCommuterWalkwayStrip(A[0], A[1], P1[0], P1[1], 1, 3.0, false, gateExclusionZones, false, tile);
+    addBufferedRoadSegment(A[0], A[1], P1[0], P1[1], 1, 3.0, 6.0, false, [0.22], { innerRed: true });
+    // 圓弧段（以多段短直線組成；校界內側弧＝人行道內緣）
+    const cen = [P1[0] - u1[1] * R, P1[1] + u1[0] * R];   // 弧心位於道路外側（南），弧線自斜向轉為東西向
+    const a0 = Math.atan2(P1[1] - cen[1], P1[0] - cen[0]), a1 = Math.atan2(P2[1] - cen[1], P2[0] - cen[0]);
+    const N = 6;
+    for (let i = 0; i < N; i++) {
+      const t0 = a0 + (a1 - a0) * i / N, t1 = a0 + (a1 - a0) * (i + 1) / N;
+      const q0 = [cen[0] + R * Math.cos(t0), cen[1] + R * Math.sin(t0)], q1 = [cen[0] + R * Math.cos(t1), cen[1] + R * Math.sin(t1)];
+      addCommuterWalkwayStrip(q0[0], q0[1], q1[0], q1[1], 1, 3.6, false, gateExclusionZones, false, tile);
+      addBufferedRoadSegment(q0[0], q0[1], q1[0], q1[1], 1, 3.6, 6.0, false, [], { innerRed: true, ext: 0.6 });
+    }
+    window.__LANE42_ARC.P2 = P2;
+  }
 
   // Segment 5: Along South Building (南棟興學樓) & East Building South Facade to 學校新南側門 (`V4(496,318) -> V3(772,320)`)
   // v2.12.4 依 2024 街景：南棟前七彩欄杆外仍有約 2.4 m 淨寬人行道（含行道樹），人行道加寬至 4.8 m；
   //          灰褐方形地磚、淡紫色緣石，校園側路緣為紅線
   addCommuterWalkwayStrip(X(496), Z(294.9), X(715), Z(294.9), 1, 4.8, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
+  // （v2.12.74 南棟段西端與上方圓弧段重疊銜接）
   addCommuterWalkwayStrip(X(715), Z(294.9), X(772), Z(320), 1, 4.8, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
   addBufferedRoadSegment(X(496), Z(294.9), X(715), Z(294.9), 1, 4.8, 6.0, false, [0.08], { innerRed: true });
   addBufferedRoadSegment(X(715), Z(294.9), X(772), Z(320), 1, 4.8, 6.0, false, [0.9], { innerRed: true });
@@ -1464,7 +1481,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   addCommuterWalkwayStrip(X(772), Z(320), X(955), Z(326), 1, 4.8, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
   addBufferedRoadSegment(X(770), Z(321), X(960), Z(327), 1, 4.8, 6.0, false, [0.82], { innerRed: true });
   // v2.12.73 依街景（10、12 建興南路42巷）：巷口黃色網狀禁止臨停區
-  [[X(772) + 1.5, Z(320) + 4.8 + 0.35 + 3.0, 6.0, 5.4], [X(438) + 2.0, Z(374) + 3.0 + 0.35 + 3.0, 6.0, 5.4]].forEach(([cx, cz, w, d]) => {
+  [[X(772) + 1.5, Z(320) + 4.8 + 0.35 + 3.0, 6.0, 5.4], [X(367) + 18.5, Z(374) + 18.5 * (Z(294.9) - Z(374)) / (X(496) - X(367)) + 7.6, 6.0, 5.4]].forEach(([cx, cz, w, d]) => {
     const yb = new THREE.Group(); yb.position.set(cx, 0.115, cz);
     const ym = new THREE.MeshBasicMaterial({ color: 0xe8c33a });
     [[0, -d / 2, w, 0.15], [0, d / 2, w, 0.15], [-w / 2, 0, 0.15, d], [w / 2, 0, 0.15, d]].forEach(([x, z, a, b]) => addBox(yb, a, 0.01, b, ym, x, 0, z, false));
@@ -3413,7 +3430,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   ];
   segs.push([X(166), Z(486), X(374), Z(371), 2.2 + 0.35 + 8.4]);
   // v2.12.73 依街景：42巷東段（幼兒園、南棟、前庭對面）同為連棟透天街屋，臨 6 m 窄巷
-  segs.push([X(367), Z(374), X(438), Z(374), 3.0 + 0.35 + 6.0]);
+  segs.push([X(367), Z(374), X(496) - 8, Z(294.9) + 8 * (Z(374) - Z(294.9)) / (X(496) - X(367)), 3.0 + 0.35 + 6.0]);   // v2.12.74 沿斜向 42 巷
   segs.push([X(496), Z(294.9), X(715), Z(294.9), 4.8 + 0.35 + 6.0]);
   segs.push([X(715), Z(294.9), X(772), Z(320), 4.8 + 0.35 + 6.0]);
   segs.push([X(772), Z(320), X(955), Z(326), 4.8 + 0.35 + 6.0]);
@@ -14749,6 +14766,12 @@ function buildNewBuilding() {
     const zWall = 34.80 - SOUTH_SHIFT - NEW_XF.toWorld(0, 0)[1]; // v2.12.64 新棟再北移 3 m，圍牆仍在街道線；南側圍牆（v2.12.35 新棟群組北移後仍落在 z=34.8 之街道圍牆線）
     const zMeet = 20.28; // 南棟南牆面標高（局部座標；群組北移後與南棟同為 14.28）
     const gateX1 = -24.20, gateX2 = -19.20; // 5.0m wide Kindergarten Main Gate opening
+    // v2.12.74 依衛星圖：幼兒園南側圍牆沿建興南路42巷成一直線斜向（校界 V5→V4），原「水平段＋斜段」改為單一斜線
+    const gZ = SOUTH_SHIFT + NEW_XF.toWorld(0, 0)[1];                       // 新棟群組 z 位移
+    const bk = (Z(294.9) - Z(374)) / (X(496) - X(367));                      // 校界斜率 dz/dx
+    const Lz = x => Z(374) + (x - X(367)) * bk - gZ;                          // 校界線（新棟局部 z）
+    const bCos = 1 / Math.hypot(1, bk), bSin = bk / Math.hypot(1, bk);
+    const Pw = sAlong => [ax(1) + sAlong * bCos, Lz(ax(1)) + sAlong * bSin];   // 沿校界自西端起算
     const wallYellowMat  = new THREE.MeshStandardMaterial({ color: 0xf4df8e, roughness: 0.72 });
     const capGoldMat     = new THREE.MeshStandardMaterial({ color: 0xe5b53c, roughness: 0.58 });
     const darkIronMat    = new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.35, metalness: 0.72 });
@@ -14763,16 +14786,15 @@ function buildNewBuilding() {
 
     // --- 5.1 Outdoor Playground Surface (`zA = 26.70m` to `zWall = 34.80m`, 100% Inside Perimeter Wall!) ---
     // 西段操場/前庭草坪 (ax(1) 至 gateX2 = -19.20，直壁圍牆段 z = 26.70 ~ 34.80)
-    const westYardW = gateX2 - ax(1);
-    const westYardCx = (ax(1) + gateX2) / 2;
-    const yardD = zWall - zA; // 8.10m
-    const yardCz = (zA + zWall) / 2;
-    addBox(g, westYardW, 0.08, yardD, turfGreenMat, westYardCx, 0.04, yardCz);
+    const yardD = Lz(ax(1)) - zA;
+    const yardCz = (zA + Lz(ax(1))) / 2;
+    { const tp = flatXZPoly([[ax(1), zA], [ax(11), zA], [ax(11), Lz(ax(11)) - 0.3], [ax(1), Lz(ax(1)) - 0.3]].map(([x, z]) => new THREE.Vector3(x, 0, z)), turfGreenMat, 0.08, g, 0.3); tp.renderOrder = 0; }
+    const yardC0 = g.children.length;
 
     // 東段草坪 (gateX2 至 ax(11)，梯形斜邊段：嚴格受限於斜向圍牆內，不突出圍牆)
     const eastSegs = 8;
     const eastSegW = (ax(11) - gateX2) / eastSegs;
-    for (let s = 0; s < eastSegs; s++) {
+    for (let s = 0; s < 0; s++) {   // v2.12.74 已改為上方單一多邊形草坪
       const sx1 = gateX2 + s * eastSegW;
       const sx2 = sx1 + eastSegW;
       const scx = (sx1 + sx2) / 2;
@@ -14792,12 +14814,15 @@ function buildNewBuilding() {
     // --- 5.2 West Pastel-Yellow Wall with Green Glass Bulletin Board (`ax(1)=-37.83` to `gateX1=-24.20`) ---
     const westWallW = gateX1 - ax(1);       // 13.63m
     const westWallCx = (ax(1) + gateX1) / 2;
+    const wallC0 = g.children.length;
     // Solid pastel-yellow wall with sloped cap
     addBox(g, westWallW, 2.05, 0.36, wallYellowMat, westWallCx, 1.025, zWall);
     addBox(g, westWallW + 0.12, 0.14, 0.48, capGoldMat, westWallCx, 2.12, zWall);
+    const wallC1 = g.children.length;
     // West return wall closing `ax(1)` from `zA` to `zWall`
     addBox(g, 0.36, 2.05, yardD, wallYellowMat, ax(1) + 0.18, 1.025, yardCz);
     addBox(g, 0.46, 0.14, yardD + 0.1, capGoldMat, ax(1) + 0.18, 2.12, yardCz);
+    const wallC2 = g.children.length;
 
     // Glass-fronted Mint-Green Bulletin Board ("屏東復興非營利幼兒園 教保活動訊息：雨露與新芽") mounted on West Wall
     const bbTex = makeKindergartenBulletinBoardTexture();
@@ -14859,12 +14884,20 @@ function buildNewBuilding() {
       g.add(leafGrp);
     }
 
+    // v2.12.74 西段圍牆、公布欄、大門柱、鐵門與銘牌：以西端 (ax(1), 校界) 為軸轉到校界斜線上（西側回牆不轉）
+    {
+      const piv = new THREE.Group(); piv.position.set(ax(1), 0, Lz(ax(1))); piv.rotation.y = -Math.atan(bk);
+      const mv = g.children.slice(wallC0, wallC1).concat(g.children.slice(wallC2));
+      mv.forEach(o => { o.position.x -= ax(1); o.position.z -= zWall; piv.add(o); });
+      g.add(piv);
+    }
     // --- 5.4 East Stepped Pastel-Yellow Perimeter Wall (`gateX2=-19.20` to `ax(11)=-4.22`) ---
     // 參照學校平面圖進行延伸：自幼兒園大門斜向平順延伸銜接至南棟大樓西端 (Z=20.28m) 與舊南側門，形成連續通學步道界面！
-    const eastWallX1 = gateX2 + 0.46, eastWallX2 = ax(11);
+    const eastWallX1 = Pw(gateX2 + 0.46 - ax(1))[0], eastWallX2 = ax(10) + 0.3;   // v2.12.74 沿校界斜線至共用走廊口
     const nEastBays = 4;
-    const eastBayW = (eastWallX2 - eastWallX1) / nEastBays;
-    const wallAng = -Math.atan2(zMeet - zWall, eastWallX2 - eastWallX1);
+    const eastBayW = (eastWallX2 - eastWallX1) / (nEastBays - 1);
+    const zWallE = Lz(eastWallX1), zMeetE = Lz(eastWallX1 + eastBayW * nEastBays);
+    const wallAng = -Math.atan(bk);
 
     for (let i = 0; i < nEastBays; i++) {
       // 依街景照片：圍牆止於新棟東南轉角，通道南口 (欄杆小門) 直接面向人行道，不再有斜牆橫亙其前
@@ -14874,8 +14907,8 @@ function buildNewBuilding() {
       const bcx = (bx1 + bx2) / 2;
       const tMid = (i + 0.5) / nEastBays;
       const tEnd = (i + 1.0) / nEastBays;
-      const bcz = zWall + tMid * (zMeet - zWall);
-      const bz2 = zWall + tEnd * (zMeet - zWall);
+      const bcz = zWallE + tMid * (zMeetE - zWallE);
+      const bz2 = zWallE + tEnd * (zMeetE - zWallE);
 
       const bayGrp = new THREE.Group();
       bayGrp.position.set(bcx, 0, bcz);
@@ -14904,8 +14937,8 @@ function buildNewBuilding() {
 
     // 幼兒園招生宣傳大型橫額 ("選擇復興 非營利幼兒園 家長安心")
     const bannerTex = makeFenceBannerTexture();
-    const bannerMidX = (eastWallX1 + eastWallX2) / 2;
-    const bannerMidZ = (zWall + zMeet) / 2;
+    const bannerMidX = (eastWallX1 + eastWallX2) / 2;   // v2.12.74
+    const bannerMidZ = Lz(bannerMidX);
     const bMesh = addMesh(g, new THREE.PlaneGeometry(5.6, 0.86), new THREE.MeshBasicMaterial({ map: bannerTex }), bannerMidX, 1.48, bannerMidZ + 0.25, false);
     bMesh.rotation.y = wallAng;
 
