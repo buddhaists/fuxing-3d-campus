@@ -1150,8 +1150,9 @@ function makeCampusLawnTexture() {
 //  FU-SHING 北端 (px 488) ↔ z −12.6、東側門 (px 760) ↔ z −40；平面圖縱橫比例不一，故分段換算。
 // ============================================================================
 const FORECOURT_SOUTH_CURVE = [   // [x, z]，由東（花台）往西（新南側門）
-  [108.1, 21.6], [104.6, 20.6], [101.7, 19.5], [97.2, 18.5], [92.0, 18.3],
-  [86.9, 19.0], [83.0, 20.2], [79.2, 20.9], [74.1, 21.0], [70.2, 20.8]
+  // v2.12.71 依前庭平面圖重新描點：內凹最深處位於 x≈97（約 2.5 m），兩端緩和收回
+  [108.1, 21.6], [105.8, 21.3], [103.4, 20.6], [100.8, 19.7], [97.4, 19.1], [93.6, 19.2],
+  [89.6, 19.8], [85.6, 20.6], [81.0, 21.1], [75.5, 21.1], [70.2, 20.8]
 ];
 const FORECOURT_NORTH_CURVE = [   // [x, z]，由南（FU-SHING 矮牆北端）往北（東側門南柱）
   [113.8, -12.6], [112.9, -18.0], [111.6, -23.0], [110.4, -28.0], [109.9, -33.5], [111.0, -37.5], [113.9, -40.3]
@@ -16761,8 +16762,15 @@ function buildMainGateLayer() {
   // ================================================================
   const wallStart = new THREE.Vector3(pylonX - 0.02, 0, pylonZ + 7.65);
   const wallEnd = P2W(178, 592);
-  const wallMid = new THREE.Vector3((wallStart.x + wallEnd.x) / 2, 0, (wallStart.z + wallEnd.z) / 2);
-  const wallCurve = new THREE.CatmullRomCurve3([wallStart, wallMid, wallEnd], false, 'centripetal');
+  // v2.12.71 依前庭平面圖：大門左側矮牆由大門端柱斜向西南，接一段向草坪內凹之半圓（開口朝復興路，內設方形植穴），
+  //   再沿圓弧花台北緣接回花台（原為直線斜牆）
+  const wallCurve = new THREE.CatmullRomCurve3([
+    wallStart,
+    new THREE.Vector3(111.6, 0, 13.25), new THREE.Vector3(108.6, 0, 13.55),
+    new THREE.Vector3(106.6, 0, 14.15), new THREE.Vector3(105.55, 0, 15.15),
+    new THREE.Vector3(105.75, 0, 16.2), new THREE.Vector3(106.6, 0, 16.85),
+    wallEnd
+  ], false, 'centripetal');
   const wallLen = wallCurve.getLength();
   const wAt = s => wallCurve.getPointAt(Math.min(1, Math.max(0, s / wallLen)));
   const wTan = s => { const t = wallCurve.getTangentAt(Math.min(1, Math.max(0, s / wallLen))); t.y = 0; return t.normalize(); };
