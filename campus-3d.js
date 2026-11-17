@@ -13369,10 +13369,19 @@ function buildNewBuilding() {
 
     // 階梯兩側：西側(照片右側)為長條白色磁磚低矮花台牆 + 深灰壓頂；東側為短翼牆
     const wallZ = zF - nSteps * stepRun * 0.5;
+    const xStairWestJ = ax(4);   // 西棟 1F 走廊東緣
     const wLen = (entCx - 1.66) - (stX1 + 0.25);
-    addBox(g, wLen, 1.00, nSteps * stepRun + 0.45, whiteTileMat, stX1 + 0.25 + wLen / 2, 0.50, wallZ + 0.1);
-    addBox(g, wLen + 0.06, 0.08, nSteps * stepRun + 0.52, darkCopingMat, stX1 + 0.25 + wLen / 2, 1.04, wallZ + 0.1);
-    for (const side of [-1, 1]) {
+    // v2.12.67 使用者標示照片（黃框「新棟 1F 走廊牆壁」）：階梯西側為 1F 走廊平台＋前緣白磁磚實牆，
+    //   牆面與階梯最下階切齊、高出平台約 1.05 m，向西直抵西棟 1F 走廊（紅框）
+    {
+      const tx1 = xStairWestJ, tx2 = entCx - 1.30, tzF = zF - nSteps * stepRun, tw = tx2 - tx1, tcx = (tx1 + tx2) / 2;
+      addBox(g, tw, landingY, zF - tzF, mats.concrete, tcx, landingY / 2, (zF + tzF) / 2);
+      addBox(g, tw, landingY + 1.05, 0.24, whiteTileMat, tcx, (landingY + 1.05) / 2, tzF + 0.12);
+      addBox(g, tw + 0.06, 0.08, 0.30, darkCopingMat, tcx, landingY + 1.09, tzF + 0.12);
+      addBox(g, 0.24, landingY + 1.05, zF - tzF, whiteTileMat, tx2 - 0.12, (landingY + 1.05) / 2, (zF + tzF) / 2);
+      addBox(g, 0.30, 0.08, zF - tzF + 0.06, darkCopingMat, tx2 - 0.12, landingY + 1.09, (zF + tzF) / 2);
+    }
+    for (const side of [1]) {
       const cheekX = entCx + side * 1.66;
       const nSegments = 4;
       const segLen = (nSteps * stepRun + 0.30) / nSegments;
@@ -13624,13 +13633,6 @@ function buildNewBuilding() {
       // C.4 兩端結構支撐方柱 (Axis 4 與 Axis 6)
       addBox(g, 0.44, FH - 0.52, 0.44, whiteTileMat, xStairWest + 0.22, fy + (FH - 0.52) / 2, facadeZ);
       addBox(g, 0.44, FH - 0.52, 0.44, whiteTileMat, xTopLandEast - 0.22, fy + (FH - 0.52) / 2, facadeZ);
-    }
-
-    // v2.12.66 依使用者照片：梯間 1F 入口西側為白磁磚矮牆（深色壓頂）直抵西棟轉角
-    {
-      const lwx1 = xStairWest, lwx2 = entCx - 1.20;
-      addBox(g, lwx2 - lwx1, 1.15, 0.26, whiteTileMat, (lwx1 + lwx2) / 2, 0.575, facadeZ);
-      addBox(g, lwx2 - lwx1 + 0.06, 0.08, 0.34, darkCopingMat, (lwx1 + lwx2) / 2, 1.19, facadeZ);
     }
 
     // ------------------------------------------------------------------------
