@@ -13023,6 +13023,30 @@ function makeTerracottaTilePatternTexture() {
 }
 
 // ---- 04 新棟（復興非營利幼兒園） (`buildNew` — 1:1 Floor Plan & Photo-Accurate Build) ----
+// v2.12.64 二丁掛白磁磚（227×60 mm、錯縫、灰色勾縫）：以世界座標程序式產生，不受方塊 UV 拉伸影響；遠處以 fwidth 淡化避免疊紋
+function makeErdingguaTileMat(baseHex = 0xe7eaec, groutMul = 0.60) {
+  const m = new THREE.MeshStandardMaterial({ color: baseHex, roughness: 0.7 });
+  m.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vEWPos; varying vec3 vEWNrm;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvEWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vEWNrm = normalize(mat3(modelMatrix) * objectNormal);');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vEWPos; varying vec3 vEWNrm;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          vec3 an = abs(vEWNrm);
+          vec2 q = an.x > 0.5 ? vEWPos.zy : (an.z > 0.5 ? vEWPos.xy : vEWPos.xz);
+          float rowH = 0.068, colW = 0.235;
+          float r = floor(q.y / rowH);
+          float u = q.x / colW + 0.5 * mod(r, 2.0), v = q.y / rowH;
+          float fu = fract(u), fv = fract(v);
+          float gl = max(1.0 - smoothstep(0.0, 0.04, min(fu, 1.0 - fu)), 1.0 - smoothstep(0.0, 0.12, min(fv, 1.0 - fv)));
+          float fw = max(fwidth(u), fwidth(v));
+          gl *= clamp(1.0 - (fw - 0.08) * 6.0, 0.0, 1.0);
+          diffuseColor.rgb *= mix(1.0, ${groutMul.toFixed(2)}, gl);
+        }`);
+  };
+  return m;
+}
+
 function buildNewBuilding() {
   const g = new THREE.Group();
   g.userData = { landmarkId: 'new-building' };
@@ -13053,7 +13077,7 @@ function buildNewBuilding() {
 
   // Custom Materials
   const creamWallMat     = new THREE.MeshStandardMaterial({ color: 0xf2eee3, roughness: 0.72 });
-  const whiteTileMat     = mats.wallTile;
+  const whiteTileMat     = makeErdingguaTileMat();   // v2.12.64 依照片：白色二丁掛磁磚錯縫灰縫（原素白磁磚）
   const darkCopingMat    = new THREE.MeshStandardMaterial({ color: 0x45494e, roughness: 0.65 });
   const terracottaBoxMat = new THREE.MeshStandardMaterial({ map: makeTerracottaTilePatternTexture(), roughness: 0.68 });
   const greenDiamondMat  = new THREE.MeshStandardMaterial({ color: 0x2f6d68, roughness: 0.42, metalness: 0.15 });   // v2.12.63 照片 95：小型青綠菱形磁磚
@@ -13266,6 +13290,11 @@ function buildNewBuilding() {
     }
     addBox(g, stW + 0.36, 0.16, 0.10, roofMetalMat, stCx, stTopY + 0.16, zF - 0.30);   // 前緣銀白包邊
     addBox(g, stW + 0.44, 0.05, 0.14, whiteMetalMat, stCx, stTopY + 0.06, zF - 0.30); // 滴水條
+    // v2.12.64 依照片：梯塔屋頂挑簷下等距黑色鋼托架
+    for (let k = 0; k <= 4; k++) {
+      const bx = stX1 + 0.3 + k * ((stW - 0.6) / 4);
+      const br = addBox(g, 0.06, 0.05, 0.55, darkCopingMat, bx, stTopY - 0.12, zF - 0.10, false); br.rotation.x = 0.62;
+    }
 
     // 1F 迎賓門楣橫梁：照片中 1F/2F 間為深灰清水混凝土水平深梁 (正面不貼磁磚)
     addBox(g, stW, 0.52, 0.42, exposedConcreteBeamMat, stCx, 3.36, zF + 0.20);
@@ -13647,6 +13676,17 @@ function buildNewBuilding() {
     addBox(g, nCorW + 0.08, 0.09, 0.36, darkCopingMat, nCorCx, yRF + 0.92, zE + 0.14);
     // 屋頂銀白金屬防雨滴水簷口邊條 (Silver Metal Roof Trim)
     addBox(g, nCorW + 0.16, 0.06, 0.44, roofMetalMat, nCorCx, yRF + 0.97, zE + 0.14);
+    // v2.12.64 依照片 4897／4900：中段屋頂灰色金屬浪板向北挑出約 0.8 m，簷下等距黑色鋼托架
+    {
+      const eave = new THREE.Mesh(new THREE.BoxGeometry(nCorW + 0.6, 0.05, 0.95), roofTileRedMat);
+      eave.position.set(nCorCx, yRF + 1.30, zE - 0.30); eave.rotation.x = -0.12; g.add(eave);
+      addBox(g, nCorW + 0.64, 0.10, 0.06, roofMetalMat, nCorCx, yRF + 1.22, zE - 0.78);
+      for (let k = 0; k <= 6; k++) {
+        const bx = nCorX1 + 0.3 + k * ((nCorW - 0.6) / 6);
+        addBox(g, 0.08, 0.06, 0.70, darkCopingMat, bx, yRF + 1.13, zE - 0.30, false);
+        const br = addBox(g, 0.06, 0.05, 0.62, darkCopingMat, bx, yRF + 0.92, zE - 0.12, false); br.rotation.x = 0.62;
+      }
+    }
 
     // 沿 zE 外廊的主結構方柱 (Structural Columns at Axes ⑥, ⑦, ⑧, ⑨, ⑩)
     [7, 8, 9, 10].forEach(idx => {
