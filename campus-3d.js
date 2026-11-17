@@ -11216,7 +11216,7 @@ function buildWestBuilding() {
   const dadoBrickMat    = new THREE.MeshStandardMaterial({ color: 0x7a3b2e, roughness: 0.76 }); // 1F 圓柱與走廊紅褐色磁磚柱座/腰牆
   const slotFrameMat    = new THREE.MeshStandardMaterial({ color: 0x6b3226, roughness: 0.72 }); // 東向 2F 欄杆一字型長條孔紅褐內框
   const skyBlueRailMat  = new THREE.MeshStandardMaterial({ color: 0x3898d4, roughness: 0.36, metalness: 0.45 }); // 2F/3F 女兒牆頂天藍色金屬欄杆
-  const greenLouverMat  = new THREE.MeshStandardMaterial({ color: 0x8cc29a, roughness: 0.48, metalness: 0.22 }); // 西向 3F 淺綠色水平遮陽百葉
+  const greenLouverMat  = new THREE.MeshStandardMaterial({ color: 0xcfd6d3, roughness: 0.5, metalness: 0.2 }); // 西向 3F 水平遮陽百葉（v2.12.55 依照片 81 改淺灰白）
   const corridorSlabMat = new THREE.MeshStandardMaterial({ color: 0xc8c5bc, roughness: 0.84 }); // 磨石子走廊地坪
   const rampFloorMat    = new THREE.MeshStandardMaterial({ color: 0xbab6ac, roughness: 0.88 });
   const darkMetalMat    = new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.48, metalness: 0.58 });
@@ -11475,6 +11475,16 @@ function buildWestBuilding() {
     // Bays 6–9 (`川堂`) West side is completely open between columns toward the PU running track (per Photo 1 & Photo 3)!
   }
 
+  // v2.12.55 依操場實景照片 81：1F 最北一跨（第 9 跨）面向操場為白磁磚實牆＋高處橫向長窗，柱廊自第 8 跨開始
+  {
+    const z1 = zCol[8], z2 = zCol[9], bz = (z1 + z2) / 2, bw = z1 - z2;
+    addBox(g, 0.26, h1F - 0.05, bw - 0.30, whiteTileMat, xWest + 0.13, y1F + (h1F - 0.05) / 2, bz);
+    const sw = bw - 0.9;
+    addBox(g, 0.06, 0.62, sw + 0.10, darkMetalMat, xWest - 0.01, y1F + 2.45, bz);
+    const sg = addMesh(g, new THREE.PlaneGeometry(sw, 0.50), winFrost4Mat, xWest - 0.05, y1F + 2.45, bz, false); sg.rotation.y = -Math.PI / 2;
+    for (let k = 1; k < 4; k++) addBox(g, 0.07, 0.52, 0.04, darkMetalMat, xWest - 0.06, y1F + 2.45, bz - sw / 2 + k * sw / 4, false);
+  }
+
   // ==========================================================================
   // 4. 2F & 3F CLASSROOM CORE (`西棟大樓_2F/3F建築平面圖.jpg`)
   // ==========================================================================
@@ -11603,10 +11613,10 @@ function buildWestBuilding() {
       for (let m = -1; m <= 1; m++) {
         addBox(g, 0.05, louverH, 0.05, greenLouverMat, xWest + 0.10, louverY, bz + m * (bw * 0.32));
       }
-      for (let bl = 0; bl < 6; bl++) {
-        const by = louverY - louverH / 2 + 0.08 + bl * (louverH / 6);
-        const blade = addBox(g, 0.12, 0.035, bw + 0.04, greenLouverMat, xWest + 0.06, by, bz);
-        blade.rotation.z = 0.28;
+      for (let bl = 0; bl < 9; bl++) {   // v2.12.55 照片 81：密排水平百葉
+        const by = louverY - louverH / 2 + 0.05 + bl * (louverH / 9);
+        const blade = addBox(g, 0.10, 0.05, bw + 0.04, greenLouverMat, xWest + 0.06, by, bz);
+        blade.rotation.z = 0.12;
       }
     }
 
@@ -11625,14 +11635,33 @@ function buildWestBuilding() {
     addBox(g, 0.28, parapetH, mainD, whiteTileMat, xEast - 0.14, yRF + parapetH / 2, mainCz);
     addBox(g, 0.28, parapetH, mainD, whiteTileMat, xWest + 0.14, yRF + parapetH / 2, mainCz);
     addBox(g, totalW, parapetH, 0.28, whiteTileMat, (xWest + xEast) / 2, yRF + parapetH / 2, zSouth - 0.14);
-    // v2.12.53 依操場實景照片 81：3F 屋頂西側與南側挑出約 0.6 m 之平屋簷，簷口紅色收邊帶
+    // v2.12.55 依操場實景照片 81：3F 屋頂西側挑出約 0.6 m、厚約 0.5 m 之白磁磚簷板（延伸至北端樓梯間），
+    //   北端與南端簷板端面為紅色收邊（照片左上角紅色轉角）；3F 走廊上方懸掛彩色三角旗串
     {
       const eaveRedMat = new THREE.MeshStandardMaterial({ color: 0xc23a2e, roughness: 0.55 });
-      const eaveY = yRF + parapetH + 0.10;
-      addBox(g, 0.62, 0.20, mainD + 0.62, whiteTileMat, xWest - 0.17, eaveY, mainCz + 0.31);
-      addBox(g, 0.06, 0.26, mainD + 0.66, eaveRedMat, xWest - 0.50, eaveY, mainCz + 0.31);
-      addBox(g, totalW + 0.62, 0.20, 0.62, whiteTileMat, (xWest + xEast) / 2 - 0.31, eaveY, zSouth + 0.17);
-      addBox(g, totalW + 0.68, 0.26, 0.06, eaveRedMat, (xWest + xEast) / 2 - 0.31, eaveY, zSouth + 0.50);
+      const eT = 0.50, eaveY = yRF + parapetH - eT / 2 + 0.12, zN = -17.85, zS = zSouth;
+      const eD = zS - zN, eCz = (zS + zN) / 2;
+      addBox(g, 0.62, eT, eD + 0.62, whiteTileMat, xWest - 0.17, eaveY, eCz + 0.31);
+      addBox(g, totalW + 0.62, eT, 0.62, whiteTileMat, (xWest + xEast) / 2 - 0.31, eaveY, zS + 0.17);
+      addBox(g, 0.64, eT + 0.02, 0.05, eaveRedMat, xWest - 0.17, eaveY, zN - 0.02);                       // 北端紅色端面
+      addBox(g, totalW + 0.64, eT + 0.02, 0.05, eaveRedMat, (xWest + xEast) / 2 - 0.31, eaveY, zS + 0.50); // 南端紅色端面
+      // 彩色三角旗串（兩串，自南端往北至第 7 跨）
+      const flagCols = [0xe53935, 0x1e88e5, 0xfdd835, 0x43a047, 0xfb8c00, 0x8e24aa, 0xffffff];
+      const flagMats = flagCols.map(c => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide }));
+      const tri = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -0.13), new THREE.Vector3(0, 0, 0.13), new THREE.Vector3(0, -0.32, 0)]);
+      tri.computeVertexNormals();
+      const fz1 = zCol[0] - 0.4, fz2 = zCol[7];
+      [[y3F + 2.55, 0.35], [y3F + 2.15, 0.45]].forEach(([fy, sag], si) => {
+        const n = Math.floor((fz1 - fz2) / 0.42);
+        const pts = [];
+        for (let k = 0; k <= n; k++) {
+          const t = k / n, z = fz1 - (fz1 - fz2) * t, y = fy - sag * 4 * t * (1 - t);
+          pts.push(new THREE.Vector3(xWest - 0.10, y, z));
+          const m = new THREE.Mesh(tri, flagMats[(k + si * 3) % flagMats.length]);
+          m.position.set(xWest - 0.10, y, z); g.add(m);
+        }
+        g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x555555 })));
+      });
     }
     addBox(g, 0.06, 1.35, 0.06, darkMetalMat, xEast - 0.14, yRF + parapetH + 0.65, -6.66);
     addMesh(g, new THREE.ConeGeometry(0.24, 0.42, 12), whiteDoorMat, xEast + 0.05, yRF + parapetH + 1.25, -6.66).rotation.z = Math.PI / 2;
@@ -11845,7 +11874,7 @@ function buildWestBuilding() {
           const pierD = (stairBayD - 2.35) / 2;
           addBox(g, 0.26, 1.45, pierD, whiteTileMat, xWest + 0.14, fy + 1.15 + 1.45 / 2, zStairSouth - pierD / 2);
           addBox(g, 0.26, 1.45, pierD, whiteTileMat, xWest + 0.14, fy + 1.15 + 1.45 / 2, zStairNorth + pierD / 2);
-          const w2F_Stair = addMesh(g, new THREE.PlaneGeometry(2.35, 1.40), winFrost4Mat, xWest - 0.02, fy + 1.15 + 1.40 / 2, stairBayCz, false);
+          const w2F_Stair = addMesh(g, new THREE.PlaneGeometry(2.35, 1.40), winFrost4Mat, xWest - 0.06, fy + 1.15 + 1.40 / 2, stairBayCz, false);
           w2F_Stair.rotation.y = -Math.PI / 2;
           addBox(g, 0.08, 1.45, 2.40, darkMetalMat, xWest + 0.01, fy + 1.15 + 1.45 / 2, stairBayCz);
         } else {
@@ -11857,7 +11886,7 @@ function buildWestBuilding() {
             const louver = addBox(g, 0.42, 0.04, stairBayD - 0.08, greenLouverMat, xWest - 0.08, ly, stairBayCz);
             louver.rotation.z = -0.22;
           }
-          const w3F_Stair = addMesh(g, new THREE.PlaneGeometry(2.35, 1.50), win4x3Mat, xWest + 0.04, fy + 1.15 + 1.50 / 2, stairBayCz, false);
+          const w3F_Stair = addMesh(g, new THREE.PlaneGeometry(2.35, 1.50), win4x3Mat, xWest - 0.03, fy + 1.15 + 1.50 / 2, stairBayCz, false);
           w3F_Stair.rotation.y = -Math.PI / 2;
           addBox(g, 0.08, 1.55, 2.40, darkMetalMat, xWest + 0.05, fy + 1.15 + 1.55 / 2, stairBayCz);
         }
@@ -11962,7 +11991,6 @@ function buildWestBuilding() {
     addBox(g, kW + 0.24, 0.22, kD + 0.24, whiteTileMat, kCx, kH + 0.05, kCz);
     addBox(g, kW + 0.12, 0.14, kD + 0.12, colTileMat,   kCx, kH + 0.20, kCz);
     // 西向操場立面延續 0.90m 高紅褐色磁磚踢腳 (依據 20261110_160152.jpg 連續外觀)
-    addBox(g, 0.28, 0.90, kD, dadoBrickMat, kWestX + 0.14, y1F + 0.45, kCz);
 
     // B. 紅色框線範圍：【西北側突出建物區】 (Red-Boxed NW Wing · 1F 穿廊 + 2F 實體房間)
     const nw2FH = nwRoofH - y2F;
@@ -12043,14 +12071,14 @@ function buildWestBuilding() {
     }
 
     // C. 主廚房西向立面沿操場跑道側 (z = -17.85m ~ -20.00m)
-    const sWin = addMesh(g, new THREE.PlaneGeometry(1.55, 0.62), winStripMat, kWestX - 0.04, y1F + 2.15, kCz, false);
+    const sWin = addMesh(g, new THREE.PlaneGeometry(1.55, 0.62), winStripMat, kWestX - 0.08, y1F + 2.15, kCz, false);
     sWin.rotation.y = -Math.PI / 2;
     addBox(g, 0.08, 0.70, 1.62, darkMetalMat, kWestX - 0.02, y1F + 2.15, kCz);
     addBox(g, 0.04, 3.80, 0.04, stainlessMat, kWestX - 0.04, 1.90, -18.55);
     const hoseReel = addMesh(g, new THREE.TorusGeometry(0.28, 0.06, 10, 24), darkMetalMat, kWestX - 0.06, 0.72, -19.10);
     hoseReel.rotation.y = Math.PI / 2;
 
-    const w2F_Main = addMesh(g, new THREE.PlaneGeometry(1.65, 1.20), winFrost4Mat, kWestX - 0.04, y2F + 1.85, kCz, false);
+    const w2F_Main = addMesh(g, new THREE.PlaneGeometry(1.65, 1.20), winFrost4Mat, kWestX - 0.08, y2F + 1.85, kCz, false);
     w2F_Main.rotation.y = -Math.PI / 2;
     addBox(g, 0.08, 1.28, 1.72, darkMetalMat, kWestX - 0.02, y2F + 1.85, kCz);
 
@@ -12144,7 +12172,6 @@ function buildWestBuilding() {
       { const fz = zB1 + 1.6; box(kxB2, kxB2 + 0.12, y1F + 1.55, y1F + 2.35, fz - 0.4, fz + 0.4, stainlessMat, false);
         const fan = addMesh(g, new THREE.CylinderGeometry(0.32, 0.32, 0.05, 16), darkMetalMat, kxB2 + 0.14, y1F + 1.95, fz, false); fan.rotation.z = Math.PI / 2; }
       box(kxB2 - 0.02, kxB2 + 0.06, y1F, y1F + 2.3, (zB1 + kNorthZ) / 2 + 1.0, (zB1 + kNorthZ) / 2 + 2.8, stainlessMat, false);   // 東面進貨門
-      box(kWestX - 0.28, kWestX, y1F, y1F + 0.9, zB1, nwNorthZ, dadoBrickMat, false);
       // 4) 長巷：青綠色半透明採光罩（方格鋁框、北緣圓弧下垂收邊、北側一列方鋼立柱）＋混凝土地坪與水溝格柵
       const canopyGreen = new THREE.MeshStandardMaterial({ color: 0x62a88c, roughness: 0.42, metalness: 0.1, transparent: true, opacity: 0.82, depthWrite: false, side: THREE.DoubleSide });
       const frameMat = new THREE.MeshStandardMaterial({ color: 0x8a9096, roughness: 0.4, metalness: 0.6 });
