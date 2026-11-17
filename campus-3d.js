@@ -12105,17 +12105,19 @@ function buildWestBuilding() {
         }
       };
       const F2 = [[y2F + 1.65, 1.35]], F12 = [[y1F + 1.75, 1.10], [y2F + 1.65, 1.35]];
-      const winGlassBright = new THREE.MeshStandardMaterial({ color: 0xe4ebef, roughness: 0.18, metalness: 0.15 });   // v2.12.51 明亮霧面玻璃
+      const winGlassBright = new THREE.MeshBasicMaterial({ color: 0xdfe7ec });   /* v2.12.52 霧面白玻璃（不受背光陰影影響） */   // v2.12.51 明亮霧面玻璃
       // v2.12.50 照片 82／84：凸出部 2F 北面為一排橫向長窗、西面為 2×2 田字轉角大窗
       { const wy = y2F + 2.15, wh = 1.05, n = 3, L = (pX2 - pX1) - 0.6;
         for (let i = 0; i < n; i++) { const wx = pX1 + 0.3 + L * (i + 0.5) / n;
           const wm = addMesh(g, new THREE.PlaneGeometry(L / n - 0.12, wh), winGlassBright, wx, wy, zP1 - 0.08, false); wm.rotation.y = Math.PI;
           box(wx - L / n / 2, wx + L / n / 2, wy - wh / 2 - 0.05, wy + wh / 2 + 0.05, zP1 - 0.06, zP1 + 0.02, frameMat0, false); } }
       { const wz = (zP1 + zB1) / 2, wy = y2F + 1.95, W2 = 3.0, H2 = 2.5;
-        const wm = addMesh(g, new THREE.PlaneGeometry(W2, H2), winGlassBright, pX1 - 0.08, wy, wz, false); wm.rotation.y = -Math.PI / 2;
+        const wm = addMesh(g, new THREE.PlaneGeometry(W2, H2), winGlassBright, pX1 - 0.115, wy, wz, false);   /* 玻璃面置於窗框外 */ wm.rotation.y = -Math.PI / 2;
         box(pX1 - 0.10, pX1, wy - H2 / 2 - 0.06, wy + H2 / 2 + 0.06, wz - W2 / 2 - 0.06, wz + W2 / 2 + 0.06, frameMat0, false);
-        box(pX1 - 0.12, pX1 - 0.08, wy - H2 / 2, wy + H2 / 2, wz - 0.05, wz + 0.05, frameMat0, false);
-        box(pX1 - 0.12, pX1 - 0.08, wy - 0.05, wy + 0.05, wz - W2 / 2, wz + W2 / 2, frameMat0, false); }
+        box(pX1 - 0.16, pX1 - 0.06, wy - H2 / 2, wy + H2 / 2, wz - 0.06, wz + 0.06, frameMat0, false);
+        box(pX1 - 0.16, pX1 - 0.06, wy - 0.06, wy + 0.06, wz - W2 / 2, wz + W2 / 2, frameMat0, false);
+        // 每格再分上下兩扇（照片 82／84 田字窗各格內有橫向分割）
+        [-1, 1].forEach(sz => box(pX1 - 0.14, pX1 - 0.08, wy + H2 * 0.27 - 0.03, wy + H2 * 0.27 + 0.03, wz + sz * W2 / 4 - W2 / 4 + 0.05, wz + sz * W2 / 4 + W2 / 4 - 0.05, frameMat0, false)); }
       // v2.12.46 照片 5147：凸出部西面 2F 斜臂太陽能路燈（燈頭朝外、上方太陽能板）
       { const lz = zP1 + 0.9, ly = y2F + 1.2;
         box(pX1 - 0.06, pX1, ly - 0.35, ly + 0.35, lz - 0.08, lz + 0.08, frameMat0, false);
