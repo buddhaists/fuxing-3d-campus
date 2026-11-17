@@ -3276,40 +3276,49 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   // 學校新南側門 (座落於東棟大樓右側，建興南路42巷與復興路378巷交會處，依實景照片4 1:1 精確重建)
   buildNewSouthGate(X(772), Z(320));
 
-  // Segment B: 東棟大樓南向彩繪立面前景花台至南棟銜接段
-  // (依據《2023_0604_綠籬植栽平面圖》標示【區域一(東棟外牆) 楓港柿、羅漢松、台灣海桐 12M長】精確還原)
+  // Segment B: 東棟大樓南端前（新南側門左側）通學步道花台
+  // v2.12.75 依使用者實景照片（115／116）重做：原「白色緣石＋球形灌木＋直立羅漢松」移除，
+  //   改為臨人行道之灰色洗石子矮牆花台（高約 0.5 m、深約 1.9 m），台內為高約 1.3～1.7 m 之濃密修剪綠籬（雜植深淺綠），
+  //   東棟轉角立白色球形路燈與黃色「騎車不車禍」直式旗幟，花台東端銜接新南側門西柱
   {
-    const planX1 = X(715), planX2 = X(772) - 1.8;
-    const planLen = Math.abs(planX2 - planX1);
-    const planCx = (planX1 + planX2) / 2;
-    const planCz = (Z(318) + Z(320)) / 2;
-    addBox(layerGroups.boundary, planLen, 0.48, 0.65, curbStoneMat, planCx, 0.24, planCz);
-    addBox(layerGroups.boundary, planLen - 0.2, 0.50, 0.52, mats.soil, planCx, 0.25, planCz, false);
-
-    // 區域一專屬植栽：楓港柿、羅漢松 (Podocarpus)、台灣海桐 (Pittosporum pentandrum)
-    const nPlants = Math.max(4, Math.floor(planLen / 1.5));
-    const fenggangMat = new THREE.MeshStandardMaterial({ color: 0x214f24, roughness: 0.65 }); // 楓港柿
-    const podocarpusMat = new THREE.MeshStandardMaterial({ color: 0x1d4620, roughness: 0.75 }); // 羅漢松針狀深綠
-    const pittosporumFlowerMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55 }); // 台灣海桐芳香小白花
-
-    for (let b = 0; b < nPlants; b++) {
-      const bx = planX1 + (b + 0.5) * (planLen / nPlants);
-      if (b % 3 === 0) {
-        // 楓港柿球形修剪綠籬
-        const sh = addMesh(layerGroups.boundary, new THREE.SphereGeometry(0.55, 10, 8), fenggangMat, bx, 0.62, planCz);
-        sh.scale.set(1.1, 0.95, 0.9);
-      } else if (b % 3 === 1) {
-        // 羅漢松直立優雅常綠灌木
-        const pod = addMesh(layerGroups.boundary, new THREE.CylinderGeometry(0.28, 0.42, 1.25, 8), podocarpusMat, bx, 0.85, planCz);
-        pod.scale.set(1.0, 1.0, 0.85);
-      } else {
-        // 台灣海桐開花灌木
-        const pit = addMesh(layerGroups.boundary, new THREE.SphereGeometry(0.52, 10, 8), mats.hedge, bx, 0.64, planCz);
-        pit.scale.set(1.15, 0.9, 1.0);
-        const fl = addMesh(layerGroups.boundary, new THREE.SphereGeometry(0.20, 6, 6), pittosporumFlowerMat, bx + 0.12, 0.88, planCz + 0.12);
-        fl.scale.set(1.3, 0.8, 1.1);
+    const x1 = 52.9, x2 = X(772) - 2.15, zFront = 20.55, depth = 1.9, zBack = zFront - depth;
+    const len = x2 - x1, cx = (x1 + x2) / 2, cz = (zFront + zBack) / 2;
+    const wallMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#9c988f', '#55524d', '#d8d3c9', true), roughness: 0.86 });
+    const capMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#b4afa7', '#5c5853', '#ece8df', false), roughness: 0.78 });
+    const pg = new THREE.Group(); pg.userData = { landmarkId: 'east-south-mosaic' };
+    addBox(pg, len, 0.50, 0.30, wallMat, cx, 0.25, zFront - 0.15);                // 臨人行道矮牆
+    addBox(pg, len + 0.06, 0.06, 0.38, capMat, cx, 0.53, zFront - 0.15);
+    [x1 + 0.15, x2 - 0.15].forEach(ex => { addBox(pg, 0.30, 0.50, depth, wallMat, ex, 0.25, cz); addBox(pg, 0.38, 0.06, depth + 0.06, capMat, ex, 0.53, cz); });
+    addBox(pg, len - 0.5, 0.42, depth - 0.4, mats.soil, cx, 0.21, cz, false);
+    const hg = [0x2a5a28, 0x356b2f, 0x417a35, 0x2f6430, 0x4f8a3b].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.82 }));
+    let sd = 23; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    for (let x = x1 + 0.55; x < x2 - 0.4; x += 0.55) {
+      const h = 1.25 + r() * 0.45;
+      for (let k = 0; k < 3; k++) {
+        const cr = 0.42 + r() * 0.22, zz = zBack + 0.45 + r() * (depth - 0.9);
+        const cl = addMesh(pg, new THREE.IcosahedronGeometry(cr, 1), hg[Math.floor(r() * hg.length)], x + (r() - 0.5) * 0.4, 0.42 + (h - 0.42) * (0.45 + 0.55 * r()), zz);
+        cl.scale.set(1.25, 1.05, 1.15);
       }
+      const top = addMesh(pg, new THREE.IcosahedronGeometry(0.5, 1), hg[Math.floor(r() * hg.length)], x, h, cz); top.scale.set(1.3, 0.7, 1.6);
     }
+    // 白色球形庭園路燈（東棟西南轉角）
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0xf2f4f6, roughness: 0.35, metalness: 0.4 });
+    addMesh(pg, new THREE.CylinderGeometry(0.06, 0.08, 3.6, 10), lampMat, x1 + 0.6, 1.8, zBack - 0.35);
+    addBox(pg, 0.5, 0.04, 0.04, lampMat, x1 + 0.6 + 0.22, 3.55, zBack - 0.35);
+    addMesh(pg, new THREE.SphereGeometry(0.22, 14, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff6dd, emissiveIntensity: 0.3 }), x1 + 0.6 + 0.45, 3.35, zBack - 0.35, false);
+    // 黃色直式旗幟「騎車不車禍」
+    {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 512; const ctx = c.getContext('2d');
+      ctx.fillStyle = '#f7d531'; ctx.fillRect(0, 0, 128, 512); ctx.fillStyle = '#1f4fa0'; ctx.fillRect(0, 0, 16, 512);
+      ctx.fillStyle = '#1b2a6b'; ctx.font = 'bold 76px sans-serif'; ctx.textAlign = 'center';
+      ['騎', '車', '不', '車', '禍'].forEach((ch, i) => ctx.fillText(ch, 70, 90 + i * 92));
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      const fx = x1 + 1.6, fz = zFront + 0.35;
+      addMesh(pg, new THREE.CylinderGeometry(0.025, 0.025, 2.4, 8), lampMat, fx, 1.2, fz);
+      const fl = addMesh(pg, new THREE.PlaneGeometry(0.42, 1.65), new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide }), fx + 0.23, 1.45, fz, false);
+      fl.rotation.y = Math.PI;
+    }
+    layerGroups.boundary.add(pg);
   }
 
   // 學校舊南側門 (興安街 / 建興南路34巷 · 南棟興學樓西端後方穿堂，依照片精準重建)
