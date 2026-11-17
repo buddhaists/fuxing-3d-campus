@@ -1206,7 +1206,8 @@ const northWallZAt = x => { const [a, b] = NORTH_WALL_PX; const t = (x - X(a[0])
 const WEST_ROAD_PTS = [[113.5, -45.0], [53.7, -54.4], [-11.3, -61.1], [-36.0, -64.0], [-50.5, -66.6], [-89.8, -72.7], [-102.8, -73.9], [-114.4, -67.5]];   // v2.12.37 北側車道（依使用者航照標示）：東側門→沿北牆→學校後門
 const NORTH_SPUR_PTS = [[-36.0, -64.0], [-36.0, -43.5]];   // 北棟西端往南支線   // v2.12.33 北棟西端以西：沿北牆內側步道通往學校後門（依航照）
 const SOUTH_SHIFT = -6.0;   // v2.12.34 南棟依航照與普查樹木整體北移 6 m（南緣圍牆、人行道、道路同步）
-const TRACK_CFG = { cx: -60.8, cz: -9.5, rx: 19.5, straight: 52 };   // v2.12.33 PU 跑道（依對位航照）
+const TRACK_CFG = { cx: -58.15, cz: -9.5, rx: 19.5, straight: 52, th: 5.074 };   // v2.12.33 PU 跑道（依對位航照）；v2.12.54 依航照與西棟同轉 5.07°，東緣距西棟西牆 3.3 m（使用者實測）
+const trackToWorld = (lx, lz) => { const t = TRACK_CFG.th * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), dx = lx - TRACK_CFG.cx, dz = lz - TRACK_CFG.cz; return [TRACK_CFG.cx + dx * c - dz * s, TRACK_CFG.cz + dx * s + dz * c]; };
 const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) { const [x1, y1] = WEST_WALL_PX[i], [x2, y2] = WEST_WALL_PX[i + 1]; if (py >= Math.min(y1, y2) && py <= Math.max(y1, y2)) return x1 + (x2 - x1) * (py - y1) / ((y2 - y1) || 1); } return WEST_WALL_PX[0][0]; };
 
 // 1) Campus Inner Ground Polygon Slab & Full Sports Ground Campus Lawn Buffer Zone (`校園草地緩衝區域`)
@@ -12065,10 +12066,10 @@ function buildWestBuilding() {
     //   西端「北側凸出部」2F 為房間、1F 為東西向穿廊（向西通往操場）；電梯西門前另有銀色圓弧遮雨棚與不銹鋼欄杆。
     //   座標為西棟局部座標（世界 z − 6.02）；世界座標：凸出部北緣 z −40.7、廚房北牆 z −36.2、東緣 x −17.6
     {
-      const kxP2 = -31.0, kxB2 = -24.1;   // v2.12.49 東翼東緣維持世界 x −17.6（中庭西緣）                      // 凸出部／西翼東緣、東翼東緣
+      const kxP2 = -31.0, kxB2 = -23.22;   // v2.12.49 東翼東緣維持世界 x −17.6（中庭西緣）                      // 凸出部／西翼東緣、東翼東緣
       const zP1 = -34.68, zB1 = -30.18;                      // 凸出部北緣、廚房北牆（＝長巷南緣）
       // v2.12.45 依實景照片 5149／5147：凸出部（穿廊）位於銀色遮雨棚正南、電梯塔西南角，向東移至 x −33.0～−27.9
-      const pX1 = kWestX, pX2 = -34.4;   // v2.12.49 東緣維持世界 x −27.9（電梯塔西南角）   // v2.12.48 依照片 5166／5167：凸出部西牆與西棟、廚房西側外牆同一平面（x −38.11）
+      const pX1 = kWestX, pX2 = -33.52;   // v2.12.49 東緣維持世界 x −27.9（電梯塔西南角）   // v2.12.48 依照片 5166／5167：凸出部西牆與西棟、廚房西側外牆同一平面（x −38.11）
       const zAlleyN = -35.30;   // v2.12.51 旋轉後長巷北緣接電梯塔南面                                // 長巷北緣（電梯南面，世界 z ≈ −40.4）
       const stTileMat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 });   // 穿廊與長巷地坪
       const frameMat0 = new THREE.MeshStandardMaterial({ color: 0x8e8676, roughness: 0.4, metalness: 0.5 });   // 香檳色鋁框   // 路燈支架
@@ -12148,7 +12149,7 @@ function buildWestBuilding() {
       const canopyGreen = new THREE.MeshStandardMaterial({ color: 0x62a88c, roughness: 0.42, metalness: 0.1, transparent: true, opacity: 0.82, depthWrite: false, side: THREE.DoubleSide });
       const frameMat = new THREE.MeshStandardMaterial({ color: 0x8a9096, roughness: 0.4, metalness: 0.6 });
       const silverRoof = new THREE.MeshStandardMaterial({ color: 0xc3c9ce, roughness: 0.32, metalness: 0.55, side: THREE.DoubleSide });
-      const cx1 = pX2, cx2 = -27.5, cH = 3.25;
+      const cx1 = pX2, cx2 = -26.62, cH = 3.25;
       box(cx1, cx2, cH, cH + 0.04, zAlleyN + 0.35, zB1, canopyGreen, false);
       { const edge = addMesh(g, new THREE.CylinderGeometry(0.42, 0.42, cx2 - cx1, 16, 1, true, 0, Math.PI / 2), canopyGreen, (cx1 + cx2) / 2, cH - 0.42, zAlleyN + 0.35, false); edge.rotation.z = Math.PI / 2; edge.rotation.y = Math.PI; }
       for (let x = cx1; x <= cx2 + 0.01; x += (cx2 - cx1) / 6) box(x - 0.04, x + 0.04, cH + 0.04, cH + 0.10, zAlleyN + 0.35, zB1, frameMat, false);
@@ -12157,16 +12158,16 @@ function buildWestBuilding() {
       box(cx1, cx2, 0, 0.05, zAlleyN, zB1, stTileMat, false);
       box(cx1, cx2, 0.05, 0.07, zB1 - 0.75, zB1 - 0.45, darkMetalMat, false);
       // 廚房北牆：兩座圓弧不銹鋼排油煙罩、角落直立排煙方管（高出屋頂）、不銹鋼儲物櫃
-      [-31.0, -28.6].forEach(hx => {
+      [-30.1, -27.7].forEach(hx => {
         box(hx - 0.75, hx + 0.75, 2.45, 3.05, zB1 - 0.9, zB1, stainlessMat);
         const hood = addMesh(g, new THREE.CylinderGeometry(0.45, 0.45, 1.5, 14, 1, false, 0, Math.PI), stainlessMat, hx, 2.45, zB1 - 0.45, false); hood.rotation.z = Math.PI / 2;
       });
       box(pX2 + 0.15, pX2 + 0.75, 2.2, kH + 2.2, zB1 - 0.55, zB1 - 0.05, stainlessMat);
       box(pX2 + 0.05, pX2 + 0.85, kH + 2.2, kH + 2.6, zB1 - 0.65, zB1 + 0.05, stainlessMat);
-      [-26.8, -25.2].forEach(cxm => box(cxm - 0.85, cxm + 0.85, 0.1, 1.85, zB1 - 0.8, zB1 - 0.05, stainlessMat));
+      [-25.9, -24.3].forEach(cxm => box(cxm - 0.85, cxm + 0.85, 0.1, 1.85, zB1 - 0.8, zB1 - 0.05, stainlessMat));
       // 5) 電梯西門前銀色圓弧遮雨棚與不銹鋼欄杆（照片 4921 俯視：L 形，東緣貼電梯塔西牆，東南角缺口為落水管與水溝）
       //    世界座標 x −33.6～−28.1、z −45.4～−40.7；東南缺口 x −30.1～−28.1、z −42.5～−40.7
-      const sx1 = kWestX, sx2 = -34.6,   /* v2.12.48 遮雨棚前緣切齊西棟與廚房西側外牆 */ sz1 = -39.38, sz2 = zP1, sH = 2.95, nx = -35.9, nz = -36.48;
+      const sx1 = kWestX, sx2 = -33.72,   /* v2.12.48 遮雨棚前緣切齊西棟與廚房西側外牆 */ sz1 = -39.38, sz2 = zP1, sH = 2.95, nx = -35.02, nz = -36.48;
       const roofPart = (x1, x2, z1, z2) => box(x1, x2, sH, sH + 0.05, z1, z2, silverRoof, false);
       roofPart(sx1, sx2, sz1, nz); roofPart(sx1, nx, nz, sz2);
       const curl = (len, x, z, alongX, rotZ) => {                       // 圓弧下彎收邊
@@ -14889,6 +14890,14 @@ function buildSportsLayer() {
 
   // 8) v2.12.6 依 Google 空拍：運動場內場僅為草皮，無跳遠助跑道、沙坑等設施（原跳遠設施與警示錐移除）
 
+  // v2.12.54 跑道本體（步道、緣石、PU、分道線、草皮）繞中心旋轉 5.07°，與航照及校舍同方向
+  {
+    const t = TRACK_CFG.th * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+    const tr = new THREE.Group(); tr.rotation.y = -t;
+    tr.position.set(cx - (cx * c - cz * s), 0, cz - (cx * s + cz * c));
+    tr.add(...tg.children.slice());
+    tg.add(tr);
+  }
   // 9) 跑道外圍校園草地緩衝區休閒長椅
   const lawnBenchCoords = [
     [X(232), Z(412), -0.38], [X(282), Z(408), -0.38], [X(332), Z(392), -0.38],
@@ -19784,7 +19793,7 @@ const pedestrianAgents = [];
       const cx = TRACK_CFG.cx, cz = TRACK_CFG.cz, r = TRACK_CFG.rx - 3.0, hs = TRACK_CFG.straight / 2;   // v2.12.33 跑道依航照
       for (let i = 0; i < 16; i++) {
         const a = (i / 16) * Math.PI * 2;
-        pts.push([cx + Math.cos(a) * r, cz + Math.sin(a) * (r + hs)]);
+        pts.push(trackToWorld(cx + Math.cos(a) * r, cz + Math.sin(a) * (r + hs)));
       }
       return pts;
     })(),
@@ -22440,7 +22449,7 @@ const LOCAL_BUILDING_OBSTACLES = [
   { xf: WEST_XF, minX: -38.11 - 0.65, maxX: -24.31 + 0.65, minZ: -23.35 - 0.65, maxZ: 15.918 + 0.65 },
   // v2.12.41 廚房：西翼南段與東翼（北側凸出部 1F 為穿廊、長巷可通行）
   { xf: WEST_XF, minX: -38.11 - 0.5, maxX: -31.0, minZ: -30.18 - 0.4, maxZ: -23.35 },
-  { xf: WEST_XF, minX: -31.0, maxX: -24.1 + 0.3, minZ: -30.18 - 0.4, maxZ: -20.0 }
+  { xf: WEST_XF, minX: -31.0, maxX: -23.22 + 0.3, minZ: -30.18 - 0.4, maxZ: -20.0 }
 ];
 
 // Collision footprint exclusions: allow walking inside North Building (愛悅樓) Front/Rear corridors, Central Stairwell, Basement & Lightwells!
