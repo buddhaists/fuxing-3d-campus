@@ -192,6 +192,7 @@ const layerGroups = {
   context: new THREE.Group()
 };
 Object.values(layerGroups).forEach(g => scene.add(g));
+window.__layerGroups = layerGroups;   // v2.12.64 供截圖比對時隱藏圖層
 
 // Selection Highlight Box Outline
 const selectionOutlineGroup = new THREE.Group();
