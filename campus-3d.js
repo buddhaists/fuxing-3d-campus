@@ -11210,9 +11210,12 @@ function buildWestBuilding() {
   const parapetH = 0.75;
 
   // Materials tailored to the 5 real-world photos (`west_front_east.jpg`, `west_back_west.jpg`, `west_kitchen_45.jpg`)
-  const whiteTileMat    = new THREE.MeshStandardMaterial({ map: makeTileTexture('#f3f2ed', '#c7c4ba'), roughness: 0.56 });
-  const kitchenTileMat  = new THREE.MeshStandardMaterial({ map: makeTileTexture('#f7f7f4', '#ceccc4'), roughness: 0.52 });
-  const colTileMat      = new THREE.MeshStandardMaterial({ map: makeTileTexture('#f5f4ef', '#c2bfb5'), roughness: 0.54 });
+  // v2.12.56 依照片 81／5166：外牆為略帶灰藍的白色方格磁磚，深色勾縫格線明顯
+  const whiteTileMat    = new THREE.MeshStandardMaterial({ map: makeTileTexture('#e6e9ec', '#8f969d'), roughness: 0.56 });
+  const kitchenTileMat  = new THREE.MeshStandardMaterial({ map: makeTileTexture('#e9ecee', '#8f969d'), roughness: 0.52 });
+  const colTileMat      = new THREE.MeshStandardMaterial({ map: makeTileTexture('#eceef0', '#959ca3'), roughness: 0.54 });
+  const westBaseMat     = new THREE.MeshStandardMaterial({ color: 0x5b3b32, roughness: 0.8 });   // 西向 1F 圓柱深褐色矮柱基
+  const corridorShadeMat = new THREE.MeshBasicMaterial({ color: 0x8a8f95 });  // 2F/3F 西走廊深處陰影
   const dadoBrickMat    = new THREE.MeshStandardMaterial({ color: 0x7a3b2e, roughness: 0.76 }); // 1F 圓柱與走廊紅褐色磁磚柱座/腰牆
   const slotFrameMat    = new THREE.MeshStandardMaterial({ color: 0x6b3226, roughness: 0.72 }); // 東向 2F 欄杆一字型長條孔紅褐內框
   const skyBlueRailMat  = new THREE.MeshStandardMaterial({ color: 0x3898d4, roughness: 0.36, metalness: 0.45 }); // 2F/3F 女兒牆頂天藍色金屬欄杆
@@ -11280,7 +11283,7 @@ function buildWestBuilding() {
     // 1F Enclosed Core Block (Bays 1–5: `xCoreWest` to `xCoreEast`, `z = 15.918` to `-1.062`)
     addBox(g, coreW, h1F - 0.12, enclosed1FD, whiteTileMat, coreCx, y1F + (h1F - 0.12) / 2, enclosed1FCz);
     // Reddish-brown ceramic tile wainscot dado (`紅褐色腰牆`) along 1F East & West classroom walls & North 川堂 wall
-    addBox(g, coreW + 0.06, 0.92, enclosed1FD + 0.06, dadoBrickMat, coreCx, y1F + 0.46, enclosed1FCz);
+    addBox(g, coreW + 0.06, 0.50, enclosed1FD + 0.06, westBaseMat, coreCx, y1F + 0.25, enclosed1FCz);   // v2.12.56 照片 81：1F 教室外牆深褐色矮踢腳
 
     // Interior partition walls inside 1F Core (`z = 8.17` & `z = 6.60` for `配膳室`)
     addBox(g, coreW - 0.1, h1F - 0.2, 0.18, whiteTileMat, coreCx, y1F + (h1F - 0.2) / 2, 8.17);
@@ -11372,7 +11375,7 @@ function buildWestBuilding() {
     addBox(g, 0.48, h1F - 0.15, 0.48, colTileMat, xCoreEast, y1F + (h1F - 0.15) / 2, zNorthMain);
     addBox(g, 0.52, 0.90, 0.52, dadoBrickMat, xCoreEast, y1F + 0.45, zNorthMain);
     addBox(g, 0.48, h1F - 0.15, 0.48, colTileMat, xCoreWest, y1F + (h1F - 0.15) / 2, zNorthMain);
-    addBox(g, 0.52, 0.90, 0.52, dadoBrickMat, xCoreWest, y1F + 0.45, zNorthMain);
+    addBox(g, 0.52, 0.50, 0.52, westBaseMat, xCoreWest, y1F + 0.25, zNorthMain);
     // 柱面粉紅色消防安全標示貼紙 (Pink Safety Sign on East face of Stair Column)
     addBox(g, 0.02, 0.28, 0.22, pinkSafetySignMat, xCoreEast + 0.25, y1F + 1.48, zNorthMain - 0.02, false);
     // 柱角鮮紅色防撞立管 (Red Vertical Pipe at NE edge of Stair Column)
@@ -11525,10 +11528,10 @@ function buildWestBuilding() {
       if (i === 0) {
         // Col 0（西南角轉角柱，實景照片 Image 1 為白色磁磚方柱帶紅褐色磁磚柱基）
         addBox(g, 0.50, h1F - 0.20, 0.50, colTileMat, wColX, y1F + (h1F - 0.20) / 2, zc);
-        addBox(g, 0.54, 0.90, 0.54, dadoBrickMat, wColX, y1F + 0.45, zc);
+        addBox(g, 0.54, 0.50, 0.54, westBaseMat, wColX, y1F + 0.25, zc);   // v2.12.56 照片 81：較矮、深褐色柱基
       } else {
         addMesh(g, new THREE.CylinderGeometry(0.23, 0.23, h1F - 0.20, 20), colTileMat, wColX, y1F + (h1F - 0.20) / 2, zc);
-        addMesh(g, new THREE.CylinderGeometry(0.255, 0.255, 0.90, 20), dadoBrickMat, wColX, y1F + 0.45, zc);
+        addMesh(g, new THREE.CylinderGeometry(0.255, 0.255, 0.50, 20), westBaseMat, wColX, y1F + 0.25, zc);
       }
 
       const eColX = xEast - 0.26;
@@ -11560,6 +11563,13 @@ function buildWestBuilding() {
       }
       addBox(g, 0.38, 0.48, mainD, whiteTileMat, xEast - 0.19, fy + fh - 0.36, mainCz);
       addBox(g, 0.38, 0.48, mainD, whiteTileMat, xWest + 0.19, fy + fh - 0.36, mainCz);
+      // v2.12.56 照片 81（逆光）：西走廊天花與教室外牆較暗，加深走廊開放感
+      addBox(g, xCoreWest - xWest - 0.4, 0.04, mainD, corridorShadeMat, (xWest + xCoreWest) / 2 + 0.1, fy + fh - 0.25, mainCz, false);
+      for (let b = 0; b < 9; b++) {
+        const pz = (zCol[b] + zCol[b + 1]) / 2, pw = zCol[b] - zCol[b + 1] - 0.5;
+        const sh = addMesh(g, new THREE.PlaneGeometry(pw, fh - 0.3), corridorShadeMat, xCoreWest - 0.025, fy + (fh - 0.3) / 2, pz, false);
+        sh.rotation.y = -Math.PI / 2;
+      }
     }
 
     const paraH = 1.06;
@@ -11940,7 +11950,7 @@ function buildWestBuilding() {
 
       // 【1F 操場側二丁掛白磁磚實體連續外牆】(100% 依據實景相片 20261110_160131.jpg 與 20261110_160152.jpg：徹底消除紅框處穿透空洞)
       // 底部紅褐色磁磚柱腳/踢腳 (高度 0.90m)
-      addBox(g, 0.28, 0.90, stairBayD, dadoBrickMat, xWest + 0.14, y1F + 0.45, stairBayCz);
+      addBox(g, 0.28, 0.50, stairBayD, westBaseMat, xWest + 0.14, y1F + 0.25, stairBayCz);
       // 實體白磁磚外牆身 (高至 2F 梁底)
       addBox(g, 0.26, h1F - 0.90, stairBayD, whiteTileMat, xWest + 0.14, y1F + 0.90 + (h1F - 0.90) / 2, stairBayCz);
       // 操場側外牆橫向 3 格金屬排窗 (依據 20261110_160152.jpg 實景：中段橫向排窗)
@@ -11949,7 +11959,7 @@ function buildWestBuilding() {
       addBox(g, 0.08, 0.70, 1.72, darkMetalMat, xWest + 0.01, y1F + 2.15, stairBayCz);
 
       addBox(g, 0.48, h1F - 0.20, 0.48, colTileMat, xWest + 0.26, y1F + (h1F - 0.20) / 2, zStairNorth + 0.24);
-      addBox(g, 0.52, 0.90, 0.52, dadoBrickMat,     xWest + 0.26, y1F + 0.45,              zStairNorth + 0.24);
+      addBox(g, 0.52, 0.50, 0.52, westBaseMat,     xWest + 0.26, y1F + 0.25,              zStairNorth + 0.24);
       // 1F 梯底下方與後走廊北端（z = zStairNorth = -17.85m）大型金屬鐵捲門 (Photo 2 左下角清晰可見之鐵捲門！)
       addBox(g, 2.50, 2.65, 0.08, shutterMat, westCorCx + 0.35, y1F + 1.325, zStairNorth + 0.08);
       // 3F 與廚房交界北端封閉山牆 (z = zStairNorth = -17.85m, y = kH ~ yRF + parapetH)
