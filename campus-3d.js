@@ -11539,12 +11539,23 @@ function buildWestBuilding() {
         const wEast = addMesh(g, new THREE.PlaneGeometry(bw * 0.58, 1.62), win4x3Mat, xCoreEast + 0.04, fy + 1.92, bz, false);
         wEast.rotation.y = Math.PI / 2;
       }
+      if (b === 8) {
+        // v2.12.60 照片 88 使用者標示：2F／3F 樓梯間位於北端第二跨（第 9 跨），面向操場可見深色梯間與斜向樓梯
+        const sw = bw - 0.5, shH = fh - 0.45;
+        const op = addMesh(g, new THREE.PlaneGeometry(sw, shH), new THREE.MeshBasicMaterial({ color: 0x4f5459 }), xCoreWest - 0.03, fy + shH / 2, bz, false);
+        op.rotation.y = -Math.PI / 2;
+        const runL = Math.hypot(sw * 0.9, fh * 0.9);
+        const flight = addBox(g, 0.05, 0.28, runL, whiteTileMat, xCoreWest - 0.06, fy + fh * 0.45, bz, false);
+        flight.rotation.x = Math.atan2(fh * 0.9, sw * 0.9);
+        addBox(g, 0.04, 0.04, runL, stainlessMat, xCoreWest - 0.09, fy + fh * 0.45 + 0.9, bz, false).rotation.x = flight.rotation.x;
+      } else {
       const wWest = addMesh(g, new THREE.PlaneGeometry(bw * 0.64, 1.62), win4x3Mat, xCoreWest - 0.04, fy + 1.92, bz, false);
       wWest.rotation.y = -Math.PI / 2;
+      }
       if (b % 3 === 0 || b % 3 === 2) {
         const doorZ = b % 3 === 0 ? (zCol[b] - 0.58) : (zCol[b + 1] + 0.58);
         if (b > 0) addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreEast + 0.03, fy + 1.075, doorZ);
-        addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreWest - 0.03, fy + 1.075, doorZ);
+        if (b !== 8) addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreWest - 0.03, fy + 1.075, doorZ);
       }
       addBox(g, 0.42, fh - 0.22, 0.42, colTileMat, xCoreEast, fy + (fh - 0.22) / 2, zCol[b]);
       addBox(g, 0.42, fh - 0.22, 0.42, colTileMat, xCoreWest, fy + (fh - 0.22) / 2, zCol[b]);
@@ -11923,7 +11934,7 @@ function buildWestBuilding() {
             for (let bl = 0; bl < 9; bl++) addBox(g, 0.10, 0.05, stairBayD - 0.1, greenLouverMat, xWest + 0.06, fy + fh - 0.48 - 0.86 + 0.05 + bl * 0.096, stairBayCz).rotation.z = 0.12;
           }
           // 開口內側陰影（樓梯間內牆）
-          const sh = addMesh(g, new THREE.PlaneGeometry(stairBayD - 0.5, fh - 0.4), new THREE.MeshBasicMaterial({ color: 0x6a6f75 }), xCoreWest - 0.03, fy + (fh - 0.4) / 2, stairBayCz, false);
+          const sh = addMesh(g, new THREE.PlaneGeometry(stairBayD - 0.5, fh - 0.4), new THREE.MeshBasicMaterial({ color: fl === 2 ? 0xc9d0d4 : 0x8e9399 }), xCoreWest - 0.03, fy + (fh - 0.4) / 2, stairBayCz, false);   // v2.12.60 照片 88：2F 最北跨為連結前後走廊之通道（透光），3F 為開放走廊
           sh.rotation.y = -Math.PI / 2;
         }
         addBox(g, 0.46, fh - 0.20, 0.46, colTileMat, xWest + 0.23, fy + (fh - 0.20) / 2, zStairNorth + 0.23);
@@ -11980,7 +11991,7 @@ function buildWestBuilding() {
       // 實體白磁磚外牆身 (高至 2F 梁底)
       addBox(g, 0.26, h1F - 0.90, stairBayD, whiteTileMat, xWest + 0.14, y1F + 0.90 + (h1F - 0.90) / 2, stairBayCz);
       // 操場側外牆橫向 3 格金屬排窗 (依據 20261110_160152.jpg 實景：中段橫向排窗)
-      const w1F_Stair = addMesh(g, new THREE.PlaneGeometry(1.65, 0.62), winStripMat, xWest - 0.02, y1F + 2.15, stairBayCz, false);
+      const w1F_Stair = addMesh(g, new THREE.PlaneGeometry(1.65, 0.62), winStripMat, xWest - 0.06, y1F + 2.15, stairBayCz, false);   // v2.12.60 玻璃置於窗框外（原被窗框遮住呈黑色）
       w1F_Stair.rotation.y = -Math.PI / 2;
       addBox(g, 0.08, 0.70, 1.72, darkMetalMat, xWest + 0.01, y1F + 2.15, stairBayCz);
 
@@ -12097,7 +12108,7 @@ function buildWestBuilding() {
       for (let m = -1; m <= 1; m++) {
         addBox(g, 0.09, wWinH, 0.05, darkMetalMat, wWinX, wWinY, nwCz + m * (wWinLen / 4));
       }
-      addBox(g, 0.04, wWinH, wWinLen, new THREE.MeshStandardMaterial({ color: 0x7b93a8, roughness: 0.25, metalness: 0.3 }), wWinX + 0.01, wWinY, nwCz);
+      { const gl = addMesh(g, new THREE.PlaneGeometry(wWinLen, wWinH), winFrost4Mat, wWinX - 0.065, wWinY, nwCz, false); gl.rotation.y = -Math.PI / 2; }   // v2.12.60 玻璃置於窗框外（原被窗框遮住呈黑色）
 
       const flZ = nwNorthZ + 0.48, flY = y2F + 0.65;
       addBox(g, 0.65, 0.04, 0.04, darkMetalMat, nwWestX - 0.32, flY, flZ);
