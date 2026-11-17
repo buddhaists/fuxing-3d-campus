@@ -11508,12 +11508,6 @@ function buildWestBuilding() {
 
   // v2.12.61 使用者標示照片 89：1F 第 6～9 跨為四跨開放穿廊（v2.12.55 誤將第 9 跨封牆，已移除）
 
-  // v2.12.59 西棟南端與新棟北面交界：三層樓北移 3 m 後西側留出約 1 m 斜向空隙，以同高度白磁磚外牆與屋頂補實
-  {
-    const fz1 = zCol[0], fz2 = zCol[0] + 1.2, fh = yRF + parapetH;
-    addBox(g, totalW, fh, fz2 - fz1, whiteTileMat, (xWest + xEast) / 2, fh / 2, (fz1 + fz2) / 2);
-  }
-
   // ==========================================================================
   // 4. 2F & 3F CLASSROOM CORE (`西棟大樓_2F/3F建築平面圖.jpg`)
   // ==========================================================================
@@ -13567,6 +13561,31 @@ function buildNewBuilding() {
       // 天花板吸頂吸頂投光燈
       addMesh(g, new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12), whiteMetalMat, xStairWest + stairBayW / 2, yNew + 2.45, stairZ, false);
     });
+
+    // v2.12.62 西棟依航照與實測移位後，西棟南端與新棟北面之間留有 1～3 m 斜向間隙：
+    //   以白磁磚實體量體補實（西棟南面線 → 新棟北面 zE），但保留東側【西棟東走廊 ↔ 連通樓梯】通道（x > xCoreEast）不封閉
+    {
+      const fillMat = new THREE.MeshStandardMaterial({ color: 0xe4e8eb, roughness: 0.6 });
+      const sh = new THREE.Shape([[-36.70, 12.63], [xCoreEast, 13.49], [xCoreEast, zE], [-36.70, zE]].map(([x, z]) => new THREE.Vector2(x, -z)));
+      const geo = new THREE.ExtrudeGeometry(sh, { depth: 12.05, bevelEnabled: false });
+      geo.rotateX(-Math.PI / 2);
+      const m = new THREE.Mesh(geo, fillMat); m.castShadow = m.receiveShadow = true; g.add(m);
+      // 西向（操場側）實牆灰色分割線與屋頂女兒牆壓頂
+      addBox(g, 0.34, 0.16, zE - 12.63 + 0.2, whiteMetalMat, -36.70 + 0.05, 12.13, (12.63 + zE) / 2);
+      // 連通樓梯下層平台上方之 2F／3F 樓板與屋頂板（銜接西棟東走廊）
+      [3.95, 7.70, 11.30].forEach(yy => addBox(g, xStairWest - xCoreEast, 0.24, stairClearDepth + 0.40, terrazzoStepMat, wLandingCx, yy - 0.27, stairZ));
+    }
+    // v2.12.62 依照片 90／92：連通樓梯南側白色粉刷牆，沿梯段斜向之暗紅色踢腳帶
+    {
+      const redSkirt = new THREE.MeshStandardMaterial({ color: 0x7a2630, roughness: 0.7 });
+      const wallZ = stairZ + stairClearDepth / 2 + 0.03;
+      [[y1F_west, y1F_new], [3.95, 5.85], [7.70, 9.40]].forEach(([y0, y1]) => {
+        const L = Math.hypot(stairBayW, y1 - y0), ang = Math.atan2(y1 - y0, stairBayW);
+        const band = new THREE.Mesh(new THREE.BoxGeometry(L, 0.26, 0.02), redSkirt);
+        band.position.set(xStairWest + stairBayW / 2, (y0 + y1) / 2 + 0.16, wallZ); band.rotation.z = ang; g.add(band);
+        addBox(g, stairBayW, 2.4, 0.06, creamWallMat, xStairWest + stairBayW / 2, (y0 + y1) / 2 + 1.25, wallZ + 0.04);
+      });
+    }
 
     // ========================================================================
     // C. 外立面 (面向中庭 / 北側 z = zF = 13.398m) 依正面立圖精確還原斜向白色護牆與深灰清水過梁
