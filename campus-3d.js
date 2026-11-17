@@ -11506,15 +11506,7 @@ function buildWestBuilding() {
     // Bays 6–9 (`川堂`) West side is completely open between columns toward the PU running track (per Photo 1 & Photo 3)!
   }
 
-  // v2.12.55 依操場實景照片 81：1F 最北一跨（第 9 跨）面向操場為白磁磚實牆＋高處橫向長窗，柱廊自第 8 跨開始
-  {
-    const z1 = zCol[8], z2 = zCol[9], bz = (z1 + z2) / 2, bw = z1 - z2;
-    addBox(g, 0.26, h1F - 0.05, bw - 0.30, whiteTileMat, xWest + 0.13, y1F + (h1F - 0.05) / 2, bz);
-    const sw = bw - 0.9;
-    addBox(g, 0.06, 0.62, sw + 0.10, darkMetalMat, xWest - 0.01, y1F + 2.45, bz);
-    const sg = addMesh(g, new THREE.PlaneGeometry(sw, 0.50), winFrost4Mat, xWest - 0.05, y1F + 2.45, bz, false); sg.rotation.y = -Math.PI / 2;
-    for (let k = 1; k < 4; k++) addBox(g, 0.07, 0.52, 0.04, darkMetalMat, xWest - 0.06, y1F + 2.45, bz - sw / 2 + k * sw / 4, false);
-  }
+  // v2.12.61 使用者標示照片 89：1F 第 6～9 跨為四跨開放穿廊（v2.12.55 誤將第 9 跨封牆，已移除）
 
   // v2.12.59 西棟南端與新棟北面交界：三層樓北移 3 m 後西側留出約 1 m 斜向空隙，以同高度白磁磚外牆與屋頂補實
   {
@@ -11539,23 +11531,12 @@ function buildWestBuilding() {
         const wEast = addMesh(g, new THREE.PlaneGeometry(bw * 0.58, 1.62), win4x3Mat, xCoreEast + 0.04, fy + 1.92, bz, false);
         wEast.rotation.y = Math.PI / 2;
       }
-      if (b === 8) {
-        // v2.12.60 照片 88 使用者標示：2F／3F 樓梯間位於北端第二跨（第 9 跨），面向操場可見深色梯間與斜向樓梯
-        const sw = bw - 0.5, shH = fh - 0.45;
-        const op = addMesh(g, new THREE.PlaneGeometry(sw, shH), new THREE.MeshBasicMaterial({ color: 0x4f5459 }), xCoreWest - 0.03, fy + shH / 2, bz, false);
-        op.rotation.y = -Math.PI / 2;
-        const runL = Math.hypot(sw * 0.9, fh * 0.9);
-        const flight = addBox(g, 0.05, 0.28, runL, whiteTileMat, xCoreWest - 0.06, fy + fh * 0.45, bz, false);
-        flight.rotation.x = Math.atan2(fh * 0.9, sw * 0.9);
-        addBox(g, 0.04, 0.04, runL, stainlessMat, xCoreWest - 0.09, fy + fh * 0.45 + 0.9, bz, false).rotation.x = flight.rotation.x;
-      } else {
       const wWest = addMesh(g, new THREE.PlaneGeometry(bw * 0.64, 1.62), win4x3Mat, xCoreWest - 0.04, fy + 1.92, bz, false);
       wWest.rotation.y = -Math.PI / 2;
-      }
       if (b % 3 === 0 || b % 3 === 2) {
         const doorZ = b % 3 === 0 ? (zCol[b] - 0.58) : (zCol[b + 1] + 0.58);
         if (b > 0) addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreEast + 0.03, fy + 1.075, doorZ);
-        if (b !== 8) addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreWest - 0.03, fy + 1.075, doorZ);
+        addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreWest - 0.03, fy + 1.075, doorZ);
       }
       addBox(g, 0.42, fh - 0.22, 0.42, colTileMat, xCoreEast, fy + (fh - 0.22) / 2, zCol[b]);
       addBox(g, 0.42, fh - 0.22, 0.42, colTileMat, xCoreWest, fy + (fh - 0.22) / 2, zCol[b]);
@@ -11933,9 +11914,16 @@ function buildWestBuilding() {
           if (fl === 3) {   // 3F 百葉延續
             for (let bl = 0; bl < 9; bl++) addBox(g, 0.10, 0.05, stairBayD - 0.1, greenLouverMat, xWest + 0.06, fy + fh - 0.48 - 0.86 + 0.05 + bl * 0.096, stairBayCz).rotation.z = 0.12;
           }
-          // 開口內側陰影（樓梯間內牆）
-          const sh = addMesh(g, new THREE.PlaneGeometry(stairBayD - 0.5, fh - 0.4), new THREE.MeshBasicMaterial({ color: fl === 2 ? 0xc9d0d4 : 0x8e9399 }), xCoreWest - 0.03, fy + (fh - 0.4) / 2, stairBayCz, false);   // v2.12.60 照片 88：2F 最北跨為連結前後走廊之通道（透光），3F 為開放走廊
-          sh.rotation.y = -Math.PI / 2;
+          // v2.12.61 使用者標示照片 89：此跨北半為 2F 連結前後走廊之通道（透光）、南半為 2F／3F 樓梯間（深色梯間＋斜向樓梯）
+          const halfD = stairBayD / 2 - 0.2, zPass = zStairNorth + stairBayD / 4, zSt = zStairSouth - stairBayD / 4;
+          const pass = addMesh(g, new THREE.PlaneGeometry(halfD, fh - 0.4), new THREE.MeshBasicMaterial({ color: fl === 2 ? 0xc9d0d4 : 0x8e9399 }), xCoreWest - 0.03, fy + (fh - 0.4) / 2, zPass, false);
+          pass.rotation.y = -Math.PI / 2;
+          const stw = addMesh(g, new THREE.PlaneGeometry(halfD, fh - 0.4), new THREE.MeshBasicMaterial({ color: 0x4f5459 }), xCoreWest - 0.03, fy + (fh - 0.4) / 2, zSt, false);
+          stw.rotation.y = -Math.PI / 2;
+          const runL = Math.hypot(halfD * 0.95, fh * 0.85);
+          const fl1 = addBox(g, 0.05, 0.26, runL, whiteTileMat, xCoreWest - 0.06, fy + fh * 0.45, zSt, false);
+          fl1.rotation.x = Math.atan2(fh * 0.85, halfD * 0.95);
+          addBox(g, 0.04, 0.04, runL, stainlessMat, xCoreWest - 0.09, fy + fh * 0.45 + 0.9, zSt, false).rotation.x = fl1.rotation.x;
         }
         addBox(g, 0.46, fh - 0.20, 0.46, colTileMat, xWest + 0.23, fy + (fh - 0.20) / 2, zStairNorth + 0.23);
         addBox(g, 0.42, fh - 0.20, 0.42, colTileMat, xCoreWest,    fy + (fh - 0.20) / 2, zStairNorth + 0.21);
