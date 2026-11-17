@@ -11211,11 +11211,11 @@ function buildWestBuilding() {
 
   // Materials tailored to the 5 real-world photos (`west_front_east.jpg`, `west_back_west.jpg`, `west_kitchen_45.jpg`)
   // v2.12.56 依照片 81／5166：外牆為略帶灰藍的白色方格磁磚，深色勾縫格線明顯
-  const whiteTileMat    = new THREE.MeshStandardMaterial({ map: makeTileTexture('#e6e9ec', '#8f969d'), roughness: 0.56 });
-  const kitchenTileMat  = new THREE.MeshStandardMaterial({ map: makeTileTexture('#e9ecee', '#8f969d'), roughness: 0.52 });
-  const colTileMat      = new THREE.MeshStandardMaterial({ map: makeTileTexture('#eceef0', '#959ca3'), roughness: 0.54 });
+  const whiteTileMat    = new THREE.MeshStandardMaterial({ map: makeTileTexture('#e3e7ea', '#5f676f'), roughness: 0.56 });
+  const kitchenTileMat  = new THREE.MeshStandardMaterial({ map: makeTileTexture('#e6e9ec', '#5f676f'), roughness: 0.52 });
+  const colTileMat      = new THREE.MeshStandardMaterial({ map: makeTileTexture('#e8ebee', '#666e76'), roughness: 0.54 });
   const westBaseMat     = new THREE.MeshStandardMaterial({ color: 0x5b3b32, roughness: 0.8 });   // 西向 1F 圓柱深褐色矮柱基
-  const corridorShadeMat = new THREE.MeshBasicMaterial({ color: 0x8a8f95 });  // 2F/3F 西走廊深處陰影
+  const corridorShadeMat = new THREE.MeshBasicMaterial({ color: 0x5c6167 });   // v2.12.57 再加深  // 2F/3F 西走廊深處陰影
   const dadoBrickMat    = new THREE.MeshStandardMaterial({ color: 0x7a3b2e, roughness: 0.76 }); // 1F 圓柱與走廊紅褐色磁磚柱座/腰牆
   const slotFrameMat    = new THREE.MeshStandardMaterial({ color: 0x6b3226, roughness: 0.72 }); // 東向 2F 欄杆一字型長條孔紅褐內框
   const skyBlueRailMat  = new THREE.MeshStandardMaterial({ color: 0x3898d4, roughness: 0.36, metalness: 0.45 }); // 2F/3F 女兒牆頂天藍色金屬欄杆
@@ -11284,6 +11284,34 @@ function buildWestBuilding() {
     addBox(g, coreW, h1F - 0.12, enclosed1FD, whiteTileMat, coreCx, y1F + (h1F - 0.12) / 2, enclosed1FCz);
     // Reddish-brown ceramic tile wainscot dado (`紅褐色腰牆`) along 1F East & West classroom walls & North 川堂 wall
     addBox(g, coreW + 0.06, 0.50, enclosed1FD + 0.06, westBaseMat, coreCx, y1F + 0.25, enclosed1FCz);   // v2.12.56 照片 81：1F 教室外牆深褐色矮踢腳
+
+    // v2.12.57 照片 81：1F 柱廊內側教室外牆之布告欄、懸掛綠色背心、圓凳與置物架
+    {
+      const corkMat = new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.9 });
+      const frameM = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.7 });
+      const paperCols = [0xffffff, 0xfff3b0, 0xcfe8ff, 0xffd6d6, 0xd8f5d0];
+      const paperMats = paperCols.map(c => new THREE.MeshBasicMaterial({ color: c }));
+      const wx = xCoreWest - 0.04;
+      [1, 2, 4].forEach((b, k) => {
+        const bz = (zCol[b] + zCol[b + 1]) / 2 + 0.55;
+        addBox(g, 0.05, 1.10, 1.70, frameM, wx, y1F + 1.65, bz, false);
+        addBox(g, 0.05, 0.98, 1.58, corkMat, wx - 0.01, y1F + 1.65, bz, false);
+        for (let i = 0; i < 6; i++) {
+          addBox(g, 0.01, 0.30, 0.24, paperMats[(i + k) % paperMats.length], wx - 0.04, y1F + 1.42 + (i % 2) * 0.42, bz - 0.55 + Math.floor(i / 2) * 0.55, false);
+        }
+      });
+      // 綠色背心（掛於柱廊）
+      const vestMat = new THREE.MeshStandardMaterial({ color: 0x3fae5a, roughness: 0.8, side: THREE.DoubleSide });
+      addBox(g, 0.04, 0.70, 0.55, vestMat, xCoreWest - 0.35, y1F + 1.85, (zCol[3] + zCol[4]) / 2 - 0.9, false);
+      addBox(g, 0.03, 0.03, 0.70, frameM, xCoreWest - 0.35, y1F + 2.22, (zCol[3] + zCol[4]) / 2 - 0.9, false);
+      // 圓凳與低矮置物架
+      const stoolMat = new THREE.MeshStandardMaterial({ color: 0x2f3338, roughness: 0.6 });
+      [(zCol[2] + zCol[3]) / 2, (zCol[4] + zCol[5]) / 2].forEach(sz => {
+        addMesh(g, new THREE.CylinderGeometry(0.17, 0.17, 0.04, 14), stoolMat, xCoreWest - 0.6, y1F + 0.45, sz, false);
+        [-1, 1].forEach(o => addBox(g, 0.03, 0.43, 0.03, stoolMat, xCoreWest - 0.6 + o * 0.1, y1F + 0.22, sz, false));
+      });
+      addBox(g, 0.35, 0.80, 1.20, frameM, xCoreWest - 0.22, y1F + 0.40, (zCol[1] + zCol[2]) / 2 - 0.6);
+    }
 
     // Interior partition walls inside 1F Core (`z = 8.17` & `z = 6.60` for `配膳室`)
     addBox(g, coreW - 0.1, h1F - 0.2, 0.18, whiteTileMat, coreCx, y1F + (h1F - 0.2) / 2, 8.17);
