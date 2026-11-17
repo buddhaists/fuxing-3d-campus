@@ -1445,24 +1445,36 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   // (C) Kindergarten & South Building Commuter Walkway (`建興南路 42 巷` 通學步道與馬路):
   // Segment 4a: Along Kindergarten Front Wall & Main Gate (`V5(367,374) -> V4b(438,374)`)
   addCommuterWalkwayStrip(X(367), Z(374), X(438), Z(374), 1, 3.0, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
-  addBufferedRoadSegment(X(367), Z(374), X(438), Z(374), 1, 3.0, 8.8, true, [0.87]);
+  addBufferedRoadSegment(X(367), Z(374), X(438), Z(374), 1, 3.0, 6.0, false, [0.87], { innerRed: true });   // v2.12.73 依街景：42巷為約 6 m 單一車道、無中線
 
   // Segment 4b: Along Kindergarten East Stepped Wall to South Building West Corner (`V4b(438,374) -> V4(496,318)`)
   addCommuterWalkwayStrip(X(438), Z(374), X(496), Z(294.9), 1, 3.0, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
-  addBufferedRoadSegment(X(438), Z(374), X(496), Z(294.9), 1, 3.0, 8.8, true, [], { innerRed: true });
+  addBufferedRoadSegment(X(438), Z(374), X(496), Z(294.9), 1, 3.0, 6.0, false, [], { innerRed: true });
 
   // Segment 5: Along South Building (南棟興學樓) & East Building South Facade to 學校新南側門 (`V4(496,318) -> V3(772,320)`)
   // v2.12.4 依 2024 街景：南棟前七彩欄杆外仍有約 2.4 m 淨寬人行道（含行道樹），人行道加寬至 4.8 m；
   //          灰褐方形地磚、淡紫色緣石，校園側路緣為紅線
   addCommuterWalkwayStrip(X(496), Z(294.9), X(715), Z(294.9), 1, 4.8, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
   addCommuterWalkwayStrip(X(715), Z(294.9), X(772), Z(320), 1, 4.8, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
-  addBufferedRoadSegment(X(496), Z(294.9), X(715), Z(294.9), 1, 4.8, 8.6, true, [0.08], { innerRed: true });
-  addBufferedRoadSegment(X(715), Z(294.9), X(772), Z(320), 1, 4.8, 8.6, true, [0.9], { innerRed: true });
+  addBufferedRoadSegment(X(496), Z(294.9), X(715), Z(294.9), 1, 4.8, 6.0, false, [0.08], { innerRed: true });
+  addBufferedRoadSegment(X(715), Z(294.9), X(772), Z(320), 1, 4.8, 6.0, false, [0.9], { innerRed: true });
 
   // Segment 6: From 學校新南側門 (東棟大樓右側) to Southeast Corner (`V3(772,320) -> V2(955,326)`)
   // v2.12.3 依 2024 街景：此段人行道為灰褐方形地磚、緣石漆淡紫色，臨路側無花箱
   addCommuterWalkwayStrip(X(772), Z(320), X(955), Z(326), 1, 4.8, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
-  addBufferedRoadSegment(X(770), Z(321), X(960), Z(327), 1, 4.8, 8.6, true, [0.82], { innerRed: true });
+  addBufferedRoadSegment(X(770), Z(321), X(960), Z(327), 1, 4.8, 6.0, false, [0.82], { innerRed: true });
+  // v2.12.73 依街景（10、12 建興南路42巷）：巷口黃色網狀禁止臨停區
+  [[X(772) + 1.5, Z(320) + 4.8 + 0.35 + 3.0, 6.0, 5.4], [X(438) + 2.0, Z(374) + 3.0 + 0.35 + 3.0, 6.0, 5.4]].forEach(([cx, cz, w, d]) => {
+    const yb = new THREE.Group(); yb.position.set(cx, 0.115, cz);
+    const ym = new THREE.MeshBasicMaterial({ color: 0xe8c33a });
+    [[0, -d / 2, w, 0.15], [0, d / 2, w, 0.15], [-w / 2, 0, 0.15, d], [w / 2, 0, 0.15, d]].forEach(([x, z, a, b]) => addBox(yb, a, 0.01, b, ym, x, 0, z, false));
+    for (let k = -4; k <= 4; k++) for (const sg of [1, -1]) {
+      const L = Math.min(w, d) * 1.414 * (1 - Math.abs(k) / 5);
+      if (L < 0.6) continue;
+      const ln = addBox(yb, L, 0.01, 0.12, ym, k * 0.9 * 0.707 * sg, 0, k * 0.9 * 0.707, false); ln.rotation.y = sg * Math.PI / 4;
+    }
+    layerGroups.roads.add(yb);
+  });
 
   // (D) East Main Gate Frontage (`復興路 / 台27線` 東側通學步道與迎賓大道):
   // 依實景照片：正門口人行步道開闊暢通，不設黑黃防撞短柱與花箱障礙
@@ -3353,9 +3365,6 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
 
   const contextBlocks = [
     // South of Jianxing S. Rd Lane 42 (shifted south of the Commuter Walkway + Road buffer!)
-    [540, 438, 595, 502, 10.5], [602, 438, 655, 502, 12.0], [662, 438, 725, 502, 10.5],
-    [735, 436, 785, 500, 11.0], [805, 434, 865, 498, 13.5], [872, 434, 935, 498, 10.5],
-    [445, 460, 515, 520, 11.5],   // v2.12.70 42巷西南段與 50巷／建興南路沿線改由下方街屋列產生
     // West of Jianxing S. Rd Lane 50 & Jianxing S. Rd (shifted west of the Commuter Walkway + Road buffer!)
     // East across Fuxing Rd
     [1180, 80, 1260, 175, 14.0], [1180, 195, 1260, 295, 11.5], [1180, 315, 1260, 405, 15.0],
@@ -3395,7 +3404,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   const winMat = new THREE.MeshStandardMaterial({ color: 0x55636b, roughness: 0.45 });
   const shutterMat = new THREE.MeshStandardMaterial({ color: 0xb9bec2, roughness: 0.5, metalness: 0.4 });
   const tankMat = new THREE.MeshStandardMaterial({ color: 0xc4cacd, roughness: 0.35, metalness: 0.65 });
-  const avoid = [[-85, 450, -5, 545], [25, 510, 115, 600], [125, 520, 215, 610], [445, 460, 515, 520]].map(([a, b, c, d]) => [X(a), Z(b), X(c), Z(d)]);
+  const avoid = [[-85, 450, -5, 545], [25, 510, 115, 600], [125, 520, 215, 610]].map(([a, b, c, d]) => [X(a), Z(b), X(c), Z(d)]);
   const WP = WEST_WALL_PX;
   // 西牆短折段合併為兩直段（50巷南北段、建興南路斜段），街屋列較連續
   const segs = [
@@ -3403,6 +3412,11 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [X(WP[2][0]), Z(WP[2][1]), X(WP[8][0]), Z(WP[8][1]), 3.2 + 0.35 + 9.6]
   ];
   segs.push([X(166), Z(486), X(374), Z(371), 2.2 + 0.35 + 8.4]);
+  // v2.12.73 依街景：42巷東段（幼兒園、南棟、前庭對面）同為連棟透天街屋，臨 6 m 窄巷
+  segs.push([X(367), Z(374), X(438), Z(374), 3.0 + 0.35 + 6.0]);
+  segs.push([X(496), Z(294.9), X(715), Z(294.9), 4.8 + 0.35 + 6.0]);
+  segs.push([X(715), Z(294.9), X(772), Z(320), 4.8 + 0.35 + 6.0]);
+  segs.push([X(772), Z(320), X(955), Z(326), 4.8 + 0.35 + 6.0]);
   let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const placed = [];
   segs.forEach(([x1, z1, x2, z2, off], si) => {
