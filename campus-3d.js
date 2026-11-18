@@ -3398,8 +3398,11 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   layerGroups.context.add(pg);
 }
 
+// v2.12.86 依使用者指示：移除學校四周民房（復興路對側透天、西南高層住宅、各巷道對側連棟街屋）；設 true 可恢復
+const SHOW_NEIGHBOR_HOUSES = false;
+
 // Context Neighbor Buildings (`context` layer - Pingtung Townhouses positioned cleanly outside the Buffered Roads)
-{
+if (SHOW_NEIGHBOR_HOUSES) {
   const ctxMat1 = new THREE.MeshStandardMaterial({ color: 0xd7d4ca, roughness: 0.86 });
   const ctxMat2 = new THREE.MeshStandardMaterial({ color: 0xcbc7bc, roughness: 0.86 });
   const ctxMat3 = new THREE.MeshStandardMaterial({ color: 0xdfd8cc, roughness: 0.84 });
@@ -3442,7 +3445,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
 // v2.12.70 依 Google 衛星圖：建興南路50巷、建興南路（西側斜段）與建興南路42巷（運動場南側）對面連棟街屋
 //   沿各路段外側（人行道＋車道＋對側騎樓 1.6 m 之外）依面寬 4～7 m 分割透天厝，進深 11～15 m、2～4 層，
 //   避開既有高樓量體；屋頂部分加設鐵皮斜頂或水塔
-{
+if (SHOW_NEIGHBOR_HOUSES) {
   const rowMats = [0xe2ddd1, 0xd3cfc6, 0xe6e1d8, 0xcfc9bd, 0xe8d8cf, 0xd6dde0, 0xdcd3c1].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.84 }));
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x8c9399, roughness: 0.8 });
   const sheetMats = [0x6f8fa6, 0xa95c4a, 0x9aa3a8].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.55, metalness: 0.35, side: THREE.DoubleSide }));
