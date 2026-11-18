@@ -20482,7 +20482,7 @@ let followingPedestrianIdx = -1;
 // 3D Floor Cutaway & Interactive Plan Layout State (`#plan-toolbar` + `plan3DOverlayGroup`)
 let activePlanFloor = '1F';
 let planShowRooms = true;
-let planShowExt = true;
+let planShowExt = false;   // v2.12.87 依使用者指示移除「處室分機表」選項，快查表預設不顯示
 let planShowPaths = true;
 let planShowTrees = true;
 let planShowImg = false;
