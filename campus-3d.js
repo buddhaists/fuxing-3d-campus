@@ -7988,8 +7988,8 @@ function buildEastBuilding() {
     // v2.12.81 依照片 131～134：坡道與東棟之間由西向東為【與後走廊同高之寬平台步道（約 2.3 m）】→【洗石子花台（約 0.6 m，台內植栽、步道側欄杆）】→ 東棟 1F 後走廊
     const plantW = 0.62, walkW = 2.3, xPl1 = xW0 - plantW, xWalk1 = xPl1 - walkW;
     const xC1 = xWalk1 - laneW, xC2 = xWalk1;                     // 內側 Run R（紅框）
-    const xB1 = xW0 - 2 * laneW, xB2 = xC1;                      // 中間 Run B
-    const xA1 = xW0 - 3 * laneW - 0.15, xA2 = xB1;               // 外側 Run A（略向西凸出）
+    const xB1 = xC1 - laneW, xB2 = xC1;                        // 中間 Run B
+    const xA1 = xB1 - laneW - 0.15, xA2 = xB1;               // 外側 Run A（略向西凸出）
     const topLen = 2.0, landN = 1.6, landS = 2.1;
     const zCtop = zS - topLen;                                   // Run C 南端（頂端平臺北緣）
     const zNland = zN + landN;                                   // 北端轉折平臺南緣
@@ -8009,7 +8009,7 @@ function buildEastBuilding() {
     const yOnR = z => yMid + (yTop - yMid) * (zLand - z) / lenR;
     const yOnY = z => yGround + (yMid - yGround) * (z - zY0) / lenY;
     const graniteMat = new THREE.MeshStandardMaterial({ map: makeTerrazzoTexture ? makeTerrazzoTexture() : null, color: 0xa9a6a0, roughness: 0.86, side: THREE.DoubleSide });   // v2.12.77 灰色抿石子（照片）；擠出量體法線朝內，需雙面材質才看得見（原坡道量體因此不顯示）
-    const rampSurfMat = new THREE.MeshStandardMaterial({ color: 0xb4b1aa, roughness: 0.92 });
+    const rampSurfMat = new THREE.MeshStandardMaterial({ color: 0x7f7d78, roughness: 0.95 });   // v2.12.82 照片：深灰防滑洗石子坡面
     const stainlessMat = new THREE.MeshStandardMaterial({ color: 0xc4cacf, roughness: 0.26, metalness: 0.85 });
     const fillBlock = (x1, x2, za, ya, zb_, yb_, ytopExtra = 0) => {
       const shp = new THREE.Shape();
@@ -8079,7 +8079,17 @@ function buildEastBuilding() {
     };
     // 寬平台步道（與後走廊同高）與其西緣欄杆
     fillBlock(xWalk1, xPl1, zN, yTop, zS + 0.6, yTop);
-    addBox(g, walkW - 0.02, 0.04, zS + 0.6 - zN, passageFloorMat, (xWalk1 + xPl1) / 2, yTop + 0.02, (zN + zS + 0.6) / 2, false);
+    addBox(g, walkW - 0.02, 0.04, zS + 0.6 - zN, new THREE.MeshStandardMaterial({ color: 0xaeaba3, roughness: 0.9 }), (xWalk1 + xPl1) / 2, yTop + 0.02, (zN + zS + 0.6) / 2, false);
+    // v2.12.82 依照片 134：各坡道與步道之間以淺色花崗石緣石分隔（俯視可清楚分辨三道）
+    {
+      const capMat = new THREE.MeshStandardMaterial({ color: 0xf0ede6, roughness: 0.75 });
+      const capR = (x, za, ya, zb, yb, w = 0.2) => { const L = Math.hypot(zb - za, yb - ya); const m = addBox(g, w, 0.06, L, capMat, x, (ya + yb) / 2 + 0.05, (za + zb) / 2, false); m.rotation.x = -Math.atan2(yb - ya, zb - za); };
+      capR(xC2 + 0.06, zTopS, yTop, zS, yTop);                       // Run R ↔ 步道
+      capR(xPl1 - 0.08, zN, yTop, zS + 0.6, yTop, 0.16);              // 步道 ↔ 花台
+      capR(xC1 - 0.09, zY0, yOnR(zY0) + 0.12, zLand, yMid + 0.12, 0.22); // Run R ↔ Run Y
+      capR(xB1 - 0.10, zY0, yGround + 0.20, zLand, yMid + 0.20, 0.24);   // Run Y 外緣
+      addBox(g, xC2 - xB1, 0.06, 0.2, capMat, (xB1 + xC2) / 2, yMid + 0.05, zLand + 0.1, false);   // 南端平臺北緣分隔
+    }
     railing(xC2 + 0.02, zTopS, yTop, zS, yTop, { handrail: false });                                   // 步道西緣（Run R 之上）
     railing(xPl1 - 0.05, zN + 0.3, yTop, zS, yTop, { handrail: false });                               // 花台步道側欄杆
     // v2.12.80 依東棟 1F 平面圖與照片 126：後走廊西緣（坡道內側欄杆後）設一條洗石子矮花台，台內常綠灌木與觀葉植栽
