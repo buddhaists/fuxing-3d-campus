@@ -7985,7 +7985,9 @@ function buildEastBuilding() {
     const zN = stairZ_Max + 0.10;                                // 北端（緊鄰穿堂大台階南側）
     const zS = cz(AXIS_CM[4]) + 0.75;                            // 南端（興學樓北側綠籬前）
     const laneW = 2.10;   // v2.12.78 依照片加寬（原 1.60 m）
-    const xC1 = xW0 - laneW, xC2 = xW0;                          // 內側 Run C
+    // v2.12.81 依照片 131～134：坡道與東棟之間由西向東為【與後走廊同高之寬平台步道（約 2.3 m）】→【洗石子花台（約 0.6 m，台內植栽、步道側欄杆）】→ 東棟 1F 後走廊
+    const plantW = 0.62, walkW = 2.3, xPl1 = xW0 - plantW, xWalk1 = xPl1 - walkW;
+    const xC1 = xWalk1 - laneW, xC2 = xWalk1;                     // 內側 Run R（紅框）
     const xB1 = xW0 - 2 * laneW, xB2 = xC1;                      // 中間 Run B
     const xA1 = xW0 - 3 * laneW - 0.15, xA2 = xB1;               // 外側 Run A（略向西凸出）
     const topLen = 2.0, landN = 1.6, landS = 2.1;
@@ -8075,10 +8077,14 @@ function buildEastBuilding() {
       const nP = Math.max(3, Math.round(len / 0.12));
       for (let i = 0; i <= nP; i++) addBox(eastDetailGroup, i % 10 === 0 ? 0.045 : 0.024, h - 0.05, i % 10 === 0 ? 0.045 : 0.024, stainlessMat, xa + len * i / nP, y + 0.05 + (h - 0.05) / 2, z, false);
     };
-    railing(xC2 + 0.02, zN, yTop, zS, yTop, { handrail: false });                                      // 後走廊西緣
+    // 寬平台步道（與後走廊同高）與其西緣欄杆
+    fillBlock(xWalk1, xPl1, zN, yTop, zS + 0.6, yTop);
+    addBox(g, walkW - 0.02, 0.04, zS + 0.6 - zN, passageFloorMat, (xWalk1 + xPl1) / 2, yTop + 0.02, (zN + zS + 0.6) / 2, false);
+    railing(xC2 + 0.02, zTopS, yTop, zS, yTop, { handrail: false });                                   // 步道西緣（Run R 之上）
+    railing(xPl1 - 0.05, zN + 0.3, yTop, zS, yTop, { handrail: false });                               // 花台步道側欄杆
     // v2.12.80 依東棟 1F 平面圖與照片 126：後走廊西緣（坡道內側欄杆後）設一條洗石子矮花台，台內常綠灌木與觀葉植栽
     {
-      const pz1 = zTopS + 0.4, pz2 = zS - 0.6, pw = 0.62, px = xC2 + 0.06 + pw / 2;
+      const pz1 = zN + 0.4, pz2 = zS - 0.2, pw = plantW, px = xPl1 + pw / 2;   // v2.12.81 花台位於步道與後走廊之間
       addBox(g, pw, 0.42, pz2 - pz1, graniteMat, px, yTop + 0.21, (pz1 + pz2) / 2);
       addBox(g, pw - 0.12, 0.02, pz2 - pz1 - 0.12, new THREE.MeshStandardMaterial({ color: 0x5b4a3a, roughness: 0.95 }), px, yTop + 0.43, (pz1 + pz2) / 2, false);
       const pm = [0x2f6a2c, 0x3f7f35, 0x568f3e, 0x2a5a28].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }));
@@ -8096,7 +8102,7 @@ function buildEastBuilding() {
     railing(xB1 - 0.10, zY0 + 0.25, yGround + 0.22, zLand, yMid + 0.20, { side: 0.10 });               // Run Y 外緣
     railing(xB1 - 0.10, zLand, yMid + 0.20, zS, yMid + 0.20, { handrail: false });                     // 南端平臺外緣
     railing(xB2 + 0.05, zY0 + 0.25, yGround, zLand, yMid, { side: -0.09, posts: false });             // Run Y 內扶手
-    railingX(zN + 0.05, xC1 - wallT, xC2, yTop);                                                       // 北端頂部平臺北緣
+    railingX(zN + 0.05, xC1 - wallT, xC2, yTop);   // Run R 北端與步道相接處不設欄杆                                                       // 北端頂部平臺北緣
     // v2.12.78 依照片 123／127：坡道落地處與興學樓前為紅褐色連鎖磚地坪（至草地邊）
     {
       const tc = document.createElement('canvas'); tc.width = tc.height = 256; const cx = tc.getContext('2d');
@@ -10859,7 +10865,7 @@ function buildSouthBuilding() {
   bandTex.offset.x = (((bldgCx - (bldgW + 4.0) / 2) - X(445)) / plazaTileX) % 1;
   const courtyardBrickMat = new THREE.MeshStandardMaterial({ map: bandTex, roughness: 0.82 });
   { // v2.12.77 地磚帶東端止於東棟後無障礙坡道西緣（原延伸蓋住坡道量體，使坡道看不見）
-    const bx1 = bldgCx - (bldgW + 4.0) / 2, bx2 = Math.min(bldgCx + (bldgW + 4.0) / 2, 50.3), bw2 = bx2 - bx1;
+    const bx1 = bldgCx - (bldgW + 4.0) / 2, bx2 = Math.min(bldgCx + (bldgW + 4.0) / 2, 46.9), bw2 = bx2 - bx1;   // v2.12.81 坡道加步道後西移
     bandTex.repeat.x = bw2 / plazaTileX;
     addBox(g, bw2, 0.04, 8.5, courtyardBrickMat, (bx1 + bx2) / 2, 0.02, zNorth - 7.2, false);
   }
