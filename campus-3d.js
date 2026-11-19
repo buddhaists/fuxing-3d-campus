@@ -124,6 +124,8 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(getOptimalDpr());
+// 全域預設各向異性過濾：地面、磁磚、跑道等程序式貼圖在斜視角不再變糊（之前 CanvasTexture 預設為 1）
+THREE.Texture.DEFAULT_ANISOTROPY = Math.min(isMobileDevice ? 4 : 8, renderer.capabilities.getMaxAnisotropy());
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
@@ -199,7 +201,10 @@ const selectionOutlineGroup = new THREE.Group();
 scene.add(selectionOutlineGroup);
 
 // Procedural Equirectangular Sky Generator (GXU sky.ts approach)
+// 天空只有 4 種預設：依預設名快取，拖曳時間滑桿不再每次新建貼圖（原本舊貼圖未釋放會持續佔用 GPU 記憶體）
+const _skyTexCache = {};
 function createSkyTexture(presetKey) {
+  if (_skyTexCache[presetKey]) return _skyTexCache[presetKey];
   const cfg = LIGHTING_PRESETS[presetKey];
   const c = document.createElement('canvas');
   c.width = 256; c.height = 128;
@@ -214,7 +219,7 @@ function createSkyTexture(presetKey) {
   const tex = new THREE.CanvasTexture(c);
   tex.mapping = THREE.EquirectangularReflectionMapping;
   tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return (_skyTexCache[presetKey] = tex);
 }
 
 // High-Resolution Procedural Ceramic Tile Texture & Bump Map (Square White School Exterior Tiles per p3.jpg/p10.jpg)
@@ -22384,12 +22389,19 @@ function updateEnvironmentSimulation() {
   renderPlanSvg();
 }
 
+// 時間滑桿：同一影格內的多次 input 事件合併成一次更新（含小地圖與平面圖重繪），拖曳更順
+let _timeSliderRaf = 0;
 document.getElementById('time-of-day').addEventListener('input', e => {
   timeOfDay = parseFloat(e.target.value);
-  document.querySelectorAll('[data-preset-time]').forEach(b => {
-    b.classList.toggle('is-active', Math.abs(parseFloat(b.dataset.presetTime) - timeOfDay) < 0.4);
+  if (_timeSliderRaf) return;
+  _timeSliderRaf = requestAnimationFrame(() => {
+    _timeSliderRaf = 0;
+    document.querySelectorAll('[data-preset-time]').forEach(b => {
+      b.classList.toggle('is-active', Math.abs(parseFloat(b.dataset.presetTime) - timeOfDay) < 0.4);
+    });
+    updateEnvironmentSimulation();
+    requestRender(20);
   });
-  updateEnvironmentSimulation();
 });
 
 document.querySelectorAll('[data-preset-time]').forEach(btn => {
@@ -24094,7 +24106,8 @@ renderer.domElement.addEventListener('dblclick', e => {
     }
   }
 
-  const hits = raycaster.intersectObjects(scene.children, true);
+  // 只對校園圖層取交點（排除天氣粒子、行人、平面圖疊層等），減少雙擊時的射線測試量
+  const hits = raycaster.intersectObjects(Object.values(layerGroups), true);
   if (hits.length > 0) {
     const pt = hits[0].point;
     if (e.shiftKey) {
