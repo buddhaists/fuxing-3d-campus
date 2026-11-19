@@ -858,7 +858,7 @@ window.CAMPUS_360_SPOTS = [
   {
     "id": "spot-40",
     "num": 40,
-    "name": "南側圍牆綠蔭步道",
+    "name": "南側圍牆綠蔭步道0",
     "group": "操場球場與遊戲區",
     "floor": "1F",
     "px": 346.96,
