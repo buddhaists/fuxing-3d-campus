@@ -132,6 +132,34 @@ function mergeInto(list, signature) {
 
 const batchedOutputs = new WeakSet();
 
+// ---- 材質去重：外觀參數完全相同的「純色」MeshStandardMaterial 統一為同一個實例 ----
+// 合批是以「同父節點 + 同材質」為單位，建模時大量重複建立同色同粗糙度的材質，使合批結果被不必要地拆散。
+// 只處理「無貼圖、非透明、無自發光」的材質；會在執行期被修改的材質（四季樹葉、夜間窗光、
+// 草坪、壁畫、PBR 延遲貼圖目標…）由呼叫端以 protect 傳入、或標記 userData.noDedupe，一律不合併。
+const _canonMats = new Map();
+const _MAP_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'alphaMap', 'bumpMap', 'emissiveMap', 'aoMap', 'envMap', 'lightMap', 'displacementMap'];
+function dedupeSignature(m, protect) {
+  if (!m || m.type !== 'MeshStandardMaterial' || protect.has(m)) return null;
+  if (m.userData && Object.keys(m.userData).length) return null;       // 帶有 noDedupe / phenoRole 等標記者不動
+  if (m.transparent || m.alphaTest || !m.visible || m.wireframe || m.vertexColors || m.clippingPlanes) return null;
+  for (const k of _MAP_KEYS) if (m[k]) return null;
+  if (m.emissive && m.emissive.getHex() !== 0) return null;
+  return [m.color.getHex(), m.roughness, m.metalness, m.side, m.opacity, m.depthWrite, m.depthTest, m.flatShading,
+    m.polygonOffset ? `${m.polygonOffsetFactor},${m.polygonOffsetUnits}` : '', m.envMapIntensity, m.name].join('|');
+}
+function dedupeMaterials(roots, excluded, protect) {
+  let replaced = 0;
+  roots.forEach(r => r && r.traverse(o => {
+    if (!o.isMesh || excluded.has(o) || Array.isArray(o.material)) return;
+    const sig = dedupeSignature(o.material, protect);
+    if (!sig) return;
+    const canon = _canonMats.get(sig);
+    if (!canon) _canonMats.set(sig, o.material);
+    else if (canon !== o.material) { o.material = canon; replaced++; }
+  }));
+  return replaced;
+}
+
 /**
  * 合併 roots 底下所有可合併的靜態 Mesh。
  * @param {THREE.Object3D[]} roots
@@ -148,6 +176,10 @@ export function batchStaticMeshes(roots, opts = {}) {
   // 讓合批後的大 Mesh 仍能被視錐剔除（否則整棟建築只要有一角入鏡就整批繪製，含陰影 pass）。
   const cellSize = opts.cellSize === undefined ? 0 : opts.cellSize;
   const cellY = opts.cellY || 12;
+
+  // 材質去重（需由呼叫端明確開啟 dedupe，並傳入執行期會被修改的材質 protect）
+  let dedupReplaced = 0;
+  if (opts.dedupe) dedupReplaced = dedupeMaterials(roots, excluded, opts.protect || new Set());
 
   // 收集所有父節點（遇到排除節點即停止往下）
   const parents = [];
@@ -213,5 +245,5 @@ export function batchStaticMeshes(roots, opts = {}) {
     }
     for (const o of parent.children) if (o.isMesh) meshesAfter++;
   }
-  return { meshesBefore, meshesAfter, batches, ms: Math.round(performance.now() - t0) };
+  return { meshesBefore, meshesAfter, batches, dedupReplaced, ms: Math.round(performance.now() - t0) };
 }

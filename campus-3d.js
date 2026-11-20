@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { batchStaticMeshes } from './campus-batch.js?v=2.12.88';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.89';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -3802,6 +3802,7 @@ function buildNorthBuilding() {
 
   // Poly Haven CC0 PBR maps (embedded as data-URIs in tex/pbr_data.js so WebGL never hits file:// CORS limits)
   function applyPBR(mat, base, rx, ry) {
+    mat.userData.noDedupe = true;   // 之後會被延遲換上貼圖，不可與其他同色材質合併
     const doApply = data => {
       if (!data) return;
       const loader = new THREE.TextureLoader();
@@ -7153,7 +7154,7 @@ function buildEastBuilding() {
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x3b3c3e, roughness: 0.7 });
 
   // ---------- 東向彩繪立面設計圖 (east_elevation.jpg，以 data-URI 內嵌避免 file:// 跨域限制) ----------
-  const muralMat = new THREE.MeshStandardMaterial({ color: 0xf2c94c, roughness: 0.55 });
+  const muralMat = new THREE.MeshStandardMaterial({ color: 0xf2c94c, roughness: 0.55 }); muralMat.userData.noDedupe = true;   // 圖片載入後會改色換貼圖
   {
     const muralTex = new THREE.Texture();
     muralTex.colorSpace = THREE.SRGBColorSpace;
@@ -25205,8 +25206,19 @@ function runStaticBatching(label) {
       ...streetLightBulbs,
       ...((window.__campusFlags || []).map(f => f.mesh))
     ];
+    // 材質去重的保護名單：所有「執行期會被改色 / 顯隱 / 換貼圖」的材質（四季樹葉、物候、草坪、夜間窗光…）
+    const protect = new Set([...foliageMats, ...nightWindowMaterials, ...Object.values(_phenoMatCache)]);
+    Object.values(PHENO_STATE).forEach(st => {
+      for (const k of Object.keys(st)) {
+        const v = st[k];
+        if (v instanceof Map) v.forEach((_, m) => protect.add(m));
+        else if (Array.isArray(v)) v.forEach(m => m && m.isMaterial && protect.add(m));
+      }
+    });
+    (window.__lawnMats || []).forEach(({ mat }) => protect.add(mat));
+    const dedupe = !new URLSearchParams(window.location.search).has('nodedup');
     const cellParam = new URLSearchParams(window.location.search).get('cell');   // ?cell=0 可關閉空間切塊以便比對
-    const r = batchStaticMeshes(Object.values(layerGroups), { exclude, cellSize: cellParam === null ? 0 : Number(cellParam) });   // 實測：切塊反而增加 draw calls（4145→5140~5428），預設關閉
+    const r = batchStaticMeshes(Object.values(layerGroups), { exclude, dedupe, protect, cellSize: cellParam === null ? 0 : Number(cellParam) });   // 實測：切塊反而增加 draw calls（4145→5140~5428），預設關閉
     const st = window.__batchStats;
     st.batches += r.batches; st.ms += r.ms;
     st.last = { label, ...r };
