@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { batchStaticMeshes } from './campus-batch.js?v=2.12.89';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.90';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -128,7 +128,8 @@ renderer.setPixelRatio(getOptimalDpr());
 // 全域預設各向異性過濾：地面、磁磚、跑道等程序式貼圖在斜視角不再變糊（之前 CanvasTexture 預設為 1）
 THREE.Texture.DEFAULT_ANISOTROPY = Math.min(isMobileDevice ? 4 : 8, renderer.capabilities.getMaxAnisotropy());
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// ?tm=agx 可改用 AgX 色調對應（高光更不易過曝、但整體飽和度較低），預設維持 ACES
+renderer.toneMapping = new URLSearchParams(window.location.search).get('tm') === 'agx' ? THREE.AgXToneMapping : THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -208,21 +209,86 @@ const _skyTexCache = {};
 function createSkyTexture(presetKey) {
   if (_skyTexCache[presetKey]) return _skyTexCache[presetKey];
   const cfg = LIGHTING_PRESETS[presetKey];
+  const W = isMobileDevice ? 1024 : 2048, H = W / 2;
   const c = document.createElement('canvas');
-  c.width = 256; c.height = 128;
+  c.width = W; c.height = H;
   const ctx = c.getContext('2d');
-  const g = ctx.createLinearGradient(0, 0, 0, 128);
+  // 天頂 → 地平線 → 地面漸層（地平線附近停留較長，避免天際線一道硬邊）
+  const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0.0, cfg.zenith);
-  g.addColorStop(0.52, cfg.horizon);
-  g.addColorStop(0.62, cfg.horizon);
+  g.addColorStop(0.50, cfg.horizon);
+  g.addColorStop(0.56, cfg.horizon);
   g.addColorStop(1.0, cfg.lower);
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 256, 128);
+  ctx.fillRect(0, 0, W, H);
+  // 地平線薄霧帶：讓遠景與霧色平順銜接
+  const haze = ctx.createLinearGradient(0, H * 0.40, 0, H * 0.58);
+  haze.addColorStop(0, 'rgba(255,255,255,0)');
+  haze.addColorStop(0.7, 'rgba(255,255,255,0.22)');
+  haze.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = haze;
+  ctx.fillRect(0, H * 0.40, W, H * 0.18);
+  // 確定性亂數：每個預設的雲/星位置固定
+  let sd = 7 + presetKey.length * 131;
+  const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  if (presetKey === 'night') {
+    // 視野只涵蓋全天球約 1/8，星點需極小（廣角放大後才不會變成光斑）
+    for (let i = 0; i < 1400; i++) {
+      const y = rr() * H * 0.46, a = 0.2 + rr() * 0.75, r = (0.22 + rr() * rr() * 0.7) * (W / 2048 + 0.4);
+      ctx.fillStyle = `rgba(235,242,255,${a.toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(rr() * W, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  } else {
+    // 柔邊積雲：多顆放射漸層圓疊成雲團，集中於天頂到地平線之間的帶狀區域
+    const warm = presetKey === 'evening';
+    for (let k = 0; k < 16; k++) {
+      const cx = rr() * W, cy = H * (0.10 + rr() * 0.30), size = W * (0.025 + rr() * 0.03);
+      // 雲底陰影：略偏下、偏灰藍的低透明橢圓，讓雲有立體感
+      for (let j = 0; j < 4; j++) {
+        const px = cx + (rr() - 0.5) * size * 2.6, py = cy + size * 0.32, pr = size * (0.55 + rr() * 0.4);
+        const sg = ctx.createRadialGradient(px, py, 0, px, py, pr);
+        sg.addColorStop(0, warm ? 'rgba(170,120,110,0.16)' : 'rgba(110,135,170,0.16)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = sg; ctx.fillRect(px - pr, py - pr, pr * 2, pr * 2);
+      }
+      for (let j = 0; j < 9; j++) {
+        const px = cx + (rr() - 0.5) * size * 3.2, py = cy + (rr() - 0.5) * size * 0.8, pr = size * (0.5 + rr() * 0.7);
+        const rg = ctx.createRadialGradient(px, py, 0, px, py, pr);
+        const a = 0.38 + rr() * 0.26;
+        rg.addColorStop(0, warm ? `rgba(255,236,214,${a})` : `rgba(255,255,255,${a})`);
+        rg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = rg;
+        ctx.fillRect(px - pr, py - pr, pr * 2, pr * 2);
+      }
+    }
+  }
+  // 抖動雜訊：打散 8-bit 漸層色帶
+  const img = ctx.getImageData(0, 0, W, H), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (rr() - 0.5) * 3.2;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+  }
+  ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(c);
   tex.mapping = THREE.EquirectangularReflectionMapping;
   tex.colorSpace = THREE.SRGBColorSpace;
   return (_skyTexCache[presetKey] = tex);
 }
+
+// 太陽（夜間為月）光暈：加法混合的柔邊精靈，隨太陽方向移動；不受霧影響
+const sunGlowSprite = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.06, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.14, 'rgba(255,255,255,0.35)'); g.addColorStop(0.45, 'rgba(255,255,255,0.08)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.SpriteMaterial({ map: t, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false, opacity: 0.9 });
+  const sp = new THREE.Sprite(m);
+  sp.scale.set(300, 300, 1); sp.renderOrder = -1;
+  return sp;
+})();
+scene.add(sunGlowSprite);
 
 // High-Resolution Procedural Ceramic Tile Texture & Bump Map (Square White School Exterior Tiles per p3.jpg/p10.jpg)
 let _tileNormalMap = null;
@@ -13984,7 +14050,7 @@ function buildNewBuilding() {
     {
       const junTip = new THREE.MeshStandardMaterial({ color: 0x6d6a34, roughness: 0.9 });
       addBox(g, 0.18, 0.5, 0.18, plumeriaTrunkMat, junX, 0.25, junZ, false);
-      for (let k = 0; k < 26; k++) {
+      for (let k = 0; k < 16; k++) {
         const t = k / 25, rr = 0.95 * (1 - t) + 0.18, a = k * 2.35;
         const cl = addMesh(g, new THREE.IcosahedronGeometry(0.62 * (1 - t * 0.55), 0), k % 4 === 0 ? hedgeMat2 : juniperMat, junX + Math.cos(a) * rr * 0.6, 0.6 + t * 2.6, junZ + Math.sin(a) * rr * 0.6);
         cl.scale.set(1, 1.2, 1); cl.rotation.set(nr(), nr() * 3, 0);
@@ -22334,6 +22400,7 @@ function updateEnvironmentSimulation() {
   const sunY = isNight ? 95 : Math.max(24, Math.sin(sunAngle) * 170);
   const sunZ = 75 + Math.sin(sunAngle * 0.8) * 35;
   sunLight.position.set(sunX, sunY, sunZ);
+  sunGlowSprite.position.copy(sunLight.position).normalize().multiplyScalar(900);
 
   const cfg = LIGHTING_PRESETS[presetKey];
 
@@ -22358,6 +22425,9 @@ function updateEnvironmentSimulation() {
   scene.fog = new THREE.Fog(cfg.horizon, fogNear, fogFar);
 
   sunLight.color.setHex(cfg.sunColor);
+  sunGlowSprite.material.color.setHex(cfg.sunColor);
+  sunGlowSprite.material.opacity = isNight ? 0.45 : (activeWeather === 'clear' ? 0.9 : 0.35);
+  sunGlowSprite.scale.setScalar(isNight ? 140 : 300);
   sunLight.intensity = activeWeather === 'clear' ? cfg.sunIntensity : cfg.sunIntensity * 0.68;
   hemiLight.color.setHex(cfg.hemiSky);
   hemiLight.groundColor.setHex(cfg.hemiGround);
