@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { batchStaticMeshes } from './campus-batch.js?v=2.9.0';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.88';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -118,7 +118,8 @@ const getOptimalDpr = () => {
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.4, 1200);
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
-  logarithmicDepthBuffer: true,
+  // 對數深度緩衝會讓每個 fragment 寫入 gl_FragDepth、關閉 early-Z；網址加 ?nolog 可關閉以比對效能與 z-fighting
+  logarithmicDepthBuffer: !new URLSearchParams(window.location.search).has('nolog'),
   // preserveDrawingBuffer 已移除：PNG 匯出前會同步重繪一次，不需保留繪圖緩衝（省下每幀一次全螢幕複製）
   powerPreference: 'high-performance'
 });
@@ -154,7 +155,8 @@ function requestRender(frames = 35) {
   renderDemandFrames = Math.max(renderDemandFrames, frames);
 }
 window.requestRender = requestRender;
-controls.addEventListener('change', () => requestRender(20));
+let lastMotionAt = 0;   // 最近一次「鏡頭移動」的時間，供動態解析度判斷是否正在操作
+controls.addEventListener('change', () => { lastMotionAt = performance.now(); requestRender(20); });
 window.addEventListener('pointerdown', () => requestRender(60), { passive: true });
 window.addEventListener('pointermove', e => { if (e.buttons > 0) requestRender(35); }, { passive: true });
 window.addEventListener('wheel', () => requestRender(35), { passive: true });
@@ -24401,6 +24403,31 @@ function updateShadowMapIfNeeded() {
   }
 }
 
+// ---- 動態解析度：操作（旋轉、飛行、步行）時暫時降到 0.72× 解析度，停止約 0.25 秒後補繪全解析度 ----
+// 只在目標解析度 > 1 時啟用（低於 1 再降會明顯變糊）；網址加 ?nodyn 可關閉。
+const DYN_RES_ENABLED = !new URLSearchParams(window.location.search).has('nodyn');
+let _dynLowered = false, _dynTimer = 0;
+window.__dynState = () => ({ lowered: _dynLowered, sinceMotion: Math.round(performance.now() - lastMotionAt), demand: renderDemandFrames, adaptiveDpr });
+function applyMotionResolution(now) {
+  if (!DYN_RES_ENABLED) return;
+  const moving = performance.now() - lastMotionAt < 250;
+  if (_dynLowered && moving) {
+    // 影格用完時迴圈會停止，因此以計時器保證操作結束後再喚醒一次，讓下一影格以全解析度補繪
+    clearTimeout(_dynTimer);
+    _dynTimer = setTimeout(() => requestRender(3), 300);
+  }
+  if (moving && !_dynLowered && adaptiveDpr > 1.0) {
+    _dynLowered = true;
+    renderer.setPixelRatio(Math.max(0.9, adaptiveDpr * 0.72));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  } else if (!moving && _dynLowered) {
+    _dynLowered = false;
+    renderer.setPixelRatio(adaptiveDpr);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    requestRender(3);
+  }
+}
+
 // ---- 效能監測 + 自動畫質（動態解析度）：連續動畫期間 FPS 過低就降解析度，充裕時再逐步回升 ----
 const perfState = { last: 0, frames: 0, acc: 0, low: 0, high: 0 };
 function perfMonitorTick(now) {
@@ -24457,6 +24484,7 @@ renderer.setAnimationLoop(mainLoopFn = now => {
 
   if (hasContinuousAnimation) {
     requestRender(10);
+    if (Boolean(camAnim) || walkState.active || routeWalkActive || isOrbiting || tourRunning || followingPedestrianIdx >= 0) lastMotionAt = now;
   }
 
   // When scene is static and no interaction is occurring: bypass rendering & physics to save battery & prevent heating
@@ -24916,6 +24944,7 @@ renderer.setAnimationLoop(mainLoopFn = now => {
     }
 
     updateShadowMapIfNeeded();
+    applyMotionResolution(now);
     renderer.render(scene, camera);
     perfMonitorTick(now);
     if (!window.__hasFirst3DRender) {
@@ -25176,7 +25205,8 @@ function runStaticBatching(label) {
       ...streetLightBulbs,
       ...((window.__campusFlags || []).map(f => f.mesh))
     ];
-    const r = batchStaticMeshes(Object.values(layerGroups), { exclude });
+    const cellParam = new URLSearchParams(window.location.search).get('cell');   // ?cell=0 可關閉空間切塊以便比對
+    const r = batchStaticMeshes(Object.values(layerGroups), { exclude, cellSize: cellParam === null ? 0 : Number(cellParam) });   // 實測：切塊反而增加 draw calls（4145→5140~5428），預設關閉
     const st = window.__batchStats;
     st.batches += r.batches; st.ms += r.ms;
     st.last = { label, ...r };

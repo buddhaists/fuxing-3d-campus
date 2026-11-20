@@ -144,6 +144,10 @@ export function batchStaticMeshes(roots, opts = {}) {
   const excluded = new Set();
   excludedRoots.forEach(r => r && r.traverse && r.traverse(o => excluded.add(o)));
   const minCount = opts.minCount || 2;
+  // 空間切塊（預設關閉；實測會增加 draw calls，僅供實驗）：同材質的方塊再依位置分格（水平 cellSize 公尺、垂直 cellY 公尺）合併，
+  // 讓合批後的大 Mesh 仍能被視錐剔除（否則整棟建築只要有一角入鏡就整批繪製，含陰影 pass）。
+  const cellSize = opts.cellSize === undefined ? 0 : opts.cellSize;
+  const cellY = opts.cellY || 12;
 
   // 收集所有父節點（遇到排除節點即停止往下）
   const parents = [];
@@ -175,7 +179,9 @@ export function batchStaticMeshes(roots, opts = {}) {
       if (o.userData && Object.keys(o.userData).length) {
         try { ud = JSON.stringify(o.userData); } catch { continue; }
       }
-      const key = [o.material.uuid, o.castShadow ? 1 : 0, o.receiveShadow ? 1 : 0, o.renderOrder,
+      const e = o.matrix.elements;
+      const cell = cellSize > 0 ? `${Math.floor(e[12] / cellSize)}_${Math.floor(e[13] / cellY)}_${Math.floor(e[14] / cellSize)}` : '';
+      const key = [cell, o.material.uuid, o.castShadow ? 1 : 0, o.receiveShadow ? 1 : 0, o.renderOrder,
         o.frustumCulled ? 1 : 0, o.layers.mask, flip, sig, ud].join('#');
       let b = buckets.get(key);
       if (!b) buckets.set(key, (b = { sig, list: [] }));
