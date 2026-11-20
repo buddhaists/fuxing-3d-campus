@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { batchStaticMeshes } from './campus-batch.js?v=2.12.92';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.93';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -22457,6 +22457,7 @@ function updateEnvironmentSimulation() {
 
   // Toggle Night / Dusk Window Glow & Streetlights
   const winGlow = isNight ? 0.92 : (isDuskOrDawn ? 0.32 : 0);
+  if (window.__postFX) window.__postFX.setNight(isNight, isDuskOrDawn);
   nightWindowMaterials.forEach(m => { m.emissiveIntensity = winGlow; });
   streetLightBulbs.forEach(b => { b.visible = isNight || isDuskOrDawn; });
 
@@ -22574,6 +22575,25 @@ try {
   if (['smooth', 'auto', 'fine'].includes(savedQ)) activeQuality = savedQ;
 } catch {}
 
+// ---- 後處理（GTAO 環境光遮蔽 + Bloom）：僅「精緻」畫質且為桌機時啟用，模組以動態 import 延遲載入 ----
+// 網址 ?fx 可在行動裝置強制開啟、?nofx 一律關閉。狀態放在 window 上，避免宣告前被呼叫（TDZ）。
+const POSTFX_PARAMS = new URLSearchParams(window.location.search);
+let _postFXLoading = null;
+function setPostFXForQuality(q) {
+  const want = !POSTFX_PARAMS.has('nofx') && q === 'fine' && (!isMobileDevice || POSTFX_PARAMS.has('fx'));
+  if (!want) { if (window.__postFX) window.__postFX.enabled = false; requestRender(3); return; }
+  if (window.__postFX) { window.__postFX.enabled = true; requestRender(3); return; }
+  if (_postFXLoading) return;
+  _postFXLoading = import('./campus-post.js?v=2.12.93').then(mod => {
+    const fx = mod.createPostFX(renderer, scene, camera);
+    const h = timeOfDay;
+    fx.setNight(h >= 18.5 || h < 6.3, (h >= 16.5 && h < 18.5) || (h >= 6.3 && h < 7.8));
+    fx.enabled = activeQuality === 'fine';
+    window.__postFX = fx;
+    requestRender(5);
+  }).catch(err => { console.warn('[PostFX] 後處理載入失敗，維持一般繪製：', err); });
+}
+
 // 畫質預設：smooth（省電）/ auto（依實測 FPS 動態調整解析度）/ fine（最高畫質）
 function qualityDprCap(q) {
   const dpr = window.devicePixelRatio || 1;
@@ -22588,6 +22608,7 @@ function applyQualityPreset(q) {
   renderer.setSize(window.innerWidth, window.innerHeight);
   sunLight.castShadow = q !== 'smooth';
   markShadowsDirty();
+  setPostFXForQuality(q);
   document.querySelectorAll('[data-quality]').forEach(b => b.classList.toggle('is-active', b.dataset.quality === q));
   requestRender(30);
 }
@@ -25037,7 +25058,9 @@ renderer.setAnimationLoop(mainLoopFn = now => {
 
     updateShadowMapIfNeeded();
     applyMotionResolution(now);
-    renderer.render(scene, camera);
+    const fx = window.__postFX;
+    if (fx && fx.enabled) fx.render(performance.now() - lastMotionAt < 250);
+    else renderer.render(scene, camera);
     perfMonitorTick(now);
     if (!window.__hasFirst3DRender) {
       window.__hasFirst3DRender = true;
