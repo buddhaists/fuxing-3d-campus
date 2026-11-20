@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { batchStaticMeshes } from './campus-batch.js?v=2.12.95';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.96';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -1285,6 +1285,10 @@ const northWallZAt = x => { const [a, b] = NORTH_WALL_PX; const t = (x - X(a[0])
 const WEST_ROAD_PTS = [[113.5, -45.0], [53.7, -54.4], [-11.3, -61.1], [-36.0, -64.0], [-50.5, -66.6], [-89.8, -72.7], [-102.8, -73.9], [-114.4, -67.5]];   // v2.12.37 北側車道（依使用者航照標示）：東側門→沿北牆→學校後門
 const NORTH_SPUR_PTS = [[-36.0, -64.0], [-36.0, -43.5]];   // 北棟西端往南支線   // v2.12.33 北棟西端以西：沿北牆內側步道通往學校後門（依航照）
 const SOUTH_SHIFT = -6.0;   // v2.12.34 南棟依航照與普查樹木整體北移 6 m（南緣圍牆、人行道、道路同步）
+// 新棟「⑩–⑪ 黃框轉折棟（共用走廊）」北端（新棟群組局部 z）：北面牆須與南棟北牆（柱面）整面切齊。
+// 南棟北牆柱面世界 z = Z(318) + SOUTH_SHIFT − 11.50（南棟進深）− 0.24（柱半厚）；新棟群組 z 位移 = SOUTH_SHIFT + NEW_XF 位移，
+// 兩者相減後 SOUTH_SHIFT 抵銷。舊值 8.78 是新棟尚未北移時寫的，北移後走廊會比南棟北牆多突出約 3 m。
+const SHARED_CORRIDOR_ZG = Z(318) - 11.50 - 0.24 - NEW_XF.toWorld(0, 0)[1];
 const TRACK_CFG = { cx: -58.15, cz: -9.5, rx: 19.5, straight: 52, th: 5.074 };   // v2.12.33 PU 跑道（依對位航照）；v2.12.54 依航照與西棟同轉 5.07°，東緣距西棟西牆 3.3 m（使用者實測）
 const trackToWorld = (lx, lz) => { const t = TRACK_CFG.th * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), dx = lx - TRACK_CFG.cx, dz = lz - TRACK_CFG.cz; return [TRACK_CFG.cx + dx * c - dz * s, TRACK_CFG.cz + dx * s + dz * c]; };
 const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) { const [x1, y1] = WEST_WALL_PX[i], [x2, y2] = WEST_WALL_PX[i + 1]; if (py >= Math.min(y1, y2) && py <= Math.max(y1, y2)) return x1 + (x2 - x1) * (py - y1) / ((y2 - y1) || 1); } return WEST_WALL_PX[0][0]; };
@@ -13323,7 +13327,7 @@ function buildNewBuilding() {
 
   // Depth coordinates (Z in meters, North is smaller Z, South is larger Z):
   // Aligned so `zC = 20.28m` matches South Building's south facade and `zG_south = 8.78m` meets South Building's north corridor!
-  const zG  = 8.780;   // North end of `⑩–⑪ 共用走廊` (meets South Building's North Corridor at Z = 8.78m)
+  const zG  = SHARED_CORRIDOR_ZG;   // v2.12.96 `⑩–⑪ 共用走廊` 北端：與南棟北牆整面切齊（局部 z = 11.54m；原 8.78 在新棟北移後會突出南棟北牆約 3 m）
   const zF  = 13.398;  // North face of `④–⑥` North Stairwell & `⑥–⑩` 1F Accessible Ramp
   const zE  = 15.918;  // North Corridor outer line (`④–⑩`) & South wall of `西棟` (`①–④`)
   const zD  = 19.053;  // North wall of 新棟 classrooms (`①–⑩`)
@@ -13503,7 +13507,7 @@ function buildNewBuilding() {
   //        - 景觀造景花崗岩巨石 (Natural Landscaping Boulders)
   //        - 依 1F 平面圖精確配置之行動不便緩坡道 (+120 高程無障礙斜坡地坪、鍍鋅鋼管雙層安全護欄、新設黃色活動門)
   //    - 黃框轉折棟 (⑩–⑪):
-  //      * ⑩–⑪ (ax(10) 至 ax(11)，面寬 2.50m): 3 層樓 L 型轉折共用走廊 (共用走廊 向北延伸至 zG = 8.78m)
+  //      * ⑩–⑪ (ax(10) 至 ax(11)，面寬 2.50m): 3 層樓 L 型轉折共用走廊 (共用走廊 北端與南棟北牆切齊，見 SHARED_CORRIDOR_ZG)
   //      * 轉角中庭前庭植栽一株【高聳繁茂校園綠樹】(Large Courtyard Shade Tree)，枝葉扶疏貫穿 1F~3F，完美還原照片黃框構圖
   //      * 1F~3F 西向與北向白色磁磚通風欄杆，1F 平台緣石整齊陳列陶製植栽花盆與基底綠籬矮牆
   //      * 1F 西側銜接中庭花磚地坪之 4 階踏步階梯與側向引導坡道
@@ -14231,16 +14235,16 @@ function buildNewBuilding() {
     // ------------------------------------------------------------------------
     // 3.4 【共用走廊連接棟】⑩–⑪ (ax(10)=-6.72 至 ax(11)=-4.22, 面寬 2.50m)
     //     依據 20261106_142631.jpg、142638.jpg 與 新棟1F建築平面圖002.jpg 1:1 校準：
-    //     - 貫通 zG=8.78m (北端階梯口) 至 zC=20.28m (南端銜接走廊通道口)
+    //     - 貫通 zG (北端，與南棟北牆切齊) 至 zC=20.28m (南端銜接走廊通道口)
     //     - 南端 (zC=20.28m) 2F、3F、RF 具深灰清水混凝土結構橫梁 + 白色二丁掛磁磚女兒牆
     //     - 1F 走廊天花板設長條日光燈具、西側懸掛兩盞喜慶大紅燈籠，南北兩端皆設踏步階梯
     // ------------------------------------------------------------------------
     const shX1 = ax(10), shX2 = ax(11);
     const shW = shX2 - shX1; // 2.50m
     const shCx = (shX1 + shX2) / 2;
-    const shD = zC - zG;     // 11.50m (自 zG=8.78m 貫通至南棟外牆線 zC=20.28m)
+    const shD = zC - zG;     // 自 zG（與南棟北牆切齊）貫通至南棟外牆線 zC=20.28m
     const shCz = (zG + zC) / 2;
-    const northExtD = zE - zG;   // 向北突出走廊部分 (zG 至 zE，長度 7.138m)
+    const northExtD = zE - zG;   // 走廊北段（zG 至 zE，約 4.38 m；北端與南棟北牆切齊）
     const northExtCz = (zG + zE) / 2;
     const lightTubeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff8e7, emissiveIntensity: 0.65, roughness: 0.2 });
     const lanternRedMat = new THREE.MeshStandardMaterial({ color: 0xd91e18, emissive: 0x550804, emissiveIntensity: 0.35, roughness: 0.45 });
@@ -14309,8 +14313,9 @@ function buildNewBuilding() {
 
     // 1F 西向欄杆矮牆上的紅陶盆栽與垂墜綠植 (Potted Terracotta Plants on Parapet)
     const potMat = new THREE.MeshStandardMaterial({ color: 0xba5838, roughness: 0.76 });
-    for (let p = 0; p < 6; p++) {
-      const pz = zG + 0.8 + p * 1.15;
+    const potCount = Math.max(2, Math.min(6, Math.round((northExtD - 1.2) / 1.15) + 1));
+    for (let p = 0; p < potCount; p++) {
+      const pz = zG + 0.8 + p * ((northExtD - 1.4) / (potCount - 1));   // 沿西側欄杆（zG 至 zE）均分，不超出北向外牆段
       addMesh(g, new THREE.CylinderGeometry(0.18, 0.13, 0.24, 10), potMat, shX1 + 0.14, parapetH + 0.16, pz, false);
       const potFoliage = addMesh(g, new THREE.SphereGeometry(0.24, 8, 8), hedgeMat1, shX1 + 0.14, parapetH + 0.38, pz, false);
       potFoliage.scale.set(1.1, 0.9, 1.1);
@@ -14355,7 +14360,7 @@ function buildNewBuilding() {
     // 高度延伸貫穿 1F、2F 直抵 3F 女兒牆頂 (高度約 11.2 米)，完美還原照片現場空間縱深與自然意境！
     // ========================================================================
     const treeX = shX1 - 1.25;
-    const treeZ = zG - 1.65;
+    const treeZ = 8.780 - 1.65;   // 大樹維持原位置（原以舊 zG = 8.78 為基準；走廊北端南移後不隨之移動）
     const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4d3f32, roughness: 0.92 }); // 深褐粗糙樹皮
     const treeLeafMat1 = new THREE.MeshStandardMaterial({ color: 0x2e6328, roughness: 0.80 }); // 濃綠樹冠
     const treeLeafMat2 = new THREE.MeshStandardMaterial({ color: 0x3d7b32, roughness: 0.76 }); // 亮綠向陽樹葉
@@ -14834,10 +14839,10 @@ function buildNewBuilding() {
       sp.scale.set(0.9, 0.85, 1.1);
     }
 
-    // (2) 東側牆面 (`ax(11)` zG=8.78 至 zC=20.28)：淺米白走廊內牆 + 清水混凝土樓層橫梁帶 + 白色二丁掛磁磚端柱 (`142631.jpg` & `142638.jpg`)
-    addBox(g, 0.16, yRF, zC - 10.78, creamWallMat, pocketX2 - 0.08, yRF / 2, (10.78 + zC) / 2);
+    // (2) 東側牆面 (`ax(11)` zG 至 zC=20.28)：淺米白走廊內牆 + 清水混凝土樓層橫梁帶 + 白色二丁掛磁磚端柱 (`142631.jpg` & `142638.jpg`)
+    addBox(g, 0.16, yRF, zC - zG, creamWallMat, pocketX2 - 0.08, yRF / 2, (zG + zC) / 2);
     for (let f = 1; f <= 3; f++) {
-      addBox(g, 0.20, 0.48, zC - 10.78, exposedConcreteBeamMat, pocketX2 - 0.10, f * FH - 0.24, (10.78 + zC) / 2, false);
+      addBox(g, 0.20, 0.48, zC - zG, exposedConcreteBeamMat, pocketX2 - 0.10, f * FH - 0.24, (zG + zC) / 2, false);
     }
 
     // (3) 白色垂直欄杆小門 (`欄杆小門`, `20261106_142631.jpg` & `001.jpg`)
@@ -22584,7 +22589,7 @@ function setPostFXForQuality(q) {
   if (!want) { if (window.__postFX) window.__postFX.enabled = false; requestRender(3); return; }
   if (window.__postFX) { window.__postFX.enabled = true; requestRender(3); return; }
   if (_postFXLoading) return;
-  _postFXLoading = import('./campus-post.js?v=2.12.95').then(mod => {
+  _postFXLoading = import('./campus-post.js?v=2.12.96').then(mod => {
     const fx = mod.createPostFX(renderer, scene, camera);
     const h = timeOfDay;
     fx.setNight(h >= 18.5 || h < 6.3, (h >= 16.5 && h < 18.5) || (h >= 6.3 && h < 7.8));
@@ -22999,7 +23004,7 @@ function isWalkPointAllowed(wx, wz) {
     if (nx >= -27.1 && nx <= -6.7 && nz >= 13.398 - 2.4 && nz <= 15.918) return true; }
 
   // New Building <-> South Building `⑩–⑪` Shared Corridor (`wx = -6.72..-4.22`, `wz = 8.78..24.15`): allow walking through the south picket gate and shared corridor!
-  { const [nx, nz] = NEW_XF.toLocal(wx, wz); if (nx >= -6.85 && nx <= -4.10 && nz >= 8.20 + SOUTH_SHIFT && nz <= 24.50 + SOUTH_SHIFT) return true; }
+  { const [nx, nz] = NEW_XF.toLocal(wx, wz); if (nx >= -6.85 && nx <= -4.10 && nz >= SHARED_CORRIDOR_ZG - 0.58 + SOUTH_SHIFT && nz <= 24.50 + SOUTH_SHIFT) return true; }
 
   // Remaining solid building obstacles (north-building box is handled above)
   if (LOCAL_BUILDING_OBSTACLES.some(b => { const [lx, lz] = b.xf.toLocal(wx, wz); return lx > b.minX && lx < b.maxX && lz > b.minZ && lz < b.maxZ; })) return false;
