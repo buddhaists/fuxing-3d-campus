@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { batchStaticMeshes } from './campus-batch.js?v=2.12.93';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.94';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -22584,7 +22584,7 @@ function setPostFXForQuality(q) {
   if (!want) { if (window.__postFX) window.__postFX.enabled = false; requestRender(3); return; }
   if (window.__postFX) { window.__postFX.enabled = true; requestRender(3); return; }
   if (_postFXLoading) return;
-  _postFXLoading = import('./campus-post.js?v=2.12.93').then(mod => {
+  _postFXLoading = import('./campus-post.js?v=2.12.94').then(mod => {
     const fx = mod.createPostFX(renderer, scene, camera);
     const h = timeOfDay;
     fx.setNight(h >= 18.5 || h < 6.3, (h >= 16.5 && h < 18.5) || (h >= 6.3 && h < 7.8));

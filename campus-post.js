@@ -61,9 +61,11 @@ export function createPostFX(renderer, scene, camera) {
   const gtao = new GTAOPass(scene, camera, size.x, size.y);
   gtao.output = GTAOPass.OUTPUT.Default;
   gtao.blendIntensity = 1.0;
-  // 半徑以公尺計：校園常見觀看距離 15～80 m，0.9 m 幾乎看不出效果；實測 5 m 能讓走廊凹處、樹冠下與建築轉角有明顯接觸陰影
-  gtao.updateGtaoMaterial({ radius: 5, distanceExponent: 2, thickness: 6, scale: 1.6, samples: 12, distanceFallOff: 1.0 });
-  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+  // 螢幕空間半徑：半徑單位為「100 像素在該像素深度的世界寬度」，逐像素自動縮放。
+  // 固定公尺半徑時，遠景需約 5 m 才有效果，但同樣 5 m 在室內近景會在桌椅周圍形成大片髒污暗斑；
+  // 改用螢幕空間後，遠處約 2 m、近處約 0.1～0.3 m，兩種情況都自然。
+  gtao.updateGtaoMaterial({ screenSpaceRadius: true, radius: 0.55, distanceExponent: 1.6, thickness: 0.9, scale: 1.4, samples: 12, distanceFallOff: 1.0 });
+  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 10, rings: 3, samples: 16 });
   if (renderer.capabilities.logarithmicDepthBuffer) {
     patchLogDepth(gtao.gtaoMaterial, camera, [
       'textureLod(tDepth, uv.xy, 0.0).DEPTH_SWIZZLING',
@@ -83,6 +85,7 @@ export function createPostFX(renderer, scene, camera) {
   composer.addPass(new OutputPass());
 
   let lastW = 0, lastH = 0, lastPr = 0;
+
   const api = {
     enabled: true,
     composer, gtao, bloom,
