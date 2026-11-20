@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { batchStaticMeshes } from './campus-batch.js?v=2.12.90';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.91';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -1098,6 +1098,10 @@ const clickableGroups = [];
 const landmarkGroupMap = new Map();
 
 function addMesh(parent, geo, mat, x, y, z, cast = true, receive = true) {
+  // 葉團 / 灌木 / 岩石（二十面體、十二面體，半徑 ≥ 0.25 m）統一做輪廓擾動，不增加面數；微小的花、果、葉尖不處理
+  if ((geo.type === 'IcosahedronGeometry' || geo.type === 'DodecahedronGeometry') && !geo.userData.lumpy && (geo.parameters.radius || 0) >= 0.25) {
+    lumpyGeometry(geo, geo.parameters.detail ? 0.16 : 0.22);
+  }
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);
   m.castShadow = cast;
@@ -19516,6 +19520,23 @@ function buildRecyclingDepot() {
 // ============================================================================
 // 5. MULTI-SPECIES BOTANICAL SYSTEM (`PKU-3D trees-v46.js`), STREETLIGHTS, WEATHER & ARTICULATED PEDESTRIANS
 // ============================================================================
+// 樹冠不規則化：以「頂點位置雜湊」沿徑向擾動頂點（相同位置得到相同位移，因此非索引幾何不會裂縫）。
+// 不增加三角面，只讓原本光滑的球形葉團變成輪廓起伏的自然樹冠。
+function lumpyGeometry(geo, amp = 0.2) {
+  if (geo.userData.lumpy) return geo;
+  geo.userData.lumpy = true;
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    // 對位置量化後再雜湊，避免浮點誤差使重合頂點得到不同位移
+    const qx = Math.round(x * 512), qy = Math.round(y * 512), qz = Math.round(z * 512);
+    const h = Math.sin(qx * 12.9898 + qy * 78.233 + qz * 37.719) * 43758.5453;
+    const f = 1 + (h - Math.floor(h) - 0.5) * 2 * amp;
+    pos.setXYZ(i, x * f, y * f, z * f);
+  }
+  pos.needsUpdate = true;
+  return geo;
+}
 const foliageMats = [
   new THREE.MeshStandardMaterial({ color: 0x3b7a42, roughness: 0.84 }), // Broad shade crown
   new THREE.MeshStandardMaterial({ color: 0x528e4e, roughness: 0.82 }), // Broad sunlit crown
@@ -19577,12 +19598,12 @@ function addTree(x, z, scale = 1, species = 'broad') {
     tg.add(branch);
 
     // 分枝末梢輕盈葉簇 (高度於 5.0m ~ 6.5m 高空，微扁圓造型，通透自然)
-    const cluster = addMesh(tg, new THREE.DodecahedronGeometry(1.25 * scale, 1), (b % 2 === 0) ? mainMat : shadeMat, bx * 1.02, by + 0.9 * scale, bz * 1.02);
+    const cluster = addMesh(tg, lumpyGeometry(new THREE.DodecahedronGeometry(1.25 * scale, 1), 0.16), (b % 2 === 0) ? mainMat : shadeMat, bx * 1.02, by + 0.9 * scale, bz * 1.02);
     cluster.scale.set(1.25, 0.75, 1.20);
   }
 
   // 主樹冠頂部光照簇團
-  const topCrown = addMesh(tg, new THREE.DodecahedronGeometry(1.55 * scale, 1), mainMat, x, trunkH + 1.85 * scale, z);
+  const topCrown = addMesh(tg, lumpyGeometry(new THREE.DodecahedronGeometry(1.55 * scale, 1), 0.16), mainMat, x, trunkH + 1.85 * scale, z);
   topCrown.scale.set(1.30, 0.80, 1.25);
 
   layerGroups.vegetation.add(tg);
@@ -19894,7 +19915,7 @@ const CAMPUS_TREE_REGISTRY = [
     m.quaternion.setFromUnitVectors(up, d.normalize());
   };
   const blob = (x, y, z, rad, mat, sx = 1.25, sy = 0.75, det = 0) => {
-    const m = addMesh(grp, new THREE.IcosahedronGeometry(rad, det), mat, x, y, z);
+    const m = addMesh(grp, lumpyGeometry(new THREE.IcosahedronGeometry(rad, det), det ? 0.16 : 0.22), mat, x, y, z);
     m.scale.set(sx, sy, sx); m.rotation.y = r() * 3;
     if (mat.userData.phenoRole) m.userData.phenoRole = mat.userData.phenoRole;
     return m;
