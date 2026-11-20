@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { batchStaticMeshes } from './campus-batch.js?v=2.12.94';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.95';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -22584,7 +22584,7 @@ function setPostFXForQuality(q) {
   if (!want) { if (window.__postFX) window.__postFX.enabled = false; requestRender(3); return; }
   if (window.__postFX) { window.__postFX.enabled = true; requestRender(3); return; }
   if (_postFXLoading) return;
-  _postFXLoading = import('./campus-post.js?v=2.12.94').then(mod => {
+  _postFXLoading = import('./campus-post.js?v=2.12.95').then(mod => {
     const fx = mod.createPostFX(renderer, scene, camera);
     const h = timeOfDay;
     fx.setNight(h >= 18.5 || h < 6.3, (h >= 16.5 && h < 18.5) || (h >= 6.3 && h < 7.8));
@@ -25332,7 +25332,12 @@ function runStaticBatching(label) {
     (window.__lawnMats || []).forEach(({ mat }) => protect.add(mat));
     const dedupe = !new URLSearchParams(window.location.search).has('nodedup');
     const cellParam = new URLSearchParams(window.location.search).get('cell');   // ?cell=0 可關閉空間切塊以便比對
-    const r = batchStaticMeshes(Object.values(layerGroups), { exclude, dedupe, protect, cellSize: cellParam === null ? 0 : Number(cellParam) });   // 實測：切塊反而增加 draw calls（4145→5140~5428），預設關閉
+    const r = batchStaticMeshes(Object.values(layerGroups), {
+      exclude, dedupe, protect, cellSize: cellParam === null ? 0 : Number(cellParam),
+      // 跨中間群組合併（?nohoist 可關閉）：邊界為會被個別顯示/隱藏的群組——可點選建築（單體觀察）與 LOD 細節群組
+      hoist: !new URLSearchParams(window.location.search).has('nohoist'),
+      boundaries: [...clickableGroups, ...LOD_REGISTRY.map(it => it.detailGroup)]
+    });   // 實測：切塊反而增加 draw calls（4145→5140~5428），預設關閉
     const st = window.__batchStats;
     st.batches += r.batches; st.ms += r.ms;
     st.last = { label, ...r };

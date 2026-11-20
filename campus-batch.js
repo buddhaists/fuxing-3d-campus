@@ -181,14 +181,42 @@ export function batchStaticMeshes(roots, opts = {}) {
   let dedupReplaced = 0;
   if (opts.dedupe) dedupReplaced = dedupeMaterials(roots, excluded, opts.protect || new Set());
 
-  // 收集所有父節點（遇到排除節點即停止往下）
+  // 收集合併單位（遇到排除節點即停止往下）
+  //  * 預設：每個父節點各自為一個合併單位（原行為）
+  //  * hoist：只有「邊界」節點是合併單位，邊界之間的純結構群組會被跨越——
+  //    網格依「到邊界的相對矩陣」烘焙後合併到最近的邊界下，讓分散在許多小群組裡的同材質方塊也能併成一批。
+  //    邊界 = 呼叫端指定（圖層、可點選建築、LOD 細節群組…）+ 帶 userData 的節點（點選時要沿父節點找 landmarkId）
+  //          + 合批當下不可見的節點（之後可能被顯示）。
+  const hoist = !!opts.hoist;
+  const boundarySet = new Set(opts.boundaries || []);
+  roots.forEach(r => r && boundarySet.add(r));
+  const isBoundary = node => boundarySet.has(node) || !node.visible ||
+    (node.userData && Object.keys(node.userData).length > 0) || batchedOutputs.has(node);
   const parents = [];
   const visit = node => {
     if (excluded.has(node)) return;
-    if (node.children.length) parents.push(node);
+    if (node.children.length && (!hoist || isBoundary(node))) parents.push(node);
     for (const c of node.children) visit(c);
   };
   roots.forEach(r => r && visit(r));
+  // hoist 時，取得某邊界底下（不跨越其他邊界、不進入排除節點）的所有直屬候選網格與其相對矩陣
+  const collectUnder = boundary => {
+    const out = [];
+    const walk = (node, rel) => {
+      for (const c of node.children) {
+        if (excluded.has(c)) continue;
+        if (c.isMesh && !c.children.length) {
+          c.updateMatrix();
+          out.push({ mesh: c, matrix: rel ? rel.clone().multiply(c.matrix) : c.matrix.clone() });
+        } else if (c.children.length && !isBoundary(c)) {
+          c.updateMatrix();
+          walk(c, rel ? rel.clone().multiply(c.matrix) : c.matrix.clone());
+        }
+      }
+    };
+    walk(boundary, null);
+    return out;
+  };
 
   // 幾何體引用計數（用於安全釋放 GPU 緩衝）
   const geoUsers = new Map();
@@ -199,25 +227,25 @@ export function batchStaticMeshes(roots, opts = {}) {
   let meshesBefore = 0, meshesAfter = 0, batches = 0;
   for (const parent of parents) {
     const buckets = new Map();
-    for (const o of parent.children) {
-      if (!o.isMesh) continue;
+    const candidates = hoist ? collectUnder(parent)
+      : parent.children.filter(o => o.isMesh).map(o => { o.updateMatrix(); return { mesh: o, matrix: o.matrix.clone() }; });
+    for (const { mesh: o, matrix: rel } of candidates) {
       meshesBefore++;
       if (batchedOutputs.has(o) || !isMergeable(o, excluded)) continue;
       const sig = attributeSignature(o.geometry);
       if (!sig) continue;
-      o.updateMatrix();
-      const flip = o.matrix.determinant() < 0 ? 'f' : 'n';
+      const flip = rel.determinant() < 0 ? 'f' : 'n';
       let ud = '';
       if (o.userData && Object.keys(o.userData).length) {
         try { ud = JSON.stringify(o.userData); } catch { continue; }
       }
-      const e = o.matrix.elements;
+      const e = rel.elements;
       const cell = cellSize > 0 ? `${Math.floor(e[12] / cellSize)}_${Math.floor(e[13] / cellY)}_${Math.floor(e[14] / cellSize)}` : '';
       const key = [cell, o.material.uuid, o.castShadow ? 1 : 0, o.receiveShadow ? 1 : 0, o.renderOrder,
         o.frustumCulled ? 1 : 0, o.layers.mask, flip, sig, ud].join('#');
       let b = buckets.get(key);
       if (!b) buckets.set(key, (b = { sig, list: [] }));
-      b.list.push({ mesh: o, matrix: o.matrix.clone() });
+      b.list.push({ mesh: o, matrix: rel });
     }
     for (const { sig, list } of buckets.values()) {
       if (list.length < minCount) continue;
@@ -234,7 +262,7 @@ export function batchStaticMeshes(roots, opts = {}) {
       merged.matrixAutoUpdate = false;
       merged.updateMatrix();
       for (const { mesh } of list) {
-        parent.remove(mesh);
+        mesh.parent.remove(mesh);   // hoist 時網格可能位於中間群組，從它實際的父節點移除
         const left = (geoUsers.get(mesh.geometry) || 1) - 1;
         geoUsers.set(mesh.geometry, left);
         if (left <= 0) mesh.geometry.dispose();
@@ -243,7 +271,8 @@ export function batchStaticMeshes(roots, opts = {}) {
       batchedOutputs.add(merged);
       batches++;
     }
-    for (const o of parent.children) if (o.isMesh) meshesAfter++;
+    if (!hoist) for (const o of parent.children) if (o.isMesh) meshesAfter++;
   }
+  if (hoist) roots.forEach(r => r && r.traverse(o => { if (o.isMesh) meshesAfter++; }));
   return { meshesBefore, meshesAfter, batches, dedupReplaced, ms: Math.round(performance.now() - t0) };
 }
