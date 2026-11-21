@@ -1,7 +1,7 @@
 // 屏東縣屏東市復興國小 3D 數位校園 (Service Worker)
-// Version: fuxing-3d-campus-v2.12.97
+// Version: fuxing-3d-campus-v2.12.98
 
-const CACHE_NAME = 'fuxing-3d-campus-v2.12.97';
+const CACHE_NAME = 'fuxing-3d-campus-v2.12.98';
 
 // 長效靜態快取：three.js、vendor、tex/ 實景貼圖照片等「幾乎不會隨每次改版變動」的資源。
 // 與程式碼快取分開，改版時不會被清除，回訪使用者不必重新下載十幾 MB 的圖片。

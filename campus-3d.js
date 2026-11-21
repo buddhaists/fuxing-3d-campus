@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { batchStaticMeshes } from './campus-batch.js?v=2.12.97';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.98';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -10577,13 +10577,14 @@ function buildSouthBuilding() {
   const lStepH = y0 / numLeftExtSteps;
   const mosaicRiserCommonMat = new THREE.MeshBasicMaterial({ map: makeSouthMosaicStairsTexture(false) });
   const mosaicRiserBottomMat = new THREE.MeshBasicMaterial({ map: makeSouthMosaicStairsTexture(true) });
+  const lStairMark = g.children.length;   // 本樓梯物件起點：結尾統一標記 keepLevel
 
   for (let s = 0; s < numLeftExtSteps; s++) {
     const curH = (s + 1) * lStepH;
     const curZ = zNorth - leftExtRunZ + (s + 0.5) * lStepD;
     addBox(g, leftExtStairW, curH, lStepD, southTerrazzoMat, entCx, curH / 2, curZ);
     const riserZ = zNorth - leftExtRunZ + s * lStepD - 0.01;
-    const rMat = s === 0 ? mosaicRiserBottomMat : mosaicRiserCommonMat;
+    const rMat = mosaicRiserCommonMat;   // v2.12.98 「109 HAPPY」底層立面移到新補的最底一級（見下）
     const riserPlane = addMesh(g, new THREE.PlaneGeometry(leftExtStairW, lStepH), rMat, entCx, (s + 0.5) * lStepH, riserZ, false);
     riserPlane.rotation.y = Math.PI;
   }
@@ -10594,11 +10595,32 @@ function buildSouthBuilding() {
     const cheekX = entCx + side * (leftExtStairW / 2 + 0.14);
     addBox(g, 0.24, y0 * 0.75, leftExtRunZ, southBaseBeamMat, cheekX, y0 * 0.375, zNorth - leftExtRunZ / 2);
     const railBar = addBox(g, 0.05, 0.05, Math.hypot(leftExtRunZ, y0), southStainlessRailMat, cheekX, y0 * 0.65 + 0.42, zNorth - leftExtRunZ / 2);
-    railBar.rotation.x = lSlopeAngle;
+    railBar.rotation.x = -lSlopeAngle;   // v2.12.98 符號修正：原為 +，扶手朝建築方向反而往下傾
     addBox(g, 0.45, 0.85, leftExtRunZ * 0.85, hedgeDarkGreenMat, cheekX + side * 0.32, 0.55, zNorth - leftExtRunZ * 0.45, false);
+  }
+  // v2.12.98 左側階梯底部落地：同右側，往北補 4 級（每級 0.144 m）落到廣場面（−0.59）；「109 HAPPY」底層彩磚立面移到最底一級
+  {
+    const extN = 4, botY = -0.76;
+    for (let k = 1; k <= extN; k++) {
+      const top = (1 - k) * lStepH;
+      const curZ = zNorth - leftExtRunZ - (k - 0.5) * lStepD;
+      addBox(g, leftExtStairW, top - botY, lStepD, southTerrazzoMat, entCx, (top + botY) / 2, curZ);
+      // 立面貼在該級踏階的北面（z = 該級北緣 − 0.01），高度 = 一級踏高
+      const rp = addMesh(g, new THREE.PlaneGeometry(leftExtStairW, lStepH), k === extN ? mosaicRiserBottomMat : mosaicRiserCommonMat, entCx, top - lStepH / 2, zNorth - leftExtRunZ - k * lStepD - 0.01, false);
+      rp.rotation.y = Math.PI;
+    }
+    const extRun = extN * lStepD;
+    for (let side of [-1, 1]) {
+      const cheekX = entCx + side * (leftExtStairW / 2 + 0.14);
+      addBox(g, 0.24, y0 * 0.75 - botY, extRun, southBaseBeamMat, cheekX, (y0 * 0.75 + botY) / 2, zNorth - leftExtRunZ - extRun / 2);
+      const L = Math.hypot(extRun, extN * lStepH);
+      const rb = addBox(g, 0.05, 0.05, L, southStainlessRailMat, cheekX, (y0 * 0.65 + 0.42) - ((leftExtRunZ + extRun) / 2) * (y0 / leftExtRunZ), zNorth - leftExtRunZ - extRun / 2);
+      rb.rotation.x = -lSlopeAngle;
+    }
   }
   // 左柱前高聳圓錐塔柏盆栽 (對應照片 01/02 興學樓左柱前的高柏樹)
   addMesh(g, new THREE.ConeGeometry(0.45, 2.50, 12), hedgeDarkGreenMat, leftStairXL + 0.15, 1.45, zNorth - 1.15);
+  for (let i = lStairMark; i < g.children.length; i++) g.children[i].traverse(o => { if (o.isMesh) o.userData.keepLevel = true; });
 
   // 10.5 左側樓梯間室內 1F ↔ 2F ↔ 3F 雙跑折返樓梯 (位於 ④–⑤ 軸 B～C' 之間)
   for (let fl = 0; fl < 2; fl++) {
@@ -10656,6 +10678,7 @@ function buildSouthBuilding() {
   const rightExtRunZ = 3.10;
   const rStepD = rightExtRunZ / numRightExtSteps;
   const rStepH = y0 / numRightExtSteps;
+  const rStairMark = g.children.length;   // 本樓梯物件起點：結尾統一標記 keepLevel（樓梯依設計標高建置，不隨下沉中庭下移）
 
   for (let s = 0; s < numRightExtSteps; s++) {
     const curH = (s + 1) * rStepH;
@@ -10683,6 +10706,35 @@ function buildSouthBuilding() {
       addBox(g, 0.035, 0.36, 0.035, southStainlessRailMat, cheekX, py, pz);
     }
   }
+
+  // v2.12.98 樓梯底部落地：中庭廣場面在 −0.59（下沉中庭），原 8 級從 GL 0.00 起算，底部懸空在廣場上方約 0.6 m
+  //   （過去靠一塊浮在 y = 0.04 的地磚帶遮住）。往北再補 4 級同尺寸踏階（每級 0.144 m）落到廣場面，並延伸兩側白色斜護牆與扶手。
+  {
+    const extN = 4;
+    for (let k = 1; k <= extN; k++) {
+      const top = (1 - k) * rStepH;                                   // 0.00、−0.144、−0.288、−0.431
+      const curZ = zNorth - rightExtRunZ - (k - 0.5) * rStepD;
+      const botY = -0.76;                                             // 下沉中庭地基頂面
+      addBox(g, rightExtStepW, top - botY, rStepD, southTerrazzoMat, rightStairCx, (top + botY) / 2, curZ);
+      addBox(g, rightExtStepW - 0.04, 0.025, 0.05, basementPierBrickMat, rightStairCx, top + 0.005, curZ - rStepD / 2 + 0.03);
+    }
+    const extRun = extN * rStepD, extDrop = extN * rStepH, extLen = Math.hypot(extRun, extDrop);
+    const zc = zNorth - rightExtRunZ - extRun / 2;
+    const yc = (y0 / 2 + 0.18) - ((rightExtRunZ + extRun) / 2) * (y0 / rightExtRunZ);      // 沿原斜護牆同一條斜線往下延伸
+    for (let side of [-1, 1]) {
+      const cheekX = rightStairCx + side * (rightExtStepW / 2 + 0.14);
+      addBox(g, 0.24, 0.80, extRun + 0.20, southWhiteWallMat, cheekX, -0.36, zc);                   // 立牆（廣場面 → 0.04）
+      const sw = addBox(g, 0.24, 0.48, extLen, southWhiteWallMat, cheekX, yc, zc);                   // 斜牆
+      sw.rotation.x = -rSlopeAngle;
+      const rh = addBox(g, 0.045, 0.045, extLen * 0.95, southStainlessRailMat, cheekX, yc + 0.50, zc);   // 金屬扶手
+      rh.rotation.x = -rSlopeAngle;
+      for (let p = 0; p <= 1; p++) {
+        const pz = zNorth - rightExtRunZ - 0.25 - p * (extRun - 0.50);
+        addBox(g, 0.035, 0.36, 0.035, southStainlessRailMat, cheekX, (1 - (p === 0 ? 0.5 : 3.5)) * rStepH + 0.42, pz);
+      }
+    }
+  }
+  for (let i = rStairMark; i < g.children.length; i++) g.children[i].traverse(o => { if (o.isMesh) o.userData.keepLevel = true; });
 
   // 1F 右側樓梯口柱頭小型太陽能感應燈與內部紅色消防栓箱 (照片 04 細節)
   addBox(g, 0.35, 0.04, 0.28, southSolarPanelMat, rightStairXR + 0.15, yF[1] - 0.55, zNorth - 0.32);
@@ -10720,7 +10772,7 @@ function buildSouthBuilding() {
   // ============================================================================
   const frontLand = new THREE.Group();
   g.add(frontLand);
-  const PY = 0.16 - COURTYARD_SINK.D - 0.12;   // 南棟前同心方塊地磚面（已下沉）
+  const PY = 0.16 - COURTYARD_SINK.D;   // 南棟前地面標高 = 中庭廣場鋪面頂（−0.59）。v2.12.98：原再減 0.12，紅磚前埕、草皮帶與綠籬樹幹基部都埋在鋪面底下 12 cm
   const hedgeRowXL = ax(1) - 0.2, hedgeRowXR = ax(4) + 0.35;
   const hedgeSpanW = Math.abs(hedgeRowXL - hedgeRowXR);
   const hedgeCx = (hedgeRowXL + hedgeRowXR) / 2;
@@ -10998,18 +11050,8 @@ function buildSouthBuilding() {
   }
 
   // 14.8 中庭前景「回字形紅灰白幾何同心方塊」連鎖透水地磚廣場
-  // v2.12.11：依使用者指示，南棟前地磚帶改用與中庭幾何花磚廣場相同之鮮明紅黑白同心方塊貼圖，
-  //   並依廣場磚塊尺寸（X 向約 5.79 m、Z 向約 4.32 m 一組）換算重複次數，X 向與廣場圖樣對齊
-  const plazaTileX = (712 - 445) * S / 12, plazaTileZ = (278 - 145) * S / 8;
-  const bandTex = makeCourtyardBrickTexture();
-  bandTex.repeat.set((bldgW + 4.0) / plazaTileX, 8.5 / plazaTileZ);
-  bandTex.offset.x = (((bldgCx - (bldgW + 4.0) / 2) - X(445)) / plazaTileX) % 1;
-  const courtyardBrickMat = new THREE.MeshStandardMaterial({ map: bandTex, roughness: 0.82 });
-  { // v2.12.77 地磚帶東端止於東棟後無障礙坡道西緣（原延伸蓋住坡道量體，使坡道看不見）
-    const bx1 = bldgCx - (bldgW + 4.0) / 2, bx2 = Math.min(bldgCx + (bldgW + 4.0) / 2, 46.9), bw2 = bx2 - bx1;   // v2.12.81 坡道加步道後西移
-    bandTex.repeat.x = bw2 / plazaTileX;
-    addBox(g, bw2, 0.04, 8.5, courtyardBrickMat, (bx1 + bx2) / 2, 0.02, zNorth - 7.2, false);
-  }
+  // v2.12.98 移除原「南棟前地磚帶」（53.1 × 8.5 m、頂面 y = 0.04）：中庭廣場鋪面（06 幾何花磚中庭廣場）自 v2.12.40 起已鋪滿整個下沉中庭，
+  //   這塊帶子與它完全重複，而且沒有隨中庭下沉，浮在廣場面（−0.59）上方約 0.63 m，板下是空的。
   frontLand.traverse(o => { if (o.isMesh) o.userData.keepLevel = true; });
 
   // ============================================================================
@@ -14266,7 +14308,7 @@ function buildNewBuilding() {
       //   東緣退到坡道西側排水溝（x = −9.72），沿坡道另有一條 8.7 m 長的綠籬帶；前緣鋸齒向東逐段加深。
       //   樓梯東西兩側另補一塊 U 形草坪（poly2），把樓梯底部包進前庭。
       const poly = [[-23.4, -1.05], [-16.8, -1.05], [-16.0, -2.2], [-12.2, -2.2], [-11.4, -4.6], [-9.72, -4.6], [-9.72, 4.35], [-23.4, 4.35]];
-      const poly2 = [[-6.5, -3.4], [5.8, -3.4], [5.8, 2.45], [0.6, 2.45], [0.6, -1.6], [-4.9, -1.6], [-4.9, 2.45], [-6.5, 2.45]];
+      const poly2 = [[-6.5, -3.6], [5.8, -3.6], [5.8, 2.66], [0.6, 2.66], [0.6, -2.4], [-4.9, -2.4], [-4.9, 2.66], [-6.5, 2.66]];   // 南緣 2.66 貼下沉中庭南擋土牆（z = 2.7）
       const lawnExtrude = pts => {
         const sh = new THREE.Shape();
         pts.forEach(([x, z], k) => (k ? sh.lineTo(x, -WZ(z)) : sh.moveTo(x, -WZ(z))));
@@ -14277,7 +14319,7 @@ function buildNewBuilding() {
       // 擋土裙邊：草坪邊緣若落在下沉中庭內，需由廣場面（−0.76）砌到草坪底，避免草坪像懸空的薄板
       const skirt = (x1, z1, x2, z2) => {
         const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
-        if (Math.min(z1, z2) > 2.3 || !inCourtyardSink(mx, mz, 0.05)) return;
+        if (Math.min(z1, z2) > 2.55 || !inCourtyardSink(mx, mz, 0.05)) return;
         const L = Math.hypot(x2 - x1, z2 - z1);
         const sk = addBox(g, L + 0.2, 0.80, 0.2, juncCurbMat, mx, -0.38, WZ(mz), false);
         sk.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
@@ -14299,7 +14341,7 @@ function buildNewBuilding() {
       // U 形草坪：緣石與裙邊（貼建築南緣不設）
       for (let k = 0; k < poly2.length; k++) {
         const [x1, z1] = poly2[k], [x2, z2] = poly2[(k + 1) % poly2.length];
-        if (Math.min(z1, z2) > 2.3) continue;
+        if (Math.min(z1, z2) > 2.55) continue;
         const L = Math.hypot(x2 - x1, z2 - z1);
         const cb = addBox(g, L + 0.2, 0.24, 0.2, juncCurbMat, (x1 + x2) / 2, 0.12, WZ((z1 + z2) / 2), false);
         cb.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
@@ -14359,12 +14401,12 @@ function buildNewBuilding() {
         const cw = (712 - 445) * S, cd = (278 - 145) * S, ccx = X((445 + 712) / 2), ccz = Z((145 + 278) / 2);
         const bt = makeCourtyardBrickTexture();
         bt.repeat.set(12 / cw, 8 / cd); bt.offset.set(-(ccx - cw / 2) * 12 / cw, -(ccz - cd / 2) * 8 / cd);
-        const pv = [[-21.9, -9.5], [-16.0, -9.5], [-16.0, -1.1], [-22.2, -1.1]];
+        const pv = [[-21.9, -9.5], [-17.6, -9.5], [-17.6, -1.1], [-22.2, -1.1]];   // v2.12.98 東緣由 −16.0 縮到 −17.6：x > −17.2 已是下沉中庭（廣場鋪面在 −0.59），原補丁疊在廣場上方 0.6 m
         const pg = new THREE.ShapeGeometry(new THREE.Shape(pv.map(([x, z]) => new THREE.Vector2(x, -WZ(z)))));
         pg.rotateX(-Math.PI / 2);
         const uv = pg.attributes.uv, pos = pg.attributes.position;
         for (let k = 0; k < uv.count; k++) uv.setXY(k, pos.getX(k), pos.getZ(k) - 9.0);
-        addMesh(g, pg, new THREE.MeshStandardMaterial({ map: bt, roughness: 0.82 }), 0, 0.03, 0, false, true);
+        addMesh(g, pg, new THREE.MeshStandardMaterial({ map: bt, roughness: 0.82, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), 0, 0.056, 0, false, true);   // y 0.03 → 0.056：高於地面 0.02 與草地緩衝區 0.048，不再共面閃爍
       }
       // 西段草坪中央景觀石群
       [[-21.2, 0.9, 0.62, 0.4, 0.52, 0.5], [-20.5, 0.4, 0.5, 0.34, 0.44, -0.7], [-20.9, 1.6, 0.44, 0.3, 0.4, 1.1]].forEach(([bx, bz, sx2, sy, sz2, rot]) => {
@@ -22733,7 +22775,7 @@ function setPostFXForQuality(q) {
   if (!want) { if (window.__postFX) window.__postFX.enabled = false; requestRender(3); return; }
   if (window.__postFX) { window.__postFX.enabled = true; requestRender(3); return; }
   if (_postFXLoading) return;
-  _postFXLoading = import('./campus-post.js?v=2.12.97').then(mod => {
+  _postFXLoading = import('./campus-post.js?v=2.12.98').then(mod => {
     const fx = mod.createPostFX(renderer, scene, camera);
     const h = timeOfDay;
     fx.setNight(h >= 18.5 || h < 6.3, (h >= 16.5 && h < 18.5) || (h >= 6.3 && h < 7.8));
@@ -25444,8 +25486,8 @@ function lowerCourtyardContents() {
     let a = o, lm = '';
     while (a && !lm) { lm = a.userData?.landmarkId || ''; a = a.parent; }
     if (SKIP.has(lm)) return;
+    _cbox.setFromObject(o);   // v2.12.98 修正：先算「自己」的包圍盒再判斷。原本南棟的高度判斷讀到上一個網格殘留的 _cbox，下沉與否隨遍歷順序亂跳
     if (lm === 'south-building' && (_cbox.max.y > 0.3 || o.userData.keepLevel)) return;   // v2.12.34 南棟北移：僅下移貼地地磚帶
-    _cbox.setFromObject(o);
     if (_cbox.isEmpty() || _cbox.min.y < -0.3) return;
     // v2.12.40 四邊形中庭：外接盒四角皆須位於中庭內
     if (!inCourtyardSink(_cbox.min.x, _cbox.min.z) || !inCourtyardSink(_cbox.max.x, _cbox.min.z) ||
