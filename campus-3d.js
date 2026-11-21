@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { batchStaticMeshes } from './campus-batch.js?v=2.12.98';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.99';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -1148,6 +1148,19 @@ const inCourtyardSink = (x, z, m = 0) => {
 };
 window.inCourtyardSink = inCourtyardSink;
 
+const SOUTH_SHIFT = -6.0;   // v2.12.34 南棟依航照與普查樹木整體北移 6 m（南緣圍牆、人行道、道路同步）
+// 新棟「⑩–⑪ 黃框轉折棟（共用走廊）」北端（新棟群組局部 z）：北面牆須與南棟北牆（柱面）整面切齊。
+// 南棟北牆柱面世界 z = Z(318) + SOUTH_SHIFT − 11.50（南棟進深）− 0.24（柱半厚）；新棟群組 z 位移 = SOUTH_SHIFT + NEW_XF 位移，
+// 兩者相減後 SOUTH_SHIFT 抵銷。舊值 8.78 是新棟尚未北移時寫的，北移後走廊會比南棟北牆多突出約 3 m。
+const SHARED_CORRIDOR_ZG = Z(318) - 11.50 - 0.24 - NEW_XF.toWorld(0, 0)[1];
+// 新棟無障礙坡道（世界座標）。入口（北端）退縮到與南棟西側樓梯最底一級切齊：
+//   樓梯北端 z = 南棟北牆（Z(318)+SOUTH_SHIFT−11.50）− 階梯外伸 3.10 − 補階 4×0.3875；橫向坡段西端止於 ⑥ 軸（x = −19.81，北梯間東面）。
+const NEW_RAMP = (() => {
+  const gz = SOUTH_SHIFT + NEW_XF.toWorld(0, 0)[1];     // 新棟群組 z 位移
+  return { RX1: -9.12, RX2: -6.72, RXW: -19.81, zF: 13.398 + gz, zE: 15.918 + gz, RZ0: Z(318) + SOUTH_SHIFT - 11.50 - 3.10 - 1.55, gz };
+})();
+// 新棟無障礙坡道所在區域的「地面開孔」多邊形（世界座標，x, z）：坡道斜面低於地面處，地面各層（草地基底、校內地坪、草坪）都需挖空，否則會蓋住坡道
+const NEW_RAMP_HOLE = [[NEW_RAMP.RX1, 2.72], [NEW_RAMP.RX2, 2.72], [NEW_RAMP.RX2, NEW_RAMP.zE], [NEW_RAMP.RXW, NEW_RAMP.zE], [NEW_RAMP.RXW, NEW_RAMP.zF], [NEW_RAMP.RX1, NEW_RAMP.zF]];
 // Base terrain（中庭範圍挖空，另以下沉中庭地基與擋土牆圍塑）
 {
   const baseMat = new THREE.MeshStandardMaterial({ color: 0x8eb374, roughness: 0.92 });
@@ -1156,6 +1169,7 @@ window.inCourtyardSink = inCourtyardSink;
   // v2.12.40 中庭四邊形挖空（形狀座標 y = −世界 z）
   const baseShape = new THREE.Shape([[-E, -E], [E, -E], [E, E], [-E, E]].map(([x, z]) => new THREE.Vector2(x, -z)));
   baseShape.holes.push(new THREE.Path(C.poly.map(([x, z]) => new THREE.Vector2(x, -z))));
+  baseShape.holes.push(new THREE.Path(NEW_RAMP_HOLE.map(([x, z]) => new THREE.Vector2(x, -z))));   // v2.12.99 坡道
   const baseGeo = new THREE.ExtrudeGeometry(baseShape, { depth: 0.2, bevelEnabled: false });
   baseGeo.rotateX(-Math.PI / 2); baseGeo.translate(0, -0.24, 0);
   const baseMesh = new THREE.Mesh(baseGeo, baseMat); baseMesh.receiveShadow = true;
@@ -1284,11 +1298,6 @@ const NORTH_WALL_PX = [[65.7, -67.6], [955, 22]];
 const northWallZAt = x => { const [a, b] = NORTH_WALL_PX; const t = (x - X(a[0])) / (X(b[0]) - X(a[0])); return Z(a[1]) + t * (Z(b[1]) - Z(a[1])); };
 const WEST_ROAD_PTS = [[113.5, -45.0], [53.7, -54.4], [-11.3, -61.1], [-36.0, -64.0], [-50.5, -66.6], [-89.8, -72.7], [-102.8, -73.9], [-114.4, -67.5]];   // v2.12.37 北側車道（依使用者航照標示）：東側門→沿北牆→學校後門
 const NORTH_SPUR_PTS = [[-36.0, -64.0], [-36.0, -43.5]];   // 北棟西端往南支線   // v2.12.33 北棟西端以西：沿北牆內側步道通往學校後門（依航照）
-const SOUTH_SHIFT = -6.0;   // v2.12.34 南棟依航照與普查樹木整體北移 6 m（南緣圍牆、人行道、道路同步）
-// 新棟「⑩–⑪ 黃框轉折棟（共用走廊）」北端（新棟群組局部 z）：北面牆須與南棟北牆（柱面）整面切齊。
-// 南棟北牆柱面世界 z = Z(318) + SOUTH_SHIFT − 11.50（南棟進深）− 0.24（柱半厚）；新棟群組 z 位移 = SOUTH_SHIFT + NEW_XF 位移，
-// 兩者相減後 SOUTH_SHIFT 抵銷。舊值 8.78 是新棟尚未北移時寫的，北移後走廊會比南棟北牆多突出約 3 m。
-const SHARED_CORRIDOR_ZG = Z(318) - 11.50 - 0.24 - NEW_XF.toWorld(0, 0)[1];
 const TRACK_CFG = { cx: -58.15, cz: -9.5, rx: 19.5, straight: 52, th: 5.074 };   // v2.12.33 PU 跑道（依對位航照）；v2.12.54 依航照與西棟同轉 5.07°，東緣距西棟西牆 3.3 m（使用者實測）
 const trackToWorld = (lx, lz) => { const t = TRACK_CFG.th * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), dx = lx - TRACK_CFG.cx, dz = lz - TRACK_CFG.cz; return [TRACK_CFG.cx + dx * c - dz * s, TRACK_CFG.cz + dx * s + dz * c]; };
 const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) { const [x1, y1] = WEST_WALL_PX[i], [x2, y2] = WEST_WALL_PX[i + 1]; if (py >= Math.min(y1, y2) && py <= Math.max(y1, y2)) return x1 + (x2 - x1) * (py - y1) / ((y2 - y1) || 1); } return WEST_WALL_PX[0][0]; };
@@ -1302,6 +1311,13 @@ const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) 
     else innerShape.lineTo(wx, wz);
   });
   innerShape.closePath();
+  {
+    // 坡道斜面在 z > 2.7（下沉中庭南緣以南）會低於地面，需在地面開 L 形孔（坡道實體由下往上填滿，不會露底）
+    const rh = new THREE.Path();
+    NEW_RAMP_HOLE.forEach(([x, z], i) => (i ? rh.lineTo(x, -z) : rh.moveTo(x, -z)));
+    rh.closePath();
+    innerShape.holes.push(rh);
+  }
   {
     const C = COURTYARD_SINK, hole = new THREE.Path();   // 形狀座標：y = −世界 z
     C.poly.forEach(([x, z], i) => (i ? hole.lineTo(x, -z) : hole.moveTo(x, -z))); hole.closePath();   // v2.12.40 四邊形
@@ -1334,6 +1350,7 @@ const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) 
     else turfShape.lineTo(X(px), -Z(py));
   });
   turfShape.closePath();
+  { const th = new THREE.Path(); NEW_RAMP_HOLE.forEach(([x, z], i) => (i ? th.lineTo(x, -z) : th.moveTo(x, -z))); th.closePath(); turfShape.holes.push(th); }   // v2.12.99 坡道
   const turfMesh = new THREE.Mesh(
     new THREE.ShapeGeometry(turfShape),
     new THREE.MeshStandardMaterial({ map: makeCampusLawnTexture(), roughness: 0.88, side: THREE.DoubleSide })
@@ -14035,13 +14052,15 @@ function buildNewBuilding() {
     const GRP_Z = SOUTH_SHIFT + NEW_XF.toWorld(0, 0)[1];     // 新棟群組 z 位移（−9 m）
     const LZ = zw => zw - GRP_Z;                              // 世界 z → 群組局部 z
     const yardMark = g.children.length;                       // 本節起點：結尾統一標記 keepLevel（避免被「下沉中庭」邏輯誤下移 0.75 m）
-    const rzF = zF + GRP_Z, rzE = zE + GRP_Z;                 // 立面前坡道北緣／南緣（世界 z：4.40／6.92）
+    const { RX1, RX2, RXW, RZ0 } = NEW_RAMP;                  // 縱向坡段 x 範圍、橫向坡段西端、入口（與南棟西側樓梯最底一級切齊）
+    const rzF = NEW_RAMP.zF, rzE = NEW_RAMP.zE;               // 立面前坡道北緣／南緣（世界 z：4.40／6.92）
     const rzCorrN = zG + GRP_Z;                               // 共用走廊北面（世界 z：2.54）
-    const RX1 = -9.12, RX2 = -6.72, RXW = -17.57;             // 縱向坡段 x 範圍、橫向坡段西端
-    const RZ0 = -6.30;                                        // 坡道起點（世界 z）
-    const RYS = -0.50, RYC = 0.21, RYE = 0.35;                // 起點、轉角、西端 斜面高程
-    const yV = zw => RYS + (RYC - RYS) * (zw - RZ0) / (rzF - RZ0);       // 縱向坡段（沿 z 線性）
-    const yH = xw => RYC + (RYE - RYC) * (RX1 - xw) / (RX1 - RXW);       // 橫向坡段（沿 x 線性）
+    // v2.12.99 整條坡道改為均勻斜率（約 5.3%，1:19）：入口 −0.55（略高於廣場鋪面 −0.59）→ 西端 +0.35（與 1F 走廊樓板齊平）
+    const RYS = -0.55, RYE = 0.35;
+    const rampK = (RYE - RYS) / ((rzF - RZ0) + (RX1 - RXW));
+    const RYC = RYS + rampK * (rzF - RZ0);                    // 轉角平台高程
+    const yV = zw => RYS + rampK * (zw - RZ0);                // 縱向坡段（沿 z 線性）
+    const yH = xw => RYC + rampK * (RX1 - xw);                // 橫向坡段（沿 x 線性）
     const rampTex = makeRampTileTexture();
     const concreteSide = mats.concrete;
     const graniteMat = new THREE.MeshStandardMaterial({ color: 0xb4b2ab, roughness: 0.85 });
@@ -14105,25 +14124,31 @@ function buildNewBuilding() {
       railSeg(wx1 - 0.03, yV(RZ0) + 0.90, RZ0, wx1 - 0.03, yV(rzCorrN) + 0.90, rzCorrN);
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.54), new THREE.MeshBasicMaterial({ map: makeWheelchairSignTexture() }));   // 沿用既有 512×384 輪椅標誌（4:3）
       sign.rotation.y = -Math.PI / 2;
-      sign.position.set(wx1 - 0.012, yV(-1.2) + 0.55, LZ(-1.2));
+      sign.position.set(wx1 - 0.012, yV(0.9) + 0.55, LZ(0.9));
       g.add(sign);
     }
-    // (3) 橫向坡段北緣（庭院側）：花崗石緣 + 雙層欄杆；中央保留平面圖標註之「新設鍍鋼欄杆及活動門」黃色柵門
+    // (3) 橫向坡段北緣（庭院側）：依照片 7 為「白磁磚斜護牆」，牆頂隨坡面上升（庭院側看起來愈往西愈高）；中央保留平面圖標註之黃色活動門缺口
     {
       const gateCx = -15.64, gateW = 1.65;
       const gx1 = gateCx - gateW / 2, gx2 = gateCx + gateW / 2;
-      slopedBox(RXW, RX1, rzF - 0.02, rzF + 0.20, -0.30, xx => yH(xx) + 0.12, graniteMat, 'x');
-      const runs = [[RX1 - 0.05, gx2 + 0.05], [gx1 - 0.05, RXW + 0.08]];
-      runs.forEach(([xa, xb]) => {
-        [0.72, 0.92].forEach(h => railSeg(xa, yH(xa) + h, rzF + 0.05, xb, yH(xb) + h, rzF + 0.05));
-        const n = Math.max(1, Math.round(Math.abs(xa - xb) / 1.6));
-        for (let k = 0; k <= n; k++) { const xx = xa + (xb - xa) * k / n; postAt(xx, yH(xx), yH(xx) + 0.92, rzF + 0.05); }
+      const wz1 = rzF - 0.02, wz2 = rzF + 0.22;
+      [[gx2, RX1], [RXW, gx1]].forEach(([xa, xb]) => {            // [西端, 東端]（x 小 → x 大）
+        slopedBox(xa, xb, wz1, wz2, -0.80, xx => yH(xx) + 0.86, whiteTileMat, 'x');
+        slopedBox(xa, xb, wz1 - 0.04, wz2 + 0.04, xx => yH(xx) + 0.86, xx => yH(xx) + 0.94, darkCopingMat, 'x');
       });
+      // 缺口兩側門柱 + 黃色烤漆柵門
       const ySteelMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.38, metalness: 0.55 });
-      const gy = yH(gateCx), gz = rzF + 0.05;
-      addBox(g, gateW, 0.05, 0.05, ySteelMat, gateCx, gy + 0.98, LZ(gz), false);
-      addBox(g, gateW, 0.05, 0.05, ySteelMat, gateCx, gy + 0.30, LZ(gz), false);
-      for (let k = 0; k < 6; k++) addBox(g, 0.035, 0.70, 0.035, ySteelMat, gx1 + 0.15 + k * (gateW - 0.3) / 5, gy + 0.64, LZ(gz), false);
+      const gy = yH(gateCx), gz = (wz1 + wz2) / 2;
+      [gx1 - 0.05, gx2 + 0.05].forEach(px => addBox(g, 0.10, 1.0, 0.24, whiteTileMat, px, yH(px) + 0.5 - 0.0, LZ(gz), false));
+      addBox(g, gateW, 0.05, 0.05, ySteelMat, gateCx, gy + 0.90, LZ(gz), false);
+      addBox(g, gateW, 0.05, 0.05, ySteelMat, gateCx, gy + 0.28, LZ(gz), false);
+      for (let k = 0; k < 6; k++) addBox(g, 0.035, 0.62, 0.035, ySteelMat, gx1 + 0.15 + k * (gateW - 0.3) / 5, gy + 0.59, LZ(gz), false);
+      // 護牆頂上再加一道不鏽鋼扶手（照片 4）
+      [[gx2, RX1], [RXW, gx1]].forEach(([xa, xb]) => {
+        railSeg(xb, yH(xb) + 1.06, rzF + 0.10, xa, yH(xa) + 1.06, rzF + 0.10);
+        const n = Math.max(1, Math.round(Math.abs(xb - xa) / 1.6));
+        for (let k = 0; k <= n; k++) { const xx = xb + (xa - xb) * k / n; postAt(xx, yH(xx) + 0.94, yH(xx) + 1.06, rzF + 0.10); }
+      });
     }
     // (4) 橫向坡段南緣（貼 1F 走廊立面）：牆掛扶手；西端收頭護牆
     {
@@ -14304,10 +14329,10 @@ function buildNewBuilding() {
       const WZ = zw => zw + 9.0;   // 世界 z → 新棟群組局部 z（群組 z 位移 SOUTH_SHIFT + NEW_XF = −9 m）
       const juncCurbMat = new THREE.MeshStandardMaterial({ color: 0xbdb8ac, roughness: 0.72 });
       const gardenLawnMat = new THREE.MeshStandardMaterial({ color: 0x4f8a36, roughness: 0.9 });
-      // v2.12.97 依標註圖與照片 3：前庭由「東西 16.5 m × 南北 5.4 m（約 3：1）」改為東西 13.5 m × 南北最深約 9 m（約 1.5：1），
-      //   東緣退到坡道西側排水溝（x = −9.72），沿坡道另有一條 8.7 m 長的綠籬帶；前緣鋸齒向東逐段加深。
-      //   樓梯東西兩側另補一塊 U 形草坪（poly2），把樓梯底部包進前庭。
-      const poly = [[-23.4, -1.05], [-16.8, -1.05], [-16.0, -2.2], [-12.2, -2.2], [-11.4, -4.6], [-9.72, -4.6], [-9.72, 4.35], [-23.4, 4.35]];
+      // v2.12.99 依照片 7：前庭寬而淺。原 16.5 × 5.4 m（約 3：1）→ v2.12.97 一度加深到 9 m 太深 → 現為 13.7 × 約 6 m（約 2.2：1）。
+      //   東緣仍貼坡道西側排水溝（x = −9.72）；東段北緣下探到 z = −1.9，與坡道入口、南棟西側樓梯最底一級切齊。
+      //   樓梯東西兩側另有 U 形草坪（poly2）把樓梯底部包進前庭。
+      const poly = [[-23.4, -1.05], [-17.2, -1.05], [-16.4, -1.9], [-9.72, -1.9], [-9.72, 4.35], [-23.4, 4.35]];
       const poly2 = [[-6.5, -3.6], [5.8, -3.6], [5.8, 2.66], [0.6, 2.66], [0.6, -2.4], [-4.9, -2.4], [-4.9, 2.66], [-6.5, 2.66]];   // 南緣 2.66 貼下沉中庭南擋土牆（z = 2.7）
       const lawnExtrude = pts => {
         const sh = new THREE.Shape();
@@ -14331,7 +14356,7 @@ function buildNewBuilding() {
       addMesh(g, lg, gardenLawnMat, 0, 0.0, 0, false, true);
       addMesh(g, lawnExtrude(poly2), gardenLawnMat, 0, 0.0, 0, false, true);
       // 緣石：沿前緣與西緣（建築側、坡道側不設）
-      for (let k = 0; k < 5; k++) {
+      for (let k = 0; k < 3; k++) {
         const [x1, z1] = poly[k], [x2, z2] = poly[k + 1];
         const L = Math.hypot(x2 - x1, z2 - z1);
         const cb = addBox(g, L + 0.2, 0.24, 0.2, juncCurbMat, (x1 + x2) / 2, 0.12, WZ((z1 + z2) / 2), false);
@@ -14366,12 +14391,10 @@ function buildNewBuilding() {
       hedgeStrip(-18.4, 1.25, -18.4, 3.4);
       // （方形花台東側綠籬由下方沿坡道的長綠籬帶取代）
       // 前緣綠籬花台（沿新鋸齒緣石內側）
-      hedgeStrip(-16.65, -1.15, -15.95, -2.05, 0.62, 0.45);
-      hedgeStrip(-15.8, -2.0, -12.5, -2.0, 0.62, 0.5);
-      hedgeStrip(-12.1, -2.3, -11.35, -4.4, 0.62, 0.45);
-      hedgeStrip(-11.25, -4.4, -10.0, -4.4, 0.62, 0.5);
-      // 沿坡道西側的長綠籬帶（照片 3：約 8.7 m 長、1.3 m 寬、頂部修剪整齊），緊鄰排水溝
-      hedgeStrip(-10.55, -4.25, -10.55, 4.15, 0.95, 1.3);
+      hedgeStrip(-17.0, -1.1, -16.2, -1.75, 0.62, 0.45);
+      hedgeStrip(-16.1, -1.75, -10.2, -1.75, 0.62, 0.5);
+      // 沿坡道西側的綠籬帶（照片 3：1.3 m 寬、頂部修剪整齊），緊鄰排水溝；隨入口退縮縮短為約 6 m
+      hedgeStrip(-10.55, -1.6, -10.55, 4.15, 0.95, 1.3);
       // U 形草坪（樓梯兩側）：點綴修剪圓球灌木與景觀石
       [[-5.6, -2.5, 0.5], [-5.7, 0.9, 0.42], [1.5, -2.6, 0.55], [3.2, 1.2, 0.46], [4.9, -1.2, 0.5], [2.4, -0.3, 0.38]].forEach(([bx, bz, rr], i) => {
         const sh = addMesh(g, new THREE.IcosahedronGeometry(rr, 1), i % 2 ? hedgeMat1 : hedgeMat2, bx, 0.17 + rr * 0.8, WZ(bz), false);
@@ -14384,7 +14407,7 @@ function buildNewBuilding() {
       // 白色植物名牌（插於前緣綠籬前）
       const tagMat = new THREE.MeshStandardMaterial({ color: 0xf6f5ee, roughness: 0.6 });
       const stakeMat = new THREE.MeshStandardMaterial({ color: 0x8a8378, roughness: 0.8 });
-      [[-15.4, -2.12], [-14.4, -2.12], [-13.4, -2.12], [-12.6, -2.12], [-11.0, -4.52], [-16.5, -1.3]].forEach(([tx, tz], k) => {
+      [[-15.4, -1.92], [-14.4, -1.92], [-13.4, -1.92], [-12.2, -1.92], [-16.8, -1.3]].forEach(([tx, tz], k) => {
         addBox(g, 0.025, 0.42, 0.025, stakeMat, tx, 0.17 + 0.21, WZ(tz), false);
         const tg = addBox(g, 0.22, 0.16, 0.012, tagMat, tx, 0.17 + 0.42, WZ(tz) - 0.02, false);
         tg.rotation.x = -0.35; tg.rotation.y = (k % 2 ? 0.15 : -0.1);
@@ -14544,7 +14567,7 @@ function buildNewBuilding() {
     // 高度延伸貫穿 1F、2F 直抵 3F 女兒牆頂 (高度約 11.2 米)，完美還原照片現場空間縱深與自然意境！
     // ========================================================================
     const treeMark = g.children.length;
-    const treeX = shX1 - 5.5;     // v2.12.97 原 shX1 − 1.25 落在新坡道縱向坡段上；西移到前庭內，仍在共用走廊西北方
+    const treeX = 4.6;            // v2.12.99 照片 7：前庭中央沒有高大喬木，大樹群位於南棟西側樓梯東側 → 搬到樓梯東側的 U 形草坪（與既有喬木並列）
     const treeZ = 8.780 - 1.65;   // 大樹維持原位置（原以舊 zG = 8.78 為基準；走廊北端南移後不隨之移動）
     const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4d3f32, roughness: 0.92 }); // 深褐粗糙樹皮
     const treeLeafMat1 = new THREE.MeshStandardMaterial({ color: 0x2e6328, roughness: 0.80 }); // 濃綠樹冠
@@ -22775,7 +22798,7 @@ function setPostFXForQuality(q) {
   if (!want) { if (window.__postFX) window.__postFX.enabled = false; requestRender(3); return; }
   if (window.__postFX) { window.__postFX.enabled = true; requestRender(3); return; }
   if (_postFXLoading) return;
-  _postFXLoading = import('./campus-post.js?v=2.12.98').then(mod => {
+  _postFXLoading = import('./campus-post.js?v=2.12.99').then(mod => {
     const fx = mod.createPostFX(renderer, scene, camera);
     const h = timeOfDay;
     fx.setNight(h >= 18.5 || h < 6.3, (h >= 16.5 && h < 18.5) || (h >= 6.3 && h < 7.8));
