@@ -8131,19 +8131,7 @@ function buildEastBuilding() {
       }
     }
 
-    // 6) 坡道落地處（出入口三）紅灰雙色連鎖磚地坪（至草地邊）
-    {
-      const tc = document.createElement('canvas'); tc.width = tc.height = 256; const cx = tc.getContext('2d');
-      cx.fillStyle = '#8b837e'; cx.fillRect(0, 0, 256, 256);
-      const cols = ['#9b6560', '#8d5b57', '#808487', '#75797c', '#a6746e', '#8e625d'];
-      let sd = 5; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
-      for (let y = 0; y < 256; y += 32) for (let x = -((y / 32) % 2) * 32; x < 256; x += 64) { cx.fillStyle = cols[Math.floor(rr() * cols.length)]; cx.fillRect(x + 2, y + 2, 60, 28); }
-      const tt = new THREE.CanvasTexture(tc); tt.wrapS = tt.wrapT = THREE.RepeatWrapping; tt.colorSpace = THREE.SRGBColorSpace;
-      const px1 = xB1 - 4.6, px2 = xB1 - 0.18, pz1 = zY0 - 1.5, pz2 = zT + 0.2;
-      tt.repeat.set((px2 - px1) / 1.6, (pz2 - pz1) / 1.6);
-      const pv = addBox(g, px2 - px1, 0.04, pz2 - pz1, new THREE.MeshStandardMaterial({ map: tt, roughness: 0.88 }), (px1 + px2) / 2, yGround + 0.02, (pz1 + pz2) / 2, false);
-      pv.renderOrder = 1;
-    }
+    // 6) 坡道落地處（出入口三）至南棟樓梯間之波浪形紅灰連鎖磚廣場與草地帶，統一於 buildSouthBuilding 的 frontLand 依實景無縫繪製
 
     // 7) 國際無障礙標誌藍牌（實景共兩處：① 西北角外側欄杆面向中庭；② 花台北端面向穿堂／出入口二）
     {
@@ -10677,39 +10665,167 @@ function buildSouthBuilding() {
   }
 
   // ============================================================================
-  // 12. 軸線 ①–④ 北側前景（v2.12.10 依實景照片「興學樓」正面）：
-  //     下沉中庭鋪面 → 紅褐色連鎖磚前埕 → 窄草皮帶 → 高約 2 m 之連續修剪喬木綠籬（下段可見細樹幹）→ 灰色水泥擋土牆
-  //     （中庭下沉後地面標高 PY；本區物件已依下沉標高建置，標記 keepLevel）
+  // 12. 軸線 ①–④ 北側前景（依實景照片 081921 / 082056 忠實還原）：
+  //     下沉中庭幾何花磚 → 淺灰水泥分隔邊條 → 整片一體式波浪形（S型）紅灰雙色連鎖磚廣場
+  //     （西接南棟主樓梯、東密合東棟無障礙坡道出入口三與 Run R/Y 牆緣）
+  //     → 靠牆寬幅翠綠草地帶 → 灰色水泥擋土牆前之修剪長虹木喬木綠籬（細樹幹＋綠紅雙色枝葉）
   // ============================================================================
   const frontLand = new THREE.Group();
   g.add(frontLand);
-  const PY = 0.16 - COURTYARD_SINK.D;   // 南棟前地面標高 = 中庭廣場鋪面頂（−0.59）。v2.12.98：原再減 0.12，紅磚前埕、草皮帶與綠籬樹幹基部都埋在鋪面底下 12 cm
+  const PY = 0.16 - COURTYARD_SINK.D;   // 南棟前地面標高 = 中庭廣場鋪面頂（−0.59）
   const hedgeRowXL = ax(1) - 0.2, hedgeRowXR = ax(4) + 0.35;
   const hedgeSpanW = Math.abs(hedgeRowXL - hedgeRowXR);
   const hedgeCx = (hedgeRowXL + hedgeRowXR) / 2;
-  window.__SOUTH_FRONT = { zNorth, y0, PY, hedgeRowXL, hedgeRowXR, ax1: ax(1), ax4: ax(4) };   // 測試／對位用
-  // v2.12.84 依使用者修正平面圖：東棟後坡道 Run R 以東之綠籬移除（改為通往南棟平台），綠籬東端止於 Run R 西緣
+  window.__SOUTH_FRONT = { zNorth, y0, PY, hedgeRowXL, hedgeRowXR, ax1: ax(1), ax4: ax(4) };
   const _rr = window.EAST_REAR_RAMP;
   const hedgeXL2 = _rr ? Math.min(hedgeRowXL, EAST_XF.toWorld(_rr.xC1 - 0.25, 5.5)[0]) : hedgeRowXL;
   const hedgeSpan2 = Math.abs(hedgeXL2 - hedgeRowXR), hedgeCx2 = (hedgeXL2 + hedgeRowXR) / 2;
   {
     const wallGrey = new THREE.MeshStandardMaterial({ color: 0xb9b8b2, roughness: 0.9 });
     addBox(frontLand, hedgeSpanW + 0.4, y0 - PY, 0.45, wallGrey, hedgeCx, (y0 + PY) / 2, zNorth - 0.25);
-    addBox(frontLand, hedgeSpan2 + 0.4, 0.05, 0.9, grassMoundMat, hedgeCx2, PY + 0.025, zNorth - 1.35, false);
-    const apronMat = new THREE.MeshStandardMaterial({ map: makeRedBrickTexture(), color: 0xc49a8a, roughness: 0.9 });
-    apronMat.map.wrapS = apronMat.map.wrapT = THREE.RepeatWrapping; apronMat.map.repeat.set(6, 1);
-    addBox(frontLand, (ax(1) + 0.6) - (ax(5) - 0.4), 0.03, 1.9, apronMat, ((ax(1) + 0.6) + (ax(5) - 0.4)) / 2, PY + 0.015, zNorth - 2.75, false);
-    // 連續修剪喬木綠籬：細樹幹 + 上段濃密樹籬（頂部起伏）
-    const hdA = new THREE.MeshStandardMaterial({ color: 0x2f6a2c, roughness: 0.84 });
-    const hdB = new THREE.MeshStandardMaterial({ color: 0x3f7d34, roughness: 0.82 });
-    const nT = Math.floor(hedgeSpan2 / 0.9);
+
+    // 輔助：將世界 XZ 多邊形建立為平鋪於指定標高之 Mesh，並以世界座標計算均勻無拉伸 UV
+    const makeFlatPoly = (ptsXZ, yPos, mat, tileU = 1.6, tileV = 1.6) => {
+      const shp = new THREE.Shape();
+      ptsXZ.forEach(([x, z], idx) => { if (idx === 0) shp.moveTo(x, -z); else shp.lineTo(x, -z); });
+      shp.closePath();
+      const geo = new THREE.ShapeGeometry(shp);
+      const pos = geo.attributes.position, uv = geo.attributes.uv;
+      for (let i = 0; i < pos.count; i++) {
+        uv.setXY(i, pos.getX(i) / tileU, -pos.getY(i) / tileV);
+      }
+      uv.needsUpdate = true;
+      const m = new THREE.Mesh(geo, mat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.y = yPos;
+      m.receiveShadow = true;
+      frontLand.add(m);
+      return m;
+    };
+
+    // 12.1 台灣實景 S 型波浪連鎖磚貼圖（512×512，對應 1.6 m × 1.6 m，紅灰交替條帶＋自然石紋與暗灰磚縫）
+    const makeWavyPaverTex = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 512;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#4f5255'; ctx.fillRect(0, 0, 512, 512); // 深灰細沙縫
+      const cols = 8, rows = 16;
+      const bw = 512 / cols, bh = 512 / rows;
+      const redPal = ['#9b696c', '#916064', '#a47376', '#895b5f', '#9e6f71'];
+      const greyPal = ['#7d8387', '#878d91', '#73797d', '#8e9397', '#787e82'];
+      let sd = 137; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      // 實景為 2～3 排暗磚紅與 1～2 排冷灰交替的波浪型連鎖磚
+      const rowIsGrey = r => (r % 5 === 2 || r % 5 === 3);
+      for (let r = -1; r <= rows; r++) {
+        const stag = (r & 1) ? bw * 0.5 : 0;
+        for (let k = -1; k <= cols; k++) {
+          const x0 = k * bw - stag, y0 = r * bh;
+          const useGrey = rr() < 0.08 ? !rowIsGrey((r + 16) % 16) : rowIsGrey((r + 16) % 16);
+          const pal = useGrey ? greyPal : redPal;
+          ctx.fillStyle = pal[Math.floor(rr() * pal.length)];
+          // S 型波浪輪廓（上下邊各帶一個柔和波峰與波谷）
+          const pad = 1.6, amp = bh * 0.18;
+          ctx.beginPath();
+          ctx.moveTo(x0 + pad, y0 + pad);
+          ctx.lineTo(x0 + bw * 0.30, y0 + pad + amp);
+          ctx.lineTo(x0 + bw * 0.70, y0 + pad - amp);
+          ctx.lineTo(x0 + bw - pad, y0 + pad);
+          ctx.lineTo(x0 + bw - pad, y0 + bh - pad);
+          ctx.lineTo(x0 + bw * 0.70, y0 + bh - pad - amp);
+          ctx.lineTo(x0 + bw * 0.30, y0 + bh - pad + amp);
+          ctx.lineTo(x0 + pad, y0 + bh - pad);
+          ctx.closePath();
+          ctx.fill();
+          // 磚面細微磨損高光／顆粒感
+          ctx.fillStyle = rr() > 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+          ctx.fillRect(x0 + 6, y0 + 5, bw - 12, bh - 10);
+        }
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      return tex;
+    };
+
+    // 12.2 翠綠自然草皮貼圖（256×256）
+    const makeLushGrassTex = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#3d6f2a'; ctx.fillRect(0, 0, 256, 256);
+      const cols = ['#356424', '#467c30', '#4f8636', '#2f5a20', '#588e3d'];
+      let sd = 91; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let i = 0; i < 1800; i++) {
+        ctx.fillStyle = cols[Math.floor(rr() * cols.length)];
+        ctx.fillRect(rr() * 256, rr() * 256, 2 + rr() * 4, 2 + rr() * 5);
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    };
+
+    // 12.3 精確對齊世界座標邊界（西起南棟主樓梯東緣，東密合東棟坡道 Run R／Run Y 外緣）
+    const xWest = ax(4) - 0.20;             // 緊密內縮至南棟主樓梯東側護牆下緣，不露縫隙
+    const zWallFront = zNorth - 0.38;       // 南棟灰色擋土牆北面
+    const zGrassN = zNorth - 3.45;          // 寬幅草地帶北緣（距牆約 3.1 m，綠籬前留出約 2.3 m 開闊草皮）
+    const pRN = _rr ? EAST_XF.toWorld(_rr.xC1 - 0.22, _rr.zN + 0.90) : [ax(1) - 3.0, zNorth - 7.6];
+    const pRY = _rr ? EAST_XF.toWorld(_rr.xC1 - 0.22, _rr.zAexit) : [ax(1) - 3.0, zNorth - 5.6];
+    const pY0 = _rr ? EAST_XF.toWorld(_rr.xA1, _rr.zAexit) : [ax(1) - 5.0, zNorth - 5.6];
+    const pYT = _rr ? EAST_XF.toWorld(_rr.xA1, _rr.zT) : [ax(1) - 5.2, zNorth - 1.7];
+    const pRT = _rr ? EAST_XF.toWorld(_rr.xC1 - 0.22, _rr.zT) : [ax(1) - 3.3, zNorth - 1.5];
+    const zPaverN = pRN[1];                 // 連鎖磚廣場北緣（對齊坡道西北角南側）
+    // 線性內插 Run Y 外緣在 z = zGrassN 處的世界 X
+    const tG = (zGrassN - pY0[1]) / ((pYT[1] - pY0[1]) || 1);
+    const xRampAtGrassN = pY0[0] + (pYT[0] - pY0[0]) * tG;
+
+    // (a) 整片一體式波浪形紅灰雙色連鎖磚廣場（涵蓋出入口三前埕至南棟樓梯，無縫密合無拼接破口）
+    const wavyPaverMat = new THREE.MeshStandardMaterial({ map: makeWavyPaverTex(), roughness: 0.88 });
+    const paverPoly = [
+      [xWest, zPaverN],
+      [pRN[0], zPaverN],
+      [pRY[0], pRY[1]],
+      [pY0[0], pY0[1]],
+      [xRampAtGrassN, zGrassN],
+      [xWest, zGrassN],
+    ];
+    const paverMesh = makeFlatPoly(paverPoly, PY + 0.022, wavyPaverMat, 1.6, 1.6);
+    paverMesh.renderOrder = 1;
+
+    // (b) 連鎖磚廣場北緣之淺灰水泥分隔邊條／排水溝緣（實景 082056／081921 與幾何花磚廣場之交界線）
+    const borderMat = new THREE.MeshStandardMaterial({ color: 0xc2c5c7, roughness: 0.85 });
+    const borderW = pRN[0] - xWest;
+    const borderStrip = addBox(frontLand, borderW, 0.03, 0.24, borderMat, xWest + borderW / 2, PY + 0.016, zPaverN - 0.12, false);
+    borderStrip.renderOrder = 1;
+
+    // (c) 靠牆寬幅翠綠草地帶（自連鎖磚南緣延伸至擋土牆下，並沿 Run Y 外緣貼齊至長虹木下方）
+    const lushGrassMat = new THREE.MeshStandardMaterial({ map: makeLushGrassTex(), roughness: 0.94 });
+    const grassPoly = [
+      [xWest, zGrassN],
+      [xRampAtGrassN, zGrassN],
+      [pYT[0], pYT[1]],
+      [pRT[0], pRT[1]],
+      [pRT[0], zWallFront],
+      [xWest, zWallFront],
+    ];
+    const grassMesh = makeFlatPoly(grassPoly, PY + 0.026, lushGrassMat, 2.2, 2.2);
+    grassMesh.renderOrder = 1;
+
+    // (d) 連續修剪長虹木喬木綠籬（下段細樹幹紮根於草皮，上段方整修剪之深綠＋紅銅嫩葉冠層）
+    const hdA = new THREE.MeshStandardMaterial({ color: 0x2b5e27, roughness: 0.84 });
+    const hdB = new THREE.MeshStandardMaterial({ color: 0x39702f, roughness: 0.82 });
+    const hdBronze = new THREE.MeshStandardMaterial({ color: 0x7c4a32, roughness: 0.82 });
+    const nT = Math.max(4, Math.floor(hedgeSpan2 / 0.9));
     for (let t = 0; t <= nT; t++) {
       const tx = hedgeRowXR + (t / nT) * (hedgeXL2 - hedgeRowXR);
-      addMesh(frontLand, new THREE.CylinderGeometry(0.04, 0.06, 1.0, 6), southDoorWoodMat, tx + ((t * 7) % 3 - 1) * 0.08, PY + 0.5, zNorth - 0.75, false);
-      const cr = addMesh(frontLand, new THREE.IcosahedronGeometry(0.62 + (t % 3) * 0.06, 1), t % 2 ? hdA : hdB, tx, PY + 1.55 + (t % 4) * 0.06, zNorth - 0.78);
-      cr.scale.set(1.0, 1.0, 0.85);
+      const trunk = addMesh(frontLand, new THREE.CylinderGeometry(0.038, 0.055, 1.05, 6), southDoorWoodMat, tx + ((t * 7) % 3 - 1) * 0.07, PY + 0.52, zNorth - 0.78, false);
+      trunk.rotation.z = ((t % 3) - 1) * 0.06;
+      const cr = addMesh(frontLand, new THREE.IcosahedronGeometry(0.56 + (t % 3) * 0.05, 1), t % 2 ? hdA : hdB, tx, PY + 1.54 + (t % 4) * 0.04, zNorth - 0.78);
+      cr.scale.set(1.0, 0.92, 0.82);
+      // 實景長虹木表層零星紅銅色新芽點綴
+      const tip = addMesh(frontLand, new THREE.IcosahedronGeometry(0.24 + (t % 2) * 0.05, 1), hdBronze, tx + ((t % 2) ? 0.18 : -0.18), PY + 1.72 + (t % 3) * 0.05, zNorth - 1.08, false);
+      tip.scale.set(1.1, 0.65, 0.75);
     }
-    addBox(frontLand, hedgeSpan2, 0.9, 0.95, hdA, hedgeCx2, PY + 1.45, zNorth - 0.78);
+    addBox(frontLand, hedgeSpan2, 0.88, 0.86, hdA, hedgeCx2, PY + 1.46, zNorth - 0.78);
   }
 
   // ============================================================================
