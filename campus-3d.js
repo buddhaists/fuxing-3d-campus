@@ -1841,25 +1841,25 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
         }
       }
       const leafMats = [shrubG0, shrubG1, shrubG2, shrubG3, shrubG4];
-      const nClusters = opts.tallLush ? 34 : (opts.clusters || 14);
-      const heightMult = opts.tallLush ? 1.55 : (opts.heightMult || 1.0);
+      const nClusters = opts.tallLush ? 52 : (opts.clusters || 18);
+      const heightMult = opts.tallLush ? 1.48 : (opts.heightMult || 1.0);
       for (let c = 0; c < nClusters; c++) {
         const tier = c / nClusters; // 0 = 下層開展冠, 0.5 = 中層主冠, 1 = 頂層受光冠峰
         const ang = c * 2.39996 + srnd() * 0.45; // 黃金角自然分布
-        const radialBand = tier < 0.35 ? (0.48 + srnd() * 0.42) : (tier < 0.78 ? (0.28 + srnd() * 0.52) : (0.08 + srnd() * 0.34));
+        const radialBand = tier < 0.35 ? (0.45 + srnd() * 0.44) : (tier < 0.78 ? (0.24 + srnd() * 0.54) : (0.06 + srnd() * 0.36));
         const dist = crownR * radialBand;
-        const cy = trunkH + crownR * (0.28 + tier * 1.12 * heightMult + (srnd() - 0.5) * 0.22);
-        const r = crownR * (opts.tallLush ? (0.28 + srnd() * 0.18) : (0.34 + srnd() * 0.20));
+        const cy = trunkH + crownR * (0.26 + tier * 1.08 * heightMult + (srnd() - 0.5) * 0.20);
+        const r = crownR * (opts.tallLush ? (0.17 + srnd() * 0.12) : (0.26 + srnd() * 0.14));
         const matIdx = tier > 0.68 ? (3 + (c % 2)) : (tier > 0.32 ? (1 + (c % 3)) : (c % 3));
-        const lf = addMesh(tg, lumpyGeometry(new THREE.IcosahedronGeometry(r, 1), 0.18), leafMats[matIdx], topX + Math.cos(ang) * dist, cy, topZ + Math.sin(ang) * dist);
-        lf.scale.set(1.12 + (srnd() - 0.5) * 0.22, 0.78 + srnd() * 0.28, 1.12 + (srnd() - 0.5) * 0.22);
+        const lf = addMesh(tg, lumpyGeometry(new THREE.IcosahedronGeometry(r, 1), 0.20), leafMats[matIdx], topX + Math.cos(ang) * dist, cy, topZ + Math.sin(ang) * dist);
+        lf.scale.set(1.14 + (srnd() - 0.5) * 0.24, 0.76 + srnd() * 0.28, 1.14 + (srnd() - 0.5) * 0.24);
         lf.rotation.y = srnd() * Math.PI * 2;
       }
       if (opts.blossoms) {
-        for (let f = 0; f < 12; f++) {
-          const ang = (f / 12) * Math.PI * 2 + 0.25;
-          const dist = crownR * (0.28 + srnd() * 0.54);
-          addMesh(tg, new THREE.IcosahedronGeometry(0.20 + srnd() * 0.10, 0), blossomMat, topX + Math.cos(ang) * dist, trunkH + crownR * (0.72 + srnd() * 0.52), topZ + Math.sin(ang) * dist, false);
+        for (let f = 0; f < 14; f++) {
+          const ang = (f / 14) * Math.PI * 2 + 0.25;
+          const dist = crownR * (0.26 + srnd() * 0.54);
+          addMesh(tg, new THREE.IcosahedronGeometry(0.18 + srnd() * 0.08, 0), blossomMat, topX + Math.cos(ang) * dist, trunkH + crownR * (0.68 + srnd() * 0.52), topZ + Math.sin(ang) * dist, false);
         }
       }
       nfg.add(tg);
@@ -1900,7 +1900,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     addNaturalShrub(-4.2, -17.95, 0.74, 1.30, false);
     addNaturalShrub(1.8, -17.9, 0.72, 1.28, false);
     // 草地西中段伴生細幹小喬木（樹幹微向西南傾斜、枝葉輕盈舒展，實景照片 2 & 5 前景清晰可見）
-    addCourtyardTree(-1.2, -16.8, 1.85, 1.95, { trunkR: 0.11, lightBark: true, lean: 0.14, branches: 4, clusters: 14, heightMult: 0.92 });
+    addCourtyardTree(-1.2, -16.8, 1.85, 1.95, { trunkR: 0.11, lightBark: true, lean: 0.14, branches: 4, clusters: 16, heightMult: 0.92 });
     // 草地東段開闊茂密火焰木大喬木（飽滿分層綠冠＋零星橘紅色花簇，實景照片 2 & 5 主樹）
     addCourtyardTree(5.6, -17.3, 2.55, 3.35, { trunkR: 0.28, branches: 5, tallLush: true, blossoms: true });
     // 南緣整齊排列之彩色小風車列（實景照片 1 特色景觀）
@@ -1923,76 +1923,87 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     }
 
     // ------------------------------------------------------------------------
-    // B. 西棟北側前草地、樟樹大喬木、雙層修剪灌木、廚房牆腳自然灌叢與紅磚鋪面（依實景照片 3 & 4 精緻重建）
-    //    ・白磁磚廚房東牆位於 NORTH_XF x = −23.37（z = −20.60 ～ −13.42）
-    //    ・南半段（z = −18.0 ～ −13.2）：平緣角隅草坪＋高大茂密樟樹＋東南角雙層圓球修剪灌木＋西側低矮灌木
-    //    ・北半段（z = −20.6 ～ −18.0）：靠牆茂密多幹自然灌叢與小喬木＋東北角低矮金屬管護欄＋東側暖紅磚鋪面區與排水收邊
+    // B. 西棟北側前草地、樟樹大喬木、雙層修剪灌木、靠牆自然灌叢與紅磚鋪面（依實景照片 3 & 4 精緻重建）
+    //    ・v2.12.107 改為完整連續之「L 形一體草皮」（南段寬草坪＋北段 2.4 m 寬靠牆草皮延伸區無縫相連），
+    //      確保主景大樟樹、雙層修剪灌木與北側靠牆多幹灌叢／小喬木全數穩固生長於該區草皮之上！
+    //    ・東側暖紅磚鋪面區退讓至北段草皮以東（x = −19.7 ～ −17.6），不侵佔樹基與草皮。
     // ------------------------------------------------------------------------
-    addLawnBed(-20.0, -15.6, 4.6, 4.8);
+    {
+      const curbW = 0.13, curbH = 0.07;
+      // 1) 南段寬草皮（x = −22.15 ～ −17.65，z = −18.0 ～ −13.2）
+      addBox(nfg, 4.50, 0.055, 4.80, makeLawnMat(4.5 / 2.4, 4.8 / 2.4), -19.90, yBase + 0.028, -15.60, false);
+      // 2) 北段靠牆草皮延伸區（x = −22.15 ～ −19.75，z = −21.2 ～ −17.95，與南段草皮無縫連成一體）
+      addBox(nfg, 2.40, 0.055, 3.25, makeLawnMat(2.4 / 2.4, 3.25 / 2.4), -20.95, yBase + 0.028, -19.575, false);
+      // 3) 連續 L 形外圍平緣灰水泥緣石（僅包圍草皮外側邊界，內部無隔斷）
+      addBox(nfg, 4.62, curbH, curbW, curbGreyMat, -19.90, yBase + curbH / 2, -13.20, false); // 南緣
+      addBox(nfg, curbW, curbH, 4.86, curbGreyMat, -17.65, yBase + curbH / 2, -15.60, false); // 南段東緣
+      addBox(nfg, 2.22, curbH, curbW, curbGreyMat, -18.70, yBase + curbH / 2, -18.00, false); // 內折南緣（草皮與紅磚交界）
+      addBox(nfg, curbW, curbH, 3.26, curbGreyMat, -19.75, yBase + curbH / 2, -19.60, false); // 北段東緣（草皮與紅磚交界）
+      addBox(nfg, 2.52, curbH, curbW, curbGreyMat, -20.95, yBase + curbH / 2, -21.20, false); // 北緣
+      addBox(nfg, curbW, curbH, 8.06, curbGreyMat, -22.15, yBase + curbH / 2, -17.20, false); // 西緣（沿擋土牆側）
+    }
     // 樟樹樹基周圍自然陰影微土色草皮過渡斑（貼合照片 3 & 4 樹下草地質感）
     {
-      const shadeSoilMat = new THREE.MeshStandardMaterial({ color: 0x5c5b3e, roughness: 0.96, transparent: true, opacity: 0.42 });
-      const sp = addMesh(nfg, new THREE.CircleGeometry(1.15, 16), shadeSoilMat, -20.45, yBase + 0.055, -15.55, false);
+      const shadeSoilMat = new THREE.MeshStandardMaterial({ color: 0x5c5b3e, roughness: 0.96, transparent: true, opacity: 0.40 });
+      const sp = addMesh(nfg, new THREE.CircleGeometry(1.10, 16), shadeSoilMat, -20.15, yBase + 0.058, -15.55, false);
       sp.rotation.x = -Math.PI / 2;
     }
-    // 西棟北側主景大樟樹（高約 10.6 m、高過西棟 3F 女兒牆，單主幹微彎挺拔、飽滿三層翠綠樹冠，附淺綠植物名牌）
-    addCourtyardTree(-20.45, -15.55, 2.85, 3.65, { trunkR: 0.27, lean: 0.06, leanX: -0.04, branches: 6, tallLush: true, plaque: true });
-    // 草坪東南角標誌性「雙層圓球修剪灌木（葫蘆／棒棒糖造型）」（實景照片 3、4、5 清晰地標）
-    addTwoTierTopiary(-18.25, -13.85);
-    // 樟樹西側（近西棟 1F 柱廊邊）低矮自然綠叢（實景照片 4 樹幹後方小灌木）
-    addNaturalShrub(-21.65, -14.75, 0.48, 0.72, false);
+    // 西棟北側主景大樟樹（完全植於南段草皮中央偏西，高約 10.6 m、細密多層翠綠樹冠，附淺綠植物名牌）
+    addCourtyardTree(-20.15, -15.55, 2.85, 3.55, { trunkR: 0.26, lean: 0.05, leanX: -0.04, branches: 6, tallLush: true, plaque: true });
+    // 草坪東南角標誌性「雙層圓球修剪灌木（葫蘆／棒棒糖造型）」（完全植於草皮內側）
+    addTwoTierTopiary(-18.30, -13.90);
+    // 樟樹西側（近西棟 1F 柱廊邊）低矮自然綠叢（完全植於草皮內側）
+    addNaturalShrub(-21.35, -14.80, 0.46, 0.70, false);
 
-    // 廚房東牆北段靠牆茂密自然灌叢與多幹小喬木群（實景照片 3 & 4 右側白磁磚牆腳，高約 2.3～3.6 m）
+    // 北段草皮上之靠牆茂密自然灌叢與多幹小喬木群（全數根植於 x = −21.55 ～ −20.55、z = −20.55 ～ −18.45 之綠色草皮上！）
     {
       const wg = new THREE.Group();
-      wg.position.set(0, yBase + 0.04, 0);
-      // 靠牆窄條植栽土帶（z = −20.5 ～ −18.0）
-      addBox(wg, 1.35, 0.06, 2.75, makeLawnMat(0.8, 1.4), -21.85, 0.03, -19.25, false);
+      wg.position.set(0, yBase + 0.055, 0);
       const wallStems = [
-        { x: -22.05, z: -18.55, h: 2.35, r: 0.065, leanX: 0.22, leanZ: 0.06, cR: 1.35, cH: 3.45 },
-        { x: -21.95, z: -19.25, h: 2.05, r: 0.058, leanX: 0.28, leanZ: -0.05, cR: 1.25, cH: 3.10 },
-        { x: -21.85, z: -19.95, h: 1.75, r: 0.050, leanX: 0.34, leanZ: -0.18, cR: 1.10, cH: 2.55 },
-        { x: -21.55, z: -18.90, h: 1.35, r: 0.040, leanX: 0.26, leanZ: 0.10, cR: 0.95, cH: 1.95 }
+        { x: -21.35, z: -18.55, h: 2.25, r: 0.062, leanX: 0.14, leanZ: 0.05, cR: 1.05, cH: 3.25 },
+        { x: -21.25, z: -19.35, h: 2.00, r: 0.056, leanX: 0.18, leanZ: -0.04, cR: 0.98, cH: 2.95 },
+        { x: -21.20, z: -20.15, h: 1.65, r: 0.048, leanX: 0.22, leanZ: -0.12, cR: 0.88, cH: 2.40 },
+        { x: -20.65, z: -19.05, h: 1.25, r: 0.038, leanX: 0.16, leanZ: 0.08, cR: 0.78, cH: 1.85 }
       ];
       const wLeafMats = [shrubG0, shrubG1, shrubG2, shrubG3, shrubG4];
       wallStems.forEach((st, idx) => {
         const stem = addMesh(wg, new THREE.CylinderGeometry(st.r * 0.55, st.r, st.h, 6), trunkDarkMat, st.x, st.h * 0.48, st.z);
         stem.rotation.z = -st.leanX;
         stem.rotation.x = st.leanZ;
-        // 每株多枝展開與自然不規則葉團
-        for (let k = 0; k < 9; k++) {
-          const ang = (k / 9) * Math.PI * 2 + idx * 0.7 + srnd() * 0.4;
-          const dist = st.cR * (0.18 + srnd() * 0.62);
-          const py = 0.55 + (k / 8) * (st.cH - 0.65) + (srnd() - 0.5) * 0.28;
-          const rSub = 0.36 + srnd() * 0.24;
-          const m = addMesh(wg, lumpyGeometry(new THREE.IcosahedronGeometry(rSub, 1), 0.18), wLeafMats[(k + idx + (py > 2.0 ? 2 : 0)) % wLeafMats.length],
-            st.x + Math.cos(ang) * dist + st.leanX * 0.9, py, st.z + Math.sin(ang) * dist);
-          m.scale.set(1.18, 0.84 + srnd() * 0.28, 1.15);
+        // 細密多層自然葉團（縮小單顆葉球尺寸，呈現自然繁茂樹葉質感）
+        for (let k = 0; k < 14; k++) {
+          const ang = k * 2.39996 + idx * 0.8 + srnd() * 0.35;
+          const dist = st.cR * (0.14 + srnd() * 0.58);
+          const py = 0.52 + (k / 13) * (st.cH - 0.58) + (srnd() - 0.5) * 0.22;
+          const rSub = 0.24 + srnd() * 0.16;
+          const m = addMesh(wg, lumpyGeometry(new THREE.IcosahedronGeometry(rSub, 1), 0.20), wLeafMats[(k + idx + (py > 1.8 ? 2 : 0)) % wLeafMats.length],
+            st.x + Math.cos(ang) * dist + st.leanX * 0.55, py, st.z + Math.sin(ang) * dist);
+          m.scale.set(1.16, 0.82 + srnd() * 0.26, 1.14);
         }
       });
-      // 灌叢東北角低矮鍍鋅金屬管護欄（實景照片 4 右下角）
+      // 北段草皮東北角低矮鍍鋅金屬管護欄（位於草皮北緣內側，實景照片 4 右下角）
       const railMat = new THREE.MeshStandardMaterial({ color: 0x8e959c, roughness: 0.42, metalness: 0.65 });
-      addBox(wg, 0.035, 0.82, 0.035, railMat, -21.25, 0.41, -20.52, false);
-      addBox(wg, 0.035, 0.82, 0.035, railMat, -22.25, 0.41, -20.52, false);
-      addBox(wg, 0.035, 0.82, 0.035, railMat, -21.25, 0.41, -19.85, false);
-      addBox(wg, 1.04, 0.035, 0.035, railMat, -21.75, 0.80, -20.52, false);
-      addBox(wg, 1.04, 0.03, 0.03, railMat, -21.75, 0.44, -20.52, false);
-      addBox(wg, 0.035, 0.035, 0.70, railMat, -21.25, 0.80, -20.18, false);
-      addBox(wg, 0.03, 0.03, 0.70, railMat, -21.25, 0.44, -20.18, false);
+      addBox(wg, 0.032, 0.80, 0.032, railMat, -19.95, 0.40, -21.02, false);
+      addBox(wg, 0.032, 0.80, 0.032, railMat, -21.45, 0.40, -21.02, false);
+      addBox(wg, 0.032, 0.80, 0.032, railMat, -19.95, 0.40, -20.25, false);
+      addBox(wg, 1.52, 0.032, 0.032, railMat, -20.70, 0.78, -21.02, false);
+      addBox(wg, 1.52, 0.028, 0.028, railMat, -20.70, 0.42, -21.02, false);
+      addBox(wg, 0.032, 0.032, 0.78, railMat, -19.95, 0.78, -20.64, false);
+      addBox(wg, 0.028, 0.028, 0.78, railMat, -19.95, 0.42, -20.64, false);
       nfg.add(wg);
     }
 
-    // 灌叢東側暖紅磚鋪面矩形區、淺灰水泥收邊帶與不鏽鋼排水格柵（實景照片 3 & 4 右下前景）
+    // 北段草皮東側之暖紅磚鋪面矩形區與薄型排水收邊（緊鄰草皮東緣，與幾何花磚平齊，不侵佔草皮）
     {
       const rbTex = makeRedBrickTex();
-      rbTex.repeat.set(3.2, 2.4);
+      rbTex.repeat.set(2.2, 3.0);
       const rbMat = new THREE.MeshStandardMaterial({ map: rbTex, roughness: 0.86 });
-      // 淺灰水泥外框收邊（x = −21.15 ～ −17.65, z = −20.65 ～ −18.05）
-      addBox(nfg, 3.55, 0.035, 2.65, concreteStripMat, -19.40, yBase + 0.018, -19.35, false);
+      // 薄型淺灰水泥收邊（x = −19.68 ～ −17.65, z = −21.20 ～ −18.06）
+      addBox(nfg, 2.04, 0.024, 3.16, concreteStripMat, -18.66, yBase + 0.012, -19.63, false);
       // 內嵌暖紅陶磚鋪面
-      addBox(nfg, 3.05, 0.042, 2.18, rbMat, -19.40, yBase + 0.022, -19.35, false);
-      // 東緣淺灰排水槽與不鏽鋼格柵
-      addBox(nfg, 0.24, 0.045, 2.65, grateMat, -17.52, yBase + 0.023, -19.35, false);
+      addBox(nfg, 1.84, 0.030, 2.94, rbMat, -18.66, yBase + 0.016, -19.63, false);
+      // 東緣窄條不鏽鋼排水格柵
+      addBox(nfg, 0.20, 0.032, 3.16, grateMat, -17.54, yBase + 0.017, -19.63, false);
     }
 
     // ------------------------------------------------------------------------
