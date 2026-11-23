@@ -434,26 +434,41 @@ function makeCourtyardBrickTexture() {
   const c = document.createElement('canvas');
   c.width = 512; c.height = 512;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#dcd9d0';
+  ctx.fillStyle = '#5a5e63'; // 細砂深灰磚縫
   ctx.fillRect(0, 0, 512, 512);
 
-  // Replicate the exact 4-quadrant geometric paver block seen in p3.jpg
+  // 依實景照片 20261124_071645.jpg 忠實還原中庭同心方形連鎖磚圖樣：
+  //   由外至內：淺灰白外框 → 中深岩灰環 → 淺灰白中環 → 中深岩灰內環 → 實心淡磚紅方心（無中央黑點）
+  //   每格由獨立微變色波浪／連鎖混凝土小磚拼組，呈現真實日曬風化質感
+  const whitePal = ['#dad9d3', '#d2d1cb', '#e0dfda', '#cbc9c2', '#d7d6d0'];
+  const greyPal  = ['#666b70', '#5e6368', '#70757a', '#585d62', '#6a6f74'];
+  const redPal   = ['#ad6e66', '#a4655d', '#b5776f', '#9c5f58', '#b0726a'];
+  let sd = 59;
+  const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+
   const drawModule = (ox, oy, sz) => {
-    // Outer charcoal border
-    ctx.fillStyle = '#44484d';
-    ctx.fillRect(ox + 8, oy + 8, sz - 16, sz - 16);
-    // Middle pearl white ring
-    ctx.fillStyle = '#dedcd4';
-    ctx.fillRect(ox + 28, oy + 28, sz - 56, sz - 56);
-    // Inner charcoal ring
-    ctx.fillStyle = '#494d52';
-    ctx.fillRect(ox + 50, oy + 50, sz - 100, sz - 100);
-    // Center terracotta red medallion
-    ctx.fillStyle = '#b85440';
-    ctx.fillRect(ox + 72, oy + 72, sz - 144, sz - 144);
-    // Inner subtle cross pattern
-    ctx.fillStyle = '#44484d';
-    ctx.fillRect(ox + 104, oy + 104, sz - 208, sz - 208);
+    const N = 12; // 每模組 12×12 塊連鎖小磚（精確對應實景寬窄比例）
+    const bw = sz / N;
+    for (let r = 0; r < N; r++) {
+      for (let k = 0; k < N; k++) {
+        // 距離邊界之層數 d ∈ {0..5}
+        const d = Math.min(r, k, N - 1 - r, N - 1 - k);
+        let pal;
+        if (d === 0) pal = whitePal;          // 淺灰白外框
+        else if (d === 1) pal = greyPal;      // 外圈中深岩灰環
+        else if (d === 2) pal = whitePal;     // 中圈淺灰白環
+        else if (d === 3) pal = greyPal;      // 內圈中深岩灰環
+        else pal = redPal;                    // 中央 4×4 實心淡磚紅方心
+        const x0 = ox + k * bw, y0 = oy + r * bw;
+        const pad = 1.1;
+        ctx.fillStyle = pal[Math.floor(rr() * pal.length)];
+        // 連鎖磚微錯縫／細微圓角輪廓
+        ctx.fillRect(x0 + pad, y0 + pad, bw - pad * 2, bw - pad * 2);
+        // 磚面細微風化明暗紋理
+        ctx.fillStyle = rr() > 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+        ctx.fillRect(x0 + pad + 2, y0 + pad + 2, bw - pad * 2 - 4, bw - pad * 2 - 4);
+      }
+    }
   };
 
   drawModule(0, 0, 256);
@@ -461,18 +476,11 @@ function makeCourtyardBrickTexture() {
   drawModule(0, 256, 256);
   drawModule(256, 256, 256);
 
-  // Interlocking paving stone joint lines
-  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-  ctx.lineWidth = 1.5;
-  for (let i = 0; i <= 512; i += 32) {
-    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 512); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(512, i); ctx.stroke();
-  }
-
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(12, 8);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
   return tex;
 }
 
@@ -2083,7 +2091,9 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     const stepMat = new THREE.MeshStandardMaterial({ color: 0xd5d2ca, roughness: 0.72 });
     const noseMat = new THREE.MeshStandardMaterial({ color: 0x3a3c3e, roughness: 0.85 });
     const grp = new THREE.Group();
-    const flights = { N: [[18.0, 3.2]], S: [[-1.5, 3.0], [31.0, 3.0]], W: [[-8.0, 3.0]] };
+    // 依實景照片 20261124_071645.jpg：育樂樓前庭（z = −22.2 ～ −1.2）無高差擋土牆與 5 階白樓梯，
+    //   同心方形連鎖磚由中庭一路平順延伸至育樂樓前柱線；僅於北側（z < −22.2）與南側新棟花園（z > −1.2）保留側緣擋牆
+    const flights = { N: [[18.0, 3.2]], S: [[-1.5, 3.0], [31.0, 3.0]], W: [[-11.7, 21.0]] };
     const n = Math.max(2, Math.round(H / 0.15)), r = H / n, tr = 0.32;
     // 依開口切分牆段
     const run = (side, a1, a2) => {
@@ -2113,23 +2123,104 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     run('N', nwL[0] - t, neL[0]).forEach(([a, b]) => wall('N', a, b));
     run('S', C.x1 - t, C.poly[2][0]).forEach(([a, b]) => wall('S', a, b));
     run('W', C.poly[0][1], C.z2).forEach(([a, b]) => wall('W', a, b));
-    // 台階：自中庭邊緣向內下行
+    // 台階：自中庭邊緣向內下行（西側育樂樓前改採平順連鎖磚斜坡前庭，不設階梯）
     const flight = (side, c, w) => {
+      if (side === 'W') return;
       for (let k = 0; k < n; k++) {
         const top = yT - k * r, d = (k + 0.5) * tr;
-        if (side === 'N' || side === 'S') {
-          const z = side === 'N' ? ZN + d : C.z2 - d;
-          const tg = side === 'N' ? ngrp : grp;
-          addBox(tg, w, top - yC, tr, stepMat, c, yC + (top - yC) / 2, z);
-          addBox(tg, w, 0.012, 0.04, noseMat, c, top + 0.006, z + (side === 'N' ? tr / 2 - 0.02 : -(tr / 2 - 0.02)), false);
-        } else {
-          const x = C.x1 + d;
-          addBox(grp, tr, top - yC, w, stepMat, x, yC + (top - yC) / 2, c);
-          addBox(grp, 0.04, 0.012, w, noseMat, x + tr / 2 - 0.02, top + 0.006, c, false);
-        }
+        const z = side === 'N' ? ZN + d : C.z2 - d;
+        const tg = side === 'N' ? ngrp : grp;
+        addBox(tg, w, top - yC, tr, stepMat, c, yC + (top - yC) / 2, z);
+        addBox(tg, w, 0.012, 0.04, noseMat, c, top + 0.006, z + (side === 'N' ? tr / 2 - 0.02 : -(tr / 2 - 0.02)), false);
       }
     };
     Object.entries(flights).forEach(([side, list]) => list.forEach(([c, w]) => flight(side, c, w)));
+
+    // 西棟（育樂樓）前庭平順延續之同心方形連鎖磚鋪面與地貌細節（依實景照片 20261124_071645.jpg）
+    {
+      const zN_w = -22.2, zS_w = -1.2;
+      const wFaceN = WEST_XF.toWorld(-24.25, -14.2);
+      const wFaceS = WEST_XF.toWorld(-24.25, 6.8);
+      const xWAtZ = z => wFaceN[0] + (wFaceS[0] - wFaceN[0]) * ((z - wFaceN[1]) / ((wFaceS[1] - wFaceN[1]) || 1));
+      const xWN = xWAtZ(zN_w), xWS = xWAtZ(zS_w);
+      const xE0 = C.x1;          // 中庭西緣（-17.2）
+      const xE1 = C.x1 + 3.8;    // 平緩斜坡向東匯入下沉中庭處（-13.4）
+      const yWestTop = 0.085;    // 高於校園基地地坪（0.06），完全不露灰底並貼齊育樂樓 1F 柱基前緣
+
+      // (1) 平順延續之幾何連鎖磚前庭鋪面（西段平鋪至 x = -17.2 ＋ 東段緩坡平順匯入下沉中庭 yC，共用 brickMat 與世界座標 UV）
+      const apronGeo = new THREE.BufferGeometry();
+      const verts = new Float32Array([
+        // 西段平鋪區（育樂樓柱線 → C.x1，y = yWestTop）
+        xWN, yWestTop, zN_w,
+        xE0, yWestTop, zS_w,
+        xE0, yWestTop, zN_w,
+        xWN, yWestTop, zN_w,
+        xWS, yWestTop, zS_w,
+        xE0, yWestTop, zS_w,
+        // 東段緩坡銜接區（C.x1 yWestTop → C.x1+3.8 yC）
+        xE0, yWestTop, zN_w,
+        xE1, yC + 0.004, zS_w,
+        xE1, yC + 0.004, zN_w,
+        xE0, yWestTop, zN_w,
+        xE0, yWestTop, zS_w,
+        xE1, yC + 0.004, zS_w,
+      ]);
+      const uvs = new Float32Array([
+        xWN, zN_w,
+        xE0, zS_w,
+        xE0, zN_w,
+        xWN, zN_w,
+        xWS, zS_w,
+        xE0, zS_w,
+        xE0, zN_w,
+        xE1, zS_w,
+        xE1, zN_w,
+        xE0, zN_w,
+        xE0, zS_w,
+        xE1, zS_w,
+      ]);
+      apronGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+      apronGeo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+      apronGeo.computeVertexNormals();
+      const apronMesh = new THREE.Mesh(apronGeo, brickMat);
+      apronMesh.receiveShadow = true;
+      grp.add(apronMesh);
+
+      // (2) 育樂樓穿堂左側教室前之小型淺灰水泥緩坡（照片 20261124_071645.jpg 穿堂左側柱旁細節）
+      const rampC = WEST_XF.toWorld(-23.85, 1.35);
+      const miniRamp = addBox(grp, 0.95, 0.16, 1.85, stepMat, rampC[0], yWestTop + 0.06, rampC[1], false);
+      miniRamp.rotation.z = -0.14;
+
+      // (3) 西南側新棟花園北緣（照片 20261124_071645.jpg 左前景）：
+      //     淺灰水泥收邊條＋矮灌木圍護細柱＋ 5 面白色植物解說牌
+      const curbLen = 8.6, curbCx = xWS + 2.8, curbZ = zS_w + 0.15;
+      addBox(grp, curbLen, 0.14, 0.24, capMat, curbCx, yC + 0.07, curbZ, false);
+      const signWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf4f5f0, roughness: 0.65 });
+      const signTextMat = new THREE.MeshStandardMaterial({ color: 0x3b4a3e, roughness: 0.8 });
+      const stakeMat = new THREE.MeshStandardMaterial({ color: 0x5c5346, roughness: 0.85 });
+      for (let i = 0; i < 5; i++) {
+        const sx = xWS + 0.4 + i * 1.45;
+        const sy = sx <= xE0 ? yWestTop : (sx < xE1 ? yWestTop + (yC - yWestTop) * ((sx - xE0) / (xE1 - xE0)) : yC);
+        const sz = zS_w + 0.48;
+        // 細木／鐵護柱
+        addMesh(grp, new THREE.CylinderGeometry(0.015, 0.018, 0.72, 5), stakeMat, sx - 0.32, sy + 0.36, sz, false);
+        // 白色植物解說牌（略向中庭仰角）
+        addMesh(grp, new THREE.CylinderGeometry(0.012, 0.012, 0.50, 5), stakeMat, sx, sy + 0.25, sz + 0.02, false);
+        const plaque = addBox(grp, 0.30, 0.22, 0.018, signWhiteMat, sx, sy + 0.50, sz, false);
+        plaque.rotation.x = -0.22;
+        const txtLine = addBox(grp, 0.22, 0.10, 0.020, signTextMat, sx, sy + 0.50, sz - 0.003, false);
+        txtLine.rotation.x = -0.22;
+      }
+
+      // (4) 育樂樓東北角柱旁之雙層修剪灌木與低矮綠叢（照片 20261124_071645.jpg 右側穿堂旁）
+      const nwShrubPos = WEST_XF.toWorld(-23.65, -13.6);
+      const shG1 = new THREE.MeshStandardMaterial({ color: 0x306a26, roughness: 0.82 });
+      const shG2 = new THREE.MeshStandardMaterial({ color: 0x427f32, roughness: 0.80 });
+      addMesh(grp, new THREE.IcosahedronGeometry(0.42, 1), shG1, nwShrubPos[0], yWestTop + 0.38, nwShrubPos[1]);
+      addMesh(grp, new THREE.IcosahedronGeometry(0.46, 1), shG2, nwShrubPos[0], yWestTop + 1.02, nwShrubPos[1]);
+      addMesh(grp, new THREE.IcosahedronGeometry(0.36, 1), shG1, nwShrubPos[0] - 0.25, yWestTop + 0.32, nwShrubPos[1] + 0.55);
+    }
+
     NORTH_XF.apply(ngrp);
     grp.traverse(o => { o.userData.keepLevel = true; });
     layerGroups.roads.add(grp);
