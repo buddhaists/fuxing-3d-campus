@@ -11434,6 +11434,7 @@ function buildSouthBuilding() {
         }
       });
       addBox(frontLand, 0.18, 0.12, 0.02, new THREE.MeshStandardMaterial({ color: 0xd8f0a8 }), tx, by + 1.5, tz - 0.38, false);   // 樹名牌
+      addPhenoGround(frontLand, '欖仁樹', tx, by + 0.06, tz, 4.2);
     }
     // 細高小喬木（細碎羽葉、疏朗樹冠）
     const slender = (tx, tz, H, w) => {
