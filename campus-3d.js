@@ -1733,10 +1733,12 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       }
     };
 
-    // 輔助：自然多簇葉團灌木（取代平滑球體）
+    // 輔助：自然多簇葉團灌木（取代平滑球體，採 5 階自然翠綠受光層次）
+    const shrubG0 = new THREE.MeshStandardMaterial({ color: 0x24561f, roughness: 0.85 });
     const shrubG1 = new THREE.MeshStandardMaterial({ color: 0x306b26, roughness: 0.82 });
     const shrubG2 = new THREE.MeshStandardMaterial({ color: 0x3f7f31, roughness: 0.80 });
-    const shrubG3 = new THREE.MeshStandardMaterial({ color: 0x528d39, roughness: 0.80 });
+    const shrubG3 = new THREE.MeshStandardMaterial({ color: 0x528d39, roughness: 0.78 });
+    const shrubG4 = new THREE.MeshStandardMaterial({ color: 0x69a53f, roughness: 0.76 });
     const shrubRed1 = new THREE.MeshStandardMaterial({ color: 0x7c2d2d, roughness: 0.80 });
     const shrubRed2 = new THREE.MeshStandardMaterial({ color: 0x5a2328, roughness: 0.82 });
     let sSeed = 47;
@@ -1749,68 +1751,158 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
         const st = addMesh(sg, new THREE.CylinderGeometry(0.02, 0.032, height * 0.45, 5), trunkDarkMat, (srnd() - 0.5) * 0.14, height * 0.22, (srnd() - 0.5) * 0.14, false);
         st.rotation.z = (srnd() - 0.5) * 0.35;
       }
-      const pals = isRed ? [shrubRed1, shrubRed2, shrubG1] : [shrubG1, shrubG2, shrubG3];
-      for (let k = 0; k < 7; k++) {
-        const ang = (k / 6) * Math.PI * 2 + srnd() * 0.4;
-        const dist = k === 0 ? 0 : radius * (0.28 + srnd() * 0.26);
-        const rSub = radius * (k === 0 ? 0.62 : 0.44 + srnd() * 0.16);
-        const py = height * (k === 0 ? 0.68 : 0.42 + srnd() * 0.36);
-        const m = addMesh(sg, new THREE.IcosahedronGeometry(rSub, 1), pals[k % pals.length], Math.cos(ang) * dist, py, Math.sin(ang) * dist);
-        m.scale.set(1.0 + (srnd() - 0.5) * 0.25, 0.85 + srnd() * 0.35, 1.0 + (srnd() - 0.5) * 0.25);
+      const pals = isRed ? [shrubRed1, shrubRed2, shrubG1] : [shrubG0, shrubG1, shrubG2, shrubG3, shrubG4];
+      for (let k = 0; k < 8; k++) {
+        const ang = (k / 7) * Math.PI * 2 + srnd() * 0.4;
+        const dist = k === 0 ? 0 : radius * (0.26 + srnd() * 0.26);
+        const rSub = radius * (k === 0 ? 0.60 : 0.42 + srnd() * 0.16);
+        const py = height * (k === 0 ? 0.70 : 0.42 + srnd() * 0.38);
+        const geo = lumpyGeometry(new THREE.IcosahedronGeometry(rSub, 1), 0.16);
+        const m = addMesh(sg, geo, pals[(k + (py > height * 0.62 ? 2 : 0)) % pals.length], Math.cos(ang) * dist, py, Math.sin(ang) * dist);
+        m.scale.set(1.0 + (srnd() - 0.5) * 0.24, 0.85 + srnd() * 0.35, 1.0 + (srnd() - 0.5) * 0.24);
       }
       nfg.add(sg);
     };
 
-    // 輔助：精緻多枝喬木（可選橘紅火焰木花簇）
+    // 輔助：雙層修剪灌木（葫蘆／棒棒糖造型：下層扁圓灌木球＋清晰露出之中央細木幹＋上層渾圓修剪球冠）
+    const addTwoTierTopiary = (x, z) => {
+      const tg = new THREE.Group();
+      tg.position.set(x, yBase + 0.05, z);
+      // 中央直立木質細幹（貫穿下層並於兩層間清晰露出約 0.30 m）
+      addMesh(tg, new THREE.CylinderGeometry(0.036, 0.052, 1.15, 7), trunkDarkMat, 0, 0.58, 0);
+      // 下層修剪扁圓灌木球（y ≈ 0.14 ~ 0.66 m）
+      const lowerPals = [shrubG0, shrubG1, shrubG2, shrubG3];
+      for (let k = 0; k < 9; k++) {
+        const ang = (k / 8) * Math.PI * 2 + srnd() * 0.35;
+        const dist = k === 0 ? 0 : 0.22 + srnd() * 0.14;
+        const rSub = k === 0 ? 0.34 : 0.22 + srnd() * 0.08;
+        const py = k === 0 ? 0.38 : 0.26 + srnd() * 0.24;
+        const m = addMesh(tg, lumpyGeometry(new THREE.IcosahedronGeometry(rSub, 1), 0.14), lowerPals[k % lowerPals.length], Math.cos(ang) * dist, py, Math.sin(ang) * dist);
+        m.scale.set(1.12, 0.82, 1.12);
+      }
+      // 上層渾圓修剪球冠（中心 y ≈ 1.24 m，受光面偏亮翠綠）
+      const upperPals = [shrubG1, shrubG2, shrubG3, shrubG4];
+      for (let k = 0; k < 10; k++) {
+        const ang = (k / 9) * Math.PI * 2 + srnd() * 0.4;
+        const dist = k === 0 ? 0 : 0.18 + srnd() * 0.15;
+        const rSub = k === 0 ? 0.33 : 0.21 + srnd() * 0.08;
+        const py = 1.24 + (k === 0 ? 0.04 : (srnd() - 0.42) * 0.26);
+        const m = addMesh(tg, lumpyGeometry(new THREE.IcosahedronGeometry(rSub, 1), 0.14), upperPals[(k + (py > 1.28 ? 2 : 0)) % upperPals.length], Math.cos(ang) * dist, py, Math.sin(ang) * dist);
+        m.scale.set(1.06, 0.92, 1.06);
+      }
+      nfg.add(tg);
+    };
+
+    // 輔助：精緻多枝分層喬木（支援厚實樟樹冠層、開闊火焰木花簇與伴生細幹小喬木）
     const blossomMat = new THREE.MeshStandardMaterial({ color: 0xd94b1f, roughness: 0.72 });
+    const barkLightMat = new THREE.MeshStandardMaterial({ color: 0x6c5e4e, roughness: 0.88 });
     const addCourtyardTree = (x, z, trunkH, crownR, opts = {}) => {
       const tg = new THREE.Group();
       tg.position.set(x, yBase + 0.05, z);
-      const tr = addMesh(tg, new THREE.CylinderGeometry(0.14, 0.22, trunkH, 8), trunkDarkMat, 0, trunkH / 2, 0);
+      const bMat = opts.lightBark ? barkLightMat : trunkDarkMat;
+      const rBot = opts.trunkR || 0.22;
+      const rTop = rBot * 0.68;
+      // 樹基根盤微張（大喬木更穩重自然）
+      if (rBot >= 0.24) {
+        for (let rt = 0; rt < 4; rt++) {
+          const ra = (rt / 4) * Math.PI * 2 + 0.4;
+          const flare = addMesh(tg, new THREE.CylinderGeometry(rBot * 0.32, rBot * 0.56, 0.55, 6), bMat, Math.cos(ra) * rBot * 0.55, 0.22, Math.sin(ra) * rBot * 0.55, false);
+          flare.rotation.z = -Math.cos(ra) * 0.42;
+          flare.rotation.x = Math.sin(ra) * 0.42;
+        }
+      }
+      const tr = addMesh(tg, new THREE.CylinderGeometry(rTop, rBot, trunkH, 9), bMat, 0, trunkH / 2, 0);
       if (opts.lean) tr.rotation.z = opts.lean;
+      if (opts.leanX) tr.rotation.x = opts.leanX;
+      const topX = Math.sin(-(opts.lean || 0)) * trunkH * 0.5;
+      const topZ = Math.sin(opts.leanX || 0) * trunkH * 0.5;
       if (opts.plaque) {
-        const pq = addBox(tg, 0.16, 0.09, 0.02, new THREE.MeshStandardMaterial({ color: 0xb7cfb0, roughness: 0.6 }), 0, 1.35, 0.20, false);
-        pq.rotation.y = 0.2;
+        const pq = addBox(tg, 0.16, 0.09, 0.02, new THREE.MeshStandardMaterial({ color: 0xb7cfb0, roughness: 0.6 }), topX * 0.5 + 0.06, 1.38, rBot + 0.02, false);
+        pq.rotation.y = 0.35;
       }
       const nBr = opts.branches || 4;
+      const brSpread = opts.tallLush ? 0.82 : 0.72;
       for (let b = 0; b < nBr; b++) {
         const ang = (b / nBr) * Math.PI * 2 + 0.3;
-        const bLen = crownR * 0.72;
-        const br = addMesh(tg, new THREE.CylinderGeometry(0.055, 0.10, bLen, 6), trunkDarkMat, Math.cos(ang) * bLen * 0.30, trunkH + bLen * 0.26, Math.sin(ang) * bLen * 0.30);
-        br.rotation.z = -Math.cos(ang) * 0.55;
-        br.rotation.x = Math.sin(ang) * 0.55;
+        const bLen = crownR * brSpread;
+        const bx = topX + Math.cos(ang) * bLen * 0.30;
+        const by = trunkH + bLen * (opts.tallLush ? 0.34 : 0.26);
+        const bz = topZ + Math.sin(ang) * bLen * 0.30;
+        const br = addMesh(tg, new THREE.CylinderGeometry(rTop * 0.38, rTop * 0.72, bLen, 6), bMat, bx, by, bz);
+        br.rotation.z = -Math.cos(ang) * (opts.tallLush ? 0.48 : 0.55);
+        br.rotation.x = Math.sin(ang) * (opts.tallLush ? 0.48 : 0.55);
+        // 高大茂密樹種補建次級向上分枝
+        if (opts.tallLush) {
+          const sLen = crownR * 0.62;
+          const sb = addMesh(tg, new THREE.CylinderGeometry(rTop * 0.22, rTop * 0.38, sLen, 5), bMat,
+            topX + Math.cos(ang + 0.22) * bLen * 0.58, trunkH + bLen * 0.72 + sLen * 0.28, topZ + Math.sin(ang + 0.22) * bLen * 0.58, false);
+          sb.rotation.z = -Math.cos(ang + 0.22) * 0.32;
+          sb.rotation.x = Math.sin(ang + 0.22) * 0.32;
+        }
       }
-      const leafMats = [shrubG1, shrubG2, shrubG3];
-      for (let c = 0; c < 11; c++) {
-        const ang = (c / 10) * Math.PI * 2 + srnd() * 0.5;
-        const dist = c < 2 ? crownR * 0.15 : crownR * (0.35 + srnd() * 0.38);
-        const cy = trunkH + crownR * (c < 2 ? 0.85 : 0.42 + srnd() * 0.48);
-        const r = crownR * (0.38 + srnd() * 0.22);
-        const lf = addMesh(tg, new THREE.IcosahedronGeometry(r, 1), leafMats[c % 3], Math.cos(ang) * dist, cy, Math.sin(ang) * dist);
-        lf.scale.set(1.15, 0.76 + srnd() * 0.24, 1.15);
+      const leafMats = [shrubG0, shrubG1, shrubG2, shrubG3, shrubG4];
+      const nClusters = opts.tallLush ? 34 : (opts.clusters || 14);
+      const heightMult = opts.tallLush ? 1.55 : (opts.heightMult || 1.0);
+      for (let c = 0; c < nClusters; c++) {
+        const tier = c / nClusters; // 0 = 下層開展冠, 0.5 = 中層主冠, 1 = 頂層受光冠峰
+        const ang = c * 2.39996 + srnd() * 0.45; // 黃金角自然分布
+        const radialBand = tier < 0.35 ? (0.48 + srnd() * 0.42) : (tier < 0.78 ? (0.28 + srnd() * 0.52) : (0.08 + srnd() * 0.34));
+        const dist = crownR * radialBand;
+        const cy = trunkH + crownR * (0.28 + tier * 1.12 * heightMult + (srnd() - 0.5) * 0.22);
+        const r = crownR * (opts.tallLush ? (0.28 + srnd() * 0.18) : (0.34 + srnd() * 0.20));
+        const matIdx = tier > 0.68 ? (3 + (c % 2)) : (tier > 0.32 ? (1 + (c % 3)) : (c % 3));
+        const lf = addMesh(tg, lumpyGeometry(new THREE.IcosahedronGeometry(r, 1), 0.18), leafMats[matIdx], topX + Math.cos(ang) * dist, cy, topZ + Math.sin(ang) * dist);
+        lf.scale.set(1.12 + (srnd() - 0.5) * 0.22, 0.78 + srnd() * 0.28, 1.12 + (srnd() - 0.5) * 0.22);
+        lf.rotation.y = srnd() * Math.PI * 2;
       }
       if (opts.blossoms) {
-        for (let f = 0; f < 9; f++) {
-          const ang = (f / 9) * Math.PI * 2 + 0.2;
-          const dist = crownR * (0.32 + srnd() * 0.48);
-          addMesh(tg, new THREE.IcosahedronGeometry(0.22 + srnd() * 0.10, 0), blossomMat, Math.cos(ang) * dist, trunkH + crownR * (0.72 + srnd() * 0.35), Math.sin(ang) * dist, false);
+        for (let f = 0; f < 12; f++) {
+          const ang = (f / 12) * Math.PI * 2 + 0.25;
+          const dist = crownR * (0.28 + srnd() * 0.54);
+          addMesh(tg, new THREE.IcosahedronGeometry(0.20 + srnd() * 0.10, 0), blossomMat, topX + Math.cos(ang) * dist, trunkH + crownR * (0.72 + srnd() * 0.52), topZ + Math.sin(ang) * dist, false);
         }
       }
       nfg.add(tg);
     };
 
+    // 3) 西棟北側紅磚鋪面貼圖（暖紅陶土長方磚平鋪，貼合實景照片 3 & 4 右下角）
+    const makeRedBrickTex = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#75665c'; ctx.fillRect(0, 0, 256, 256);
+      const rows = 12, cols = 6;
+      const bw = 256 / cols, bh = 256 / rows;
+      const bricks = ['#a65a48', '#b26450', '#964e3f', '#ba6d57', '#8f4b3d', '#a95f4b'];
+      let sd = 139; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let iy = 0; iy < rows; iy++) {
+        const off = (iy % 2) * (bw * 0.5);
+        for (let ix = -1; ix <= cols; ix++) {
+          ctx.fillStyle = bricks[Math.floor(rr() * bricks.length)];
+          ctx.fillRect(ix * bw + off + 1.5, iy * bh + 1.5, bw - 3, bh - 3);
+        }
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      return tex;
+    };
+
     // ------------------------------------------------------------------------
-    // A. 西側長條形草地植物區（愛悅樓中央樓梯西側，實景照片 1 主體）
+    // A. 西側長條形草地植物區（愛悅樓中央樓梯西側，實景照片 1、2、5 主體）
     //    北側保留約 3.8 m 寬幾何磚步道（z = −24.0 ～ −20.2），草地坐落於 z = −20.2 ～ −15.0
     // ------------------------------------------------------------------------
     addLawnBed(-3.4, -17.6, 24.0, 5.2);
-    // 草坪內貫穿東西向之淺灰水泥分隔窄道（實景照片 1：北側約 1.2 m 窄草帶＋南側寬草坪）
+    // 草坪內貫穿東西向之淺灰水泥分隔窄道（實景照片 2：北側約 1.2 m 窄草帶＋南側寬草坪）
     addBox(nfg, 23.7, 0.06, 0.44, concreteStripMat, -3.4, yBase + 0.035, -18.85, false);
-    // 兩株自然修剪綠灌木（沿分隔帶南緣分布，取代巨大球體）
-    addNaturalShrub(-6.8, -18.0, 0.72, 1.25, false);
-    addNaturalShrub(0.4, -17.9, 0.75, 1.32, false);
-    // 草地東端（正對愛悅樓中央階梯前）開闊火焰木喬木（含零星橘紅色花簇）
-    addCourtyardTree(6.3, -17.3, 2.35, 3.15, { branches: 5, blossoms: true });
+    // 3 株自然修剪挺立綠灌木（沿分隔帶南緣西、中、東均勻分布，貼合實景照片 2 & 5）
+    addNaturalShrub(-10.8, -18.0, 0.68, 1.22, false);
+    addNaturalShrub(-4.2, -17.95, 0.74, 1.30, false);
+    addNaturalShrub(1.8, -17.9, 0.72, 1.28, false);
+    // 草地西中段伴生細幹小喬木（樹幹微向西南傾斜、枝葉輕盈舒展，實景照片 2 & 5 前景清晰可見）
+    addCourtyardTree(-1.2, -16.8, 1.85, 1.95, { trunkR: 0.11, lightBark: true, lean: 0.14, branches: 4, clusters: 14, heightMult: 0.92 });
+    // 草地東段開闊茂密火焰木大喬木（飽滿分層綠冠＋零星橘紅色花簇，實景照片 2 & 5 主樹）
+    addCourtyardTree(5.6, -17.3, 2.55, 3.35, { trunkR: 0.28, branches: 5, tallLush: true, blossoms: true });
     // 南緣整齊排列之彩色小風車列（實景照片 1 特色景觀）
     {
       const pwColors = [0xe84855, 0xf4c430, 0x3a86ff, 0xff6b9d, 0x2ec4b6, 0xff9f1c];
@@ -1831,14 +1923,77 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     }
 
     // ------------------------------------------------------------------------
-    // B. 西棟東側角隅小草坪（實景照片 1 左下角：雙層球形修剪灌木＋綠蔭喬木與樹牌）
+    // B. 西棟北側前草地、樟樹大喬木、雙層修剪灌木、廚房牆腳自然灌叢與紅磚鋪面（依實景照片 3 & 4 精緻重建）
+    //    ・白磁磚廚房東牆位於 NORTH_XF x = −23.37（z = −20.60 ～ −13.42）
+    //    ・南半段（z = −18.0 ～ −13.2）：平緣角隅草坪＋高大茂密樟樹＋東南角雙層圓球修剪灌木＋西側低矮灌木
+    //    ・北半段（z = −20.6 ～ −18.0）：靠牆茂密多幹自然灌叢與小喬木＋東北角低矮金屬管護欄＋東側暖紅磚鋪面區與排水收邊
     // ------------------------------------------------------------------------
-    addLawnBed(-20.2, -17.3, 4.6, 5.0);
-    // 雙層葫蘆／雪人造型修剪灌木
-    addNaturalShrub(-18.5, -15.6, 0.52, 0.68, false, 0.0);
-    addNaturalShrub(-18.5, -15.6, 0.58, 0.72, false, 0.68);
-    // 角隅綠蔭喬木（樹幹附淺綠植物名牌）
-    addCourtyardTree(-20.6, -17.2, 2.45, 2.75, { lean: 0.07, plaque: true });
+    addLawnBed(-20.0, -15.6, 4.6, 4.8);
+    // 樟樹樹基周圍自然陰影微土色草皮過渡斑（貼合照片 3 & 4 樹下草地質感）
+    {
+      const shadeSoilMat = new THREE.MeshStandardMaterial({ color: 0x5c5b3e, roughness: 0.96, transparent: true, opacity: 0.42 });
+      const sp = addMesh(nfg, new THREE.CircleGeometry(1.15, 16), shadeSoilMat, -20.45, yBase + 0.055, -15.55, false);
+      sp.rotation.x = -Math.PI / 2;
+    }
+    // 西棟北側主景大樟樹（高約 10.6 m、高過西棟 3F 女兒牆，單主幹微彎挺拔、飽滿三層翠綠樹冠，附淺綠植物名牌）
+    addCourtyardTree(-20.45, -15.55, 2.85, 3.65, { trunkR: 0.27, lean: 0.06, leanX: -0.04, branches: 6, tallLush: true, plaque: true });
+    // 草坪東南角標誌性「雙層圓球修剪灌木（葫蘆／棒棒糖造型）」（實景照片 3、4、5 清晰地標）
+    addTwoTierTopiary(-18.25, -13.85);
+    // 樟樹西側（近西棟 1F 柱廊邊）低矮自然綠叢（實景照片 4 樹幹後方小灌木）
+    addNaturalShrub(-21.65, -14.75, 0.48, 0.72, false);
+
+    // 廚房東牆北段靠牆茂密自然灌叢與多幹小喬木群（實景照片 3 & 4 右側白磁磚牆腳，高約 2.3～3.6 m）
+    {
+      const wg = new THREE.Group();
+      wg.position.set(0, yBase + 0.04, 0);
+      // 靠牆窄條植栽土帶（z = −20.5 ～ −18.0）
+      addBox(wg, 1.35, 0.06, 2.75, makeLawnMat(0.8, 1.4), -21.85, 0.03, -19.25, false);
+      const wallStems = [
+        { x: -22.05, z: -18.55, h: 2.35, r: 0.065, leanX: 0.22, leanZ: 0.06, cR: 1.35, cH: 3.45 },
+        { x: -21.95, z: -19.25, h: 2.05, r: 0.058, leanX: 0.28, leanZ: -0.05, cR: 1.25, cH: 3.10 },
+        { x: -21.85, z: -19.95, h: 1.75, r: 0.050, leanX: 0.34, leanZ: -0.18, cR: 1.10, cH: 2.55 },
+        { x: -21.55, z: -18.90, h: 1.35, r: 0.040, leanX: 0.26, leanZ: 0.10, cR: 0.95, cH: 1.95 }
+      ];
+      const wLeafMats = [shrubG0, shrubG1, shrubG2, shrubG3, shrubG4];
+      wallStems.forEach((st, idx) => {
+        const stem = addMesh(wg, new THREE.CylinderGeometry(st.r * 0.55, st.r, st.h, 6), trunkDarkMat, st.x, st.h * 0.48, st.z);
+        stem.rotation.z = -st.leanX;
+        stem.rotation.x = st.leanZ;
+        // 每株多枝展開與自然不規則葉團
+        for (let k = 0; k < 9; k++) {
+          const ang = (k / 9) * Math.PI * 2 + idx * 0.7 + srnd() * 0.4;
+          const dist = st.cR * (0.18 + srnd() * 0.62);
+          const py = 0.55 + (k / 8) * (st.cH - 0.65) + (srnd() - 0.5) * 0.28;
+          const rSub = 0.36 + srnd() * 0.24;
+          const m = addMesh(wg, lumpyGeometry(new THREE.IcosahedronGeometry(rSub, 1), 0.18), wLeafMats[(k + idx + (py > 2.0 ? 2 : 0)) % wLeafMats.length],
+            st.x + Math.cos(ang) * dist + st.leanX * 0.9, py, st.z + Math.sin(ang) * dist);
+          m.scale.set(1.18, 0.84 + srnd() * 0.28, 1.15);
+        }
+      });
+      // 灌叢東北角低矮鍍鋅金屬管護欄（實景照片 4 右下角）
+      const railMat = new THREE.MeshStandardMaterial({ color: 0x8e959c, roughness: 0.42, metalness: 0.65 });
+      addBox(wg, 0.035, 0.82, 0.035, railMat, -21.25, 0.41, -20.52, false);
+      addBox(wg, 0.035, 0.82, 0.035, railMat, -22.25, 0.41, -20.52, false);
+      addBox(wg, 0.035, 0.82, 0.035, railMat, -21.25, 0.41, -19.85, false);
+      addBox(wg, 1.04, 0.035, 0.035, railMat, -21.75, 0.80, -20.52, false);
+      addBox(wg, 1.04, 0.03, 0.03, railMat, -21.75, 0.44, -20.52, false);
+      addBox(wg, 0.035, 0.035, 0.70, railMat, -21.25, 0.80, -20.18, false);
+      addBox(wg, 0.03, 0.03, 0.70, railMat, -21.25, 0.44, -20.18, false);
+      nfg.add(wg);
+    }
+
+    // 灌叢東側暖紅磚鋪面矩形區、淺灰水泥收邊帶與不鏽鋼排水格柵（實景照片 3 & 4 右下前景）
+    {
+      const rbTex = makeRedBrickTex();
+      rbTex.repeat.set(3.2, 2.4);
+      const rbMat = new THREE.MeshStandardMaterial({ map: rbTex, roughness: 0.86 });
+      // 淺灰水泥外框收邊（x = −21.15 ～ −17.65, z = −20.65 ～ −18.05）
+      addBox(nfg, 3.55, 0.035, 2.65, concreteStripMat, -19.40, yBase + 0.018, -19.35, false);
+      // 內嵌暖紅陶磚鋪面
+      addBox(nfg, 3.05, 0.042, 2.18, rbMat, -19.40, yBase + 0.022, -19.35, false);
+      // 東緣淺灰排水槽與不鏽鋼格柵
+      addBox(nfg, 0.24, 0.045, 2.65, grateMat, -17.52, yBase + 0.023, -19.35, false);
+    }
 
     // ------------------------------------------------------------------------
     // C. 東側微丘草地植物區（愛悅樓中央階梯東側，實景照片 2 中央）
@@ -12821,9 +12976,13 @@ function buildWestBuilding() {
     addBox(g, 0.24, 0.62, 0.62, stainlessMat, kEastX + 0.10, y1F + 2.15, -19.55);
     addBox(g, 0.26, 0.48, 0.48, darkMetalMat, kEastX + 0.12, y1F + 2.15, -19.55);
 
-    // 樓梯塔東北角柱旁綠植盆栽與灌木 (Photo 2 & 3 右側柱旁植栽)
-    for (let sh = 0; sh < 3; sh++) {
-      addMesh(g, new THREE.SphereGeometry(0.52, 10, 8), mats.hedge || greenRoofMat, kEastX + 0.52, 0.48, -18.05 - sh * 0.95);
+    // v2.12.106 原 3 顆簡易綠球改由中庭西棟北側草地植物區（nfg B）之靠牆茂密自然灌叢精緻呈現；此處補建廚房東牆捲掛澆花軟管（實景照片 3 & 4）
+    {
+      const hoseMat = new THREE.MeshStandardMaterial({ color: 0xb7c2b0, roughness: 0.72 });
+      const hoseCoil = addMesh(g, new THREE.TorusGeometry(0.24, 0.032, 8, 18), hoseMat, -23.16, 0.78, -21.25, false);
+      hoseCoil.rotation.y = Math.PI / 2;
+      const hoseCoil2 = addMesh(g, new THREE.TorusGeometry(0.19, 0.028, 8, 18), hoseMat, -23.13, 0.78, -21.25, false);
+      hoseCoil2.rotation.y = Math.PI / 2;
     }
   }
 
@@ -20254,11 +20413,11 @@ const CAMPUS_TREE_REGISTRY = [
   ["441990", "苦楝", -29.2, -58.6, 0],
   ["442157", "金露花", -16.8, -2.7, 0],   // v2.12.101 移入新棟前庭草坪花台內（原在花磚廣場上）
   ["442315", "印度紫檀", -16.5, -58.8, 0],
-  ["442139", "馬拉巴栗", -15.8, -31.0, 0],
-  ["442144", "樟樹", -15.8, -28.5, 0],
-  ["442133", "馬拉巴栗", -13.9, -34.7, 0],
+  // ["442139", "馬拉巴栗", -15.8, -31.0, 0],  // v2.12.106 改由西棟北側草地植物區（nfg B）依實景精確配置，避免與主景大樟樹重疊
+  // ["442144", "樟樹", -15.8, -28.5, 0],      // v2.12.106 改由西棟北側草地植物區（nfg B）精緻重塑主景大樟樹
+  // ["442133", "馬拉巴栗", -13.9, -34.7, 0],  // v2.12.106 原立於廚房東側紅磚鋪面區上，實景改由靠牆自然灌叢呈現
   ["442319", "印度紫檀", -13.3, -58.4, 0],
-  ["442150", "榕樹", -12.4, -24.7, 0],
+  // ["442150", "榕樹", -12.4, -24.7, 0],      // v2.12.106 依實景照片 3 & 5，西棟前中庭幾何花磚廣場為開闊通道，無此立於花磚上之榕樹
   ["839655", "桂花", -11.4, -3.2, 0],     // v2.12.101 移入新棟前庭東段花台內（原在花磚廣場上）
   ["442332", "風鈴木", -8.6, -57.9, 0],
   ["442179", "金露花", -5.6, -0.3, 0],    // v2.12.101 移入坡道與南棟西側樓梯間綠帶（原在花磚廣場上）
