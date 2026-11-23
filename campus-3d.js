@@ -11377,9 +11377,9 @@ function buildSouthBuilding() {
 
   leftMoundGroup.add(dinoGroup);
 
-  // 14.6 樹根旁伴隨之可愛小恐龍雕塑 (Baby Dinosaur Sculpture per south_photo_02/03)
+  // 14.6 樹根旁伴隨之可愛小恐龍雕塑 (Baby Dinosaur Sculpture per south_photo_02/03 & 002)
   const babyDinoGroup = new THREE.Group();
-  babyDinoGroup.position.set(1.6, hAt(lMoundCx + 1.6, lMoundCz - 0.5) - 0.04, -0.5);   // 欖仁樹根旁
+  babyDinoGroup.position.set(1.15, hAt(lMoundCx + 1.15, lMoundCz - 0.65) - 0.04, -0.65);   // 欖仁樹右側板根旁
   babyDinoGroup.rotation.y = -0.45;
   const babyBody = addMesh(babyDinoGroup, new THREE.SphereGeometry(0.28, 12, 8), new THREE.MeshStandardMaterial({ color: 0x6e8072, roughness: 0.7 }), 0, 0.22, 0);
   babyBody.scale.set(1.3, 0.85, 0.95);
@@ -11390,69 +11390,314 @@ function buildSouthBuilding() {
 
   frontLand.add(leftMoundGroup);
 
-  // 14.7 中庭前喬木（v2.12.10 依實景照片）：天藍圓窗塔西側大葉欖仁老樹（板根外露、輪生分層水平枝、大葉夾雜紅葉），
-  //      樓梯西側與兩塔之間各一株細高小喬木，草綠塔西側一株中型喬木
+  // 14.7 南棟前庭土丘草皮區與隔壁西側草地喬木（v2.12.110 依實景照片 001/002/003 精緻化建模）：
+  //      面對南棟由左至右（+X → -X）依序：
+  //      ① 竹柏（興學樓樓梯旁前緣）　② 樟樹（竹柏右側略偏後方）　③ 大葉欖仁樹（最大最明顯、板根外露、寬闊輪生分層冠層夾雜紅葉）
+  //      ④ 黃金風鈴木（沙土丘與綠草坡交界、微向左傾樹幹）　⑤ 茄冬／佳冬（草綠圓窗塔右側草坡西端、Y 字分叉、緊鄰西側樓梯）
+  //      ⑥ 樟樹（西側樓梯右側隔壁草地綠帶內高聳樟樹）
   {
-    const bark = new THREE.MeshStandardMaterial({ color: 0x4a3d31, roughness: 0.92 });
-    const almondG = new THREE.MeshStandardMaterial({ color: 0x3c7431, roughness: 0.8 });
-    const almondG2 = new THREE.MeshStandardMaterial({ color: 0x55893a, roughness: 0.8 });
-    const almondRed = new THREE.MeshStandardMaterial({ color: 0x9c5a30, roughness: 0.82 });
-    registerPhenoMats('欖仁樹', { core: [almondG], outer: [almondG2, almondRed] });
-    const fineA = new THREE.MeshStandardMaterial({ color: 0x4a8236, roughness: 0.8 });
-    const fineB = new THREE.MeshStandardMaterial({ color: 0x66994a, roughness: 0.8 });
+    const barkDark = new THREE.MeshStandardMaterial({ color: 0x463a2e, roughness: 0.92 });
+    const barkGrey = new THREE.MeshStandardMaterial({ color: 0x5c5349, roughness: 0.90 });
+    const barkRed  = new THREE.MeshStandardMaterial({ color: 0x634434, roughness: 0.90 });
+    const plaqueMat = new THREE.MeshStandardMaterial({ color: 0xdcecc2, roughness: 0.62 });
     const up = new THREE.Vector3(0, 1, 0);
     let sd = 83; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
-    const limb = (a, b2, r0, r1) => {
-      const d = new THREE.Vector3().subVectors(b2, a);
-      const m = addMesh(frontLand, new THREE.CylinderGeometry(r1, r0, d.length(), 8), bark, (a.x + b2.x) / 2, (a.y + b2.y) / 2, (a.z + b2.z) / 2);
-      m.quaternion.setFromUnitVectors(up, d.normalize());
-    };
     const V = (x, y, z) => new THREE.Vector3(x, y, z);
-    // 大葉欖仁
+    const limb = (a, b2, r0, r1, mat = barkDark, seg = 8) => {
+      const d = new THREE.Vector3().subVectors(b2, a);
+      const len = d.length();
+      if (len < 0.01) return null;
+      const m = addMesh(frontLand, new THREE.CylinderGeometry(r1, r0, len, seg), mat, (a.x + b2.x) / 2, (a.y + b2.y) / 2, (a.z + b2.z) / 2);
+      m.quaternion.setFromUnitVectors(up, d.normalize());
+      return m;
+    };
+    const leafClump = (rad, mat, x, y, z, sx, sy, sz, amp = 0.18, det = 1) => {
+      const cl = addMesh(frontLand, lumpyGeometry(new THREE.IcosahedronGeometry(rad, det), amp), mat, x, y, z);
+      cl.scale.set(sx, sy, sz);
+      return cl;
+    };
+
+    // ① 竹柏（面對南棟最左側、興學樓樓梯右側草坡前緣，纖細直立幼樹，高約 4.2m）
     {
-      const tx = ax(7) - 1.2, tz = zNorth - 3.70, by = hAt(tx, tz) - 0.05, H = 8.2;
-      limb(V(tx, by, tz), V(tx + 0.25, by + H * 0.5, tz - 0.1), 0.36, 0.24);
-      limb(V(tx + 0.25, by + H * 0.5, tz - 0.1), V(tx + 0.1, by + H * 0.92, tz), 0.24, 0.1);
-      for (let k = 0; k < 6; k++) {                       // 板根
-        const a = (k / 6) * Math.PI * 2 + 0.3;
-        const rt = addBox(frontLand, 1.6, 0.34, 0.14, bark, tx + Math.cos(a) * 0.75, by + 0.12, tz + Math.sin(a) * 0.75);
-        rt.rotation.y = -a; rt.rotation.z = 0.2;
-      }
-      [[0.42, 3.6, 5], [0.58, 3.2, 5], [0.74, 2.5, 4], [0.88, 1.6, 4]].forEach(([fy, reach, nb], tier) => {
+      const podoA = new THREE.MeshStandardMaterial({ color: 0x285a26, roughness: 0.82 });
+      const podoB = new THREE.MeshStandardMaterial({ color: 0x386f30, roughness: 0.80 });
+      const podoC = new THREE.MeshStandardMaterial({ color: 0x4c853a, roughness: 0.78 });
+      registerPhenoMats('竹柏', { core: [podoA], outer: [podoB, podoC] });
+      const tx = ax(5) - 1.55, tz = zNorth - 4.75, by = hAt(tx, tz) - 0.05, H = 4.2;
+      limb(V(tx, by, tz), V(tx + 0.03, by + H * 0.65, tz - 0.02), 0.075, 0.042, barkRed, 7);
+      limb(V(tx + 0.03, by + H * 0.65, tz - 0.02), V(tx + 0.01, by + H * 0.96, tz), 0.042, 0.016, barkRed, 6);
+      addBox(frontLand, 0.12, 0.08, 0.02, plaqueMat, tx, by + 1.22, tz - 0.09, false);
+      // 疏朗細枝與對生窄圓錐葉簇
+      const tiers = [
+        [0.34, 0.72, 4], [0.48, 0.78, 5], [0.62, 0.68, 5], [0.76, 0.52, 4], [0.89, 0.34, 3]
+      ];
+      tiers.forEach(([fy, reach, nb], ti) => {
         for (let b2 = 0; b2 < nb; b2++) {
-          const a = (b2 / nb) * Math.PI * 2 + tier * 0.7;
-          const s0 = V(tx + 0.2, by + H * fy, tz);
-          const e = V(tx + Math.cos(a) * reach, by + H * fy + 0.5, tz + Math.sin(a) * reach * 0.8);
-          limb(s0, e, 0.11, 0.05);
-          for (let k = 0; k < 4; k++) {
-            const mat = r() < 0.05 ? almondRed : (k % 2 ? almondG : almondG2);
-            const t = 0.55 + k * 0.17;
-            const cl = addMesh(frontLand, new THREE.IcosahedronGeometry(0.8 + r() * 0.35, 0), mat,
-              tx + (e.x - tx) * t + (r() - 0.5) * 0.5, e.y + 0.2 + (r() - 0.5) * 0.3, tz + (e.z - tz) * t + (r() - 0.5) * 0.5);
-            cl.scale.set(1.5, 0.45, 1.5);
+          const a = (b2 / nb) * Math.PI * 2 + ti * 0.85;
+          const s0 = V(tx + 0.02, by + H * fy, tz);
+          const e = V(tx + Math.cos(a) * reach, by + H * fy + 0.24, tz + Math.sin(a) * reach);
+          limb(s0, e, 0.022, 0.010, barkRed, 5);
+          leafClump(0.24 + r() * 0.08, (b2 + ti) % 3 === 0 ? podoA : (b2 % 2 ? podoB : podoC),
+            e.x, e.y + 0.04, e.z, 1.15, 0.72, 1.15, 0.20, 0);
+        }
+      });
+      leafClump(0.28, podoC, tx, by + H * 0.97, tz, 0.85, 1.15, 0.85, 0.18, 0);
+      addPhenoGround(frontLand, '竹柏', tx, by + 0.05, tz, 1.3);
+      campusTreeRecords.push({ x: tx, z: tz, r: 1.3, species: 'broad' });
+    }
+
+    // ② 樟樹（竹柏右側略偏後方坡面，纖細年輕樟樹、枝葉輕盈微掩於欖仁樹左冠之下，高約 6.8m）
+    {
+      const camA = new THREE.MeshStandardMaterial({ color: 0x2e6426, roughness: 0.82 });
+      const camB = new THREE.MeshStandardMaterial({ color: 0x458032, roughness: 0.80 });
+      const camC = new THREE.MeshStandardMaterial({ color: 0x629b3e, roughness: 0.76 });
+      registerPhenoMats('樟樹', { core: [camA], outer: [camB, camC] });
+      const tx = ax(6) + 0.75, tz = zNorth - 3.30, by = hAt(tx, tz) - 0.06, H = 6.8;
+      const p1 = V(tx + 0.14, by + 1.35, tz - 0.05);
+      const fk = V(tx + 0.26, by + 2.45, tz - 0.08);
+      limb(V(tx, by, tz), p1, 0.125, 0.095, barkGrey, 8);
+      limb(p1, fk, 0.095, 0.075, barkGrey, 7);
+      const branches = [
+        { dx:  1.15, dy: 3.1, dz: -0.45, r: 0.055 },
+        { dx:  0.45, dy: 4.1, dz:  0.35, r: 0.058 },
+        { dx: -0.95, dy: 3.3, dz: -0.55, r: 0.052 },
+        { dx: -0.55, dy: 3.8, dz:  0.65, r: 0.050 },
+        { dx:  0.10, dy: 4.3, dz: -0.25, r: 0.052 }
+      ];
+      branches.forEach((br, bi) => {
+        const e = V(fk.x + br.dx, fk.y + br.dy, fk.z + br.dz);
+        limb(fk, e, br.r, br.r * 0.35, barkGrey, 6);
+        for (let k = 0; k < 4; k++) {
+          const t = 0.52 + k * 0.18;
+          const cx = fk.x + br.dx * t + (r() - 0.5) * 0.55;
+          const cy = fk.y + br.dy * t + (r() - 0.3) * 0.45;
+          const cz = fk.z + br.dz * t + (r() - 0.5) * 0.55;
+          const mat = k >= 2 ? camC : ((bi + k) % 2 ? camB : camA);
+          leafClump(0.46 + r() * 0.18, mat, cx, cy, cz, 1.18, 0.85, 1.15, 0.20, 1);
+        }
+      });
+      addPhenoGround(frontLand, '樟樹', tx, by + 0.05, tz, 2.2);
+      campusTreeRecords.push({ x: tx, z: tz, r: 2.2, species: 'broad' });
+    }
+
+    // ③ 大葉欖仁樹（天藍圓窗塔右側沙土丘上，全區最大最明顯之主景老樹：高約 11.8m、寬闊分層傘冠橫跨兩開間、板根外露、大葉夾雜紅葉）
+    {
+      const almondDark = new THREE.MeshStandardMaterial({ color: 0x265521, roughness: 0.84 });
+      const almondG    = new THREE.MeshStandardMaterial({ color: 0x38702e, roughness: 0.80 });
+      const almondG2   = new THREE.MeshStandardMaterial({ color: 0x558a38, roughness: 0.78 });
+      const almondSun  = new THREE.MeshStandardMaterial({ color: 0x71a042, roughness: 0.76 });
+      const almondRed  = new THREE.MeshStandardMaterial({ color: 0xb24428, roughness: 0.82 });
+      registerPhenoMats('欖仁樹', { core: [almondDark, almondG, almondG2], outer: [almondSun, almondRed] });
+      const tx = ax(7) - 0.15, tz = zNorth - 4.05, by = hAt(tx, tz) - 0.06, H = 11.8;
+      // 粗壯主幹與明顯低位分叉（依照片 001/002：約 2.6m 處分出向左大幅伸展之粗枝與直上主幹）
+      const fk = V(tx + 0.18, by + 2.65, tz - 0.08);
+      const mid = V(tx - 0.12, by + 5.85, tz + 0.04);
+      const top = V(tx - 0.05, by + 9.45, tz + 0.02);
+      limb(V(tx, by - 0.12, tz), fk, 0.48, 0.36, barkDark, 10);
+      limb(fk, mid, 0.31, 0.22, barkDark, 9);
+      limb(mid, top, 0.22, 0.11, barkDark, 8);
+      // 8 條粗壯外露板根與地表爬根（緊貼並深埋入沙質土丘坡面，避免懸空）
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2 + 0.25;
+        const rLen = 1.05 + (k % 3) * 0.18;
+        const rx = tx + Math.cos(a) * (0.28 + rLen);
+        const rz = tz + Math.sin(a) * (0.28 + rLen);
+        const p0 = V(tx + Math.cos(a) * 0.26, by + 0.44, tz + Math.sin(a) * 0.26);
+        const p1 = V(rx, hAt(rx, rz) - 0.16, rz);
+        limb(p0, p1, 0.17, 0.07, barkDark, 6);
+      }
+      // 朝向左側（東側，天藍圓窗塔與樟樹上方）大幅橫伸之標誌性粗主枝
+      const eastLimb1 = V(tx + 3.45, by + 4.35, tz - 0.65);
+      const eastLimb2 = V(tx + 5.65, by + 5.05, tz - 0.40);
+      limb(fk, eastLimb1, 0.24, 0.15, barkDark, 8);
+      limb(eastLimb1, eastLimb2, 0.15, 0.07, barkDark, 7);
+      // 朝向右側（西側，恐龍雕塑上方）伸展之粗主枝
+      const westLimb1 = V(tx - 2.65, by + 4.45, tz - 0.25);
+      const westLimb2 = V(tx - 4.45, by + 5.15, tz - 0.15);
+      limb(fk, westLimb1, 0.21, 0.13, barkDark, 8);
+      limb(westLimb1, westLimb2, 0.13, 0.06, barkDark, 7);
+      // 輪生分層水平大枝（5 層寬闊傘狀冠層，東側略寬以還原照片 001 之雄偉輪廓）
+      const tierDefs = [
+        [0.36, 5.2, 6, 0.55],
+        [0.50, 5.6, 7, 0.48],
+        [0.64, 4.9, 6, 0.45],
+        [0.78, 3.8, 6, 0.42],
+        [0.91, 2.5, 5, 0.38]
+      ];
+      tierDefs.forEach(([fy, reach, nb, dy], tier) => {
+        for (let b2 = 0; b2 < nb; b2++) {
+          const a = (b2 / nb) * Math.PI * 2 + tier * 0.65;
+          const eastBoost = Math.cos(a) > 0 ? 1.15 : 0.94;
+          const zScale = Math.sin(a) > 0 ? 0.68 : 0.88;   // 避免貫穿南棟走廊外牆
+          const rx = reach * eastBoost;
+          const s0 = V(tx + (tier < 2 ? 0.12 : -0.06), by + H * fy, tz);
+          const e = V(tx + Math.cos(a) * rx, by + H * fy + dy + (r() - 0.3) * 0.35, tz + Math.sin(a) * reach * zScale);
+          limb(s0, e, 0.13 - tier * 0.015, 0.045, barkDark, 6);
+          for (let k = 0; k < 5; k++) {
+            const t = 0.42 + k * 0.15;
+            const rv = r();
+            const mat = rv < 0.075 ? almondRed : (tier >= 3 && rv > 0.45 ? almondSun : (k === 0 ? almondDark : (k % 2 ? almondG : almondG2)));
+            const rad = 0.92 + r() * 0.42;
+            leafClump(rad, mat,
+              s0.x + (e.x - s0.x) * t + (r() - 0.5) * 0.7,
+              e.y + 0.18 + (r() - 0.4) * 0.45,
+              s0.z + (e.z - s0.z) * t + (r() - 0.5) * 0.6,
+              1.55, 0.52, 1.48, 0.22, 1);
           }
         }
       });
-      addBox(frontLand, 0.18, 0.12, 0.02, new THREE.MeshStandardMaterial({ color: 0xd8f0a8 }), tx, by + 1.5, tz - 0.38, false);   // 樹名牌
-      addPhenoGround(frontLand, '欖仁樹', tx, by + 0.06, tz, 4.2);
-    }
-    // 細高小喬木（細碎羽葉、疏朗樹冠）
-    const slender = (tx, tz, H, w) => {
-      const by = hAt(tx, tz) - 0.03;
-      const fk = V(tx + 0.15, by + H * 0.5, tz);
-      limb(V(tx, by, tz), fk, 0.11 * w, 0.08 * w);
-      for (let b2 = 0; b2 < 4; b2++) {
-        const a = b2 * 1.7 + tx;
-        const e = V(tx + Math.cos(a) * 1.4 * w, by + H * (0.82 + (b2 % 2) * 0.1), tz + Math.sin(a) * 1.0 * w);
-        limb(fk, e, 0.07 * w, 0.03 * w);
-        for (let k = 0; k < 7; k++) {
-          const ca = r() * Math.PI * 2, cr = r() * 1.3 * w;
-          const cl = addMesh(frontLand, new THREE.IcosahedronGeometry((0.38 + r() * 0.25) * w, 0), k % 2 ? fineA : fineB, e.x + Math.cos(ca) * cr, e.y + (r() - 0.3) * 0.9 * w, e.z + Math.sin(ca) * cr * 0.8);
-          cl.scale.set(1.4, 0.7, 1.4);
-        }
+      // 冠頂豐滿受光葉叢
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2 + 0.4;
+        leafClump(0.95 + r() * 0.35, k % 2 ? almondSun : almondG2,
+          tx + Math.cos(a) * 1.15, by + H * 0.95 + r() * 0.55, tz + Math.sin(a) * 0.95,
+          1.45, 0.62, 1.38, 0.22, 1);
       }
-    };
-    // v2.12.16：其餘南棟前喬木（茄冬、樟樹、火焰木、竹柏、黃金風鈴木等）改依樹木普查登錄座標建置
+      // 樹幹前側淡綠樹名牌（依照片 001/002 斜貼於主幹約 1.45m 處）
+      const pq = addBox(frontLand, 0.20, 0.13, 0.02, plaqueMat, tx + 0.10, by + 1.48, tz - 0.44, false);
+      pq.rotation.z = 0.18;
+      addPhenoGround(frontLand, '欖仁樹', tx, by + 0.06, tz, 5.8);
+      campusTreeRecords.push({ x: tx, z: tz, r: 5.8, species: 'broad' });
+    }
+
+    // ④ 黃金風鈴木（欖仁樹與草綠圓窗塔之間、沙土丘與綠草坡交界處：微向左傾細直主幹＋輕盈開展冠層，高約 8.4m）
+    {
+      const tabDark = new THREE.MeshStandardMaterial({ color: 0x2f6032, roughness: 0.82 });
+      const tabMid  = new THREE.MeshStandardMaterial({ color: 0x457d3b, roughness: 0.80 });
+      const tabSun  = new THREE.MeshStandardMaterial({ color: 0x679d46, roughness: 0.76 });
+      const tabFlw  = new THREE.MeshStandardMaterial({ color: 0xf7c51e, roughness: 0.72, transparent: true, opacity: 0 });
+      registerPhenoMats('黃金風鈴木', { core: [tabDark], outer: [tabMid, tabSun], flower: [tabFlw] });
+      const tx = ax(9) - 0.10, tz = zNorth - 4.25, by = hAt(tx, tz) - 0.06, H = 8.4;
+      // 依照片 002：主幹向東（畫面左側 +X）傾斜約 13 度
+      const fk = V(tx + 0.62, by + 2.65, tz - 0.08);
+      limb(V(tx, by, tz), fk, 0.165, 0.115, barkGrey, 8);
+      const pq = addBox(frontLand, 0.16, 0.10, 0.02, plaqueMat, tx + 0.30, by + 1.40, tz - 0.17, false);
+      pq.rotation.z = -0.22;
+      const bDefs = [
+        { dx:  1.75, dy: 3.4, dz: -0.65, r: 0.075 },
+        { dx:  1.10, dy: 4.9, dz:  0.45, r: 0.078 },
+        { dx:  0.15, dy: 5.5, dz: -0.25, r: 0.082 },
+        { dx: -1.45, dy: 3.8, dz: -0.55, r: 0.074 },
+        { dx: -1.65, dy: 2.7, dz:  0.55, r: 0.068 },
+        { dx: -0.55, dy: 4.8, dz:  0.65, r: 0.072 }
+      ];
+      bDefs.forEach((br, bi) => {
+        const e = V(fk.x + br.dx, fk.y + br.dy, fk.z + br.dz);
+        limb(fk, e, br.r, br.r * 0.32, barkGrey, 6);
+        for (let k = 0; k < 5; k++) {
+          const t = 0.44 + k * 0.15;
+          const cx = fk.x + br.dx * t + (r() - 0.5) * 0.65;
+          const cy = fk.y + br.dy * t + (r() - 0.35) * 0.50;
+          const cz = fk.z + br.dz * t + (r() - 0.5) * 0.55;
+          const mat = cy > by + H * 0.66 ? tabSun : (k <= 1 ? tabDark : tabMid);
+          leafClump(0.52 + r() * 0.24, mat, cx, cy, cz, 1.32, 0.72, 1.24, 0.22, 1);
+          if (k >= 2 && (bi + k) % 2 === 0) {
+            leafClump(0.46 + r() * 0.18, tabFlw, cx, cy + 0.14, cz - 0.08, 1.25, 0.68, 1.20, 0.20, 0);
+          }
+        }
+      });
+      addPhenoGround(frontLand, '黃金風鈴木', tx, by + 0.05, tz, 2.8);
+      campusTreeRecords.push({ x: tx, z: tz, r: 2.8, species: 'flowering' });
+    }
+
+    // ⑤ 茄冬／佳冬（草綠圓窗塔右側大草坡西端、緊鄰西側樓梯左側：紅褐粗幹 Y 字分叉＋濃密寬冠，高約 10.2m）
+    {
+      const bisDark = new THREE.MeshStandardMaterial({ color: 0x255622, roughness: 0.84 });
+      const bisMid  = new THREE.MeshStandardMaterial({ color: 0x37702e, roughness: 0.80 });
+      const bisSun  = new THREE.MeshStandardMaterial({ color: 0x548f3a, roughness: 0.78 });
+      registerPhenoMats('茄冬', { core: [bisDark], outer: [bisMid, bisSun] });
+      const tx = ax(12) - 1.05, tz = zNorth - 4.10, by = hAt(tx, tz) - 0.06, H = 10.2;
+      // 根盤微張深紮草坡西緣
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2 + 0.4;
+        const rx = tx + Math.cos(a) * 0.78, rz = tz + Math.sin(a) * 0.78;
+        const p0 = V(tx + Math.cos(a) * 0.18, by + 0.34, tz + Math.sin(a) * 0.18);
+        const p1 = V(rx, hAt(rx, rz) - 0.14, rz);
+        limb(p0, p1, 0.11, 0.045, barkRed, 6);
+      }
+      // 依照片 003：紅褐樹幹於 ~2.1m 處清楚呈 Y 字分叉（主幹微直上、右枝斜向西側樓梯上方伸展）
+      const fk = V(tx + 0.04, by + 2.15, tz - 0.04);
+      const mainUp = V(tx + 0.18, by + 5.85, tz + 0.05);
+      const rightArm = V(tx - 1.35, by + 5.05, tz - 0.18);
+      limb(V(tx, by, tz), fk, 0.28, 0.22, barkRed, 9);
+      limb(fk, mainUp, 0.19, 0.12, barkRed, 8);
+      limb(fk, rightArm, 0.15, 0.09, barkRed, 7);
+      addBox(frontLand, 0.18, 0.11, 0.02, plaqueMat, tx + 0.02, by + 1.48, tz - 0.26, false);
+      const subLimbs = [
+        [mainUp, V(tx + 2.55, by + 7.4, tz - 0.75), 0.11],
+        [mainUp, V(tx + 1.75, by + 8.8, tz + 0.65), 0.11],
+        [mainUp, V(tx + 0.25, by + 9.6, tz - 0.25), 0.11],
+        [mainUp, V(tx - 1.25, by + 8.9, tz + 0.55), 0.10],
+        [rightArm, V(tx - 3.35, by + 6.4, tz - 0.65), 0.10],
+        [rightArm, V(tx - 2.65, by + 7.6, tz + 0.45), 0.09],
+        [rightArm, V(tx - 1.55, by + 6.8, tz - 1.35), 0.09]
+      ];
+      subLimbs.forEach(([s0, e, r0], bi) => {
+        limb(s0, e, r0, r0 * 0.35, barkRed, 6);
+        for (let k = 0; k < 5; k++) {
+          const t = 0.42 + k * 0.16;
+          const cx = s0.x + (e.x - s0.x) * t + (r() - 0.5) * 0.68;
+          const cy = s0.y + (e.y - s0.y) * t + (r() - 0.35) * 0.52;
+          const cz = s0.z + (e.z - s0.z) * t + (r() - 0.5) * 0.60;
+          const mat = cy > by + H * 0.70 ? bisSun : ((bi + k) % 3 === 0 ? bisDark : bisMid);
+          leafClump(0.76 + r() * 0.30, mat, cx, cy, cz, 1.32, 0.78, 1.26, 0.22, 1);
+        }
+      });
+      // 冠心與頂冠收束
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2 + 0.2;
+        leafClump(0.88 + r() * 0.28, k % 2 ? bisSun : bisMid,
+          tx + Math.cos(a) * 1.10, by + H * 0.88 + r() * 0.60, tz + Math.sin(a) * 0.90,
+          1.30, 0.76, 1.25, 0.20, 1);
+      }
+      addPhenoGround(frontLand, '茄冬', tx, by + 0.05, tz, 3.8);
+      campusTreeRecords.push({ x: tx, z: tz, r: 3.8, species: 'broad' });
+    }
+
+    // ⑥ 隔壁西側草地區域的樟樹（西側樓梯右側、坡道與樓梯間草地綠帶 poly2 內：高大挺拔樟樹，高約 10.4m）
+    {
+      const camW0 = new THREE.MeshStandardMaterial({ color: 0x265922, roughness: 0.84 });
+      const camW1 = new THREE.MeshStandardMaterial({ color: 0x3b762e, roughness: 0.80 });
+      const camW2 = new THREE.MeshStandardMaterial({ color: 0x58933c, roughness: 0.78 });
+      const camW3 = new THREE.MeshStandardMaterial({ color: 0x72ab46, roughness: 0.75 });
+      registerPhenoMats('樟樹', { core: [camW0], outer: [camW1, camW2, camW3] });
+      const tx = -5.55, tz = -0.85, by = 0.14, H = 10.4;
+      const fk = V(tx - 0.06, by + 3.15, tz - 0.05);
+      limb(V(tx, by, tz), fk, 0.27, 0.19, barkDark, 9);
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + 0.5;
+        limb(V(tx + Math.cos(a) * 0.16, by + 0.45, tz + Math.sin(a) * 0.16),
+             V(tx + Math.cos(a) * 0.62, by + 0.02, tz + Math.sin(a) * 0.62), 0.09, 0.04, barkDark, 5);
+      }
+      const wLimbs = [
+        { dx:  2.05, dy: 4.2, dz: -0.75, r: 0.12 },
+        { dx:  1.45, dy: 5.8, dz:  0.65, r: 0.12 },
+        { dx:  0.10, dy: 6.7, dz: -0.20, r: 0.13 },
+        { dx: -1.85, dy: 4.8, dz: -0.65, r: 0.12 },
+        { dx: -1.65, dy: 5.5, dz:  0.85, r: 0.11 },
+        { dx: -0.35, dy: 4.4, dz: -1.55, r: 0.11 }
+      ];
+      wLimbs.forEach((br, bi) => {
+        const e = V(fk.x + br.dx, fk.y + br.dy, fk.z + br.dz);
+        limb(fk, e, br.r, br.r * 0.34, barkDark, 6);
+        for (let k = 0; k < 5; k++) {
+          const t = 0.44 + k * 0.15;
+          const cx = fk.x + br.dx * t + (r() - 0.5) * 0.65;
+          const cy = fk.y + br.dy * t + (r() - 0.32) * 0.50;
+          const cz = fk.z + br.dz * t + (r() - 0.5) * 0.58;
+          const mat = cy > by + H * 0.72 ? camW3 : (k === 0 ? camW0 : ((bi + k) % 2 ? camW1 : camW2));
+          leafClump(0.74 + r() * 0.28, mat, cx, cy, cz, 1.28, 0.80, 1.22, 0.22, 1);
+        }
+      });
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2 + 0.3;
+        leafClump(0.84 + r() * 0.26, k % 2 ? camW3 : camW2,
+          tx + Math.cos(a) * 1.05, by + H * 0.90 + r() * 0.55, tz + Math.sin(a) * 0.95,
+          1.26, 0.78, 1.22, 0.20, 1);
+      }
+      addPhenoGround(frontLand, '樟樹', tx, by + 0.05, tz, 3.6);
+      campusTreeRecords.push({ x: tx, z: tz, r: 3.6, species: 'broad' });
+    }
   }
 
   // 14.8 中庭前景「回字形紅灰白幾何同心方塊」連鎖透水地磚廣場
@@ -14922,64 +15167,8 @@ function buildNewBuilding() {
     horn2.rotation.x = -Math.PI / 2.3;
     horn2.rotation.y = Math.PI / 4;
 
-    // ========================================================================
-    // 【實景黃框靈魂主景：高聳繁茂校園遮蔭大樹】(Tall Mature Courtyard Shade Tree)
-    // 依據照片黃框標註：位於黃框轉折走廊西北前庭，主幹挺拔高聳，多層次繁茂綠葉枝葉扶疏，
-    // 高度延伸貫穿 1F、2F 直抵 3F 女兒牆頂 (高度約 11.2 米)，完美還原照片現場空間縱深與自然意境！
-    // ========================================================================
-    const treeMark = g.children.length;
-    const treeX = 4.6;            // v2.12.99 照片 7：前庭中央沒有高大喬木，大樹群位於南棟西側樓梯東側 → 搬到樓梯東側的 U 形草坪（與既有喬木並列）
-    const treeZ = 8.780 - 1.65;   // 大樹維持原位置（原以舊 zG = 8.78 為基準；走廊北端南移後不隨之移動）
-    const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4d3f32, roughness: 0.92 }); // 深褐粗糙樹皮
-    const treeLeafMat1 = new THREE.MeshStandardMaterial({ color: 0x2e6328, roughness: 0.80 }); // 濃綠樹冠
-    const treeLeafMat2 = new THREE.MeshStandardMaterial({ color: 0x3d7b32, roughness: 0.76 }); // 亮綠向陽樹葉
-    const treeLeafMat3 = new THREE.MeshStandardMaterial({ color: 0x20481d, roughness: 0.85 }); // 深綠底層陰影葉簇
-
-    // 主樹幹 (下粗上細，高達 4.8m)
-    const tMain = addMesh(g, new THREE.CylinderGeometry(0.24, 0.38, 4.8, 12), treeTrunkMat, treeX, 2.4, treeZ);
-    tMain.rotation.z = -0.06;
-    tMain.rotation.x = 0.04;
-
-    // 四大向外延伸木質分枝 (Major Structural Limbs reaching up to 8.5m)
-    const tB1 = addMesh(g, new THREE.CylinderGeometry(0.16, 0.22, 3.8, 8), treeTrunkMat, treeX - 0.45, 5.8, treeZ - 0.35);
-    tB1.rotation.z = 0.28; tB1.rotation.x = -0.18;
-    const tB2 = addMesh(g, new THREE.CylinderGeometry(0.15, 0.20, 4.2, 8), treeTrunkMat, treeX + 0.55, 6.0, treeZ + 0.25);
-    tB2.rotation.z = -0.26; tB2.rotation.y = 0.22;
-    const tB3 = addMesh(g, new THREE.CylinderGeometry(0.14, 0.18, 3.6, 8), treeTrunkMat, treeX + 0.15, 6.2, treeZ - 0.65);
-    tB3.rotation.x = -0.32;
-    const tB4 = addMesh(g, new THREE.CylinderGeometry(0.13, 0.17, 3.5, 8), treeTrunkMat, treeX - 0.30, 6.5, treeZ + 0.45);
-    tB4.rotation.z = 0.22; tB4.rotation.x = 0.25;
-
-    // 茂盛綠色樹冠球團 (Dense Multilayered Canopy Foliage Spheres, 覆蓋高度 4.5m ~ 11.2m)
-    const canopySpheres = [
-      // 3F 頂層向陽冠頂 (Y = 8.5 ~ 11.2m)
-      { x: treeX + 0.10, y: 10.4, z: treeZ - 0.20, rx: 2.2, ry: 1.6, rz: 2.1, mat: treeLeafMat2 },
-      { x: treeX - 0.85, y: 9.6,  z: treeZ - 0.55, rx: 1.9, ry: 1.5, rz: 1.8, mat: treeLeafMat1 },
-      { x: treeX + 0.95, y: 9.8,  z: treeZ + 0.35, rx: 2.0, ry: 1.5, rz: 1.9, mat: treeLeafMat2 },
-      { x: treeX + 0.20, y: 9.2,  z: treeZ - 0.90, rx: 1.8, ry: 1.4, rz: 1.7, mat: treeLeafMat1 },
-      // 2F 中層豐滿側冠 (Y = 6.0 ~ 8.5m)
-      { x: treeX - 1.20, y: 7.8,  z: treeZ - 0.30, rx: 2.1, ry: 1.7, rz: 2.0, mat: treeLeafMat1 },
-      { x: treeX + 1.25, y: 8.0,  z: treeZ + 0.20, rx: 2.2, ry: 1.8, rz: 2.1, mat: treeLeafMat2 },
-      { x: treeX - 0.35, y: 7.5,  z: treeZ - 1.20, rx: 1.9, ry: 1.6, rz: 1.8, mat: treeLeafMat3 },
-      { x: treeX + 0.45, y: 7.6,  z: treeZ + 0.95, rx: 2.0, ry: 1.6, rz: 1.9, mat: treeLeafMat1 },
-      { x: treeX + 0.05, y: 8.2,  z: treeZ + 0.10, rx: 2.4, ry: 1.9, rz: 2.3, mat: treeLeafMat1 },
-      // 1F 下層底垂葉簇 (Y = 4.2 ~ 6.0m)
-      { x: treeX - 0.90, y: 5.6,  z: treeZ - 0.20, rx: 1.6, ry: 1.3, rz: 1.5, mat: treeLeafMat3 },
-      { x: treeX + 0.85, y: 5.8,  z: treeZ + 0.30, rx: 1.7, ry: 1.4, rz: 1.6, mat: treeLeafMat3 },
-      { x: treeX - 0.15, y: 5.2,  z: treeZ - 0.70, rx: 1.5, ry: 1.2, rz: 1.4, mat: treeLeafMat3 }
-    ];
-
-    canopySpheres.forEach(cs => {
-      const sp = addMesh(g, new THREE.SphereGeometry(1.0, 12, 10), cs.mat, cs.x, cs.y, cs.z);
-      sp.scale.set(cs.rx, cs.ry, cs.rz);
-    });
-
-    // 樹穴花台基底與修剪低矮綠籬帶 (Tree Pit Planting Bed & Manicured Hedges along base)
-    addBox(g, 2.6, 0.16, 2.6, curbMat, treeX, 0.25, treeZ, false);
-    addBox(g, 2.3, 0.18, 2.3, lawnMat, treeX, 0.26, treeZ, false);
-    // （原「黃框走廊前緣常綠綠籬」位於新坡道轉角平台上，已移除；坡道西側改由長綠籬帶取代）
-    // 大樹固定在草坪面上（不隨下沉中庭下移）
-    for (let i = treeMark; i < g.children.length; i++) g.children[i].traverse(o => { if (o.isMesh) o.userData.keepLevel = true; });
+    // v2.12.110：原搬至南棟西側草坡（x = 4.6）之舊版佔位遮蔭大樹與方形樹穴已移除，
+    // 改由 buildSouthBuilding 14.7 依實景照片 001/002/003 精緻建置之南棟前喬木群（茄冬、西側草地樟樹等）呈現。
   }
   // ==========================================================================
   // 4. SOUTH FACADE & SOUTHEAST 45° FACADE
@@ -20432,23 +20621,23 @@ const CAMPUS_TREE_REGISTRY = [
   // ["442150", "榕樹", -12.4, -24.7, 0],      // v2.12.106 依實景照片 3 & 5，西棟前中庭幾何花磚廣場為開闊通道，無此立於花磚上之榕樹
   ["839655", "桂花", -11.4, -3.2, 0],     // v2.12.101 移入新棟前庭東段花台內（原在花磚廣場上）
   ["442332", "風鈴木", -8.6, -57.9, 0],
-  ["442179", "金露花", -5.6, -0.3, 0],    // v2.12.101 移入坡道與南棟西側樓梯間綠帶（原在花磚廣場上）
+  ["442179", "金露花", -6.1, -1.3, 0],    // v2.12.110 略西移至西側草地綠帶前緣，避開新配置之高大樟樹主幹
   ["442188", "龍柏", -5.6, 1.3, 0],       // v2.12.101 移入坡道與南棟西側樓梯間綠帶（原在花磚廣場上）
   ["442323", "風鈴木", -3.7, -57.2, 0],
   // ["442123", "黃槿", -1.7, -28.7, 0],     // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置，避免立於幾何花磚上
-  ["442211", "樟樹", 2.6, -1.3, 0],       // v2.12.101 移入南棟前西端草地土丘（依 20261123_073148.jpg）
-  ["442204", "瓊崖海棠", 6.4, -1.6, 0],   // v2.12.101 移入南棟前草地土丘（依 20261123_073148.jpg）
+  // ["442211", "樟樹", 2.6, -1.3, 0],       // v2.12.110 依實景照片 003 移至西側樓梯右側隔壁草地綠帶，改由 buildSouthBuilding 14.7 精緻建置
+  // ["442204", "瓊崖海棠", 6.4, -1.6, 0],   // v2.12.110 依實景照片 003，草綠圓窗塔前至西端草坡無此瓊崖海棠
   // ["442115", "水黃皮", 4.1, -27.4, 0],    // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
-  ["442218", "茄冬", 11.4, -1.2, 0],      // v2.12.101 移入南棟草綠圓窗塔前大草坡（依 20261118_115423.jpg）
+  // ["442218", "茄冬", 11.4, -1.2, 0],      // v2.12.110 依實景照片 003 移至草坡西端（西側樓梯左旁），改由 buildSouthBuilding 14.7 精緻建置
   // ["442107", "火焰木", 8.4, -26.2, 0],    // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
   ["442334", "印度紫檀", 10.5, -55.9, 0],
   ["442330", "印度紫檀", 14.4, -55.5, 0],
-  ["442230", "黃金風鈴木", 17.6, -1.6, 0], // v2.12.101 移入南棟草坡內側（原壓在緣石線上）
+  // ["442230", "黃金風鈴木", 17.6, -1.6, 0], // v2.12.110 依實景照片 002/003 改由 buildSouthBuilding 14.7 精緻建置（微向左傾主幹）
   // ["442100", "黃槿", 26.9, -22.8, 0],     // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
-  ["442237", "火焰木", 29.5, -1.1, 0],
+  // ["442237", "火焰木", 29.5, -1.1, 0],    // v2.12.110 依實景照片 001/002，天藍圓窗塔前沙土丘由大葉欖仁主導，無此火焰木
   // ["442092", "黃金風鈴木", 30.9, -22.6, 0], // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
-  ["442263", "樟樹", 31.8, -0.7, 0],      // v2.12.101 移入南棟東側草地土丘（依 20261118_115521.jpg）
-  ["442252", "竹柏", 33.6, -2.0, 0],      // v2.12.101 移入南棟東側樓梯旁草坡（依 20261118_115521.jpg）
+  // ["442263", "樟樹", 31.8, -0.7, 0],      // v2.12.110 依實景照片 001 改由 buildSouthBuilding 14.7 精緻建置（竹柏右側纖細年輕樟樹）
+  // ["442252", "竹柏", 33.6, -2.0, 0],      // v2.12.110 依實景照片 001 改由 buildSouthBuilding 14.7 精緻建置（興學樓樓梯旁前緣纖細竹柏）
   ["441975", "印度紫檀", 55.1, -50.6, 0],
   ["839658", "大葉羅漢松", 66.5, 18.6, 0],
   ["839651", "臺灣海桐", 67.5, 18.6, 0],
