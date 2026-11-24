@@ -7157,6 +7157,9 @@ function buildNorthBuilding() {
       const sp = addMesh(g, new THREE.SphereGeometry(1.0, 14, 12), courtyardTreeLeafMat, ts.x, ts.y, ts.z);
       sp.scale.set(ts.rx, ts.ry, ts.rz);
     });
+    // v2.12.113 對應普查登錄 441975 印度紫檀：以世界座標登錄花況清單（原普查轉換座標落於北側路面已停用）
+    const [tWx, tWz] = NORTH_XF.toWorld(treeX, treeZ);
+    phenoTreeAt('印度紫檀', tWx, tWz, true);
   }// ==========================================================================
   // 7) NORTH REAR ELEVATION (`背向立面圖` `north_rear_elevation.jpg` 1:1 Precision):
   //    - 7 WHITE VERTICAL CIRCULAR-WINDOW PIERS AT AXES `④, ⑥, ⑧, ⑩, ⑬, ⑮, ⑰`
@@ -20772,7 +20775,7 @@ const CAMPUS_TREE_REGISTRY = [
   // ["442092", "黃金風鈴木", 30.9, -22.6, 0], // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
   // ["442263", "樟樹", 31.8, -0.7, 0],      // v2.12.110 依實景照片 001 改由 buildSouthBuilding 14.7 精緻建置（竹柏右側纖細年輕樟樹）
   // ["442252", "竹柏", 33.6, -2.0, 0],      // v2.12.110 依實景照片 001 改由 buildSouthBuilding 14.7 精緻建置（興學樓樓梯旁前緣纖細竹柏）
-  ["441975", "印度紫檀", 55.1, -50.6, 0],
+  // ["441975", "印度紫檀", 55.1, -50.6, 0],   // v2.12.113 實景對應北棟與東棟連廊北側中庭大樹（已於 buildNorthBuilding D 區依實景照片 north_east_bridge_exterior.jpg 建置）；普查轉換座標誤落於北側車道路面且造成重複，故停用
   ["839658", "大葉羅漢松", 66.5, 18.6, 0],
   ["839651", "臺灣海桐", 67.5, 18.6, 0],
   ["442057", "水黃皮", 74.9, 17.0, 0],
