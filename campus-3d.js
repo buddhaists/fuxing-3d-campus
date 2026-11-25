@@ -1331,8 +1331,8 @@ const CAMPUS_PERIMETER_PX = [
 const WEST_WALL_PX = [[65.7, -67.6], [51.4, 149.4], [39.2, 158.8], [45, 193.7], [76.2, 245.3], [105.2, 308.8], [134.6, 381.8], [152.9, 437.2], [180, 480]];
 const NORTH_WALL_PX = [[65.7, -67.6], [955, 22]];
 const northWallZAt = x => { const [a, b] = NORTH_WALL_PX; const t = (x - X(a[0])) / (X(b[0]) - X(a[0])); return Z(a[1]) + t * (Z(b[1]) - Z(a[1])); };
-const WEST_ROAD_PTS = [[113.5, -45.0], [53.7, -54.4], [-11.3, -61.1], [-36.0, -64.0], [-50.5, -66.6], [-89.8, -72.7], [-102.8, -73.9], [-114.4, -67.5]];   // v2.12.37 北側車道（依使用者航照標示）：東側門→沿北牆→學校後門
-const NORTH_SPUR_PTS = [[-36.0, -64.0], [-36.0, -43.5]];   // 北棟西端往南支線   // v2.12.33 北棟西端以西：沿北牆內側步道通往學校後門（依航照）
+const WEST_ROAD_PTS = [[113.5, -45.0], [57.6, -51.8], [-29.5, -59.5], [-36.0, -61.5], [-50.5, -66.6], [-89.8, -72.7], [-102.8, -73.9], [-114.4, -67.5]];   // v2.12.117 北側車道（寬 5.1m 緊鄰北棟坡道與 5.1m 停車棚）：東側門→北棟北側→學校後門
+const NORTH_SPUR_PTS = [[-36.0, -61.5], [-36.0, -43.5]];   // 北棟西端往南支線   // v2.12.33 北棟西端以西：沿北牆內側步道通往學校後門（依航照）
 const TRACK_CFG = { cx: -58.15, cz: -9.5, rx: 19.5, straight: 52, th: 5.074 };   // v2.12.33 PU 跑道（依對位航照）；v2.12.54 依航照與西棟同轉 5.07°，東緣距西棟西牆 3.3 m（使用者實測）
 const trackToWorld = (lx, lz) => { const t = TRACK_CFG.th * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), dx = lx - TRACK_CFG.cx, dz = lz - TRACK_CFG.cz; return [TRACK_CFG.cx + dx * c - dz * s, TRACK_CFG.cz + dx * s + dz * c]; };
 const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) { const [x1, y1] = WEST_WALL_PX[i], [x2, y2] = WEST_WALL_PX[i + 1]; if (py >= Math.min(y1, y2) && py <= Math.max(y1, y2)) return x1 + (x2 - x1) * (py - y1) / ((y2 - y1) || 1); } return WEST_WALL_PX[0][0]; };
@@ -7866,8 +7866,7 @@ function buildNorthBuilding() {
 
     // 西翼採光井護欄 (③–⑪)
     addNorthGreenFenceSpan(ax(4), ax(11));
-    // 東翼採光井護欄 (⑫–⑱，坡道外側)
-    addNorthGreenFenceSpan(ax(12), ax(18));
+    // (東翼 ⑫–⑱ 採光井與無障礙坡道全段改由下方天藍色圓管欄杆與混凝土斜坡主體依實景照片 1:1 精準建構)
 
     // Central North Moon-Gate Portal at `⑪–⑫` (`背向立面圖 ⑫–⑪` & site photo `北棟大樓1F樓梯後面後走廊出入口.jpg`)
     const nhL = ax(11), nhR = ax(12), nhW = nhR - nhL, nhCx = (nhL + nhR) / 2;
@@ -7958,18 +7957,98 @@ function buildNorthBuilding() {
     const stairRail = addBox(g, 0.045, 0.045, 2.85, railAzureMat, stCx + stW / 2 + 0.04, 0.95, zb - 1.55);
     stairRail.rotation.x = -0.45;
 
-    // Long Sloped Accessible Ramp (`背向立面圖 ⑰–⑫ 行動不便坡道` rising from East `⑰` to Central Portal `⑫`)
-    const rampL = ax(12), rampR = ax(17), rampW = rampR - rampL, rampCx = (rampL + rampR) / 2;
-    const rampBase = addBox(g, rampW, 0.65, 1.25, mats.slab, rampCx, 0.42, zb - 2.10);
-    rampBase.rotation.z = 0.045;
-    for (let bar = 0; bar < 3; bar++) {
-      const rBar = addBox(g, rampW, 0.05, 0.08, mats.railBlue, rampCx, 0.85 + bar * 0.22, zb - 2.68);
-      rBar.rotation.z = 0.045;
-    }
-    for (let p = 0; p <= 12; p++) {
-      const px = rampL + p * (rampW / 12);
-      const py = 0.95 - (p / 12) * 0.55;
-      addBox(g, 0.06, 0.72, 0.08, mats.railBlue, px, py, zb - 2.68);
+    // 4) 北棟東側後面無障礙坡道與採光井（軸線 ⑫–⑱，v2.12.117 依實景照片 20261125_093249 / 093258 1:1 精緻重建）
+    //    - 結構配置：靠建築側 (zb 至 zb-1.35m) 為下凹採光排水溝，東段 (⑯+0.9 至 ⑱) 設水平天藍色圓管護欄並於 ⑱ 轉角收頭；
+    //    - 坡道本體 (zb-1.35m 至 zb-2.68m，寬 1.33m)：由東端地面 (x=ax(16)+0.9, y=0.06m) 順接 5.1m 車道起步，
+    //      向西緩升至 ⑫ 軸中央後門高台 (y=1.25m)，兩側配置對稱四橫桿天藍色圓管扶手，北側為實心混凝土梯形擋土牆。
+    {
+      const rampAzureMat = new THREE.MeshStandardMaterial({ color: 0x1b82d8, roughness: 0.40, metalness: 0.25 });
+      const rampDeckMat  = new THREE.MeshStandardMaterial({ color: 0x6c6e70, roughness: 0.92 });
+      const rampSideMat  = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.88 });
+      const trenchMat    = new THREE.MeshStandardMaterial({ color: 0x4b4e50, roughness: 0.95 });
+      const apronMat     = new THREE.MeshStandardMaterial({ color: 0xc2c0ba, roughness: 0.88 });
+      const manholeMat   = new THREE.MeshStandardMaterial({ color: 0x3b3d40, roughness: 0.65, metalness: 0.55 });
+
+      const rampTopX   = ax(12) - 0.15;
+      const rampLandX  = ax(12) + 0.55;
+      const rampStartX = ax(16) + 0.90;
+      const eastEndX   = ax(18);
+      const zInner     = zb - 1.35;
+      const zOuter     = zb - 2.68;
+      const rampD      = zInner - zOuter;
+      const yBot       = 0.06;
+      const yTop       = baseH;
+
+      // (a) 靠建築側採光排水溝槽與低矮混凝土護緣 (⑫–⑱, zb 至 zInner)
+      const trenchLen = eastEndX - rampTopX;
+      const trenchCx  = (eastEndX + rampTopX) / 2;
+      addBox(g, trenchLen, 0.06, 1.30, trenchMat, trenchCx, 0.02, (zb + zInner) / 2, false);
+      addBox(g, eastEndX - rampStartX + 0.15, 0.14, 0.16, rampSideMat, (eastEndX + rampStartX) / 2, 0.07, zInner, false);
+      // 坡道東入口前方順接車道之深灰混凝土平緩過渡區 (⑯+0.9 至 ⑱, zInner 至 zb-2.82)
+      addBox(g, eastEndX - rampStartX + 0.35, 0.06, rampD + 0.16, rampDeckMat, (eastEndX + rampStartX) / 2, 0.03, (zInner + zOuter) / 2 - 0.06, false);
+
+      // (b) 實心梯形混凝土坡道主體（ExtrudeGeometry 精準貼地，無懸空）
+      const rShape = new THREE.Shape();
+      rShape.moveTo(rampTopX, 0);
+      rShape.lineTo(rampStartX, 0);
+      rShape.lineTo(rampStartX, yBot);
+      rShape.lineTo(rampLandX, yTop);
+      rShape.lineTo(rampTopX, yTop);
+      rShape.closePath();
+      const rGeo = new THREE.ExtrudeGeometry(rShape, { depth: rampD, bevelEnabled: false });
+      addMesh(g, rGeo, rampSideMat, 0, 0, zOuter);
+
+      // 坡道頂面深灰防滑混凝土鋪面（斜段＋頂部平臺）
+      const slopeRun = rampStartX - rampLandX;
+      const slopeRise = yTop - yBot;
+      const slopeLen = Math.hypot(slopeRun, slopeRise);
+      const slopeAng = Math.atan2(slopeRise, slopeRun);
+      const deckSlope = addBox(g, slopeLen + 0.08, 0.045, rampD - 0.06, rampDeckMat, (rampLandX + rampStartX) / 2, (yTop + yBot) / 2 + 0.015, (zInner + zOuter) / 2, false);
+      deckSlope.rotation.z = -slopeAng;
+      addBox(g, rampLandX - rampTopX + 0.10, 0.045, rampD - 0.06, rampDeckMat, (rampTopX + rampLandX) / 2, yTop + 0.015, (zInner + zOuter) / 2, false);
+      // 坡道北側貼地排水緣石（緊貼 5.1m 車道南緣）
+      addBox(g, slopeRun + (rampLandX - rampTopX) + 0.4, 0.12, 0.14, rampSideMat, (rampTopX + rampStartX) / 2, 0.06, zOuter - 0.07, false);
+
+      // (c) 雙側天藍色圓管安全護欄（4 道橫桿＋立柱，完全吻合實景照片 093249 / 093258）
+      const addBlueRailSeg = (x1, y1, z1, x2, y2, z2, postStep = 1.28) => {
+        const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
+        const hLen = Math.hypot(dx, dz);
+        const segLen = Math.hypot(hLen, dy);
+        if (segLen < 0.05) return;
+        const yaw = -Math.atan2(dz, dx);
+        const pitch = Math.atan2(dy, hLen);
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, mz = (z1 + z2) / 2;
+        const barH = [0.22, 0.45, 0.68, 0.92];
+        for (const bh of barH) {
+          const bar = addBox(g, segLen + 0.02, 0.042, 0.042, rampAzureMat, mx, my + bh, mz);
+          bar.rotation.order = 'YXZ';
+          bar.rotation.y = yaw;
+          bar.rotation.z = pitch;
+        }
+        const nPosts = Math.max(1, Math.round(hLen / postStep));
+        for (let p = 0; p <= nPosts; p++) {
+          const t = p / nPosts;
+          addBox(g, 0.048, 0.96, 0.048, rampAzureMat, x1 + dx * t, y1 + dy * t + 0.48, z1 + dz * t);
+        }
+      };
+
+      // 東端收頭橫欄（軸線 ⑱ 白磁磚角柱向北圍封採光井）
+      addBlueRailSeg(eastEndX - 0.04, yBot, zb - 0.20, eastEndX - 0.04, yBot, zInner, 0.70);
+      // 內側（南側）水平護欄（⑱ → 坡道起步點，保護下凹採光井）
+      addBlueRailSeg(rampStartX, yBot, zInner, eastEndX - 0.04, yBot, zInner, 1.25);
+      // 內側（南側）斜坡護欄（坡道起步點 → ⑫ 頂平台）
+      addBlueRailSeg(rampLandX, yTop, zInner, rampStartX, yBot, zInner, 1.25);
+      addBlueRailSeg(rampTopX, yTop, zInner, rampLandX, yTop, zInner, 0.75);
+      // 外側（北側，臨車道）斜坡護欄（坡道起步點 → ⑫ 頂平台，與中央門廊天藍欄杆齊平銜接）
+      addBlueRailSeg(rampLandX, yTop, zOuter + 0.04, rampStartX, yBot, zOuter + 0.04, 1.25);
+      addBlueRailSeg(rampTopX, yTop, zOuter + 0.04, rampLandX, yTop, zOuter + 0.04, 0.75);
+
+      // (d) 軸線 ⑱ 東山牆前方平整水泥混凝土廣場鋪面與圓形鑄鐵人孔蓋（照片 093249 / 093258 左前景）
+      const apronX1 = eastEndX + 0.05, apronX2 = eastEndX + 8.6;
+      const apronZ1 = zb - 2.82, apronZ2 = zCoreFront + 0.50;
+      addBox(g, apronX2 - apronX1, 0.08, apronZ2 - apronZ1, apronMat, (apronX1 + apronX2) / 2, 0.032, (apronZ1 + apronZ2) / 2, false);
+      // 圓形鑄鐵人孔蓋（位於東廣場靠車道邊緣）
+      addMesh(g, new THREE.CylinderGeometry(0.42, 0.44, 0.025, 20), manholeMat, eastEndX + 4.3, 0.078, zb - 2.35, false);
     }
   }
 
@@ -20553,129 +20632,334 @@ function buildEastGate() {
   landmarkGroupMap.set('east-gate', eg);
 }
 
-// ---- 19 北側大車棚與停車區 (`carport` — 藍色浪板單層鋼構大車棚與北側柏油車道) ----
+// ---- 19 北側大車棚與停車區 (`carport` — v2.12.117 依實景照片 20261125_093249 / 093309 1:1 重建 5.1m 1F 車道與 5.1m 單排懸臂鋼構停車棚) ----
 function buildNorthCarport() {
   const cp = new THREE.Group();
   cp.userData = { landmarkId: 'carport' };
 
   // -------------------------------------------------------------------------
-  // 【學校北側全線東西貫通車道通道】(東側門 x=+115.18m 經大車棚直通西側後門 x=-118.56m，全長 233.7m)
-  // 依實景照片 20261110_135208.jpg (東段柏油、標線、大車棚) 與 20261110_135221.jpg (西段水泥混凝土、伸縮縫、路緣石與林蔭綠廊)
+  // 【A. 學校北側全線東西貫通車道】(東側門→北棟北側 5.1m 車道→西段 4.0m 水泥車道→後門)
+  // 依實景照片 20261125_093249 / 093309：北棟北側 1F 車道寬 5.1m，緊貼北棟無障礙坡道與 5.1m 停車棚，
+  // 路面為風化灰水泥柏油（具細微裂紋與中央縱縫）並繪設雙向白色方向箭頭（北側車道朝西 ↑、南側車道朝東 ↓）。
   // -------------------------------------------------------------------------
+  function makeNorthDrivewayTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 512;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#8b8a86';
+    ctx.fillRect(0, 0, 512, 512);
+    let sd = 117;
+    const rng = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    // 斑駁骨材與輪胎磨耗深淺紋理
+    for (let i = 0; i < 4200; i++) {
+      const v = 108 + Math.floor(rng() * 52);
+      ctx.fillStyle = `rgb(${v},${v - 1},${v - 4})`;
+      ctx.fillRect(rng() * 512, rng() * 512, 2 + rng() * 5, 2 + rng() * 4);
+    }
+    // 雙車道微暗輪胎壓痕帶
+    ctx.fillStyle = 'rgba(55,54,52,0.14)';
+    ctx.fillRect(0, 95, 512, 110);
+    ctx.fillRect(0, 305, 512, 110);
+    // 中央自然縱向接縫與細微風化裂紋
+    ctx.strokeStyle = 'rgba(42,41,40,0.42)';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(0, 256);
+    for (let x = 32; x <= 512; x += 32) ctx.lineTo(x, 256 + (rng() - 0.5) * 6);
+    ctx.stroke();
+    ctx.lineWidth = 1.1;
+    ctx.strokeStyle = 'rgba(48,47,45,0.28)';
+    for (let k = 0; k < 10; k++) {
+      let cx = rng() * 512, cy = rng() * 512;
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      for (let s = 0; s < 5; s++) { cx += (rng() - 0.5) * 55; cy += (rng() - 0.5) * 45; ctx.lineTo(cx, cy); }
+      ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(10, 1);
+    tex.anisotropy = 4;
+    return tex;
+  }
 
-  // 【A. 東段柏油車道】(x = -21.32m 至 x = +115.18m，寬 6.4m，中心 z = -43.5m)
-  // v2.12.37 依使用者於航照標示之車道：東側門→沿北牆斜向直線→北棟西端→沿北牆至學校後門（單一折線，寬 4 m），另於北棟西端設往南支線
-  const wornConcreteMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#a3a19c', '#7d7b77', '#bdbab4', false), roughness: 0.92 });
-  wornConcreteMat.map.repeat.set(1, 1);
+  const northDrivewayMat = new THREE.MeshStandardMaterial({ map: makeNorthDrivewayTexture(), roughness: 0.93 });
   const flatArrowHeadGeo = dir => {
     const sh = new THREE.Shape();
-    sh.moveTo(0, -0.6); sh.lineTo(0, 0.6); sh.lineTo(dir * 1.1, 0); sh.closePath();
+    sh.moveTo(0, -0.52); sh.lineTo(0, 0.52); sh.lineTo(dir * 0.95, 0); sh.closePath();
     const g = new THREE.ShapeGeometry(sh); g.rotateX(-Math.PI / 2); return g;
   };
 
-  // 【C. 西段平整水泥混凝土車道】(x = -38.0m 至 x = -118.56m 直通後門，寬 4.8m，中心 z = -44.5m，北側貫通車道)
-  // 實景照片 20261110_135221.jpg：淺灰平整水泥路面、橫向伸縮割縫、水泥路緣石、綠意草坪緩衝帶
-  const westRoadX1 = -38.0, westRoadX2 = X(56.8); // v2.12.24 依衛星圖西牆
-  const westRoadLen = Math.abs(westRoadX2 - westRoadX1); // 80.56m
-  const westRoadCx = (westRoadX1 + westRoadX2) / 2; // -78.28m
-  const westRoadZ = -44.5, westRoadW = 4.0;   // v2.12.37 車道寬約 4 m（依航照標示）
+  const northRoadW = 5.1;     // v2.12.117 使用者實測：北棟大樓北側 1F 車道寬度 5.1 公尺
+  const westRoadW  = 4.0;     // 西段水泥車道寬度 4.0 公尺
 
-  const concreteRoadMat = new THREE.MeshStandardMaterial({ color: 0xd6d3cc, roughness: 0.88 }); // 平整淺灰刷紋水泥
-  const jointSeamMat    = new THREE.MeshStandardMaterial({ color: 0x3d4147, roughness: 0.95 }); // 瀝青填縫伸縮縫
-  const curbMat         = new THREE.MeshStandardMaterial({ color: 0xc8c5be, roughness: 0.78 }); // 水泥路緣石
-  const lawnBufferMat   = new THREE.MeshStandardMaterial({ color: 0x5e9146, roughness: 0.92 }); // 車道與跑道間草坪緩衝帶
+  const concreteRoadMat = new THREE.MeshStandardMaterial({ color: 0xd6d3cc, roughness: 0.88 });
+  const jointSeamMat    = new THREE.MeshStandardMaterial({ color: 0x3d4147, roughness: 0.95 });
+  const curbMat         = new THREE.MeshStandardMaterial({ color: 0xc2bfb8, roughness: 0.80 });
+  const lawnBufferMat   = new THREE.MeshStandardMaterial({ color: 0x5e9146, roughness: 0.92 });
   registerLawnMat(lawnBufferMat);
 
-  // v2.12.25 依校園樹木分布衛星圖：西段水泥車道自北棟西端斜向西北，沿北圍牆內側（距牆約 4.5 m）通往西北角後門；
-  //   排球場、籃球場與草地位於車道南側（原東西向直線車道會穿過北移後之排球場）
   const westRoadPts = WEST_ROAD_PTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
   const spurPts = NORTH_SPUR_PTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
   const roadSegs = [];
-  for (let i = 0; i < westRoadPts.length - 1; i++) roadSegs.push([westRoadPts[i], westRoadPts[i + 1], true]);
-  roadSegs.push([spurPts[0], spurPts[1], false]);
-  for (const [p1, p2, main] of roadSegs) {
+  for (let i = 0; i < westRoadPts.length - 1; i++) roadSegs.push([westRoadPts[i], westRoadPts[i + 1], true, i]);
+  roadSegs.push([spurPts[0], spurPts[1], false, 99]);
+
+  for (const [p1, p2, main, idx] of roadSegs) {
     const L = p1.distanceTo(p2);
+    const isNorthMain = main && (idx === 0 || idx === 1);
+    const rw = isNorthMain ? northRoadW : westRoadW;
     const sg = new THREE.Group();
     sg.position.set((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
     sg.rotation.y = -Math.atan2(p2.z - p1.z, p2.x - p1.x);
-    addBox(sg, L + westRoadW * 0.6, 0.10, westRoadW, concreteRoadMat, 0, 0.055, 0, false);
-    addBox(sg, L + 0.1, 0.010, 0.035, jointSeamMat, 0, 0.106, 0, false);
-    for (let jx = -L / 2 + 2.2; jx < L / 2 - 1; jx += 4.5) addBox(sg, 0.045, 0.012, westRoadW - 0.08, jointSeamMat, jx, 0.107, 0, false);
-    [-1, 1].forEach(sd => addBox(sg, L + 0.1, 0.16, 0.22, curbMat, 0, 0.085, sd * (westRoadW / 2 + 0.11), false));
-    if (main && L > 25) {                                // 雙向白色箭頭（沿車道方向）
-      for (let ax = -L / 2 + 8; ax < L / 2 - 8; ax += 26) {
-        addBox(sg, 2.4, 0.015, 0.22, lineWhiteMat, ax, 0.112, 0.75, false);
-        addMesh(sg, flatArrowHeadGeo(-1), lineWhiteMat, ax - 1.2, 0.113, 0.75, false).scale.setScalar(0.8);
-        addBox(sg, 2.4, 0.015, 0.22, lineWhiteMat, ax + 9, 0.112, -0.75, false);
-        addMesh(sg, flatArrowHeadGeo(1), lineWhiteMat, ax + 10.2, 0.113, -0.75, false).scale.setScalar(0.8);
+
+    if (isNorthMain) {
+      // 5.1m 風化灰水泥柏油車道主體
+      addBox(sg, L + rw * 0.45, 0.10, rw, northDrivewayMat, 0, 0.055, 0, false);
+      // 北側（local +Z，停車棚與有機農場側）水泥路緣與排水縫
+      addBox(sg, L + 0.2, 0.13, 0.18, curbMat, 0, 0.072, rw / 2 + 0.09, false);
+      // 南側（local -Z，北棟坡道與東廣場側）平順低緣排水縫（不阻擋無障礙坡道起步）
+      addBox(sg, L + 0.2, 0.014, 0.08, jointSeamMat, 0, 0.106, -rw / 2 + 0.04, false);
+      // 雙向白色方向箭頭（沿車道方向：local +X 朝西、local +Z 朝北）
+      // 實景照片 093249 / 093309：靠停車棚側(北側車道, +Z) 箭頭朝西(+1)；靠北棟側(南側車道, -Z) 箭頭朝東(-1)
+      for (let axPos = -L / 2 + 7; axPos < L / 2 - 7; axPos += 18) {
+        // 北側車道（朝西 +X）
+        addBox(sg, 1.55, 0.015, 0.24, lineWhiteMat, axPos, 0.112, 1.25, false);
+        addMesh(sg, flatArrowHeadGeo(1), lineWhiteMat, axPos + 0.78, 0.113, 1.25, false).scale.setScalar(0.85);
+        // 南側車道（朝東 -X）
+        addBox(sg, 1.55, 0.015, 0.24, lineWhiteMat, axPos + 3.2, 0.112, -1.25, false);
+        addMesh(sg, flatArrowHeadGeo(-1), lineWhiteMat, axPos + 2.42, 0.113, -1.25, false).scale.setScalar(0.85);
+      }
+    } else {
+      addBox(sg, L + rw * 0.6, 0.10, rw, concreteRoadMat, 0, 0.055, 0, false);
+      addBox(sg, L + 0.1, 0.010, 0.035, jointSeamMat, 0, 0.106, 0, false);
+      for (let jx = -L / 2 + 2.2; jx < L / 2 - 1; jx += 4.5) addBox(sg, 0.045, 0.012, rw - 0.08, jointSeamMat, jx, 0.107, 0, false);
+      [-1, 1].forEach(sd => addBox(sg, L + 0.1, 0.16, 0.22, curbMat, 0, 0.085, sd * (rw / 2 + 0.11), false));
+      if (main && L > 25) {
+        for (let axPos = -L / 2 + 8; axPos < L / 2 - 8; axPos += 26) {
+          addBox(sg, 2.4, 0.015, 0.22, lineWhiteMat, axPos, 0.112, 0.75, false);
+          addMesh(sg, flatArrowHeadGeo(-1), lineWhiteMat, axPos - 1.2, 0.113, 0.75, false).scale.setScalar(0.8);
+          addBox(sg, 2.4, 0.015, 0.22, lineWhiteMat, axPos + 9, 0.112, -0.75, false);
+          addMesh(sg, flatArrowHeadGeo(1), lineWhiteMat, axPos + 10.2, 0.113, -0.75, false).scale.setScalar(0.8);
+        }
       }
     }
     layerGroups.roads.add(sg);
   }
-  // v2.12.37 車道與北棟之間帶狀草地（依使用者說明：草地加樹木）
-  {
-    const stripMat = new THREE.MeshStandardMaterial({ color: 0x6f9f4f, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    registerLawnMat(stripMat);
-    // v2.12.40 北棟依航照北移：草地帶改止於北棟後側採光井（E 軸外 2 m）與廁所大樓、後走廊樓梯北緣
-    flatXZPoly([[-33.8, -61.4], [-11.3, -58.8], [52.4, -52.2], [52.4, -49.3], [-18.5, -55.6], [-18.5, -57.8], [-33.8, -59.6]].map(([x, z]) => new THREE.Vector3(x, 0, z)), stripMat, 0.07, layerGroups.roads, 0.2);
-  }
+
   // 車道西端與西北角後門平順交會區
   { const e = westRoadPts[westRoadPts.length - 1]; addBox(layerGroups.roads, 4.0, 0.09, 6.8, concreteRoadMat, e.x - 1.0, 0.052, e.z, false); }
 
-  // 藍色浪板單層鋼構大車棚 (實景相片 135208.jpg 天藍色烤漆方管鋼架柱梁、深藍浪板屋頂與停放機車汽車)
-  const sw = 89.1, sd = 22 * S, scx = X((430 + 705) / 2), scz = Z(42);   // v2.12.37 長約 89 m（依航照標示），建完後整組旋轉移至北牆與車道之間
-  // v2.12.7 依實景照片：淺灰鍍鋅浪板單斜屋頂（臨車道側高約 3.6 m、往北牆側降低），深灰鋼柱，
-  //   每跨屋架下緣交替漆藍色與青綠色方管橫梁；地坪水泥、白線劃設垂直停車格
-  const roofMetalMat = new THREE.MeshStandardMaterial({ color: 0xc9cdd0, roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide });
-  const cyanBeamMat = new THREE.MeshStandardMaterial({ color: 0x2f7fa3, roughness: 0.45, metalness: 0.3 });
-  const tealBeamMat = new THREE.MeshStandardMaterial({ color: 0x3f9a6e, roughness: 0.45, metalness: 0.3 });
-  const colMat = new THREE.MeshStandardMaterial({ color: 0x55595d, roughness: 0.5, metalness: 0.4 });
-  addBox(cp, sw, 0.12, sd + 1.4, new THREE.MeshStandardMaterial({ color: 0xa8a6a1, roughness: 0.9 }), scx, 0.06, scz, false);
-  const roofRise = 0.7, frontH = 3.6;
+  // -------------------------------------------------------------------------
+  // 【B. 北側 5.1m 單排懸臂鋼構大停車棚】(建構於北棟局部座標系並以 NORTH_XF 對齊，與北棟及 5.1m 車道零誤差平行)
+  // 依實景照片 20261125_093249 / 093309 1:1 重建：
+  //   - 深度 sd = 5.10m（南緣緊貼 5.1m 車道北緣 zb-7.90m，北緣止於 zb-13.00m）
+  //   - 單排後退淺灰 H 型鋼柱（臨車道側完全無柱、懸臂挑出，便於機汽車進出）
+  //   - 懸臂鋼構槽型橫梁（東端天藍 → 次跨深藍 → 深綠 → 藍綠交替）＋ 6 道鍍鋅 C 型鋼檁條 ＋ 單斜銀灰浪板屋頂 ＋ 日光燈具
+  //   - 東段停放密集彩色機車（前景亮藍機車等 18 輛）、中／西段停放汽車（8 輛）；後方為深褐紅磚圍牆與高大遮蔭喬木、南洋杉
+  // -------------------------------------------------------------------------
+  const zbLocal   = Z(115) - 7.65 / 2 - 2.38;      // -38.705m（與 buildNorthBuilding 精準一致）
+  const sd        = 5.10;                          // 使用者實測：停車棚寬度 5.1 公尺
+  const cpSouthZ  = zbLocal - 7.90;                // 緊貼 5.1m 車道北緣
+  const scz       = cpSouthZ - sd / 2;             // 停車棚中心 Z (-49.155m)
+  const cpNorthZ  = cpSouthZ - sd;                 // 停車棚北緣 (-51.705m)
+  const cpWestX   = -36.91;                        // 對齊北棟西端 (Axis ①)
+  const cpEastX   = 49.79;                         // 東端緊鄰有機農場西口紅磚花台與橘色三角錐
+  const sw        = cpEastX - cpWestX;             // 86.70m
+  const scx       = (cpWestX + cpEastX) / 2;       // 6.44m
+
+  const roofMetalMat  = new THREE.MeshStandardMaterial({ color: 0xc5cacf, roughness: 0.44, metalness: 0.56, side: THREE.DoubleSide });
+  const roofUnderMat  = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.55, metalness: 0.45 });
+  const purlinMat     = new THREE.MeshStandardMaterial({ color: 0xb2b8be, roughness: 0.42, metalness: 0.58 });
+  const skyBlueBeam   = new THREE.MeshStandardMaterial({ color: 0x3898d8, roughness: 0.42, metalness: 0.25 }); // 東端首跨亮天藍槽鋼梁 (Photo 3)
+  const cobaltBeam    = new THREE.MeshStandardMaterial({ color: 0x2467a8, roughness: 0.45, metalness: 0.28 }); // 中藍橫梁
+  const forestBeam    = new THREE.MeshStandardMaterial({ color: 0x2b6e4a, roughness: 0.46, metalness: 0.25 }); // 深青綠橫梁
+  const colGreyMat    = new THREE.MeshStandardMaterial({ color: 0x8a9096, roughness: 0.48, metalness: 0.45 }); // 淺灰漆面 H 型鋼柱 (Photo 3)
+  const plinthMat     = new THREE.MeshStandardMaterial({ color: 0x9f9d97, roughness: 0.88 });
+  const padConcreteMat = new THREE.MeshStandardMaterial({ color: 0xa9a7a1, roughness: 0.90 });
+  const lampHousingMat = new THREE.MeshStandardMaterial({ color: 0xebedf0, roughness: 0.40 });
+  const lampTubeMat    = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfffef4, emissiveIntensity: 0.55 });
+
+  // 1) 5.1m 停車棚水泥地坪與南緣路緣
+  addBox(cp, sw + 0.4, 0.12, sd, padConcreteMat, scx, 0.06, scz, false);
+
+  // 2) 單斜鍍鋅浪板屋頂（南／車道側高 3.45m，北／圍牆側低 2.65m）＋ 6 道縱向鍍鋅 C 型鋼檁條
+  const frontH   = 3.45;
+  const backH    = 2.65;
+  const roofRise = frontH - backH;
+  const roofDepth = sd + 0.55;                     // 前後略為挑檐覆蓋完整 5.1m 停車區
+  const roofAng  = -Math.atan2(roofRise, roofDepth);
+  const roofMidY = (frontH + backH) / 2;
+
   {
-    const roof = addMesh(cp, new THREE.BoxGeometry(sw + 0.6, 0.06, sd + 1.6), roofMetalMat, scx, frontH - roofRise / 2, scz);
-    roof.rotation.x = -Math.atan2(roofRise, sd + 1.6);          // 南（車道側）高、北低
-    for (let k = -Math.floor((sw + 0.6) / 0.6) / 2; k <= Math.floor((sw + 0.6) / 0.6) / 2; k++) {   // 浪板波紋
-      const rib = addMesh(cp, new THREE.BoxGeometry(0.05, 0.05, sd + 1.6), roofMetalMat, scx + k * 0.6, frontH - roofRise / 2 + 0.05, scz, false);
-      rib.rotation.x = roof.rotation.x;
+    const roofDeck = addMesh(cp, new THREE.BoxGeometry(sw + 0.8, 0.055, roofDepth), roofMetalMat, scx, roofMidY, scz);
+    roofDeck.rotation.x = roofAng;
+    // 屋頂浪板立體肋條
+    const ribStep = 0.68;
+    const halfRibs = Math.floor((sw + 0.8) / ribStep / 2);
+    for (let k = -halfRibs; k <= halfRibs; k++) {
+      const rib = addMesh(cp, new THREE.BoxGeometry(0.045, 0.045, roofDepth), roofMetalMat, scx + k * ribStep, roofMidY + 0.042, scz, false);
+      rib.rotation.x = roofAng;
+    }
+    // 6 道貫通東西向鍍鋅 C 型鋼檁條（照片 093309 屋檐下方清晰可見）
+    for (let p = 0; p < 6; p++) {
+      const frac = -0.46 + (p / 5) * 0.92;         // -0.46 (北) → +0.46 (南)
+      const pz = scz + frac * roofDepth;
+      const py = roofMidY + frac * roofRise - 0.085;
+      const purlin = addBox(cp, sw + 0.7, 0.11, 0.065, purlinMat, scx, py, pz, false);
+      purlin.rotation.x = roofAng;
     }
   }
-  const nBays = 12;
+
+  // 3) 單排後退淺灰 H 型鋼柱 ＋ 彩繪懸臂槽型橫梁（14 跨，臨車道側完全無柱！）＋ 棚下日光燈
+  const nBays = 14;
+  const bayW  = sw / nBays;
+  const colZ  = cpNorthZ + 1.35;                   // 退縮於北側距北緣 1.35m，向南懸臂 3.75m 覆蓋機汽車位
+  const colTopY = backH + ((colZ - cpNorthZ) / sd) * roofRise - 0.24;
+
   for (let i = 0; i <= nBays; i++) {
-    const colX = scx - sw / 2 + i * (sw / nBays);
-    addBox(cp, 0.2, frontH - 0.1, 0.2, colMat, colX, (frontH - 0.1) / 2, scz + sd / 2 - 0.3);
-    addBox(cp, 0.2, frontH - roofRise - 0.1, 0.2, colMat, colX, (frontH - roofRise - 0.1) / 2, scz - sd / 2 + 0.3);
-    const beam = addBox(cp, 0.16, 0.28, sd + 0.6, i % 2 ? tealBeamMat : cyanBeamMat, colX, frontH - roofRise / 2 - 0.22, scz);
-    beam.rotation.x = -Math.atan2(roofRise, sd + 1.6);
+    const colX = cpWestX + i * bayW;
+    // H 型鋼柱本體（翼板＋腹板）與水泥基座
+    addBox(cp, 0.26, colTopY, 0.28, colGreyMat, colX, colTopY / 2, colZ);
+    addBox(cp, 0.30, colTopY, 0.05, roofUnderMat, colX, colTopY / 2, colZ + 0.13, false);
+    addBox(cp, 0.30, colTopY, 0.05, roofUnderMat, colX, colTopY / 2, colZ - 0.13, false);
+    addBox(cp, 0.40, 0.22, 0.42, plinthMat, colX, 0.11, colZ, false);
+
+    // 彩繪懸臂主橫梁（照片 093309 順序：最東首跨亮天藍 → 次跨中藍 → 深青綠 → 藍綠交替）
+    let bMat;
+    if (i === nBays) bMat = skyBlueBeam;
+    else if (i === nBays - 1) bMat = cobaltBeam;
+    else bMat = ((nBays - 2 - i) % 2 === 0) ? forestBeam : cobaltBeam;
+
+    const beamLen = sd + 0.25;
+    const beamY   = roofMidY - 0.29;
+    const beamWeb = addBox(cp, 0.14, 0.34, beamLen, bMat, colX, beamY, scz);
+    beamWeb.rotation.x = roofAng;
+    // 橫梁上下凸緣
+    const flTop = addBox(cp, 0.22, 0.04, beamLen, bMat, colX, beamY + 0.16, scz, false);
+    flTop.rotation.x = roofAng;
+    const flBot = addBox(cp, 0.22, 0.04, beamLen, bMat, colX, beamY - 0.16, scz, false);
+    flBot.rotation.x = roofAng;
+
+    // 每跨棚下日光燈具（照片 093309 清晰可見）
+    if (i < nBays) {
+      const lx = colX + bayW * 0.5;
+      const lz = scz + 0.25;
+      const ly = roofMidY + ((lz - scz) / roofDepth) * roofRise - 0.14;
+      addBox(cp, 1.25, 0.05, 0.13, lampHousingMat, lx, ly, lz, false);
+      addBox(cp, 1.18, 0.03, 0.06, lampTubeMat, lx, ly - 0.035, lz, false);
+    }
   }
-  addBox(cp, sw, 0.26, 0.16, cyanBeamMat, scx, frontH - 0.2, scz + sd / 2 - 0.3);
-  // 白色停車格線（車頭朝車道）
-  const stallW = 2.5;
-  for (let lx = scx - sw / 2; lx <= scx + sw / 2 + 0.01; lx += stallW) addBox(cp, 0.1, 0.012, sd - 0.4, lineWhiteMat, lx, 0.125, scz, false);
-  addBox(cp, sw, 0.012, 0.1, lineWhiteMat, scx, 0.125, scz + sd / 2 - 0.2, false);
-  const carColors = [0x9ea3a8, 0x2b2e33, 0xe8e9eb, 0x627078, 0xd8d4c8, 0x8a8f96];
-  for (let c = 0; c < 6; c++) {
-    const carX = scx - sw / 2 + stallW * (1.5 + c * (c < 3 ? 1.6 : 3.2)), carZ = scz;
-    const cMat = new THREE.MeshStandardMaterial({ color: carColors[c % carColors.length], roughness: 0.35, metalness: 0.25 });
-    addBox(cp, 1.8, 0.6, 4.4, cMat, carX, 0.6, carZ);
-    addBox(cp, 1.6, 0.5, 2.2, cMat, carX, 1.15, carZ - 0.1);
-    addBox(cp, 1.64, 0.42, 2.26, mats.glassDark, carX, 1.13, carZ - 0.1);
-    [[0.75, 1.35], [0.75, -1.35], [-0.75, 1.35], [-0.75, -1.35]].forEach(([wx, wz]) => {
-      const wh = addMesh(cp, new THREE.CylinderGeometry(0.33, 0.33, 0.22, 12), mats.darkMetal, carX + wx, 0.33, carZ + wz);
+
+  // 4) 白色停車格標線（東段約 26m 劃設機車格，中／西段劃設 2.5m 汽車格）
+  const motoZoneX1 = cpEastX - 26.5;
+  addBox(cp, sw, 0.012, 0.10, lineWhiteMat, scx, 0.125, cpSouthZ - 0.18, false);
+  // 汽車格線 (cpWestX → motoZoneX1)
+  for (let lx = cpWestX + 0.3; lx <= motoZoneX1 + 0.05; lx += 2.5) {
+    addBox(cp, 0.09, 0.012, sd - 0.55, lineWhiteMat, lx, 0.125, scz, false);
+  }
+  // 機車格線 (motoZoneX1 → cpEastX)
+  for (let mx = motoZoneX1; mx <= cpEastX - 0.2; mx += 1.20) {
+    addBox(cp, 0.07, 0.012, 2.35, lineWhiteMat, mx, 0.125, cpSouthZ - 1.45, false);
+  }
+  addBox(cp, cpEastX - motoZoneX1, 0.012, 0.08, lineWhiteMat, (motoZoneX1 + cpEastX) / 2, 0.125, cpSouthZ - 2.65, false);
+
+  // 5) 東段前景整排停放機車（18 輛，含最東側亮藍機車，完全呼應照片 093249 / 093309）
+  const motoTireMat   = new THREE.MeshStandardMaterial({ color: 0x1a1c1f, roughness: 0.85 });
+  const motoSeatMat   = new THREE.MeshStandardMaterial({ color: 0x25272b, roughness: 0.72 });
+  const motoChromeMat = new THREE.MeshStandardMaterial({ color: 0xd0d6dc, roughness: 0.28, metalness: 0.78 });
+  const motoPlateMat  = new THREE.MeshStandardMaterial({ color: 0xf4f4f0, roughness: 0.45 });
+  const motoPalette   = [
+    0x1378d6, 0x1e2228, 0x3b424c, 0xc8cfd6, 0x2088d8, 0x1c1f24,
+    0x9b2c32, 0x2d343d, 0xd8dce0, 0x276eb0, 0x22262c, 0x5c6470,
+    0x186bb8, 0x2a2d33, 0xb8bec4, 0x7c2930, 0x333942, 0xe2e5e8
+  ];
+  for (let m = 0; m < 18; m++) {
+    const mx = cpEastX - 1.85 - m * 1.32;
+    const mz = cpSouthZ - 1.55 - (m % 3) * 0.14;
+    const mg = new THREE.Group();
+    mg.position.set(mx, 0.12, mz);
+    mg.rotation.y = Math.PI * 0.5 + ((m % 5) - 2) * 0.05;   // 車頭微斜朝北停入車棚
+    const bodyMat = new THREE.MeshStandardMaterial({ color: motoPalette[m % motoPalette.length], roughness: 0.36, metalness: 0.35 });
+    // 前後輪
+    [-0.56, 0.56].forEach(wx => {
+      const wh = addMesh(mg, new THREE.TorusGeometry(0.22, 0.065, 8, 14), motoTireMat, wx, 0.25, 0);
+      wh.rotation.y = 0;
+    });
+    // 車身側殼、座墊、龍頭斜板、把手與車牌
+    addBox(mg, 1.28, 0.38, 0.36, bodyMat, -0.04, 0.48, 0);
+    addBox(mg, 0.62, 0.13, 0.34, motoSeatMat, -0.18, 0.71, 0);
+    addBox(mg, 0.28, 0.52, 0.34, bodyMat, 0.42, 0.74, 0);
+    addBox(mg, 0.08, 0.06, 0.64, motoChromeMat, 0.38, 0.99, 0);
+    addBox(mg, 0.03, 0.14, 0.20, motoPlateMat, -0.68, 0.42, 0);
+    if (m % 2 === 0) {
+      addMesh(mg, new THREE.SphereGeometry(0.13, 10, 8), m % 4 === 0 ? motoChromeMat : motoSeatMat, -0.32, 0.87, 0); // 安全帽
+    }
+    cp.add(mg);
+  }
+
+  // 6) 中／西段停放汽車與休旅車（照片 093249 / 093309：機車旁緊接深灰休旅車與白色轎車）
+  const carSpecs = [
+    { x: motoZoneX1 - 2.0,  c: 0x3b4249, suv: true  },   // 深灰休旅車（緊鄰機車列西側，照片清晰可見）
+    { x: motoZoneX1 - 5.2,  c: 0xebedf0, suv: false },   // 白色轎車
+    { x: motoZoneX1 - 8.5,  c: 0x252930, suv: false },   // 黑色轎車
+    { x: motoZoneX1 - 14.5, c: 0xa4aab0, suv: true  },   // 銀灰休旅車
+    { x: motoZoneX1 - 20.5, c: 0xd8d5cc, suv: false },   // 米白轎車
+    { x: motoZoneX1 - 28.0, c: 0x4b5863, suv: false },   // 鐵灰轎車
+    { x: motoZoneX1 - 36.5, c: 0xe6e8eb, suv: true  },   // 白色休旅車
+    { x: motoZoneX1 - 46.0, c: 0x2d3238, suv: false }    // 深色轎車
+  ];
+  for (const cs of carSpecs) {
+    const cMat = new THREE.MeshStandardMaterial({ color: cs.c, roughness: 0.34, metalness: 0.28 });
+    const bodyH = cs.suv ? 0.72 : 0.56;
+    const cabH  = cs.suv ? 0.58 : 0.48;
+    const cabL  = cs.suv ? 2.55 : 2.15;
+    addBox(cp, 1.82, bodyH, 4.35, cMat, cs.x, 0.34 + bodyH / 2, scz + 0.15);
+    addBox(cp, 1.60, cabH, cabL, cMat, cs.x, 0.34 + bodyH + cabH / 2 - 0.04, scz - 0.05);
+    addBox(cp, 1.64, cabH - 0.10, cabL + 0.06, mats.glassDark, cs.x, 0.34 + bodyH + cabH / 2 - 0.06, scz - 0.05);
+    [[0.78, 1.32], [0.78, -1.32], [-0.78, 1.32], [-0.78, -1.32]].forEach(([wx, wz]) => {
+      const wh = addMesh(cp, new THREE.CylinderGeometry(0.32, 0.32, 0.22, 12), mats.darkMetal, cs.x + wx, 0.34, scz + 0.15 + wz);
       wh.rotation.z = Math.PI / 2;
     });
   }
-  for (let b = 0; b < 16; b++) {
-    const bikeX = scx + sw * 0.22 + b * 1.69;
-    addBox(cp, 0.14, 0.78, 1.55, mats.railBlue, bikeX, 0.45, scz);
+
+  // 7) 停車棚後方深褐紅磚圍牆與高大遮蔭喬木、南洋杉（照片 093249 / 093309 停車棚正後方景觀）
+  {
+    const backBrickMat = new THREE.MeshStandardMaterial({ color: 0x4b352c, roughness: 0.92 });
+    const backCapMat   = new THREE.MeshStandardMaterial({ color: 0x62463a, roughness: 0.88 });
+    const backWallZ    = cpNorthZ - 0.55;
+    addBox(cp, sw + 0.6, 1.95, 0.24, backBrickMat, scx, 0.975, backWallZ);
+    addBox(cp, sw + 0.6, 0.10, 0.30, backCapMat, scx, 1.98, backWallZ, false);
+
+    // 停車棚東端後方高大老樹（粗壯深褐樹幹＋茂密傘狀樹冠垂懸於東端屋頂上方，照片 093309 右上主景）
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3b2e, roughness: 0.92 });
+    const leafDark = new THREE.MeshStandardMaterial({ color: 0x265424, roughness: 0.84 });
+    const leafMid  = new THREE.MeshStandardMaterial({ color: 0x39702d, roughness: 0.82 });
+    const pineMat  = new THREE.MeshStandardMaterial({ color: 0x2d5e31, roughness: 0.85 });
+
+    const eastTreeX = cpEastX - 2.2, eastTreeZ = cpNorthZ - 1.85;
+    addMesh(cp, new THREE.CylinderGeometry(0.34, 0.48, 5.2, 10), trunkMat, eastTreeX, 2.6, eastTreeZ);
+    [
+      [0.0, 6.2, 0.8, 2.8, leafMid], [-2.2, 5.8, 1.2, 2.3, leafDark],
+      [2.1, 5.6, 0.5, 2.2, leafDark], [0.4, 7.6, -0.3, 2.4, leafMid],
+      [-1.4, 7.1, 1.6, 2.1, leafMid]
+    ].forEach(([ox, oy, oz, rad, mat]) => {
+      const blob = addMesh(cp, new THREE.DodecahedronGeometry(rad, 1), mat, eastTreeX + ox, oy, eastTreeZ + oz);
+      blob.scale.set(1.3, 0.78, 1.2);
+    });
+
+    // 停車棚中東段後方兩株高聳錐形南洋杉（照片 093249 / 093309 屋頂後方醒目尖塔狀針葉樹）
+    [[cpEastX - 11.5, cpNorthZ - 2.1, 1.05], [cpEastX - 15.8, cpNorthZ - 2.3, 0.92]].forEach(([px, pz, sc]) => {
+      addMesh(cp, new THREE.CylinderGeometry(0.14 * sc, 0.24 * sc, 4.5 * sc, 8), trunkMat, px, 2.25 * sc, pz);
+      for (let t = 0; t < 6; t++) {
+        const ty = (3.8 + t * 1.45) * sc;
+        const tr = (2.15 - t * 0.28) * sc;
+        addMesh(cp, new THREE.ConeGeometry(tr, 2.0 * sc, 9), t % 2 ? leafDark : pineMat, px, ty, pz);
+      }
+    });
   }
 
   cp.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'carport'; });
-  {                                                   // v2.12.37 旋轉約 5.3° 與北牆平行，中心移至 (13.55, -62.6)
-    const th = -0.09218, c = Math.cos(th), s_ = Math.sin(th);
-    cp.rotation.y = th;
-    cp.position.set(13.55 - (scx * c + scz * s_), 0, -62.6 - (-scx * s_ + scz * c));
-  }
+  NORTH_XF.apply(cp);
   layerGroups.buildings.add(cp);
   clickableGroups.push(cp);
   landmarkGroupMap.set('carport', cp);
@@ -21562,18 +21846,17 @@ function buildOrganicFarm() {
   }
 
   ofg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'organic-farm'; });
-  {   // v2.12.37 北側車道改沿北牆斜行：農場整組轉為與車道平行
-    // v2.12.40 北棟、東棟依航照北移後車道南側已無空間；依航照標示改置於車道北側、停車棚東邊，緊貼北牆內側（車道北緣以北約 0.6 m）
-    // v2.12.114 鎖定農場基準中心與深度，避免新增樹冠或東端堆肥池影響整體對齊車道北緣
+  {   // v2.12.117 對齊更新後之 5.1m 北側車道北緣（[57.6,-51.8]→[113.5,-45.0]），西端紅磚花台與橘色三角錐緊接 5.1m 停車棚東端
     const cx = 74.5, cz = -51.3, halfD = 4.9;
-    const th = -Math.atan2(9.4, 59.8), cs = Math.cos(th), sn = Math.sin(th);
-    const roadZ = -54.4 + (cx - 53.7) * (9.4 / 59.8);
-    const tz = roadZ - 2.0 - 0.6 - halfD;
+    const dx = 113.5 - 57.6, dz = -45.0 - (-51.8);
+    const th = -Math.atan2(dz, dx), cs = Math.cos(th), sn = Math.sin(th);
+    const roadZ = -51.8 + (cx - 57.6) * (dz / dx);
+    const tz = roadZ - 2.55 - 0.30 - halfD;
     ofg.rotation.y = th;
     ofg.position.set(cx - (cx * cs + cz * sn), 0, tz - (-cx * sn + cz * cs));
-    // v2.12.40 沿車道方向東移 5.5 m，讓出停車棚東端（依航照：農場緊接停車棚東側）
-    const ux = 59.8 / Math.hypot(59.8, 9.4), uz = 9.4 / Math.hypot(59.8, 9.4);
-    ofg.position.x += 5.5 * ux; ofg.position.z += 5.5 * uz;
+    // 沿車道方向東移 4.8 m，使西口紅磚花台與雙三角錐緊接停車棚東端（照片 093249 / 093309）
+    const ux = dx / Math.hypot(dx, dz), uz = dz / Math.hypot(dx, dz);
+    ofg.position.x += 4.8 * ux; ofg.position.z += 4.8 * uz;
   }
   layerGroups.buildings.add(ofg);
   clickableGroups.push(ofg);
@@ -21939,29 +22222,29 @@ const CAMPUS_TREE_REGISTRY = [
   ["442040", "印度紫檀", -38.2, -71.1, 0],
   ["442281", "雨豆樹", -33.9, 26.0, 0],
   ["441981", "楓香", -33.9, -37.0, 0],
-  ["442007", "波羅蜜", -30.7, -58.4, 0],
-  ["441997", "緬梔", -30.5, -59.8, 0],
-  ["441990", "苦楝", -29.2, -58.6, 0],
+  ["442007", "波羅蜜", -30.7, -69.2, 0],   // v2.12.117 移至 5.1m 停車棚西端後方綠帶，讓出 5.1m 車道
+  ["441997", "緬梔", -30.5, -69.0, 0],     // v2.12.117 移至 5.1m 停車棚西端後方綠帶
+  ["441990", "苦楝", -29.2, -68.8, 0],     // v2.12.117 移至 5.1m 停車棚西端後方綠帶
   ["442157", "金露花", -16.8, -2.7, 0],   // v2.12.101 移入新棟前庭草坪花台內（原在花磚廣場上）
-  ["442315", "印度紫檀", -16.5, -58.8, 0],
+  ["442315", "印度紫檀", -16.5, -55.3, 0], // v2.12.117 貼齊北棟西翼採光井北緣，讓出 5.1m 車道
   // ["442139", "馬拉巴栗", -15.8, -31.0, 0],  // v2.12.106 改由西棟北側草地植物區（nfg B）依實景精確配置，避免與主景大樟樹重疊
   // ["442144", "樟樹", -15.8, -28.5, 0],      // v2.12.106 改由西棟北側草地植物區（nfg B）精緻重塑主景大樟樹
   // ["442133", "馬拉巴栗", -13.9, -34.7, 0],  // v2.12.106 原立於廚房東側紅磚鋪面區上，實景改由靠牆自然灌叢呈現
-  ["442319", "印度紫檀", -13.3, -58.4, 0],
+  ["442319", "印度紫檀", -13.3, -55.0, 0], // v2.12.117 貼齊北棟西翼採光井北緣，讓出 5.1m 車道
   // ["442150", "榕樹", -12.4, -24.7, 0],      // v2.12.106 依實景照片 3 & 5，西棟前中庭幾何花磚廣場為開闊通道，無此立於花磚上之榕樹
   // ["839655", "桂花", -11.4, -3.2, 0],     // v2.12.111 依實景照片 20261118_132826，前緣階梯草坪改由 buildNewBuilding 3.3 精緻灌木帶呈現
-  ["442332", "風鈴木", -8.6, -57.9, 0],
+  ["442332", "風鈴木", -8.6, -54.5, 0],    // v2.12.117 貼齊北棟西翼採光井北緣，讓出 5.1m 車道
   ["442179", "金露花", -6.1, -1.3, 0],    // v2.12.110 略西移至西側草地綠帶前緣，避開新配置之高大樟樹主幹
   // ["442188", "龍柏", -5.6, 1.3, 0],       // v2.12.111 依實景照片 20261118_132826 / 20261123_073313，此處為通往坡道之混凝土曲徑步道，圓錐柏樹改位於草坪中段（-10.35, 1.85）
-  ["442323", "風鈴木", -3.7, -57.2, 0],
+  ["442323", "風鈴木", -3.7, -54.0, 0],    // v2.12.117 貼齊北棟西翼採光井北緣，讓出 5.1m 車道
   // ["442123", "黃槿", -1.7, -28.7, 0],     // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置，避免立於幾何花磚上
   // ["442211", "樟樹", 2.6, -1.3, 0],       // v2.12.110 依實景照片 003 移至西側樓梯右側隔壁草地綠帶，改由 buildSouthBuilding 14.7 精緻建置
   // ["442204", "瓊崖海棠", 6.4, -1.6, 0],   // v2.12.110 依實景照片 003，草綠圓窗塔前至西端草坡無此瓊崖海棠
   // ["442115", "水黃皮", 4.1, -27.4, 0],    // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
   // ["442218", "茄冬", 11.4, -1.2, 0],      // v2.12.110 依實景照片 003 移至草坡西端（西側樓梯左旁），改由 buildSouthBuilding 14.7 精緻建置
   // ["442107", "火焰木", 8.4, -26.2, 0],    // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
-  ["442334", "印度紫檀", 10.5, -55.9, 0],
-  ["442330", "印度紫檀", 14.4, -55.5, 0],
+  ["442334", "印度紫檀", 10.5, -52.7, 0],  // v2.12.117 貼齊北棟中央後門西側，讓出 5.1m 車道
+  ["442330", "印度紫檀", 14.4, -52.3, 0],  // v2.12.117 對應照片 093249 無障礙坡道西端旁高大喬木，讓出 5.1m 車道
   // ["442230", "黃金風鈴木", 17.6, -1.6, 0], // v2.12.110 依實景照片 002/003 改由 buildSouthBuilding 14.7 精緻建置（微向左傾主幹）
   // ["442100", "黃槿", 26.9, -22.8, 0],     // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
   // ["442237", "火焰木", 29.5, -1.1, 0],    // v2.12.110 依實景照片 001/002，天藍圓窗塔前沙土丘由大葉欖仁主導，無此火焰木
