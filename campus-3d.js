@@ -22571,13 +22571,15 @@ const CAMPUS_TREE_REGISTRY = [
     '田代氏石斑木': (x, z) => shrub(x, z, { w: 1.5, h: 1.8, stem: 0.4, leaves: [G(0x2b5a2a), G(0x376a31)], flowers: G(0xffe4ec) })
   };
   const crownR = { '菲島福木': 1.3, '蘭嶼肉桂': 1.4, '龍柏': 1.0, '竹柏': 1.2, '大葉羅漢松': 1.0, '七里香': 0.9, '金露花': 0.8, '桂花': 1.0, '臺灣海桐': 1.0, '田代氏石斑木': 0.9, '黃椰子': 1.6, '扇葉蒲葵': 1.8, '可可椰子': 3.0, '大王椰子': 3.2, '雨豆樹': 6.5, '榕樹': 5.5, '大葉桃花心木': 5.5, '印度紫檀': 5.0, '樟樹': 4.5, '鳳凰木': 5.0 };
-  // v2.12.119 依實景照片 20261125_093338.jpg（及北棟西側樓梯實景）：北棟後方西側半部四棵喬木（442315、442319、442332、442323）
-  // 樹幹細長、分枝點高（約 5.2～5.8 m）並微向北側車道開闊處傾斜，樹冠位置高（達 3F～屋頂高度）但較輕盈通透，不如預設茂密寬大
+  // v2.12.120 依實景照片 20261116_071557.jpg 與 20261125_093338.jpg：北棟後方西側半部四棵喬木（442315、442319、442332、442323）
+  // 及中央後門／坡道西端旁兩棵（442334、442330）：深褐細長樹幹、分枝點高（5.0～6.2 m）並微向北側車道傾斜，高處樹冠輕盈通透不厚重
   const NORTH_REAR_WEST_TREES = {
-    '442315': { H: 13.8, forkH: 5.8, tr: 0.19, leanZ: -0.75, bark: bGrey, nB: 5, spread: 2.3, endY: 0.79, nC: 5, leaf: 0.76, flat: 0.54, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.5 },
-    '442319': { H: 13.2, forkH: 5.6, tr: 0.17, leanZ: -0.60, bark: bGrey, nB: 5, spread: 2.2, endY: 0.79, nC: 5, leaf: 0.72, flat: 0.54, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.4 },
-    '442332': { H: 12.8, forkH: 5.4, tr: 0.18, leanZ: -0.55, bark: bGrey, nB: 5, spread: 2.2, endY: 0.80, nC: 5, leaf: 0.72, flat: 0.56, top: 3, leaves: [G(0x447c36), G(0x599140)], crownR: 2.4 },
-    '442323': { H: 12.6, forkH: 5.2, tr: 0.19, leanZ: -0.55, bark: bGrey, nB: 5, spread: 2.4, endY: 0.79, nC: 5, leaf: 0.76, flat: 0.56, top: 3, leaves: [G(0x447c36), G(0x599140)], crownR: 2.5 }
+    '442315': { H: 14.6, forkH: 5.8, tr: 0.21, leanZ: -0.95, bark: bDark, nB: 5, spread: 2.6, endY: 0.78, nC: 5, leaf: 0.72, flat: 0.52, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.6 },
+    '442319': { H: 13.5, forkH: 6.2, tr: 0.14, leanZ: -0.65, bark: bDark, nB: 4, spread: 2.1, endY: 0.81, nC: 4, leaf: 0.64, flat: 0.52, top: 2, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.2 },
+    '442332': { H: 13.2, forkH: 5.6, tr: 0.17, leanZ: -0.60, bark: bDark, nB: 5, spread: 2.3, endY: 0.80, nC: 4, leaf: 0.68, flat: 0.54, top: 3, leaves: [G(0x447c36), G(0x599140)], crownR: 2.4 },
+    '442323': { H: 13.0, forkH: 5.5, tr: 0.18, leanZ: -0.60, bark: bDark, nB: 5, spread: 2.4, endY: 0.79, nC: 5, leaf: 0.72, flat: 0.54, top: 3, leaves: [G(0x447c36), G(0x599140)], crownR: 2.5 },
+    '442334': { H: 13.4, forkH: 5.0, tr: 0.20, leanZ: -0.65, bark: bDark, nB: 5, spread: 2.7, endY: 0.78, nC: 5, leaf: 0.78, flat: 0.54, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.8 },
+    '442330': { H: 13.6, forkH: 4.8, tr: 0.22, leanZ: -0.65, bark: bDark, nB: 5, spread: 2.8, endY: 0.78, nC: 5, leaf: 0.80, flat: 0.54, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.9 }
   };
   const SPORTS_KIND_SP = { breadfruit: '麵包樹', crapeMyrtle: '大花紫薇', rosewood: '印度紫檀' };
   const allTrees = CAMPUS_TREE_REGISTRY.concat(SPORTS_NAMED_TREES.map((t, i) => ['photo' + i, SPORTS_KIND_SP[t.kind], t.x, t.z, 0]));
