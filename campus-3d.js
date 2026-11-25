@@ -22384,8 +22384,8 @@ const CAMPUS_TREE_REGISTRY = [
   // ---- 樹形家族 ----
   // 闊葉樹：主幹 → 分叉 → nB 支主枝 → 枝端葉團
   const broad = (x, z, o) => {
-    const lean = o.lean || 0;
-    const fork = V(x + lean, o.forkH, z);
+    const lean = o.lean || 0, leanZ = o.leanZ || 0;
+    const fork = V(x + lean, o.forkH, z + leanZ);
     limb(V(x, 0, z), fork, o.tr, o.tr * 0.78, o.bark, 9);
     if (o.buttress) for (let k = 0; k < 5; k++) {
       const a = (k / 5) * Math.PI * 2 + r();
@@ -22399,7 +22399,7 @@ const CAMPUS_TREE_REGISTRY = [
     for (let b = 0; b < o.nB; b++) {
       const a = (b / o.nB) * Math.PI * 2 + r() * 0.6;
       const reach = o.spread * (0.7 + r() * 0.35);
-      const e = V(fork.x + Math.cos(a) * reach, o.H * (o.endY + r() * 0.1), z + Math.sin(a) * reach);
+      const e = V(fork.x + Math.cos(a) * reach, o.H * (o.endY + r() * 0.1), fork.z + Math.sin(a) * reach);
       limb(fork, e, o.tr * 0.55, o.tr * 0.2, o.bark, 6);
       for (let c = 0; c < o.nC; c++) {
         const ca = r() * Math.PI * 2, cr = r() * o.leaf * 1.3;
@@ -22409,7 +22409,7 @@ const CAMPUS_TREE_REGISTRY = [
     }
     for (let c = 0; c < (o.top || 3); c++) {
       const ca = r() * Math.PI * 2, cr = r() * o.spread * 0.55;
-      blob(fork.x + Math.cos(ca) * cr, o.H * 0.9 + r() * o.leaf * 0.6, z + Math.sin(ca) * cr, o.leaf * 1.05, LP(o, c, 'core'), 1.3, o.flat, o.det || 0);
+      blob(fork.x + Math.cos(ca) * cr, o.H * 0.9 + r() * o.leaf * 0.6, fork.z + Math.sin(ca) * cr, o.leaf * 1.05, LP(o, c, 'core'), 1.3, o.flat, o.det || 0);
     }
   };
   // 分層水平枝（欖仁、馬拉巴栗）
@@ -22571,6 +22571,14 @@ const CAMPUS_TREE_REGISTRY = [
     '田代氏石斑木': (x, z) => shrub(x, z, { w: 1.5, h: 1.8, stem: 0.4, leaves: [G(0x2b5a2a), G(0x376a31)], flowers: G(0xffe4ec) })
   };
   const crownR = { '菲島福木': 1.3, '蘭嶼肉桂': 1.4, '龍柏': 1.0, '竹柏': 1.2, '大葉羅漢松': 1.0, '七里香': 0.9, '金露花': 0.8, '桂花': 1.0, '臺灣海桐': 1.0, '田代氏石斑木': 0.9, '黃椰子': 1.6, '扇葉蒲葵': 1.8, '可可椰子': 3.0, '大王椰子': 3.2, '雨豆樹': 6.5, '榕樹': 5.5, '大葉桃花心木': 5.5, '印度紫檀': 5.0, '樟樹': 4.5, '鳳凰木': 5.0 };
+  // v2.12.119 依實景照片 20261125_093338.jpg（及北棟西側樓梯實景）：北棟後方西側半部四棵喬木（442315、442319、442332、442323）
+  // 樹幹細長、分枝點高（約 5.2～5.8 m）並微向北側車道開闊處傾斜，樹冠位置高（達 3F～屋頂高度）但較輕盈通透，不如預設茂密寬大
+  const NORTH_REAR_WEST_TREES = {
+    '442315': { H: 13.8, forkH: 5.8, tr: 0.19, leanZ: -0.75, bark: bGrey, nB: 5, spread: 2.3, endY: 0.79, nC: 5, leaf: 0.76, flat: 0.54, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.5 },
+    '442319': { H: 13.2, forkH: 5.6, tr: 0.17, leanZ: -0.60, bark: bGrey, nB: 5, spread: 2.2, endY: 0.79, nC: 5, leaf: 0.72, flat: 0.54, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.4 },
+    '442332': { H: 12.8, forkH: 5.4, tr: 0.18, leanZ: -0.55, bark: bGrey, nB: 5, spread: 2.2, endY: 0.80, nC: 5, leaf: 0.72, flat: 0.56, top: 3, leaves: [G(0x447c36), G(0x599140)], crownR: 2.4 },
+    '442323': { H: 12.6, forkH: 5.2, tr: 0.19, leanZ: -0.55, bark: bGrey, nB: 5, spread: 2.4, endY: 0.79, nC: 5, leaf: 0.76, flat: 0.56, top: 3, leaves: [G(0x447c36), G(0x599140)], crownR: 2.5 }
+  };
   const SPORTS_KIND_SP = { breadfruit: '麵包樹', crapeMyrtle: '大花紫薇', rosewood: '印度紫檀' };
   const allTrees = CAMPUS_TREE_REGISTRY.concat(SPORTS_NAMED_TREES.map((t, i) => ['photo' + i, SPORTS_KIND_SP[t.kind], t.x, t.z, 0]));
   allTrees.forEach(([id, sp, x, z, lean]) => {
@@ -22581,7 +22589,9 @@ const CAMPUS_TREE_REGISTRY = [
     phenoState(sp);
     window.__phenoCounts = window.__phenoCounts || {}; window.__phenoCounts[sp] = (window.__phenoCounts[sp] || 0) + 1;
     phenoTreeAt(sp, x, z);
-    fn(x, z, lean);
+    const custom = NORTH_REAR_WEST_TREES[id];
+    if (custom) broad(x, z, custom);
+    else fn(x, z, lean);
     decoratePheno(sp, n0, x, z);
     // 依樹幹位置決定標高：南棟前草地土丘貼合丘面高程、新棟前庭草坪置於草坪頂（+0.14）、其餘下沉中庭內整株下移；全部標記 keepLevel
     const hillY = window.__southHillAt ? window.__southHillAt(x, z) : null;
@@ -22592,7 +22602,7 @@ const CAMPUS_TREE_REGISTRY = [
       o.position.y += yOff;
       o.traverse(c => { c.userData.keepLevel = true; });
     }
-    campusTreeRecords.push({ x, z, r: crownR[sp] || 3.2, species: /椰|蒲葵/.test(sp) ? 'palm' : (/風鈴|緬梔|紫薇|火焰|鳳凰|藍花楹/.test(sp) ? 'flowering' : 'broad') });
+    campusTreeRecords.push({ x, z, r: (custom && custom.crownR) || crownR[sp] || 3.2, species: /椰|蒲葵/.test(sp) ? 'palm' : (/風鈴|緬梔|紫薇|火焰|鳳凰|藍花楹/.test(sp) ? 'flowering' : 'broad') });
   });
   layerGroups.vegetation.add(grp);
   window.__registryTreeCount = CAMPUS_TREE_REGISTRY.length;
