@@ -8330,8 +8330,34 @@ function buildNorthBuilding() {
       } else {
         walkWorld.addSolid(ax(3), ax(18), fy, fy + 1.25, zb - 0.18, zb + 0.18, xf, 'north-rear-rail');
       }
-      // 東端封閉護欄
-      walkWorld.addSolid(ax(18) - 0.15, ax(18) + 0.15, fy, fy + 1.25, zb, zf, xf, 'north-east-end-rail');
+      // 東端封閉護欄（僅封閉後走廊 zb..zCoreFront；前走廊 zCoreFront..zf 開放連通東北棟 1F–3F 連廊！）
+      walkWorld.addSolid(ax(18) - 0.15, ax(18) + 0.15, fy, fy + 1.25, zb, zCoreFront, xf, 'north-east-end-rail');
+
+      // 東北棟連廊（軸線 ⑱–⑲ 水平 + ⑲–⑳ 緩斜坡銜接東棟 1F/2F/3F 西走廊）
+      {
+        const e1L = ax(18), e1R = ax(19), e2R = ax(20);
+        const eastBridgeY = [0.30, 4.41, 7.93];
+        const yEnd = eastBridgeY[k];
+        // 第一跨 ⑱–⑲（水平）
+        walkWorld.addFloor(e1L - 0.1, e1R + 0.1, zCoreFront - 0.1, zf + 0.15, fy, xf, { label: `北棟↔東棟 · ${flLabel} 連廊` });
+        // 第二跨 ⑲–⑳+2.2（微斜坡平順銜接東棟西走廊，覆蓋兩棟微旋轉間隙）
+        walkWorld.addRamp(e1R - 0.08, e2R + 2.2, zCoreFront - 0.15, zf + 0.2, 'x', fy, yEnd, xf, { label: `北棟↔東棟 · ${flLabel} 連廊斜坡` });
+        walkWorld.addZone(e1L, e2R + 1.5, Math.min(fy, yEnd) - 0.3, Math.max(fy, yEnd) + FH - 0.2, zCoreFront, zf, xf, `北棟↔東棟 · ${flLabel} 連廊`, 18);
+        // 連廊南北側防墜護欄（1F 留出 ⑱ 旁 1.45m 雙向階梯出入口）
+        const railStartX = (k === 0) ? (e1L + 1.55) : e1L;
+        walkWorld.addSolid(railStartX, e2R + 0.4, Math.min(fy, yEnd), Math.max(fy, yEnd) + 1.25, zCoreFront - 0.16, zCoreFront + 0.12, xf, 'ne-bridge-rail-n');
+        walkWorld.addSolid(railStartX, e2R + 0.4, Math.min(fy, yEnd), Math.max(fy, yEnd) + 1.25, zf - 0.12, zf + 0.16, xf, 'ne-bridge-rail-s');
+        if (k === 0) {
+          // 1F 連廊北側與南側中庭階梯
+          walkWorld.addRamp(e1L, e1L + 1.50, zCoreFront - 1.75, zCoreFront + 0.1, 'z', 0.0, fy, xf, { label: '北棟↔東棟 · 1F 連廊北側階梯' });
+          walkWorld.addRamp(e1L, e1L + 1.50, zf - 0.1, zf + 1.75, 'z', fy, 0.0, xf, { label: '北棟↔東棟 · 1F 連廊南側階梯' });
+          // 記錄連廊東端世界座標供東棟西走廊護欄自動開口銜接
+          window.NORTH_EAST_BRIDGE_EAST_WORLD = [
+            xf.toWorld(e2R, zCoreFront),
+            xf.toWorld(e2R, zf)
+          ];
+        }
+      }
 
       // 7 間教室：樓板、隔間牆、南側開門洞牆、北側窗牆、區域標籤
       classroomAxisPairs.forEach(([a1, a2], rIdx) => {
@@ -11214,8 +11240,25 @@ function buildEastBuilding() {
         walkWorld.addSolid(xE - 0.30, xE + 0.08, fy, fy + 1.40, zNorthStairS, zBreezeN - 0.9, xf, 'east-front-rail-1f-n');
       } else {
         walkWorld.addSolid(xE - 0.30, xE + 0.15, fy, fy + 1.25, zNorthStairN, zSouthEnd, xf, 'east-front-rail');
-        // 西側後走廊護欄（2F/3F 全線防護）
-        walkWorld.addSolid(xW0 - 0.12, xW0 + 0.18, fy, fy + 1.25, zNorthStairN, zSouthEnd, xf, 'east-rear-rail');
+        // 西側後走廊護欄（2F/3F 留出與北棟東北連廊的連通開口！）
+        const brW = window.NORTH_EAST_BRIDGE_EAST_WORLD;
+        if (brW) {
+          const [, ez1] = xf.toLocal(brW[0][0], brW[0][1]);
+          const [, ez2] = xf.toLocal(brW[1][0], brW[1][1]);
+          const zOpenMid = (ez1 + ez2) / 2;
+          const zOpenW = Math.abs(ez2 - ez1) + 1.2;
+          walkWorld.addWallWithDoors('z', xW0, zNorthStairN, zSouthEnd, fy, fy + 1.25, 0.30, [{ pos: zOpenMid, width: zOpenW, height: 2.5 }], xf, 'east-rear-rail');
+          walkWorld.addFloor(xW0 - 1.6, xB + 0.1, Math.min(ez1, ez2) - 0.5, Math.max(ez1, ez2) + 0.5, fy, xf, { label: `東棟↔北棟 · ${flLabel} 連廊接點` });
+        } else {
+          walkWorld.addSolid(xW0 - 0.12, xW0 + 0.18, fy, fy + 1.25, zNorthStairN, zSouthEnd, xf, 'east-rear-rail');
+        }
+      }
+      // 1F 西走廊與北棟連廊交接處地面延伸銜接
+      if (k === 0 && window.NORTH_EAST_BRIDGE_EAST_WORLD) {
+        const brW = window.NORTH_EAST_BRIDGE_EAST_WORLD;
+        const [, ez1] = xf.toLocal(brW[0][0], brW[0][1]);
+        const [, ez2] = xf.toLocal(brW[1][0], brW[1][1]);
+        walkWorld.addFloor(xW0 - 1.6, xB + 0.1, Math.min(ez1, ez2) - 0.5, Math.max(ez1, ez2) + 0.5, fy, xf, { label: '東棟↔北棟 · 1F 連廊接點' });
       }
       // 南端封閉護欄（2F/3F）
       if (k > 0) {
