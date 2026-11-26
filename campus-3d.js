@@ -5785,11 +5785,14 @@ function buildNorthBuilding() {
       })();
       const mosaicMat = new THREE.MeshStandardMaterial({ map: mosaicTex, roughness: 0.38, metalness: 0.04 });
       const soffitYellowMat = new THREE.MeshStandardMaterial({ color: 0xefe2bc, roughness: 0.85 });    // 梯底與平台天花淡鵝黃
-      const innerYellowMat  = new THREE.MeshStandardMaterial({ color: 0xdccaa0, roughness: 0.88 });    // 梯段護牆內側暖黃粉刷（照片 1）
-      const stairGreenWallMat = new THREE.MeshStandardMaterial({ color: 0x3b6e28, roughness: 0.72 });  // 廁所大樓東牆翠綠（照片 3、5）
-      const entryConcreteMat  = new THREE.MeshStandardMaterial({ color: 0xc8cacb, roughness: 0.85 });  // 1F 入口階梯淺灰平整水泥牆（照片 2、5）
-      const ladderGreenMat    = new THREE.MeshStandardMaterial({ color: 0x7da36b, roughness: 0.55, metalness: 0.25 }); // 屋頂淺綠直爬梯（照片 5）
-      const roofCopingMat     = new THREE.MeshStandardMaterial({ color: 0x7a8362, roughness: 0.92 });  // 屋頂女兒牆帶青苔壓頂（照片 1）
+      const innerYellowMat  = new THREE.MeshStandardMaterial({ color: 0xdccaa0, roughness: 0.88 });    // 1F~3F 梯段護牆內側暖黃粉刷（照片 2）
+      const stairLimeGreenMat = new THREE.MeshStandardMaterial({ color: 0x5c9436, roughness: 0.78 });  // 3F→屋頂護牆內側與女兒牆草綠色粉刷（實景照片 1、4）
+      const stairGreenWallMat = new THREE.MeshStandardMaterial({ color: 0x3b6e28, roughness: 0.72 });  // 廁所大樓東牆翠綠
+      const entryConcreteMat  = new THREE.MeshStandardMaterial({ color: 0xc8cacb, roughness: 0.85 });  // 1F 入口階梯淺灰平整水泥牆
+      const alumLadderMat     = new THREE.MeshStandardMaterial({ color: 0xb8bec2, roughness: 0.42, metalness: 0.55 }); // 3F→屋頂金屬直爬梯（實景照片 2、4）
+      const roofCopingMat     = new THREE.MeshStandardMaterial({ color: 0x5d6b42, roughness: 0.94 });  // 屋頂女兒牆帶青苔深綠壓頂（實景照片 2、4）
+      const rustIronGateMat   = new THREE.MeshStandardMaterial({ color: 0x5c3c2a, roughness: 0.72, metalness: 0.48 }); // 3F→屋頂生鏽防盜鐵柵門（實景照片 1、3、4）
+      const treadNosingMat    = new THREE.MeshStandardMaterial({ color: 0x9c9990, roughness: 0.45, metalness: 0.40 }); // 踏步前緣金屬防滑條（實景照片 1）
       const TEX_M = 0.80;                                  // 貼圖一張 = 8 片 × 10 cm
       function tileBox(w, h, d, mat, x, y, z, rotZ = 0) {
         const geo = new THREE.BoxGeometry(w, h, d);
@@ -5805,7 +5808,7 @@ function buildNorthBuilding() {
         if (rotZ) m.rotation.z = rotZ;
         return m;
       }
-      // 沿梯段坡度之平行四邊形構件（左右兩端垂直收邊，與東西端平台無縫銜接、絕不突刺；磁磚貼圖沿坡向排列還原照片 2、5）
+      // 沿梯段坡度之平行四邊形構件（左右兩端垂直收邊，與東西端平台無縫銜接、絕不突刺；磁磚貼圖沿坡向排列還原實景）
       function slopedBand(mat, zc, depth, below, above, alignTileToSlope = true) {
         const shape = new THREE.Shape();
         shape.moveTo(0, -below);
@@ -5833,14 +5836,14 @@ function buildNorthBuilding() {
       // A. 中央造型主柱（軸線 ③，貫通 1F～屋頂，柱底加寬台座＋各層橫樑＋柱面設施）
       // -----------------------------------------------------------
       tileBox(colW, stWallH, colD, mosaicMat, centerColX, stWallH / 2, colCz);
-      tileBox(colW + 0.28, 0.56, colD + 0.14, mosaicMat, centerColX, 0.28, colCz);              // 柱底加寬白磚台座（照片 2、5）
+      tileBox(colW + 0.28, 0.56, colD + 0.14, mosaicMat, centerColX, 0.28, colCz);              // 柱底加寬白磚台座
       tileBox(colW + 0.04, 0.06, colD + 0.04, roofCopingMat, centerColX, stWallH + 0.03, colCz);// 柱頂壓頂收邊
-      // 主柱與後走廊外牆間結構橫樑（2F／3F／屋頂底緣，照片 5 清晰可見）
-      for (let lv = 1; lv <= 3; lv++) {
+      // 主柱與後走廊外牆間結構橫樑（2F／3F 底緣；3F→屋頂上方敞開對天不設橫樑）
+      for (let lv = 1; lv <= 2; lv++) {
         const beamY = baseH + lv * FH - 0.22;
         addBox(g, 0.34, 0.36, flightW + 0.10, soffitYellowMat, centerColX, beamY, flightCz);
       }
-      // 柱北面 1F 設施（照片 2、5：建物標示牌、小電箱、紅色緊急按鈕、白色監視器、黑色 LED 投光燈）
+      // 柱北面 1F 設施（建物標示牌、小電箱、紅色緊急按鈕、白色監視器、黑色 LED 投光燈）
       const colNorthZ = colCz - colD / 2;
       addBox(g, 0.26, 0.36, 0.03, panelPureWhite, centerColX, 1.55, colNorthZ - 0.02);
       addBox(g, 0.18, 0.24, 0.035, ironGrilleMat, centerColX, 1.55, colNorthZ - 0.028);
@@ -5852,11 +5855,17 @@ function buildNorthBuilding() {
 
       // -----------------------------------------------------------
       // B. 三段平行直梯（1F→2F、2F→3F、3F→屋頂），皆自西向東上升
+      //    v2.12.121 依實景照片 1、2、3、4 精修 3F→屋頂段：
+      //    - 北側護牆內面改為草綠色粉刷＋頂緣青苔深綠壓頂
+      //    - 南側增設白方格磁磚斜護牆（下緣貼合 3F 走廊地坪，斜頂緣與西端立面草綠色收邊）
+      //    - 梯段中段增設生鏽直條防盜鐵柵門（含鎖扣與北側捲花鐵飾，高出護牆於車道與屋頂皆清晰可見）
       // -----------------------------------------------------------
-      const outerParapetTile  = slopedBand(mosaicMat, zEastNorth + (wallT - 0.02) / 2, wallT - 0.02, 0.38, balH, true);    // 北側白方格磁磚外護牆
-      const outerParapetInner = slopedBand(innerYellowMat, zFlightN - 0.015, 0.03, 0.10, balH - 0.02, false);              // 護牆內側暖黃粉刷（照片 1）
-      const soffitSlab        = slopedBand(soffitYellowMat, flightCz, flightW, 0.38, -0.22, false);                        // 鵝黃色梯底板
-      const soffitEdgeBeamN   = slopedBand(soffitYellowMat, zFlightN - 0.09, 0.18, 0.46, -0.22, false);                    // 梯底北側斜邊樑（照片 5）
+      const outerParapetTile       = slopedBand(mosaicMat, zEastNorth + (wallT - 0.02) / 2, wallT - 0.02, 0.38, balH, true);    // 北側白方格磁磚外護牆
+      const outerParapetInner      = slopedBand(innerYellowMat, zFlightN - 0.015, 0.03, 0.10, balH - 0.02, false);              // 1F~3F 護牆內側暖黃粉刷
+      const outerParapetInnerGreen = slopedBand(stairLimeGreenMat, zFlightN - 0.015, 0.03, 0.10, balH - 0.02, false);           // 3F→屋頂護牆內側草綠色粉刷（照片 1、4）
+      const outerParapetRoofCoping = slopedBand(roofCopingMat, zEastNorth + wallT / 2, wallT + 0.03, -balH, balH + 0.05, false);// 3F→屋頂北側護牆頂緣青苔壓頂（照片 4）
+      const soffitSlab             = slopedBand(soffitYellowMat, flightCz, flightW, 0.38, -0.22, false);                        // 鵝黃色梯底板
+      const soffitEdgeBeamN        = slopedBand(soffitYellowMat, zFlightN - 0.09, 0.18, 0.46, -0.22, false);                    // 梯底北側斜邊樑
       for (let k = 0; k < 3; k++) {
         const y0 = baseH + k * FH;
         for (let s = 0; s < nRise; s++) {
@@ -5864,11 +5873,69 @@ function buildNorthBuilding() {
           const top = y0 + (s + 1) * rise;
           addBox(g, tread + 0.005, 0.28, flightW, mats.slab, sx, top - 0.14, flightCz);
           addBox(g, tread + 0.005, 0.022, flightW, stTreadMat, sx, top - 0.011, flightCz);
+          if (k === 2) {
+            // 3F→屋頂洗石子踏步前緣金屬防滑條（照片 1）
+            addBox(g, 0.032, 0.008, flightW - 0.04, treadNosingMat, sx - tread / 2 + 0.025, top + 0.004, flightCz, false);
+          }
         }
         soffitSlab(y0);
         soffitEdgeBeamN(y0);
         outerParapetTile(y0);
-        outerParapetInner(y0);
+        if (k === 2) {
+          outerParapetInnerGreen(y0);
+          outerParapetRoofCoping(y0);
+        } else {
+          outerParapetInner(y0);
+        }
+      }
+
+      // 3F→屋頂南側（走廊側）白方格磁磚斜護牆＋草綠色斜頂與端面收邊（照片 1 右側）
+      {
+        const y3 = baseH + 2 * FH;
+        const sWallShape = new THREE.Shape();
+        sWallShape.moveTo(0, 0);
+        sWallShape.lineTo(runL, 0);
+        sWallShape.lineTo(runL, FH + balH);
+        sWallShape.lineTo(0, balH);
+        sWallShape.closePath();
+        const sWallGeo = new THREE.ExtrudeGeometry(sWallShape, { depth: wallT, bevelEnabled: false });
+        const sPos = sWallGeo.attributes.position, sUv = sWallGeo.attributes.uv;
+        for (let i = 0; i < sPos.count; i++) {
+          sUv.setXY(i, sPos.getX(i) / TEX_M, sPos.getY(i) / TEX_M);
+        }
+        addMesh(g, sWallGeo, mosaicMat, xs, y3, zFlightS);
+        // 梯側（北面）內襯草綠邊條與頂緣草綠壓頂（照片 1）
+        const sTopCoping = slopedBand(stairLimeGreenMat, zFlightS + wallT / 2, wallT + 0.02, -balH, balH + 0.055, false);
+        sTopCoping(y3);
+        // 西端起跑處垂直草綠立面收邊（照片 1 右下角前景）
+        addBox(g, 0.03, balH + 0.05, wallT + 0.02, stairLimeGreenMat, xs - 0.01, y3 + (balH + 0.05) / 2, zFlightS + wallT / 2);
+
+        // 3F→屋頂梯段生鏽直條防盜鐵柵門（照片 1、3 紅箭頭、4）
+        const gateStep = 8;
+        const gateX = xs + gateStep * tread;
+        const gateY0 = y3 + gateStep * rise;
+        const gateH = 1.88;
+        const gateZ1 = zFlightN + 0.04, gateZ2 = zFlightS - 0.04;
+        const gateW = gateZ2 - gateZ1, gateCz = (gateZ1 + gateZ2) / 2;
+        // 左右門框立柱
+        addBox(g, 0.055, gateH, 0.055, rustIronGateMat, gateX, gateY0 + gateH / 2, gateZ1);
+        addBox(g, 0.055, gateH, 0.055, rustIronGateMat, gateX, gateY0 + gateH / 2, gateZ2);
+        // 上、中鎖桿、下三道橫框
+        addBox(g, 0.042, 0.045, gateW, rustIronGateMat, gateX, gateY0 + gateH - 0.03, gateCz);
+        addBox(g, 0.045, 0.045, gateW, rustIronGateMat, gateX, gateY0 + gateH * 0.62, gateCz);
+        addBox(g, 0.042, 0.045, gateW, rustIronGateMat, gateX, gateY0 + 0.08, gateCz);
+        // 9 根垂直鐵柵條
+        const nBars = 9;
+        for (let b = 1; b <= nBars; b++) {
+          const bz = gateZ1 + (b / (nBars + 1)) * gateW;
+          addBox(g, 0.024, gateH - 0.12, 0.024, rustIronGateMat, gateX, gateY0 + gateH / 2 + 0.02, bz);
+        }
+        // 中央鎖頭（掛鎖細節）
+        addBox(g, 0.04, 0.075, 0.055, treadNosingMat, gateX - 0.03, gateY0 + gateH * 0.62 - 0.04, gateZ1 + 0.22, false);
+        // 北側門柱上方半圓形鐵藝捲飾（照片 1 與照片 4 皆清晰可見）
+        const scrollMesh = addMesh(g, new THREE.TorusGeometry(0.18, 0.014, 6, 14, Math.PI), rustIronGateMat, gateX, gateY0 + gateH - 0.36, gateZ1 - 0.02, false);
+        scrollMesh.rotation.y = Math.PI / 2;
+        scrollMesh.rotation.z = Math.PI / 2;
       }
 
       // -----------------------------------------------------------
@@ -5886,45 +5953,68 @@ function buildNorthBuilding() {
       addBox(g, 0.036, 0.94, 0.036, appleGreenMat, b2L + 0.08, baseH + 0.47, zBoxNorth + 0.08);
       addBox(g, 0.036, 0.94, 0.036, appleGreenMat, xs, baseH + 0.47, zBoxNorth + 0.08);
 
-      // 2F（lv=1）與 3F（lv=2）西端懸挑外凸白方格磁磚方盒平台（照片 2、3、5）
+      // 2F（lv=1）與 3F（lv=2）西端懸挑外凸白方格磁磚方盒平台（3F 內側護牆為草綠色粉刷，照片 1）
       for (let lv = 1; lv <= 2; lv++) {
         const fy = baseH + lv * FH;
         const hBal = 1.08;
+        const innerMatLv = lv === 2 ? stairLimeGreenMat : innerYellowMat;
         addBox(g, boxW, 0.24, boxD, corridorFloorMat, boxCx, fy - 0.12, boxCz);                           // 磨石子地坪
         addBox(g, boxW - 0.04, 0.12, boxD - 0.04, soffitYellowMat, boxCx, fy - 0.30, boxCz);              // 鵝黃色天花底板
-        // 天花板嵌入式日光燈具（照片 5 清晰可見）
+        // 天花板嵌入式日光燈具
         addBox(g, 0.65, 0.04, 0.16, lightFixtureMat, boxCx, fy - 0.37, boxCz - 0.35);
-        // 北面實心白方格磁磚護牆（涵蓋樓板厚，內側淡黃粉刷）
+        // 北面實心白方格磁磚護牆（涵蓋樓板厚；2F 內側暖黃、3F 內側草綠）
         tileBox(boxW, hBal + 0.38, wallT, mosaicMat, boxCx, fy + (hBal - 0.38) / 2, zBoxNorth + wallT / 2);
-        addBox(g, boxW - wallT, hBal - 0.04, 0.025, innerYellowMat, boxCx - wallT / 2, fy + hBal / 2, zBoxNorth + wallT + 0.012);
+        addBox(g, boxW - wallT, hBal - 0.04, 0.025, innerMatLv, boxCx - wallT / 2, fy + hBal / 2, zBoxNorth + wallT + 0.012);
         // 東面實心白方格磁磚護牆（僅外側懸挑段 zBoxNorth ~ zEastNorth；南側敞開作為梯段起跑口）
         const cheekD = zEastNorth - zBoxNorth;
         tileBox(wallT, hBal + 0.38, cheekD + wallT, mosaicMat, xs - wallT / 2, fy + (hBal - 0.38) / 2, zBoxNorth + (cheekD + wallT) / 2);
-        addBox(g, 0.025, hBal - 0.04, cheekD, innerYellowMat, xs - wallT - 0.012, fy + hBal / 2, zBoxNorth + wallT + cheekD / 2);
+        addBox(g, 0.025, hBal - 0.04, cheekD, innerMatLv, xs - wallT - 0.012, fy + hBal / 2, zBoxNorth + wallT + cheekD / 2);
+        if (lv === 2) {
+          // 3F 西端平台護牆頂緣草綠色壓頂收邊（照片 1 左下）
+          addBox(g, boxW + 0.02, 0.045, wallT + 0.03, stairLimeGreenMat, boxCx, fy + hBal + 0.022, zBoxNorth + wallT / 2);
+          addBox(g, wallT + 0.03, 0.045, cheekD + wallT + 0.02, stairLimeGreenMat, xs - wallT / 2, fy + hBal + 0.022, zBoxNorth + (cheekD + wallT) / 2);
+        }
       }
 
-      // 廁所大樓東牆（軸線 ②，自地面至屋頂全高翠綠塗裝）＋1F 紅色消防栓箱＋落水管／監視器＋屋頂淺綠直爬梯
+      // 廁所大樓東牆（軸線 ②，自地面至屋頂全高翠綠塗裝）＋1F／3F 紅色消防栓箱＋落水管／監視器＋屋頂金屬直爬梯
       {
         const greenWallH = baseH + 3 * FH + 1.25;
         const greenX = b2L + 0.08;
-        addBox(g, 0.16, greenWallH, boxD, stairGreenWallMat, greenX, greenWallH / 2, boxCz);              // 1F～屋頂全高翠綠牆（照片 3、5）
-        // 1F 紅色消防栓箱（照片 5）
+        addBox(g, 0.16, greenWallH, boxD, stairGreenWallMat, greenX, greenWallH / 2, boxCz);              // 1F～屋頂全高翠綠牆
+        // 1F 紅色消防栓箱
         addBox(g, 0.14, 0.78, 0.50, fireHydrantMat, greenX + 0.14, baseH + 1.15, boxCz - 0.45);
         addBox(g, 0.02, 0.30, 0.34, panelPureWhite, greenX + 0.22, baseH + 1.15, boxCz - 0.45);
-        // 東北轉角灰 PVC 落水管＋3F 紅彎頭＋1F/2F 雙監視器（照片 2）
+        // 3F 西端平台紅色消防栓箱（照片 4 鐵門後方清晰可見）
+        const y3F = baseH + 2 * FH;
+        addBox(g, 0.14, 0.76, 0.50, fireHydrantMat, greenX + 0.14, y3F + 1.15, flightCz + 0.10);
+        addBox(g, 0.02, 0.28, 0.32, panelPureWhite, greenX + 0.22, y3F + 1.15, flightCz + 0.10);
+        // 東北轉角灰 PVC 落水管＋3F 紅彎頭＋1F/2F 雙監視器
         const pipeX = b2L + 0.06, pipeZ = zBoxNorth - 0.04;
         addBox(g, 0.085, baseH + 2 * FH - 0.45, 0.085, pipePvcMat, pipeX, (baseH + 2 * FH - 0.45) / 2, pipeZ);
         addBox(g, 0.09, 0.55, 0.09, fireHydrantMat, pipeX, baseH + 2 * FH - 0.18, pipeZ);                 // 3F 轉折紅管段
         addBox(g, 0.24, 0.09, 0.10, panelPureWhite, pipeX + 0.06, baseH + FH - 0.55, pipeZ - 0.12);       // 雙監視器組
         addBox(g, 0.20, 0.09, 0.10, panelPureWhite, pipeX - 0.08, baseH + FH - 0.58, pipeZ - 0.10);
-        // 3F 西端方盒上方淺綠色鋼製直爬梯（通往廁所大樓屋頂，照片 1、5）
-        const ladX = greenX + 0.22, ladZ1 = zBoxNorth + 0.55, ladZ2 = ladZ1 + 0.48;
-        const ladY0 = baseH + 2 * FH + 1.05, ladH = 2.65;
-        addBox(g, 0.04, ladH, 0.04, ladderGreenMat, ladX, ladY0 + ladH / 2, ladZ1);
-        addBox(g, 0.04, ladH, 0.04, ladderGreenMat, ladX, ladY0 + ladH / 2, ladZ2);
-        for (let r = 0; r < 8; r++) {
-          addBox(g, 0.03, 0.03, ladZ2 - ladZ1, ladderGreenMat, ladX, ladY0 + 0.28 + r * 0.32, (ladZ1 + ladZ2) / 2);
+        // 3F 西端平台通往廁所大樓屋頂金屬直爬梯（照片 2、4 鐵門後方鋁色直爬梯）
+        const ladX = greenX + 0.24, ladZ1 = flightCz - 0.16, ladZ2 = ladZ1 + 0.46;
+        const ladY0 = y3F + 0.40, ladH = 3.65;
+        addBox(g, 0.04, ladH, 0.04, alumLadderMat, ladX, ladY0 + ladH / 2, ladZ1);
+        addBox(g, 0.04, ladH, 0.04, alumLadderMat, ladX, ladY0 + ladH / 2, ladZ2);
+        for (let r = 0; r < 11; r++) {
+          addBox(g, 0.028, 0.028, ladZ2 - ladZ1, alumLadderMat, ladX, ladY0 + 0.28 + r * 0.31, (ladZ1 + ladZ2) / 2);
         }
+        // 屋頂層北緣草綠色女兒牆（軸線 ②～梯口西側）＋白色屋頂監視器（照片 2、4 清晰可見）
+        const rfY = baseH + 3 * FH;
+        const rfParaW = (xe - b2L) - 0.10;
+        const rfParaCx = b2L + rfParaW / 2;
+        addBox(g, rfParaW, topFasciaH, 0.24, stairLimeGreenMat, rfParaCx, rfY + topFasciaH / 2, zb + 0.12);
+        addBox(g, rfParaW + 0.02, 0.05, 0.28, roofCopingMat, rfParaCx, rfY + topFasciaH + 0.025, zb + 0.12);
+        // 白色壁掛屋頂監視器（裝設於近廁所端女兒牆北側轉角，朝東監看樓梯出入口，照片 2、4）
+        const camX = b2L + 0.65, camY = rfY + topFasciaH - 0.14, camZ = zb - 0.06;
+        addBox(g, 0.10, 0.14, 0.08, panelPureWhite, camX, camY, camZ + 0.05);
+        addBox(g, 0.14, 0.04, 0.04, panelPureWhite, camX + 0.08, camY, camZ - 0.02);
+        const camBody = addMesh(g, new THREE.CylinderGeometry(0.055, 0.055, 0.18, 12), panelPureWhite, camX + 0.16, camY - 0.02, camZ - 0.06);
+        camBody.rotation.z = Math.PI / 2;
+        camBody.rotation.y = 0.25;
       }
 
       // -----------------------------------------------------------
@@ -5934,36 +6024,37 @@ function buildNorthBuilding() {
       const neColW = 0.36, neColD = 0.36;
       const neColX = xEastBoxEnd - neColW / 2;
       const neColZ = zEastNorth + neColD / 2;
-      // 東北角細長白方格磁磚貫通立柱（自地面直通屋頂東端平台底緣，照片 1、2、3、4、5 標誌性結構）
+      // 東北角細長白方格磁磚貫通立柱（自地面直通屋頂東端平台底緣）
       const neColH = baseH + 3 * FH;
       tileBox(neColW, neColH, neColD, mosaicMat, neColX, neColH / 2, neColZ);
 
-      // 1F 東端梯下地面混凝土鋪面＋東緣 1.05 m 白磚矮牆（隔開採光天井與梯下開放空間，照片 2、3、4、5）
+      // 1F 東端梯下地面混凝土鋪面＋東緣 1.05 m 白磚矮牆（隔開採光天井與梯下開放空間）
       addBox(g, xEastBoxEnd - centerColX, 0.08, eastBoxD, concreteFloorMat, (centerColX + xEastBoxEnd) / 2, 0.04, eastBoxCz);
       tileBox(wallT, 1.05, eastBoxD, mosaicMat, xEastBoxEnd - wallT / 2, 0.525, eastBoxCz);
       tileBox(neColW + 0.55, 1.05, wallT, mosaicMat, xEastBoxEnd - (neColW + 0.55) / 2, 0.525, zEastNorth + wallT / 2);
-      // 1F 主柱東側地面三根灰色 PVC 豎管與牆面小電箱（照片 5）
+      // 1F 主柱東側地面三根灰色 PVC 豎管與牆面小電箱
       for (let i = 0; i < 3; i++) {
         addMesh(g, new THREE.CylinderGeometry(0.055, 0.055, 0.65 - i * 0.04, 12), pipePvcMat, centerColX + 0.72 + i * 0.14, 0.34, zb - 0.14);
       }
       addBox(g, 0.24, 0.34, 0.10, panelPureWhite, centerColX + 0.62, 1.12, zb - 0.06);
 
-      // 2F／3F／屋頂東端抵達平台
+      // 2F／3F／屋頂東端抵達平台（屋頂層內側為草綠色粉刷＋深綠青苔壓頂，照片 2、4）
       for (let lv = 1; lv <= 3; lv++) {
         const fy = baseH + lv * FH;
-        const hBal = lv === 3 ? topFasciaH : balH;                                                        // 屋頂層與北棟屋頂女兒牆齊平（照片 1、4）
+        const hBal = lv === 3 ? topFasciaH : balH;                                                        // 屋頂層與北棟屋頂女兒牆齊平
+        const eInnerMat = lv === 3 ? stairLimeGreenMat : innerYellowMat;
         addBox(g, eBoxW, 0.24, eastBoxD, corridorFloorMat, eBoxCx, fy - 0.12, eastBoxCz);
         addBox(g, eBoxW - 0.04, 0.12, eastBoxD - 0.04, soffitYellowMat, eBoxCx, fy - 0.30, eastBoxCz);
-        // 北面護牆（白方格磁磚外飾＋內側暖黃粉刷，與梯段護牆齊平）
+        // 北面護牆（白方格磁磚外飾＋內側 2F/3F 暖黃、屋頂草綠）
         tileBox(eBoxW, hBal + 0.38, wallT, mosaicMat, eBoxCx, fy + (hBal - 0.38) / 2, zEastNorth + wallT / 2);
-        addBox(g, eBoxW - wallT, hBal - 0.04, 0.025, innerYellowMat, eBoxCx - wallT / 2, fy + hBal / 2, zEastNorth + wallT + 0.012);
-        // 東面護牆（白方格磁磚外飾＋內側暖黃粉刷）
+        addBox(g, eBoxW - wallT, hBal - 0.04, 0.025, eInnerMat, eBoxCx - wallT / 2, fy + hBal / 2, zEastNorth + wallT + 0.012);
+        // 東面護牆（白方格磁磚外飾＋內側 2F/3F 暖黃、屋頂草綠）
         tileBox(wallT, hBal + 0.38, eastBoxD, mosaicMat, xEastBoxEnd - wallT / 2, fy + (hBal - 0.38) / 2, eastBoxCz);
-        addBox(g, 0.025, hBal - 0.04, eastBoxD - wallT, innerYellowMat, xEastBoxEnd - wallT - 0.012, fy + hBal / 2, eastBoxCz + wallT / 2);
+        addBox(g, 0.025, hBal - 0.04, eastBoxD - wallT, eInnerMat, xEastBoxEnd - wallT - 0.012, fy + hBal / 2, eastBoxCz + wallT / 2);
         if (lv === 3) {
-          // 屋頂層女兒牆青苔壓頂收邊（照片 1）
-          addBox(g, eBoxW + 0.02, 0.05, wallT + 0.04, roofCopingMat, eBoxCx, fy + hBal + 0.025, zEastNorth + wallT / 2);
-          addBox(g, wallT + 0.04, 0.05, eastBoxD + 0.02, roofCopingMat, xEastBoxEnd - wallT / 2, fy + hBal + 0.025, eastBoxCz);
+          // 屋頂層女兒牆青苔深綠壓頂收邊（照片 2、4）
+          addBox(g, eBoxW + 0.02, 0.055, wallT + 0.04, roofCopingMat, eBoxCx, fy + hBal + 0.027, zEastNorth + wallT / 2);
+          addBox(g, wallT + 0.04, 0.055, eastBoxD + 0.02, roofCopingMat, xEastBoxEnd - wallT / 2, fy + hBal + 0.027, eastBoxCz);
         }
       }
 
@@ -22310,17 +22401,17 @@ const CAMPUS_TREE_REGISTRY = [
   ["441997", "緬梔", -30.5, -69.0, 0],     // v2.12.117 移至 5.1m 停車棚西端後方綠帶
   ["441990", "苦楝", -29.2, -68.8, 0],     // v2.12.117 移至 5.1m 停車棚西端後方綠帶
   ["442157", "金露花", -16.8, -2.7, 0],   // v2.12.101 移入新棟前庭草坪花台內（原在花磚廣場上）
-  ["442315", "印度紫檀", -16.5, -55.3, 0], // v2.12.117 貼齊北棟西翼採光井北緣，讓出 5.1m 車道
+  ["442315", "印度紫檀", -15.4, -55.2, 0], // v2.12.121 依 20261116_071557.jpg：立於北棟西側樓梯東端與採光井墨綠護欄起點旁草皮帶
   // ["442139", "馬拉巴栗", -15.8, -31.0, 0],  // v2.12.106 改由西棟北側草地植物區（nfg B）依實景精確配置，避免與主景大樟樹重疊
   // ["442144", "樟樹", -15.8, -28.5, 0],      // v2.12.106 改由西棟北側草地植物區（nfg B）精緻重塑主景大樟樹
   // ["442133", "馬拉巴栗", -13.9, -34.7, 0],  // v2.12.106 原立於廚房東側紅磚鋪面區上，實景改由靠牆自然灌叢呈現
-  ["442319", "印度紫檀", -13.3, -55.0, 0], // v2.12.117 貼齊北棟西翼採光井北緣，讓出 5.1m 車道
+  ["442319", "印度紫檀", -12.3, -54.9, 0], // v2.12.121 依 20261116_071557.jpg：貼齊北棟西翼採光井北緣草皮帶（第二棵細長喬木）
   // ["442150", "榕樹", -12.4, -24.7, 0],      // v2.12.106 依實景照片 3 & 5，西棟前中庭幾何花磚廣場為開闊通道，無此立於花磚上之榕樹
   // ["839655", "桂花", -11.4, -3.2, 0],     // v2.12.111 依實景照片 20261118_132826，前緣階梯草坪改由 buildNewBuilding 3.3 精緻灌木帶呈現
-  ["442332", "風鈴木", -8.6, -54.5, 0],    // v2.12.117 貼齊北棟西翼採光井北緣，讓出 5.1m 車道
+  ["442332", "風鈴木", -7.9, -54.4, 0],    // v2.12.121 依 20261116_071557.jpg：貼齊北棟西翼採光井北緣草皮帶（第三棵細長喬木）
   ["442179", "金露花", -6.1, -1.3, 0],    // v2.12.110 略西移至西側草地綠帶前緣，避開新配置之高大樟樹主幹
   // ["442188", "龍柏", -5.6, 1.3, 0],       // v2.12.111 依實景照片 20261118_132826 / 20261123_073313，此處為通往坡道之混凝土曲徑步道，圓錐柏樹改位於草坪中段（-10.35, 1.85）
-  ["442323", "風鈴木", -3.7, -54.0, 0],    // v2.12.117 貼齊北棟西翼採光井北緣，讓出 5.1m 車道
+  ["442323", "風鈴木", -3.3, -53.9, 0],    // v2.12.121 依 20261116_071557.jpg：貼齊北棟西翼採光井北緣草皮帶（第四棵細長喬木）
   // ["442123", "黃槿", -1.7, -28.7, 0],     // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置，避免立於幾何花磚上
   // ["442211", "樟樹", 2.6, -1.3, 0],       // v2.12.110 依實景照片 003 移至西側樓梯右側隔壁草地綠帶，改由 buildSouthBuilding 14.7 精緻建置
   // ["442204", "瓊崖海棠", 6.4, -1.6, 0],   // v2.12.110 依實景照片 003，草綠圓窗塔前至西端草坡無此瓊崖海棠
@@ -22571,13 +22662,66 @@ const CAMPUS_TREE_REGISTRY = [
     '田代氏石斑木': (x, z) => shrub(x, z, { w: 1.5, h: 1.8, stem: 0.4, leaves: [G(0x2b5a2a), G(0x376a31)], flowers: G(0xffe4ec) })
   };
   const crownR = { '菲島福木': 1.3, '蘭嶼肉桂': 1.4, '龍柏': 1.0, '竹柏': 1.2, '大葉羅漢松': 1.0, '七里香': 0.9, '金露花': 0.8, '桂花': 1.0, '臺灣海桐': 1.0, '田代氏石斑木': 0.9, '黃椰子': 1.6, '扇葉蒲葵': 1.8, '可可椰子': 3.0, '大王椰子': 3.2, '雨豆樹': 6.5, '榕樹': 5.5, '大葉桃花心木': 5.5, '印度紫檀': 5.0, '樟樹': 4.5, '鳳凰木': 5.0 };
-  // v2.12.120 依實景照片 20261116_071557.jpg 與 20261125_093338.jpg：北棟後方西側半部四棵喬木（442315、442319、442332、442323）
-  // 及中央後門／坡道西端旁兩棵（442334、442330）：深褐細長樹幹、分枝點高（5.0～6.2 m）並微向北側車道傾斜，高處樹冠輕盈通透不厚重
+  // v2.12.121 依實景照片 20261116_071557.jpg 與屋頂俯拍實景（從頂樓看02 / 向下01 / 3F通往頂樓）：
+  // 北棟北側車道後半段四棵喬木（442315、442319、442332、442323）：
+  // 深黑褐粗糙細長樹幹（底部微外擴根基）、自地面一路向北側車道自然傾斜、於 5.4～6.2 m 高處呈陡峭 V 字形分叉主枝直上屋頂高度，
+  // 上層配輕盈通透的橄欖黃綠羽狀複葉小葉團，使深色枝幹與藍天於樹冠間清晰透出
+  const bVeryDark = M(0x2d241c);
+  const northRearOliveLeaves = [G(0x5c7332), G(0x6e853b), G(0x829446)];
+  const northRearTree = (x, z, o) => {
+    const lz1 = o.leanZ * 0.45, lx1 = (o.leanX || 0) * 0.45;
+    const mid = V(x + lx1, o.forkH * 0.52, z + lz1);
+    const fork = V(x + (o.leanX || 0), o.forkH, z + o.leanZ);
+    // 根基微外擴＋兩段自然微彎深褐樹幹
+    limb(V(x, 0, z), V(x + lx1 * 0.12, 0.75, z + lz1 * 0.12), o.tr * 1.32, o.tr * 0.98, o.bark, 9);
+    limb(V(x + lx1 * 0.12, 0.72, z + lz1 * 0.12), mid, o.tr * 0.98, o.tr * 0.86, o.bark, 9);
+    limb(mid, fork, o.tr * 0.86, o.tr * 0.74, o.bark, 8);
+    // 高位陡峭 V/Y 字形上揚主枝（延續向北傾勢，形成實景中清晰可見的深色高枝骨架）
+    const nMain = o.nMain || 2;
+    for (let m = 0; m < nMain; m++) {
+      const mAng = (m / nMain) * Math.PI * 2 + (o.angOff || 0.35);
+      const mSpread = o.spread * (0.34 + 0.16 * (m % 2));
+      const mH = o.H * (0.72 + 0.08 * (m % 2));
+      const mEnd = V(
+        fork.x + Math.cos(mAng) * mSpread + (o.leanX || 0) * 0.35,
+        mH,
+        fork.z + Math.sin(mAng) * mSpread + o.leanZ * 0.55
+      );
+      limb(fork, mEnd, o.tr * 0.62, o.tr * 0.28, o.bark, 7);
+      // 由主枝上段分出細長亞枝與輕盈通透之橄欖黃綠葉叢
+      const nSub = o.nSub || 3;
+      for (let s = 0; s < nSub; s++) {
+        const sa = mAng + (s - (nSub - 1) / 2) * 1.15 + (r() - 0.5) * 0.45;
+        const tStart = 0.48 + (s / Math.max(1, nSub)) * 0.45;
+        const p0 = new THREE.Vector3().lerpVectors(fork, mEnd, tStart);
+        const sReach = o.spread * (0.48 + r() * 0.42);
+        const p1 = V(
+          p0.x + Math.cos(sa) * sReach,
+          Math.min(o.H * 0.98, p0.y + (o.H - o.forkH) * (0.28 + r() * 0.26)),
+          p0.z + Math.sin(sa) * sReach + o.leanZ * 0.18
+        );
+        limb(p0, p1, o.tr * 0.28, o.tr * 0.10, o.bark, 5);
+        for (let c = 0; c < o.nC; c++) {
+          const ca = r() * Math.PI * 2, cr = r() * o.leaf * 1.35;
+          const lt = 0.55 + r() * 0.55;
+          const lx = p0.x + (p1.x - p0.x) * lt + Math.cos(ca) * cr;
+          const ly = p0.y + (p1.y - p0.y) * lt + (r() - 0.35) * o.leaf * 0.7;
+          const lz = p0.z + (p1.z - p0.z) * lt + Math.sin(ca) * cr;
+          blob(lx, ly, lz, o.leaf * (0.72 + r() * 0.48), LP(o, c + s + m), 1.32, o.flat, 0);
+        }
+      }
+    }
+    // 頂梢輕盈羽葉（拉高輪廓至屋頂上方而不厚重）
+    for (let c = 0; c < (o.top || 3); c++) {
+      const ca = r() * Math.PI * 2, cr = r() * o.spread * 0.48;
+      blob(fork.x + Math.cos(ca) * cr, o.H * (0.88 + r() * 0.11), fork.z + o.leanZ * 0.55 + Math.sin(ca) * cr, o.leaf * 0.95, LP(o, c, 'core'), 1.35, o.flat, 0);
+    }
+  };
   const NORTH_REAR_WEST_TREES = {
-    '442315': { H: 14.6, forkH: 5.8, tr: 0.21, leanZ: -0.95, bark: bDark, nB: 5, spread: 2.6, endY: 0.78, nC: 5, leaf: 0.72, flat: 0.52, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.6 },
-    '442319': { H: 13.5, forkH: 6.2, tr: 0.14, leanZ: -0.65, bark: bDark, nB: 4, spread: 2.1, endY: 0.81, nC: 4, leaf: 0.64, flat: 0.52, top: 2, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.2 },
-    '442332': { H: 13.2, forkH: 5.6, tr: 0.17, leanZ: -0.60, bark: bDark, nB: 5, spread: 2.3, endY: 0.80, nC: 4, leaf: 0.68, flat: 0.54, top: 3, leaves: [G(0x447c36), G(0x599140)], crownR: 2.4 },
-    '442323': { H: 13.0, forkH: 5.5, tr: 0.18, leanZ: -0.60, bark: bDark, nB: 5, spread: 2.4, endY: 0.79, nC: 5, leaf: 0.72, flat: 0.54, top: 3, leaves: [G(0x447c36), G(0x599140)], crownR: 2.5 },
+    '442315': { slender: true, H: 15.2, forkH: 5.4, tr: 0.22, leanX: -0.25, leanZ: -1.15, bark: bVeryDark, nMain: 3, nSub: 3, spread: 2.5, nC: 4, leaf: 0.56, flat: 0.44, top: 4, angOff: 0.55, leaves: northRearOliveLeaves, crownR: 2.7 },
+    '442319': { slender: true, H: 13.6, forkH: 6.2, tr: 0.13, leanX: -0.10, leanZ: -0.85, bark: bVeryDark, nMain: 2, nSub: 3, spread: 1.9, nC: 3, leaf: 0.48, flat: 0.44, top: 3, angOff: 0.20, leaves: northRearOliveLeaves, crownR: 2.1 },
+    '442332': { slender: true, H: 13.4, forkH: 5.6, tr: 0.16, leanX: -0.10, leanZ: -0.80, bark: bVeryDark, nMain: 2, nSub: 3, spread: 2.2, nC: 4, leaf: 0.52, flat: 0.46, top: 3, angOff: 0.90, leaves: northRearOliveLeaves, crownR: 2.4 },
+    '442323': { slender: true, H: 13.2, forkH: 5.4, tr: 0.17, leanX: -0.08, leanZ: -0.80, bark: bVeryDark, nMain: 3, nSub: 3, spread: 2.3, nC: 4, leaf: 0.54, flat: 0.46, top: 3, angOff: 0.40, leaves: northRearOliveLeaves, crownR: 2.5 },
     '442334': { H: 13.4, forkH: 5.0, tr: 0.20, leanZ: -0.65, bark: bDark, nB: 5, spread: 2.7, endY: 0.78, nC: 5, leaf: 0.78, flat: 0.54, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.8 },
     '442330': { H: 13.6, forkH: 4.8, tr: 0.22, leanZ: -0.65, bark: bDark, nB: 5, spread: 2.8, endY: 0.78, nC: 5, leaf: 0.80, flat: 0.54, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.9 }
   };
@@ -22592,7 +22736,8 @@ const CAMPUS_TREE_REGISTRY = [
     window.__phenoCounts = window.__phenoCounts || {}; window.__phenoCounts[sp] = (window.__phenoCounts[sp] || 0) + 1;
     phenoTreeAt(sp, x, z);
     const custom = NORTH_REAR_WEST_TREES[id];
-    if (custom) broad(x, z, custom);
+    if (custom && custom.slender) northRearTree(x, z, custom);
+    else if (custom) broad(x, z, custom);
     else fn(x, z, lean);
     decoratePheno(sp, n0, x, z);
     // 依樹幹位置決定標高：南棟前草地土丘貼合丘面高程、新棟前庭草坪置於草坪頂（+0.14）、其餘下沉中庭內整株下移；全部標記 keepLevel
