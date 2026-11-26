@@ -31,7 +31,7 @@ function attributeSignature(geo) {
 
 function isMergeable(o, excluded) {
   if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.isBatchedMesh) return false;
-  if (o.children.length || !o.visible || excluded.has(o)) return false;
+  if (o.children.length || !o.visible || excluded.has(o) || o.userData?.noBatch) return false;
   if (Array.isArray(o.material) || !o.material) return false;
   if (o.onBeforeRender !== defaultOnBeforeRender) return false;
   if (o.morphTargetInfluences && o.morphTargetInfluences.length) return false;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { batchStaticMeshes } from './campus-batch.js?v=2.12.99';
+import { WalkWorld, WALK_CONSTANTS } from './campus-walk.js?v=2.13.0';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -13,6 +14,8 @@ const LANDMARKS = (typeof window !== "undefined" && window.LANDMARKS) ? window.L
 // v2.12.40 北棟／東棟／西棟定位轉換（定義於 campus-ui.js；局部座標 ⇄ 世界座標）
 const IDENT_XF = { th: 0, rotY: 0, toWorld: (x, z) => [x, z], toLocal: (x, z) => [x, z], apply: o => o };
 const NORTH_XF = window.NORTH_XF || IDENT_XF, EAST_XF = window.EAST_XF || IDENT_XF, WEST_XF = window.WEST_XF || IDENT_XF, NEW_XF = window.NEW_XF || IDENT_XF;
+const walkWorld = new WalkWorld();
+window.__walkWorld = walkWorld;
 const lmToWorld = window.lmToWorld || ((id, x, z) => [x, z]);
 const BUILDING_XF_ROT = id => (window.BUILDING_XF && window.BUILDING_XF[id]) ? window.BUILDING_XF[id].rotY : 0;
 
@@ -8276,6 +8279,103 @@ function buildNorthBuilding() {
   addBox(g, 18, 0.22, 4.5, mats.solar, (ax(4) + ax(10)) / 2, H + 0.4, cz - 1.2);
   addBox(g, 18, 0.22, 4.5, mats.solar, (ax(13) + ax(17)) / 2, H + 0.4, cz - 1.2);
 
+  // ==========================================================================
+  // 10) 3D 行走碰撞、樓板、樓梯與空間標籤登錄 (WalkWorld — 北棟愛悅樓)
+  // ==========================================================================
+  {
+    const xf = NORTH_XF;
+    const hallL = ax(11), hallR = ax(12), hallMid = (hallL + hallR) / 2;
+    const roomNames = [
+      ['1F 西側教室 1', '1F 西側教室 2', '1F 西側教室 3', '1F 西側教室 4', '1F 東側教室 1', '1F 東側教室 2', '1F 東側教室 3'],
+      ['2F 西側教室 1', '2F 西側教室 2', '2F 西側教室 3', '2F 西側教室 4', '2F 東側教室 1', '2F 東側教室 2', '2F 東側教室 3'],
+      ['3F 西側教室 1', '3F 西側教室 2', '3F 西側教室 3', '3F 西側教室 4', '3F 東側教室 1', '3F 東側教室 2', '3F 東側教室 3']
+    ];
+
+    // 1F～3F 走廊、教室樓板與防墜護欄
+    for (let k = 0; k < 3; k++) {
+      const fy = baseH + k * FH;
+      const flLabel = `${k + 1}F`;
+      // 前走廊、後走廊與中央穿堂樓板
+      walkWorld.addFloor(ax(3), ax(18), zCoreFront, zf + 0.15, fy, xf, { label: `北棟（愛悅樓）· ${flLabel} 前走廊` });
+      walkWorld.addFloor(ax(3), ax(18), zb - 0.15, zCoreBack, fy, xf, { label: `北棟（愛悅樓）· ${flLabel} 後走廊` });
+      walkWorld.addFloor(hallL, hallR, zb, zf, fy, xf, { label: `北棟（愛悅樓）· ${flLabel} 中央梯廳` });
+      walkWorld.addZone(ax(3), ax(18), fy, fy + FH - 0.2, zCoreFront, zf + 0.2, xf, `北棟（愛悅樓）· ${flLabel} 前走廊`, 12);
+      walkWorld.addZone(ax(3), ax(18), fy, fy + FH - 0.2, zb - 0.2, zCoreBack, xf, `北棟（愛悅樓）· ${flLabel} 後走廊`, 12);
+
+      // 前走廊南緣護欄（1F 中央梯廳口留通道；2F/3F 全線防護）
+      if (k === 0) {
+        walkWorld.addSolid(ax(3), hallL - 0.05, fy, fy + 1.25, zf - 0.18, zf + 0.18, xf, 'north-front-rail-w');
+        walkWorld.addSolid(hallR + 0.05, ax(18), fy, fy + 1.25, zf - 0.18, zf + 0.18, xf, 'north-front-rail-e');
+      } else {
+        walkWorld.addSolid(ax(3), ax(18), fy, fy + 1.25, zf - 0.18, zf + 0.18, xf, 'north-front-rail');
+      }
+      // 後走廊北緣護欄（留出西側後梯開口）
+      const stOpen = window.NORTH_REAR_STAIR_OPENING;
+      if (stOpen) {
+        walkWorld.addSolid(ax(3), stOpen[0], fy, fy + 1.25, zb - 0.18, zb + 0.18, xf, 'north-rear-rail-l');
+        walkWorld.addSolid(stOpen[1], ax(18), fy, fy + 1.25, zb - 0.18, zb + 0.18, xf, 'north-rear-rail-r');
+      } else {
+        walkWorld.addSolid(ax(3), ax(18), fy, fy + 1.25, zb - 0.18, zb + 0.18, xf, 'north-rear-rail');
+      }
+      // 東端封閉護欄
+      walkWorld.addSolid(ax(18) - 0.15, ax(18) + 0.15, fy, fy + 1.25, zb, zf, xf, 'north-east-end-rail');
+
+      // 7 間教室：樓板、隔間牆、南側開門洞牆、北側窗牆、區域標籤
+      classroomAxisPairs.forEach(([a1, a2], rIdx) => {
+        const xA = ax(a1), xB = ax(a2);
+        const d1X = xA + 0.78;
+        walkWorld.addFloor(xA, xB, zCoreBack, zCoreFront, fy, xf, { label: `北棟（愛悅樓）· ${roomNames[k][rIdx]}` });
+        walkWorld.addZone(xA + 0.15, xB - 0.15, fy, fy + FH - 0.2, zCoreBack + 0.15, zCoreFront - 0.15, xf, `北棟（愛悅樓）· ${roomNames[k][rIdx]}`, 20);
+        // 東西隔間牆
+        walkWorld.addSolid(xA - 0.16, xA + 0.16, fy, fy + FH, zCoreBack, zCoreFront, xf, 'north-part-wall');
+        walkWorld.addSolid(xB - 0.16, xB + 0.16, fy, fy + FH, zCoreBack, zCoreFront, xf, 'north-part-wall');
+        // 北牆（窗牆不可穿過）
+        walkWorld.addSolid(xA, xB, fy, fy + FH, zCoreBack - 0.12, zCoreBack + 0.18, xf, 'north-back-wall');
+        // 南牆（門洞 d1X 敞開寬 1.02m 可直接走進教室）
+        walkWorld.addWallWithDoors('x', zCoreFront, xA, xB, fy, fy + FH, 0.24, [{ pos: d1X, width: 1.02, height: 2.18 }], xf, 'north-front-wall');
+      });
+    }
+
+    // 1F 中央主入口台階（由地面 0 升至 1F baseH=1.25）
+    walkWorld.addRamp(hallL, hallR, zf, zf + 2.6, 'z', baseH, 0.0, xf, { label: '北棟（愛悅樓）· 1F 入口台階' });
+    // 中央主樓梯（1F→2F、2F→3F 雙跑折返）
+    for (let k = 0; k < 2; k++) {
+      const yBot = baseH + k * FH;
+      const yMid = yBot + FH * 0.5;
+      const yTop = yBot + FH;
+      // 東跑：南(z=-26.5)→北(z=-35.0) 上升
+      walkWorld.addRamp(hallMid + 0.05, hallR - 0.1, -35.0, -26.5, 'z', yMid, yBot, xf, { label: `北棟（愛悅樓）· ${k + 1}F→${k + 2}F 中央樓梯` });
+      // 中間轉折平台
+      walkWorld.addFloor(hallL + 0.1, hallR - 0.1, -38.5, -34.9, yMid, xf, { label: `北棟（愛悅樓）· ${k + 1}.5F 樓梯平台` });
+      // 西跑：北(z=-35.0)→南(z=-26.5) 上升
+      walkWorld.addRamp(hallL + 0.1, hallMid - 0.05, -35.0, -26.5, 'z', yMid, yTop, xf, { label: `北棟（愛悅樓）· ${k + 1}F→${k + 2}F 中央樓梯` });
+      // 中央扶手隔牆
+      walkWorld.addSolid(hallMid - 0.09, hallMid + 0.09, yBot, yTop, -34.8, -26.8, xf, 'north-stair-divider');
+    }
+    // 1F→BF 地下室下樓梯 + 地下室大廳樓板
+    walkWorld.addRamp(hallL + 0.1, hallMid - 0.05, -32.5, -26.0, 'z', -2.50, baseH, xf, { label: '北棟（愛悅樓）· BF 地下室樓梯' });
+    walkWorld.addFloor(ax(3), ax(18), zb - 1.85, zf + 2.55, -2.50, xf, { label: '北棟（愛悅樓）· BF 地下室' });
+    // 南側階梯花台通往地下室採光天井
+    walkWorld.addRamp(-26.5, -17.5, -21.65, -19.15, 'z', -2.50, 0.0, xf, { label: '北棟（愛悅樓）· 西側天井階梯' });
+    walkWorld.addRamp(32.0, 43.0, -21.65, -19.15, 'z', -2.50, 0.0, xf, { label: '北棟（愛悅樓）· 東側天井階梯' });
+
+    // 西側後走廊戶外直梯（1F 入口踏步 + 1F→2F→3F→RF 三段直梯 + 東西平台）
+    const NS = window.NORTH_REAR_STAIR;
+    if (NS) {
+      const zEastN = NS.zEastNorth !== undefined ? NS.zEastNorth : NS.zFlightN;
+      walkWorld.addRamp(NS.xs, NS.eX0, NS.zBoxNorth, zEastN, 'x', NS.baseH, 0.0, xf, { label: '北棟（愛悅樓）· 西後梯入口' });
+      for (let k = 0; k < 3; k++) {
+        const yB = NS.baseH + k * NS.FH, yT = yB + NS.FH;
+        walkWorld.addRamp(NS.xs, NS.xe, NS.zFlightN, NS.zFlightS, 'x', yB, yT, xf, { label: `北棟（愛悅樓）· 西後戶外樓梯 ${k + 1}F→${k + 2}F` });
+        walkWorld.addFloor(NS.b2L, NS.xs + 0.1, NS.zBoxNorth, NS.zb + 0.1, yB, xf, { label: `北棟（愛悅樓）· 西後梯 ${k + 1}F 平台` });
+        walkWorld.addFloor(NS.xe - 0.1, NS.xEastBoxEnd, zEastN, NS.zb + 0.1, yT, xf, { label: `北棟（愛悅樓）· 西後梯 ${k + 2}F 平台` });
+      }
+    }
+
+    // 西側廁所大樓與電梯塔實體量體（防穿牆）
+    walkWorld.addSolid(ax(1) - 0.2, ax(3) - 0.05, 0, H, zb - 0.2, zf + 0.3, xf, 'north-west-toilet-core');
+  }
+
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'north-building'; });
   NORTH_XF.apply(g);   // v2.12.40 依平面圖＋航照：①～⑳ 整棟北移約 11.5 m、東移約 6 m、順時針轉 5.1°
   layerGroups.buildings.add(g);
@@ -8350,12 +8450,104 @@ function buildEastBuilding() {
   // 各樓層護牆帶：1F 矮牆 0～1.40m；2F/3F/RF 護牆為樓板下緣 -0.35m 至 +1.10m
   const bandY = k => k === 0 ? [yF[0], yF[0] + 1.40] : [yF[k] - 0.35, yF[k] + 1.10];
 
-  // ---------- 1) 基座與教室本體 (中走廊穿堂 ⑧～⑨ 為 1F 通透) ----------
+  // ---------- 1) 基座與中空可進入教室本體 (中走廊穿堂 ⑧～⑨ 為 1F 通透) ----------
   addBox(g, xE - xW0 + 0.1, y0, L, slabMat, (xW0 + xE) / 2, y0 / 2, czm);
   const bodyH = yR - y0;
-  addBox(g, 750 * K, bodyH, cz(AXIS_CM[1]) - cz(AXIS_CM[7]), wallMat, bodyCx, y0 + bodyH / 2, (cz(AXIS_CM[1]) + cz(AXIS_CM[7])) / 2);
-  addBox(g, 750 * K, bodyH, cz(AXIS_CM[8]) - cz(AXIS_CM[15]), wallMat, bodyCx, y0 + bodyH / 2, (cz(AXIS_CM[8]) + cz(AXIS_CM[15])) / 2);
-  addBox(g, 750 * K, yR - yF[1], cz(AXIS_CM[7]) - cz(AXIS_CM[8]), wallMat, bodyCx, (yF[1] + yR) / 2, (cz(AXIS_CM[7]) + cz(AXIS_CM[8])) / 2);
+  // 東棟 1F～3F 中空教室空間（取代原本實心方塊，可從前走廊開門進入教室）
+  const eastRoomSpecs = [
+    // [cmStart, cmEnd, 1F名, 2F名, 3F名, isBreezeway1F]
+    [AXIS_CM[1],  AXIS_CM[4],  '1F 總務處／辦公室', '2F 圖書室',     '3F 視聽教室',   false],
+    [AXIS_CM[4],  AXIS_CM[7],  '1F 校長室／健康中心', '2F 電腦教室', '3F 美勞教室',   false],
+    [AXIS_CM[7],  AXIS_CM[8],  '1F 中央穿堂',       '2F 會議／閱覽室', '3F 自然教室', true],
+    [AXIS_CM[8],  AXIS_CM[11], '1F 學務處／輔導室', '2F 音樂教室',   '3F 社會教室',   false],
+    [AXIS_CM[11], AXIS_CM[15], '1F 學習中心／辦公室', '2F 英語教室', '3F 綜合教室',   false]
+  ];
+  const eastWalkRooms = [];
+  {
+    const coreW = xA - xB;
+    const intWallMat = new THREE.MeshStandardMaterial({ color: 0xf3f0e7, roughness: 0.85 });
+    const eDoorWoodMat = new THREE.MeshStandardMaterial({ color: 0x8a5a32, roughness: 0.65 });
+    const eBoardMat = new THREE.MeshStandardMaterial({ color: 0x2f5b43, roughness: 0.8 });
+    const eDeskTopMat = new THREE.MeshStandardMaterial({ color: 0xd8c39a, roughness: 0.6 });
+    const eDeskLegMat = new THREE.MeshStandardMaterial({ color: 0x6d7378, roughness: 0.45, metalness: 0.6 });
+    const eChairMat = new THREE.MeshStandardMaterial({ color: 0x3f7fb0, roughness: 0.55 });
+    const eLightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, emissive: 0xffffff, emissiveIntensity: 0.18 });
+    const eDeskInst = { top: [], leg: [], seat: [] };
+
+    // 2F, 3F, RF 教室本體結構樓板
+    for (let k = 1; k <= 3; k++) {
+      addBox(g, coreW, 0.24, cz(AXIS_CM[1]) - cz(AXIS_CM[15]), slabMat, bodyCx, yF[k] - 0.12, (cz(AXIS_CM[1]) + cz(AXIS_CM[15])) / 2);
+    }
+
+    // 逐層逐間建立中空教室（隔間牆、東牆開門洞＋自動感應門、西牆窗牆、黑板、日光燈、課桌椅）
+    for (let k = 0; k < 3; k++) {
+      const fy = yF[k];
+      const fh = yF[k + 1] - yF[k] - 0.24;
+      for (const [cmS, cmN, n1, n2, n3, isBreeze1F] of eastRoomSpecs) {
+        if (k === 0 && isBreeze1F) continue; // 1F 中央穿堂保持通透
+        const zS = cz(cmS), zN = cz(cmN);
+        const rLen = zS - zN;
+        const rCz = (zS + zN) / 2;
+        const roomLabel = k === 0 ? n1 : (k === 1 ? n2 : n3);
+        const doorZ = zS - 0.92;
+        const doorW = 1.02, doorH = 2.16;
+        eastWalkRooms.push({ k, fy, fh, zN, zS, doorZ, doorW, doorH, label: roomLabel });
+
+        // 室內磨石子地坪
+        addBox(g, coreW - 0.28, 0.03, rLen - 0.24, passageFloorMat, bodyCx, fy + 0.015, rCz, false);
+        // 南北隔間牆
+        addBox(g, coreW, fh, 0.20, intWallMat, bodyCx, fy + fh / 2, zS);
+        addBox(g, coreW, fh, 0.20, intWallMat, bodyCx, fy + fh / 2, zN);
+        // 西牆（靠後走廊）：腰牆 + 上過樑（保留採光窗帶）
+        addBox(g, 0.18, 1.05, rLen - 0.20, wallMat, xB + 0.09, fy + 0.525, rCz);
+        addBox(g, 0.18, Math.max(0.3, fh - 2.65), rLen - 0.20, wallMat, xB + 0.09, fy + 2.65 + Math.max(0.3, fh - 2.65) / 2, rCz);
+        // 東牆（靠前走廊 xA）：門洞上方過樑 + 門洞南北兩側牆體（門洞 doorZ ± doorW/2 完全淨空）
+        const dMinZ = doorZ - doorW / 2, dMaxZ = doorZ + doorW / 2;
+        const segS_len = zS - dMaxZ;
+        if (segS_len > 0.05) addBox(g, 0.18, fh, segS_len, wallMat, xA - 0.09, fy + fh / 2, (dMaxZ + zS) / 2);
+        const segN_len = dMinZ - zN;
+        if (segN_len > 0.05) {
+          addBox(g, 0.18, 1.05, segN_len, wallMat, xA - 0.09, fy + 0.525, (zN + dMinZ) / 2);
+          addBox(g, 0.18, Math.max(0.3, fh - 2.65), segN_len, wallMat, xA - 0.09, fy + 2.65 + Math.max(0.3, fh - 2.65) / 2, (zN + dMinZ) / 2);
+        }
+        addBox(g, 0.18, Math.max(0.2, fh - doorH), doorW, wallMat, xA - 0.09, fy + doorH + Math.max(0.2, fh - doorH) / 2, doorZ);
+
+        // 自動感應滑門扇（靠近即自動向北滑開，標記 noBatch）
+        const doorMesh = addBox(g, 0.06, doorH - 0.04, doorW - 0.06, eDoorWoodMat, xA - 0.08, fy + (doorH - 0.04) / 2, doorZ, false);
+        walkWorld.addDoor(doorMesh, { type: 'slide', slideAxis: 'z', slideDist: -0.92, xf: EAST_XF, localX: xA, localY: fy + 1.05, localZ: doorZ });
+
+        // 室內黑板（北側隔間牆）與天花板日光燈
+        addBox(g, 3.4, 1.15, 0.05, eBoardMat, bodyCx, fy + 1.55, zN + 0.14, false);
+        for (const lx of [bodyCx - 1.7, bodyCx + 1.7]) {
+          for (const lz of [rCz - rLen * 0.24, rCz + rLen * 0.24]) {
+            addBox(g, 0.22, 0.05, 1.25, eLightMat, lx, fy + fh - 0.08, lz, false);
+          }
+        }
+        // 學生課桌椅／辦公桌陣列（留出寬敞四周走道）
+        const rows = Math.max(2, Math.min(4, Math.floor((rLen - 3.0) / 1.15)));
+        for (let r = 0; r < rows; r++) {
+          const dz = zN + 2.1 + r * 1.15;
+          for (let c = -1; c <= 1; c++) {
+            const dx = bodyCx + c * 1.45;
+            eDeskInst.top.push([dx, fy + 0.72, dz]);
+            eDeskInst.leg.push([dx - 0.24, fy + 0.36, dz], [dx + 0.24, fy + 0.36, dz]);
+            eDeskInst.seat.push([dx, fy + 0.43, dz + 0.42]);
+          }
+        }
+      }
+    }
+    const mkInst = (geo, mat, list) => {
+      if (!list.length) return;
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
+      const m4 = new THREE.Matrix4();
+      list.forEach((p, i) => { m4.makeTranslation(p[0], p[1], p[2]); im.setMatrixAt(i, m4); });
+      im.castShadow = false; im.receiveShadow = true;
+      g.add(im);
+    };
+    mkInst(new THREE.BoxGeometry(0.62, 0.04, 0.46), eDeskTopMat, eDeskInst.top);
+    mkInst(new THREE.BoxGeometry(0.04, 0.70, 0.38), eDeskLegMat, eDeskInst.leg);
+    mkInst(new THREE.BoxGeometry(0.38, 0.04, 0.38), eChairMat, eDeskInst.seat);
+  }
   // 穿堂 1F 地坪與天花
   const breezeZ = (cz(AXIS_CM[7]) + cz(AXIS_CM[8])) / 2;
   const breezeW = cz(AXIS_CM[7]) - cz(AXIS_CM[8]);
@@ -8466,19 +8658,24 @@ function buildEastBuilding() {
       if (i === 0 || (k === 0 && i === 7)) continue; // 軸線①～②為 1F～3F 開放樓梯走道廊間、1F穿堂中走廊
       const cmA = AXIS_CM[i], cmB = AXIS_CM[i + 1];
       const bayLen = (cmB - cmA) * K;
-      const wLen = bayLen * 0.80;
-      const wp = addMesh(g, new THREE.PlaneGeometry(wLen, 1.65), makeWindowMaterial(`east-front-${k}-${i}`), xA + 0.02, yF[k] + 1.85, (cz(cmA) + cz(cmB)) / 2, false);
+      const hasDoor = [1, 4, 7, 8, 11].includes(i);
+      const wLen = hasDoor ? Math.max(0.9, bayLen - 1.72) : bayLen * 0.80;
+      const wCz = hasDoor ? (cz(cmB) + wLen / 2 + 0.14) : (cz(cmA) + cz(cmB)) / 2;
+      const wp = addMesh(g, new THREE.PlaneGeometry(wLen, 1.65), makeWindowMaterial(`east-front-${k}-${i}`), xA + 0.02, yF[k] + 1.85, wCz, false);
       wp.rotation.y = Math.PI / 2;
       // 窗下花台與冷氣室外機 (測繪圖「窗下櫃」「冷氣」)
       if ([2, 4, 5, 9, 11, 13].includes(i)) {
         addBox(g, 0.3, 0.52, 0.85, acMat, xA + 0.17, yF[k] + 2.95, (cz(cmA) + cz(cmB)) / 2 + bayLen * 0.18);
       }
     }
-    // 1F 辦公室 / 校長室防盜鐵窗格柵
+    // 1F 辦公室 / 校長室防盜鐵窗格柵（避開教室出入口門洞）
     if (k === 0) {
       for (let i of [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13]) {
         const cmA = AXIS_CM[i], cmB = AXIS_CM[i + 1];
-        const zc = (cz(cmA) + cz(cmB)) / 2, wl = (cmB - cmA) * K * 0.80;
+        const bayLen = (cmB - cmA) * K;
+        const hasDoor = [1, 4, 8, 11].includes(i);
+        const wl = hasDoor ? Math.max(0.9, bayLen - 1.72) : bayLen * 0.80;
+        const zc = hasDoor ? (cz(cmB) + wl / 2 + 0.14) : (cz(cmA) + cz(cmB)) / 2;
         for (let b = 1; b < 4; b++) {
           addBox(g, 0.03, 1.65, 0.03, darkMat, xA + 0.06, yF[0] + 1.85, zc - wl / 2 + (wl / 4) * b, false);
         }
@@ -10964,6 +11161,102 @@ function buildEastBuilding() {
     }
   }
 
+  // ==========================================================================
+  // 13) 3D 行走碰撞、樓板、雙座樓梯、穿堂台階與空間標籤登錄 (WalkWorld — 東棟)
+  // ==========================================================================
+  {
+    const xf = EAST_XF;
+    const zSouthEnd = cz(0), zNorthStairN = cz(5542), zNorthStairS = cz(5142), zNorthStairMid = cz(5342);
+    const zSouthStairN = cz(400), zSouthStairMid = cz(200);
+    const zBreezeN = cz(AXIS_CM[8]), zBreezeS = cz(AXIS_CM[7]);
+    const xLandEast = xA - 0.55, xLandWest = xB + 1.65;
+
+    // 1F～3F 前(東)走廊、後(西)走廊樓板與防墜護欄
+    for (let k = 0; k < 3; k++) {
+      const fy = yF[k];
+      const flLabel = `${k + 1}F`;
+      walkWorld.addFloor(xA - 0.1, xE + 0.1, zNorthStairN, zSouthEnd, fy, xf, { label: `東棟（彩繪行政大樓）· ${flLabel} 前走廊` });
+      walkWorld.addFloor(xW0 - 0.1, xB + 0.1, zNorthStairN, zSouthEnd, fy, xf, { label: `東棟（彩繪行政大樓）· ${flLabel} 後走廊` });
+      walkWorld.addZone(xA, xE, fy, yF[k + 1] - 0.2, zNorthStairN, zSouthEnd, xf, `東棟（彩繪行政大樓）· ${flLabel} 前走廊`, 12);
+      walkWorld.addZone(xW0, xB, fy, yF[k + 1] - 0.2, zNorthStairN, zSouthEnd, xf, `東棟（彩繪行政大樓）· ${flLabel} 後走廊`, 12);
+
+      // 東側前走廊護欄（1F 留出南梯口、中央穿堂口、北梯口；2F/3F 全線防護）
+      if (k === 0) {
+        walkWorld.addSolid(xE - 0.30, xE + 0.08, fy, fy + 1.40, zBreezeS + 0.9, zSouthStairN, xf, 'east-front-rail-1f-s');
+        walkWorld.addSolid(xE - 0.30, xE + 0.08, fy, fy + 1.40, zNorthStairS, zBreezeN - 0.9, xf, 'east-front-rail-1f-n');
+      } else {
+        walkWorld.addSolid(xE - 0.30, xE + 0.15, fy, fy + 1.25, zNorthStairN, zSouthEnd, xf, 'east-front-rail');
+        // 西側後走廊護欄（2F/3F 全線防護）
+        walkWorld.addSolid(xW0 - 0.12, xW0 + 0.18, fy, fy + 1.25, zNorthStairN, zSouthEnd, xf, 'east-rear-rail');
+      }
+      // 南端封閉護欄（2F/3F）
+      if (k > 0) {
+        walkWorld.addSolid(xW0, xE, fy, fy + 1.25, zSouthEnd - 0.15, zSouthEnd + 0.15, xf, 'east-south-end-rail');
+      }
+    }
+
+    // 1F 中央穿堂樓板 + 西側中庭大台階（由下沉中庭升至穿堂 1F）+ 東側入口台階
+    walkWorld.addFloor(xW0, xE, zBreezeN, zBreezeS, y0 + 0.02, xf, { label: '東棟（彩繪行政大樓）· 1F 中央穿堂' });
+    walkWorld.addZone(xW0, xE, y0, yF[1] - 0.2, zBreezeN, zBreezeS, xf, '東棟（彩繪行政大樓）· 1F 中央穿堂', 16);
+    walkWorld.addRamp(xW0 - 3.1, xW0 + 0.1, zBreezeN, zBreezeS, 'x', -COURTYARD_SINK.D, y0 + 0.02, xf, { label: '東棟 · 穿堂中庭大台階' });
+    walkWorld.addRamp(xE - 0.1, xE + 1.0, zBreezeN, zBreezeS, 'x', y0 + 0.02, 0.0, xf, { label: '東棟 · 穿堂東側入口台階' });
+    // 1F 南梯口與北梯口東側踏階
+    walkWorld.addRamp(xE - 0.1, xE + 0.9, zSouthStairN, zSouthEnd, 'x', y0, 0.0, xf, { label: '東棟 · 1F 南梯入口' });
+    walkWorld.addRamp(xE - 0.1, xE + 0.9, zNorthStairN, zNorthStairS, 'x', y0, 0.0, xf, { label: '東棟 · 1F 北梯入口' });
+    // 1F 北梯南半貫通穿廊 [103]
+    walkWorld.addFloor(xB - 0.1, xA + 0.1, zNorthStairMid, zNorthStairS, y0, xf, { label: '東棟 · 1F 北側穿廊' });
+
+    // 門樓兩座大柱碰撞 (⑧、⑨ 軸)
+    walkWorld.addSolid(xE - 2.5, xE + 0.2, 0, yR + 1.35, cz(AXIS_CM[7] + pierHalfCm), cz(AXIS_CM[7] - pierHalfCm), xf, 'east-portal-pier-s');
+    walkWorld.addSolid(xE - 2.5, xE + 0.2, 0, yR + 1.35, cz(AXIS_CM[8] + pierHalfCm), cz(AXIS_CM[8] - pierHalfCm), xf, 'east-portal-pier-n');
+
+    // 各間中空教室：樓板、隔間牆、東牆（含門洞開口）、西牆、區域標籤
+    for (const rm of eastWalkRooms) {
+      walkWorld.addFloor(xB, xA, rm.zN, rm.zS, rm.fy, xf, { label: `東棟 · ${rm.label}` });
+      walkWorld.addZone(xB + 0.15, xA - 0.15, rm.fy, rm.fy + rm.fh, rm.zN + 0.15, rm.zS - 0.15, xf, `東棟 · ${rm.label}`, 22);
+      // 南北隔間牆
+      walkWorld.addSolid(xB, xA, rm.fy, rm.fy + rm.fh, rm.zS - 0.14, rm.zS + 0.14, xf, 'east-room-part');
+      walkWorld.addSolid(xB, xA, rm.fy, rm.fy + rm.fh, rm.zN - 0.14, rm.zN + 0.14, xf, 'east-room-part');
+      // 西牆（靠後走廊不可穿牆）
+      walkWorld.addSolid(xB - 0.10, xB + 0.18, rm.fy, rm.fy + rm.fh, rm.zN, rm.zS, xf, 'east-room-west-wall');
+      // 東牆（靠前走廊，留出門洞 doorZ ± doorW/2）
+      walkWorld.addWallWithDoors('z', xA - 0.06, rm.zN, rm.zS, rm.fy, rm.fy + rm.fh, 0.24, [{ pos: rm.doorZ, width: rm.doorW + 0.06, height: rm.doorH }], xf, 'east-room-east-wall');
+    }
+
+    // 南側雙跑折返樓梯 (軸線 ①～②：1F→1.5F→2F→2.5F→3F)
+    for (let fl = 0; fl < 2; fl++) {
+      const yB = yF[fl], yT = yF[fl + 1], yM = (yB + yT) / 2;
+      // 南跑 (zSouthStairMid..zSouthEnd)：東→西上升
+      walkWorld.addRamp(xLandWest, xA + 0.1, zSouthStairMid + 0.06, zSouthEnd - 0.12, 'x', yM, yB, xf, { label: `東棟 · 南側樓梯 ${fl + 1}F→${fl + 2}F` });
+      // 西側半層平台
+      walkWorld.addFloor(xB + 0.12, xLandWest + 0.1, zSouthStairN + 0.12, zSouthEnd - 0.12, yM, xf, { label: `東棟 · 南梯 ${fl + 1}.5F 平台` });
+      // 北跑 (zSouthStairN..zSouthStairMid)：西→東上升
+      walkWorld.addRamp(xLandWest, xA + 0.1, zSouthStairN + 0.12, zSouthStairMid - 0.06, 'x', yM, yT, xf, { label: `東棟 · 南側樓梯 ${fl + 1}F→${fl + 2}F` });
+      // 中央扶手隔牆與西牆
+      walkWorld.addSolid(xLandWest + 0.05, xLandEast, yB, yT, zSouthStairMid - 0.08, zSouthStairMid + 0.08, xf, 'east-stair-s-mid');
+    }
+    walkWorld.addSolid(xB - 0.1, xB + 0.22, y0, yR, zSouthStairN, zSouthEnd, xf, 'east-stair-s-westwall');
+    walkWorld.addSolid(xB, xA, y0, yR, zSouthEnd - 0.14, zSouthEnd + 0.14, xf, 'east-stair-s-southwall');
+
+    // 北側雙跑折返樓梯 (軸線 ⑯～⑰：1F→1.5F→2F→2.5F→3F)
+    for (let fl = 0; fl < 2; fl++) {
+      const yB = yF[fl], yT = yF[fl + 1], yM = (yB + yT) / 2;
+      // 北跑 (zNorthStairN..zNorthStairMid)：東→西上升
+      walkWorld.addRamp(xLandWest, xA + 0.1, zNorthStairN + 0.12, zNorthStairMid - 0.06, 'x', yM, yB, xf, { label: `東棟 · 北側樓梯 ${fl + 1}F→${fl + 2}F` });
+      // 西側半層平台
+      walkWorld.addFloor(xB + 0.12, xLandWest + 0.1, zNorthStairN + 0.12, zNorthStairS - 0.12, yM, xf, { label: `東棟 · 北梯 ${fl + 1}.5F 平台` });
+      // 南跑 (zNorthStairMid..zNorthStairS)：西→東上升
+      walkWorld.addRamp(xLandWest, xA + 0.1, zNorthStairMid + 0.06, zNorthStairS - 0.12, 'x', yM, yT, xf, { label: `東棟 · 北側樓梯 ${fl + 1}F→${fl + 2}F` });
+      // 中央扶手隔牆
+      walkWorld.addSolid(xLandWest + 0.05, xLandEast, yB, yT, zNorthStairMid - 0.08, zNorthStairMid + 0.08, xf, 'east-stair-n-mid');
+    }
+    walkWorld.addSolid(xB - 0.1, xB + 0.22, yF[1], yR, zNorthStairN, zNorthStairS, xf, 'east-stair-n-westwall');
+    walkWorld.addSolid(xB - 0.1, xB + 0.22, y0, yF[1], zNorthStairN, zNorthStairMid, xf, 'east-stair-n-westwall-1f');
+
+    // 北側廁所量體 (軸線 ⑰～⑲) 實體碰撞
+    walkWorld.addSolid(xW0, xE, 0, yR, cz(6037) - 0.15, zNorthStairN, xf, 'east-north-toilet-core');
+  }
+
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'east-building'; });
   EAST_XF.apply(g);    // v2.12.40 依航照：整棟順時針轉 6.0°，北端東移約 6 m 以銜接北棟 ⑳
   layerGroups.buildings.add(g);
@@ -11585,8 +11878,9 @@ function buildSouthBuilding() {
           addBox(g, spanW - 0.44, lintelH, 0.18, wallMatN, bayCx, fy + FH - 0.36 - lintelH / 2, zWallN);
         }
 
-        // 門扇 (厚度 0.08，從地坪 fy 延伸至 2.15m)
-        addBox(g, doorW, doorH, 0.08, (fl === 0 && b === 1) ? southWindowFrameMat : southDoorWoodMat, doorX, fy + doorH / 2, zWallN);
+        // 門扇 (厚度 0.08，從地坪 fy 延伸至 2.15m；靠近自動向西滑開)
+        const doorN = addBox(g, doorW, doorH, 0.08, (fl === 0 && b === 1) ? southWindowFrameMat : southDoorWoodMat, doorX, fy + doorH / 2, zWallN);
+        walkWorld.addDoor(doorN, { type: 'slide', slideAxis: 'x', slideDist: -0.90, xf: null, localX: doorX, localY: fy + 1.05, localZ: zWallN });
 
         // 窗玻璃與框 (厚度與位置微調：窗框厚度 0.12，窗玻璃厚度 0.03 內縮 0.015，castShadow=false，徹底消除 Z-fighting)
         addBox(g, wLen, winH, 0.03, southGlassMat, wCx, winY, zWallN + 0.015, false);
@@ -11630,7 +11924,8 @@ function buildSouthBuilding() {
           addBox(g, spanW - 0.44, lintelH, 0.18, southWallMat, bayCx, fy + FH - 0.36 - lintelH / 2, zCoreSouth);
         }
 
-        addBox(g, doorW, doorH, 0.08, southDoorWoodMat, doorX, fy + doorH / 2, zCoreSouth);
+        const doorS = addBox(g, doorW, doorH, 0.08, southDoorWoodMat, doorX, fy + doorH / 2, zCoreSouth);
+        walkWorld.addDoor(doorS, { type: 'slide', slideAxis: 'x', slideDist: -0.90, xf: null, localX: doorX, localY: fy + 1.05, localZ: zCoreSouth });
         addBox(g, wLen, winH, 0.03, southGlassMat, wCx, winY, zCoreSouth + 0.015, false);
         addBox(g, wLen, 0.045, 0.12, southWindowFrameMat, wCx, winY, zCoreSouth);
         addBox(g, 0.045, winH, 0.12, southWindowFrameMat, wCx, winY, zCoreSouth);
@@ -12855,6 +13150,90 @@ function buildSouthBuilding() {
   solarPanelMesh.rotation.x = tiltRad;
 
   // ============================================================================
+  // 16.5 3D 行走碰撞、樓板、雙側樓梯與空間標籤登錄 (WalkWorld — 南棟興學樓)
+  // ============================================================================
+  {
+    const southRoomNames = {
+      1:  ['1F 教務處',       '2F 社會三／課照四', '3F 601 教室'],
+      5:  ['1F 會議室',       '2F 301 教室',       '3F 602 教室'],
+      7:  ['1F 204 原民語',   '2F 302 教室',       '3F 603 教室'],
+      9:  ['1F 課照三',       '2F 303 教室',       '3F 604 教室'],
+      11: ['1F 幼兒園辦公室', '2F 幼兒活動／朗讀室', '3F 幼兒園活動室']
+    };
+
+    // 1F～3F 南北走廊樓板、護欄與 15 間教室
+    for (let fl = 0; fl < 3; fl++) {
+      const fy = yF[fl];
+      const flLabel = `${fl + 1}F`;
+      walkWorld.addFloor(xWest, xEast, zNorth - 0.1, zCoreNorth + 0.1, fy, null, { label: `南棟（興學樓）· ${flLabel} 北走廊` });
+      walkWorld.addFloor(xWest, xEast, zCoreSouth - 0.1, zSouth + 0.1, fy, null, { label: `南棟（興學樓）· ${flLabel} 南走廊` });
+      walkWorld.addZone(xWest, xEast, fy, fy + FH - 0.2, zNorth, zCoreNorth, null, `南棟（興學樓）· ${flLabel} 北走廊`, 12);
+      walkWorld.addZone(xWest, xEast, fy, fy + FH - 0.2, zCoreSouth, zSouth, null, `南棟（興學樓）· ${flLabel} 南走廊`, 12);
+
+      // 南走廊外緣護欄（1F～3F 全線防護）
+      walkWorld.addSolid(xWest, xEast, fy, fy + 1.20, zSouth - 0.18, zSouth + 0.18, null, 'south-s-rail');
+      // 北走廊外緣護欄（1F 留出 ④–⑤ 左側迎賓梯口與 ⑬–⑭ 右側梯口；2F/3F 全線防護）
+      if (fl === 0) {
+        walkWorld.addSolid(ax(4) + 0.05, ax(1), fy, fy + 1.20, zNorth - 0.18, zNorth + 0.18, null, 'south-n-rail-1f-e');
+        walkWorld.addSolid(ax(13) + 0.05, ax(5) - 0.05, fy, fy + 1.20, zNorth - 0.18, zNorth + 0.18, null, 'south-n-rail-1f-m');
+      } else {
+        walkWorld.addSolid(xWest, xEast, fy, fy + 1.20, zNorth - 0.18, zNorth + 0.18, null, 'south-n-rail');
+      }
+      // 東西端護欄
+      walkWorld.addSolid(xEast - 0.15, xEast + 0.15, fy, fy + 1.20, zNorth, zSouth, null, 'south-e-end-rail');
+
+      // 5 組教室（每間跨 9.0m，南北牆各有自動感應門洞 doorX = xA - 0.72）
+      roomStartAxes.forEach(startAx => {
+        const xA = ax(startAx), xB = ax(startAx + 2); // xA > xB
+        const doorX = xA - 0.72;
+        const rName = southRoomNames[startAx]?.[fl] || `${flLabel} 教室`;
+        walkWorld.addFloor(xB, xA, zCoreNorth, zCoreSouth, fy, null, { label: `南棟（興學樓）· ${rName}` });
+        walkWorld.addZone(xB + 0.15, xA - 0.15, fy, fy + FH - 0.2, zCoreNorth + 0.15, zCoreSouth - 0.15, null, `南棟（興學樓）· ${rName}`, 22);
+        // 東西隔間牆
+        walkWorld.addSolid(xA - 0.14, xA + 0.14, fy, fy + FH, zCoreNorth, zCoreSouth, null, 'south-part-wall');
+        walkWorld.addSolid(xB - 0.14, xB + 0.14, fy, fy + FH, zCoreNorth, zCoreSouth, null, 'south-part-wall');
+        // 北牆（含門洞）與南牆（含門洞）
+        const zWallN = (fl === 0 && startAx === 1) ? (zNorth + 0.25) : zCoreNorth;
+        walkWorld.addWallWithDoors('x', zWallN, xB, xA, fy, fy + FH, 0.24, [{ pos: doorX, width: 1.04, height: 2.16 }], null, 'south-room-n-wall');
+        walkWorld.addWallWithDoors('x', zCoreSouth, xB, xA, fy, fy + FH, 0.24, [{ pos: doorX, width: 1.04, height: 2.16 }], null, 'south-room-s-wall');
+      });
+    }
+
+    // 廁所核心 (軸線 ③–④) 實體碰撞
+    walkWorld.addSolid(ax(4), ax(3), 0, yR, zCoreNorth, zCoreSouth, null, 'south-toilet-core');
+    // 半地下室基座 (0..y0) 阻擋（留出左右中庭階梯口）
+    walkWorld.addSolid(ax(4) + 0.1, ax(1), 0, y0, zNorth, zSouth, null, 'south-base-e');
+    walkWorld.addSolid(ax(13) + 0.1, ax(5) - 0.1, 0, y0, zNorth, zSouth, null, 'south-base-m');
+
+    // 左側樓梯 (軸線 ④–⑤) & 右側樓梯 (軸線 ⑬–⑭)：戶外迎賓中庭階梯 + 室內 1F→2F→3F 雙跑折返樓梯
+    const stairPairs = [
+      { xL: ax(4), xR: ax(5), name: '左側主樓梯' },
+      { xL: ax(13), xR: ax(14), name: '右側樓梯' }
+    ];
+    for (const sp of stairPairs) {
+      const xMin = Math.min(sp.xL, sp.xR), xMax = Math.max(sp.xL, sp.xR);
+      const xMid = (xMin + xMax) / 2;
+      const zLandS = zCoreSouth - 1.35;
+      // 戶外中庭階梯（自下沉中庭 -COURTYARD_SINK.D 升至 1FL y0=1.15）
+      walkWorld.addRamp(xMin + 0.15, xMax - 0.15, zNorth - 3.6, zNorth + 0.15, 'z', -COURTYARD_SINK.D, y0, null, { label: `南棟 · ${sp.name}（中庭入口）` });
+      // 1F 穿堂走道貫通南北走廊
+      walkWorld.addFloor(xMin, xMax, zCoreNorth, zCoreSouth, y0, null, { label: `南棟 · 1F ${sp.name}` });
+      // 室內 1F→2F、2F→3F 雙跑折返樓梯
+      for (let fl = 0; fl < 2; fl++) {
+        const yB = yF[fl], yT = yF[fl + 1], yM = (yB + yT) / 2;
+        // 東半跑 (xMid..xMax)：北(zCoreNorth)→南(zLandS) 上升
+        walkWorld.addRamp(xMid + 0.06, xMax - 0.12, zCoreNorth - 0.1, zLandS + 0.1, 'z', yB, yM, null, { label: `南棟 · ${sp.name} ${fl + 1}F→${fl + 2}F` });
+        // 南側半層平台
+        walkWorld.addFloor(xMin + 0.1, xMax - 0.1, zLandS - 0.1, zCoreSouth + 0.1, yM, null, { label: `南棟 · ${sp.name} ${fl + 1}.5F 平台` });
+        // 西半跑 (xMin..xMid)：南(zLandS)→北(zCoreNorth) 上升
+        walkWorld.addRamp(xMin + 0.12, xMid - 0.06, zCoreNorth - 0.1, zLandS + 0.1, 'z', yT, yM, null, { label: `南棟 · ${sp.name} ${fl + 1}F→${fl + 2}F` });
+        // 中央扶手隔牆
+        walkWorld.addSolid(xMid - 0.07, xMid + 0.07, yB, yT, zCoreNorth + 0.2, zLandS - 0.1, null, 'south-stair-mid');
+      }
+    }
+  }
+
+  // ============================================================================
   // 17. 登錄圖層、選取與互動地標 (LANDMARK REGISTRATION)
   // ============================================================================
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'south-building'; });
@@ -13134,10 +13513,55 @@ function buildWestBuilding() {
     const enclosed1FD  = zSouth - z1F_EnclosedNorth; // 16.98 m
     const enclosed1FCz = (zSouth + z1F_EnclosedNorth) / 2; // +7.428 m
 
-    // 1F Enclosed Core Block (Bays 1–5: `xCoreWest` to `xCoreEast`, `z = 15.918` to `-1.062`)
-    addBox(g, coreW, h1F - 0.12, enclosed1FD, whiteTileMat, coreCx, y1F + (h1F - 0.12) / 2, enclosed1FCz);
-    // Reddish-brown ceramic tile wainscot dado (`紅褐色腰牆`) along 1F East & West classroom walls & North 川堂 wall
-    addBox(g, coreW + 0.06, 0.50, enclosed1FD + 0.06, westBaseMat, coreCx, y1F + 0.25, enclosed1FCz);   // v2.12.56 照片 81：1F 教室外牆深褐色矮踢腳
+    // 1F Hollow Enterable Core (Bays 1–5: `xCoreWest` to `xCoreEast`, `z = 15.918` to `-1.062`)
+    {
+      const wallH1F = h1F - 0.12;
+      const wIntMat = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.85 });
+      const wLightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, emissive: 0xffffff, emissiveIntensity: 0.18 });
+      // 南牆 (zSouth) 與北牆 (z1F_EnclosedNorth，面向 1F 川堂)
+      addBox(g, coreW, wallH1F, 0.20, whiteTileMat, coreCx, y1F + wallH1F / 2, zSouth - 0.10);
+      addBox(g, coreW, wallH1F, 0.20, whiteTileMat, coreCx, y1F + wallH1F / 2, z1F_EnclosedNorth + 0.10);
+      addBox(g, coreW + 0.06, 0.50, 0.24, westBaseMat, coreCx, y1F + 0.25, z1F_EnclosedNorth + 0.10);
+      // 內部天花板燈具
+      for (const lz of [11.5, 4.5, 1.0]) {
+        addBox(g, 1.4, 0.05, 0.22, wLightMat, coreCx, y1F + wallH1F - 0.10, lz, false);
+      }
+      // 輔助：建構帶門洞的東西向側牆（門洞淨高 2.18m）
+      const buildWallZ = (wx, zMin, zMax, doors) => {
+        const sorted = [...doors].sort((a, b) => a.z - b.z);
+        let cur = zMin;
+        for (const d of sorted) {
+          const a = Math.max(cur, d.z - d.w / 2), b = Math.min(zMax, d.z + d.w / 2);
+          if (a - cur > 0.05) {
+            addBox(g, 0.20, wallH1F, a - cur, whiteTileMat, wx, y1F + wallH1F / 2, (cur + a) / 2);
+            addBox(g, 0.24, 0.50, a - cur, westBaseMat, wx, y1F + 0.25, (cur + a) / 2);
+          }
+          addBox(g, 0.20, wallH1F - 2.18, b - a, whiteTileMat, wx, y1F + 2.18 + (wallH1F - 2.18) / 2, (a + b) / 2);
+          cur = b;
+        }
+        if (zMax - cur > 0.05) {
+          addBox(g, 0.20, wallH1F, zMax - cur, whiteTileMat, wx, y1F + wallH1F / 2, (cur + zMax) / 2);
+          addBox(g, 0.24, 0.50, zMax - cur, westBaseMat, wx, y1F + 0.25, (cur + zMax) / 2);
+        }
+      };
+      const eastDoors1F = [
+        { z: (zCol[2] + zCol[3]) / 2 - 0.35, w: 1.56 }, // 體育器材室雙開門
+        { z: 7.385, w: 0.96 },                          // 配膳室東門
+        { z: zCol[3] - 0.65, w: 0.98 },                 // 國際柑仔店南門
+        { z: zCol[4] - 0.65, w: 0.98 }                  // 國際柑仔店北門
+      ];
+      const westDoors1F = [
+        { z: (zCol[2] + zCol[3]) / 2, w: 1.56 },        // 體育器材室西門
+        { z: 7.385, w: 0.96 }                           // 配膳室西門
+      ];
+      buildWallZ(xCoreEast - 0.10, z1F_EnclosedNorth, zSouth, eastDoors1F);
+      buildWallZ(xCoreWest + 0.10, z1F_EnclosedNorth, zSouth, westDoors1F);
+      // 室內白色內壁踢腳
+      addBox(g, coreW - 0.4, 0.03, enclosed1FD - 0.4, corridorSlabMat, coreCx, y1F + 0.015, enclosed1FCz, false);
+      // 1F 國際柑仔店簡易展示桌與黑板
+      addBox(g, 0.05, 1.15, 3.2, new THREE.MeshStandardMaterial({ color: 0x2f5b43, roughness: 0.8 }), xCoreWest + 0.24, y1F + 1.55, 2.8, false);
+      addBox(g, 1.4, 0.72, 2.8, wIntMat, coreCx, y1F + 0.36, 2.8, false);
+    }
 
     // v2.12.57 照片 81：1F 柱廊內側教室外牆之布告欄、懸掛綠色背心、圓凳與置物架
     {
@@ -13363,32 +13787,108 @@ function buildWestBuilding() {
   // v2.12.61 使用者標示照片 89：1F 第 6～9 跨為四跨開放穿廊（v2.12.55 誤將第 9 跨封牆，已移除）
 
   // ==========================================================================
-  // 4. 2F & 3F CLASSROOM CORE (`西棟大樓_2F/3F建築平面圖.jpg`)
+  // 4. 2F & 3F HOLLOW ENTERABLE CLASSROOM CORE (`西棟大樓_2F/3F建築平面圖.jpg`)
   // ==========================================================================
-  for (let fl = 1; fl <= 2; fl++) {
-    const fy = fl === 1 ? y2F : y3F;
-    const fh = fl === 1 ? h2F : h3F;
-    addBox(g, coreW, fh - 0.22, mainD, whiteTileMat, coreCx, fy + (fh - 0.22) / 2, mainCz);
-    [zCol[3], zCol[5], zCol[6]].forEach(zp => {
-      addBox(g, coreW - 0.08, fh - 0.26, 0.20, whiteTileMat, coreCx, fy + (fh - 0.26) / 2, zp);
-    });
-    for (let b = 0; b < 9; b++) {
-      const bz = (zCol[b] + zCol[b + 1]) / 2;
-      const bw = BAY_SPANS[b];
-      if (b > 0) {
-        const wEast = addMesh(g, new THREE.PlaneGeometry(bw * 0.58, 1.62), win4x3Mat, xCoreEast + 0.04, fy + 1.92, bz, false);
-        wEast.rotation.y = Math.PI / 2;
+  {
+    const wBoardMat = new THREE.MeshStandardMaterial({ color: 0x2f5b43, roughness: 0.8 });
+    const wDeskTopMat = new THREE.MeshStandardMaterial({ color: 0xd8c39a, roughness: 0.6 });
+    const wDeskLegMat = new THREE.MeshStandardMaterial({ color: 0x6d7378, roughness: 0.45, metalness: 0.6 });
+    const wChairMat = new THREE.MeshStandardMaterial({ color: 0x3f7fb0, roughness: 0.55 });
+    const wLightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, emissive: 0xffffff, emissiveIntensity: 0.18 });
+    const wDeskInst = { top: [], leg: [], seat: [] };
+
+    for (let fl = 1; fl <= 2; fl++) {
+      const fy = fl === 1 ? y2F : y3F;
+      const fh = fl === 1 ? h2F : h3F;
+      const wallH = fh - 0.22;
+      // 南北兩端外牆與教室隔間牆 (zCol[0], zCol[3], zCol[6], zCol[9])
+      [zCol[0], zCol[3], zCol[6], zCol[9]].forEach(zp => {
+        addBox(g, coreW, wallH, 0.20, whiteTileMat, coreCx, fy + wallH / 2, zp);
+      });
+
+      // 東西側中空牆體（每間教室留出門洞，搭配自動感應滑門）
+      const eastDoors = [], westDoors = [];
+      for (let b = 0; b < 9; b++) {
+        if (b % 3 === 0 || b % 3 === 2) {
+          const doorZ = b % 3 === 0 ? (zCol[b] - 0.58) : (zCol[b + 1] + 0.58);
+          if (b > 0) eastDoors.push({ z: doorZ, w: 0.96 });
+          westDoors.push({ z: doorZ, w: 0.96 });
+        }
       }
-      const wWest = addMesh(g, new THREE.PlaneGeometry(bw * 0.64, 1.62), win4x3Mat, xCoreWest - 0.04, fy + 1.92, bz, false);
-      wWest.rotation.y = -Math.PI / 2;
-      if (b % 3 === 0 || b % 3 === 2) {
-        const doorZ = b % 3 === 0 ? (zCol[b] - 0.58) : (zCol[b + 1] + 0.58);
-        if (b > 0) addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreEast + 0.03, fy + 1.075, doorZ);
-        addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreWest - 0.03, fy + 1.075, doorZ);
+      const buildUpperWallZ = (wx, doors) => {
+        const sorted = [...doors].sort((a, b) => a.z - b.z);
+        let cur = zNorthMain;
+        for (const d of sorted) {
+          const a = Math.max(cur, d.z - d.w / 2), b = Math.min(zSouth, d.z + d.w / 2);
+          if (a - cur > 0.05) {
+            addBox(g, 0.20, 1.05, a - cur, whiteTileMat, wx, fy + 0.525, (cur + a) / 2);
+            addBox(g, 0.20, Math.max(0.25, wallH - 2.65), a - cur, whiteTileMat, wx, fy + 2.65 + Math.max(0.25, wallH - 2.65) / 2, (cur + a) / 2);
+          }
+          addBox(g, 0.20, Math.max(0.2, wallH - 2.18), b - a, whiteTileMat, wx, fy + 2.18 + Math.max(0.2, wallH - 2.18) / 2, (a + b) / 2);
+          cur = b;
+        }
+        if (zSouth - cur > 0.05) {
+          addBox(g, 0.20, 1.05, zSouth - cur, whiteTileMat, wx, fy + 0.525, (cur + zSouth) / 2);
+          addBox(g, 0.20, Math.max(0.25, wallH - 2.65), zSouth - cur, whiteTileMat, wx, fy + 2.65 + Math.max(0.25, wallH - 2.65) / 2, (cur + zSouth) / 2);
+        }
+      };
+      buildUpperWallZ(xCoreEast - 0.10, eastDoors);
+      buildUpperWallZ(xCoreWest + 0.10, westDoors);
+
+      // 3 間專科教室內部擺設（黑板、日光燈、課桌椅）
+      [[0, 3], [3, 6], [6, 9]].forEach(([iS, iN]) => {
+        const zS = zCol[iS], zN = zCol[iN], rCz = (zS + zN) / 2, rLen = zS - zN;
+        addBox(g, 3.2, 1.15, 0.05, wBoardMat, coreCx, fy + 1.55, zN + 0.15, false);
+        for (const lx of [coreCx - 1.5, coreCx + 1.5]) {
+          for (const lz of [rCz - rLen * 0.22, rCz + rLen * 0.22]) {
+            addBox(g, 0.22, 0.05, 1.25, wLightMat, lx, fy + wallH - 0.06, lz, false);
+          }
+        }
+        for (let r = 0; r < 4; r++) {
+          const dz = zN + 2.0 + r * 1.15;
+          for (let c = -1; c <= 1; c++) {
+            const dx = coreCx + c * 1.40;
+            wDeskInst.top.push([dx, fy + 0.72, dz]);
+            wDeskInst.leg.push([dx - 0.22, fy + 0.36, dz], [dx + 0.22, fy + 0.36, dz]);
+            wDeskInst.seat.push([dx, fy + 0.43, dz + 0.42]);
+          }
+        }
+      });
+
+      for (let b = 0; b < 9; b++) {
+        const bz = (zCol[b] + zCol[b + 1]) / 2;
+        const bw = BAY_SPANS[b];
+        if (b > 0) {
+          const wEast = addMesh(g, new THREE.PlaneGeometry(bw * 0.50, 1.55), win4x3Mat, xCoreEast + 0.04, fy + 1.92, bz, false);
+          wEast.rotation.y = Math.PI / 2;
+        }
+        const wWest = addMesh(g, new THREE.PlaneGeometry(bw * 0.56, 1.55), win4x3Mat, xCoreWest - 0.04, fy + 1.92, bz, false);
+        wWest.rotation.y = -Math.PI / 2;
+        if (b % 3 === 0 || b % 3 === 2) {
+          const doorZ = b % 3 === 0 ? (zCol[b] - 0.58) : (zCol[b + 1] + 0.58);
+          if (b > 0) {
+            const dE = addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreEast + 0.03, fy + 1.075, doorZ);
+            walkWorld.addDoor(dE, { type: 'slide', slideAxis: 'z', slideDist: b % 3 === 0 ? -0.88 : 0.88, xf: WEST_XF, localX: xCoreEast, localY: fy + 1.05, localZ: doorZ });
+          }
+          const dW = addBox(g, 0.06, 2.15, 0.90, woodDoorMat, xCoreWest - 0.03, fy + 1.075, doorZ);
+          walkWorld.addDoor(dW, { type: 'slide', slideAxis: 'z', slideDist: b % 3 === 0 ? -0.88 : 0.88, xf: WEST_XF, localX: xCoreWest, localY: fy + 1.05, localZ: doorZ });
+        }
+        addBox(g, 0.42, wallH, 0.42, colTileMat, xCoreEast, fy + wallH / 2, zCol[b]);
+        addBox(g, 0.42, wallH, 0.42, colTileMat, xCoreWest, fy + wallH / 2, zCol[b]);
       }
-      addBox(g, 0.42, fh - 0.22, 0.42, colTileMat, xCoreEast, fy + (fh - 0.22) / 2, zCol[b]);
-      addBox(g, 0.42, fh - 0.22, 0.42, colTileMat, xCoreWest, fy + (fh - 0.22) / 2, zCol[b]);
     }
+
+    const mkInst = (geo, mat, list) => {
+      if (!list.length) return;
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
+      const m4 = new THREE.Matrix4();
+      list.forEach((p, i) => { m4.makeTranslation(p[0], p[1], p[2]); im.setMatrixAt(i, m4); });
+      im.castShadow = false; im.receiveShadow = true;
+      g.add(im);
+    };
+    mkInst(new THREE.BoxGeometry(0.62, 0.04, 0.46), wDeskTopMat, wDeskInst.top);
+    mkInst(new THREE.BoxGeometry(0.04, 0.70, 0.38), wDeskLegMat, wDeskInst.leg);
+    mkInst(new THREE.BoxGeometry(0.38, 0.04, 0.38), wChairMat, wDeskInst.seat);
   }
 
   // ==========================================================================
@@ -14136,6 +14636,96 @@ function buildWestBuilding() {
       const hoseCoil2 = addMesh(g, new THREE.TorusGeometry(0.19, 0.028, 8, 18), hoseMat, -23.13, 0.78, -21.25, false);
       hoseCoil2.rotation.y = Math.PI / 2;
     }
+  }
+
+  // ==========================================================================
+  // 10. 3D 行走碰撞、樓板、北側樓梯與空間標籤登錄 (WalkWorld — 西棟育樂樓)
+  // ==========================================================================
+  {
+    const xf = WEST_XF;
+    const floorsY = [y1F, y2F, y3F];
+    const floorsH = [h1F, h2F, h3F];
+    const upperRoomNames = [
+      ['2F 專科教室（南）', '2F 專科教室（中）', '2F 專科教室（北）'],
+      ['3F 專科教室（南）', '3F 專科教室（中）', '3F 專科教室（北）']
+    ];
+
+    // 1F～3F 東走廊、西走廊、北通道樓板與 2F/3F 護欄
+    for (let fl = 0; fl < 3; fl++) {
+      const fy = floorsY[fl], fh = floorsH[fl], flLabel = `${fl + 1}F`;
+      walkWorld.addFloor(xCoreEast - 0.1, xEast + 0.1, zNorthCor, zSouth + 0.2, fy, xf, { label: `西棟（育樂樓）· ${flLabel} 東走廊` });
+      walkWorld.addFloor(xWest - 0.1, xCoreWest + 0.1, zNorthCor, zSouth + 0.2, fy, xf, { label: `西棟（育樂樓）· ${flLabel} 西走廊` });
+      walkWorld.addFloor(xWest, xEast, zNorthCor, zNorthMain + 0.1, fy, xf, { label: `西棟（育樂樓）· ${flLabel} 北側梯廳` });
+      walkWorld.addZone(xCoreEast, xEast, fy, fy + fh - 0.2, zNorthCor, zSouth, xf, `西棟（育樂樓）· ${flLabel} 東走廊`, 12);
+      walkWorld.addZone(xWest, xCoreWest, fy, fy + fh - 0.2, zNorthCor, zSouth, xf, `西棟（育樂樓）· ${flLabel} 西走廊`, 12);
+
+      if (fl > 0) {
+        // 2F/3F 東西走廊外緣護欄（東側 Bay 0 留出連通新棟樓梯口）
+        walkWorld.addSolid(xEast - 0.22, xEast + 0.10, fy, fy + 1.25, zNorthCor, zCol[1], xf, 'west-e-rail');
+        walkWorld.addSolid(xWest - 0.10, xWest + 0.22, fy, fy + 1.25, zNorthCor, zSouth, xf, 'west-w-rail');
+      }
+    }
+
+    // 1F 開放川堂 (Bays 6–9) + 東側入口台階 + 1F 教室
+    walkWorld.addFloor(xWest, xEast, zNorthMain, zCol[5], y1F, xf, { label: '西棟（育樂樓）· 1F 開放川堂' });
+    walkWorld.addZone(xCoreWest, xCoreEast, y1F, y2F - 0.2, zNorthMain, zCol[5], xf, '西棟（育樂樓）· 1F 開放川堂', 16);
+    walkWorld.addRamp(xEast - 0.1, xEast + 0.9, zNorthMain, zSouth, 'x', y1F, 0.0, xf, { label: '西棟 · 1F 東側入口台階' });
+    walkWorld.addRamp(xWest - 0.9, xWest + 0.1, zNorthMain, zCol[1], 'x', 0.0, y1F, xf, { label: '西棟 · 1F 西側操場台階' });
+    // 1F 川堂北牆（世界地圖牆）
+    walkWorld.addSolid(xCoreWest, xCoreEast, y1F, y2F, zNorthMain - 0.15, zNorthMain + 0.15, xf, 'west-breezeway-n-wall');
+
+    // 1F 內部教室樓板與牆體（含門洞）
+    walkWorld.addFloor(xCoreWest, xCoreEast, zCol[5], zSouth, y1F, xf, { label: '西棟（育樂樓）· 1F 專科／國際柑仔店' });
+    walkWorld.addZone(xCoreWest + 0.15, xCoreEast - 0.15, y1F, y2F - 0.2, zCol[5] + 0.15, 6.60, xf, '西棟（育樂樓）· 1F 國際柑仔店', 22);
+    walkWorld.addZone(xCoreWest + 0.15, xCoreEast - 0.15, y1F, y2F - 0.2, 6.60, 8.17, xf, '西棟（育樂樓）· 1F 配膳室', 22);
+    walkWorld.addZone(xCoreWest + 0.15, xCoreEast - 0.15, y1F, y2F - 0.2, 8.17, zSouth - 0.15, xf, '西棟（育樂樓）· 1F 體育器材室', 22);
+    walkWorld.addSolid(xCoreWest, xCoreEast, y1F, y2F, zCol[5] - 0.14, zCol[5] + 0.14, xf, 'west-1f-n-wall');
+    walkWorld.addSolid(xCoreWest, xCoreEast, y1F, y2F, zSouth - 0.14, zSouth + 0.14, xf, 'west-1f-s-wall');
+    walkWorld.addSolid(xCoreWest, xCoreEast, y1F, y2F, 8.17 - 0.12, 8.17 + 0.12, xf, 'west-1f-part1');
+    walkWorld.addSolid(xCoreWest, xCoreEast, y1F, y2F, 6.60 - 0.12, 6.60 + 0.12, xf, 'west-1f-part2');
+    walkWorld.addWallWithDoors('z', xCoreEast - 0.08, zCol[5], zSouth, y1F, y2F, 0.24, [
+      { pos: (zCol[2] + zCol[3]) / 2 - 0.35, width: 1.56, height: 2.18 },
+      { pos: 7.385, width: 0.98, height: 2.18 },
+      { pos: zCol[3] - 0.65, width: 1.00, height: 2.18 },
+      { pos: zCol[4] - 0.65, width: 1.00, height: 2.18 }
+    ], xf, 'west-1f-e-wall');
+    walkWorld.addWallWithDoors('z', xCoreWest + 0.08, zCol[5], zSouth, y1F, y2F, 0.24, [
+      { pos: (zCol[2] + zCol[3]) / 2, width: 1.56, height: 2.18 },
+      { pos: 7.385, width: 0.98, height: 2.18 }
+    ], xf, 'west-1f-w-wall');
+    // 1F 西南角體育器材圍籠 (Bay 1)
+    walkWorld.addSolid(xWest, xCoreWest, y1F, y2F, zCol[1], zCol[0], xf, 'west-1f-gym-cage');
+
+    // 2F & 3F 專科教室樓板、隔間牆、門洞牆
+    for (let fl = 1; fl <= 2; fl++) {
+      const fy = floorsY[fl], fh = floorsH[fl];
+      const eDoors = [], wDoors = [];
+      for (let b = 0; b < 9; b++) {
+        if (b % 3 === 0 || b % 3 === 2) {
+          const doorZ = b % 3 === 0 ? (zCol[b] - 0.58) : (zCol[b + 1] + 0.58);
+          if (b > 0) eDoors.push({ pos: doorZ, width: 0.98, height: 2.18 });
+          wDoors.push({ pos: doorZ, width: 0.98, height: 2.18 });
+        }
+      }
+      walkWorld.addWallWithDoors('z', xCoreEast - 0.08, zNorthMain, zSouth, fy, fy + fh, 0.24, eDoors, xf, `west-${fl + 1}f-e-wall`);
+      walkWorld.addWallWithDoors('z', xCoreWest + 0.08, zNorthMain, zSouth, fy, fy + fh, 0.24, wDoors, xf, `west-${fl + 1}f-w-wall`);
+      [zCol[0], zCol[3], zCol[6], zCol[9]].forEach(zp => {
+        walkWorld.addSolid(xCoreWest, xCoreEast, fy, fy + fh, zp - 0.14, zp + 0.14, xf, `west-${fl + 1}f-part`);
+      });
+      [[0, 3], [3, 6], [6, 9]].forEach(([iS, iN], rIdx) => {
+        const rName = upperRoomNames[fl - 1][rIdx];
+        walkWorld.addFloor(xCoreWest, xCoreEast, zCol[iN], zCol[iS], fy, xf, { label: `西棟（育樂樓）· ${rName}` });
+        walkWorld.addZone(xCoreWest + 0.15, xCoreEast - 0.15, fy, fy + fh - 0.2, zCol[iN] + 0.15, zCol[iS] - 0.15, xf, `西棟（育樂樓）· ${rName}`, 22);
+      });
+    }
+
+    // 西棟北面東上樓直跑樓梯 (1F→2F、2F→3F，東 x=-26.80 → 西 x=-32.15，z=-16.05..-14.19)
+    walkWorld.addRamp(-32.25, -26.70, -16.05, -14.19, 'x', y2F, y1F, xf, { label: '西棟（育樂樓）· 北側樓梯 1F→2F' });
+    walkWorld.addRamp(-32.25, -26.70, -16.05, -14.19, 'x', y3F, y2F, xf, { label: '西棟（育樂樓）· 北側樓梯 2F→3F' });
+
+    // 北段新建電梯/廁所與北翼廚房實體碰撞
+    walkWorld.addSolid(xWest - 0.1, xEast + 0.1, 0, yRF, zNorthEnd - 0.2, zNorthCor - 0.05, xf, 'west-north-service-core');
+    walkWorld.addSolid(-38.2, -23.1, 0, y2F + 2.5, -27.2, zNorthEnd, xf, 'west-kitchen-core');
   }
 
     g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'west-building'; });
@@ -15005,8 +15595,81 @@ function buildNewBuilding() {
   const coreCx = (ax(1) + ax(10)) / 2;
   const coreCz = (zD + zB) / 2;
 
-  // Core structural body
-  addBox(g, coreW, yRF, coreD, creamWallMat, coreCx, yRF / 2, coreCz);
+  // Hollow Enterable Classroom Core (`①–⑧`) + Enclosed Restroom/Kitchen Core (`⑧–⑩`)
+  const gzNew = SOUTH_SHIFT + NEW_XF.toWorld(0, 0)[1];
+  const NEW_LOCAL_XF = {
+    toLocal: (wx, wz) => [wx, wz - gzNew],
+    toWorld: (lx, lz) => [lx, lz + gzNew]
+  };
+  const newRoomDefs = [
+    [1, 3, '1F 幼兒班 101', '2F 幼兒班 201', '3F 幼兒活動室 301'],
+    [3, 6, '1F 幼兒班 102', '2F 幼兒班 202', '3F 幼兒活動室 302'],
+    [6, 8, '1F 幼兒辦公室／教室', '2F 幼兒班 203', '3F 幼兒活動室 303']
+  ];
+  {
+    // 東側廁所／廚房量體 (⑧–⑩) 維持實體封閉
+    const utilW = ax(10) - ax(8);
+    addBox(g, utilW, yRF, coreD, creamWallMat, (ax(8) + ax(10)) / 2, yRF / 2, coreCz);
+
+    // 教室區 (①–⑧) 1F～RF 結構樓板
+    const clsTotalW = ax(8) - ax(1), clsTotalCx = (ax(1) + ax(8)) / 2;
+    for (const fy of [y1F + 0.12, y2F, y3F, yRF]) {
+      addBox(g, clsTotalW, 0.24, coreD, mats.slab, clsTotalCx, fy - 0.12, coreCz);
+    }
+
+    const nDoorMat = new THREE.MeshStandardMaterial({ color: 0xa66a3c, roughness: 0.62 });
+    const nBoardMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.45 });
+    const nTableMat = new THREE.MeshStandardMaterial({ color: 0xf2c97d, roughness: 0.55 });
+    const nChairMat = new THREE.MeshStandardMaterial({ color: 0x4caf7d, roughness: 0.55 });
+    const nLightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, emissive: 0xffffff, emissiveIntensity: 0.18 });
+    const nTableInst = [], nChairInst = [];
+
+    for (let fl = 0; fl < 3; fl++) {
+      const fy = fl * FH;
+      const wallH = FH - 0.24;
+      for (const [a1, a2] of newRoomDefs) {
+        const x1 = ax(a1), x2 = ax(a2), rw = x2 - x1, rCx = (x1 + x2) / 2;
+        const doorX = x1 + 1.05, doorW = 1.02, doorH = 2.15;
+        // 東西隔間牆
+        addBox(g, 0.20, wallH, coreD, creamWallMat, x1, fy + wallH / 2, coreCz);
+        addBox(g, 0.20, wallH, coreD, creamWallMat, x2, fy + wallH / 2, coreCz);
+        // 南牆 (zB)：腰牆 + 上過樑
+        addBox(g, rw, 1.00, 0.18, creamWallMat, rCx, fy + 0.50, zB - 0.09);
+        addBox(g, rw, Math.max(0.25, wallH - 2.65), 0.18, creamWallMat, rCx, fy + 2.65 + Math.max(0.25, wallH - 2.65) / 2, zB - 0.09);
+        // 北牆 (zD，面向北走廊)：留出門洞 doorX ± doorW/2
+        const dL = doorX - doorW / 2, dR = doorX + doorW / 2;
+        if (dL - x1 > 0.05) addBox(g, dL - x1, wallH, 0.18, creamWallMat, (x1 + dL) / 2, fy + wallH / 2, zD + 0.09);
+        if (x2 - dR > 0.05) {
+          addBox(g, x2 - dR, 1.00, 0.18, creamWallMat, (dR + x2) / 2, fy + 0.50, zD + 0.09);
+          addBox(g, x2 - dR, Math.max(0.25, wallH - 2.65), 0.18, creamWallMat, (dR + x2) / 2, fy + 2.65 + Math.max(0.25, wallH - 2.65) / 2, zD + 0.09);
+        }
+        addBox(g, doorW, Math.max(0.2, wallH - doorH), 0.18, creamWallMat, doorX, fy + doorH + Math.max(0.2, wallH - doorH) / 2, zD + 0.09);
+
+        // 自動感應木門扇
+        const dMesh = addBox(g, doorW - 0.06, doorH - 0.04, 0.06, nDoorMat, doorX, fy + (doorH - 0.04) / 2, zD + 0.08, false);
+        walkWorld.addDoor(dMesh, { type: 'slide', slideAxis: 'x', slideDist: 0.92, xf: NEW_LOCAL_XF, localX: doorX, localY: fy + 1.05, localZ: zD });
+
+        // 白板、日光燈與幼兒園活動桌椅
+        addBox(g, 0.05, 1.05, 2.8, nBoardMat, x2 - 0.14, fy + 1.35, coreCz, false);
+        addBox(g, 1.3, 0.05, 0.22, nLightMat, rCx - rw * 0.22, fy + wallH - 0.06, coreCz, false);
+        addBox(g, 1.3, 0.05, 0.22, nLightMat, rCx + rw * 0.22, fy + wallH - 0.06, coreCz, false);
+        for (const tx of [rCx - 1.5, rCx + 1.2]) {
+          nTableInst.push([tx, fy + 0.52, coreCz]);
+          nChairInst.push([tx - 0.55, fy + 0.30, coreCz], [tx + 0.55, fy + 0.30, coreCz]);
+        }
+      }
+    }
+    const mkInst = (geo, mat, list) => {
+      if (!list.length) return;
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
+      const m4 = new THREE.Matrix4();
+      list.forEach((p, i) => { m4.makeTranslation(p[0], p[1], p[2]); im.setMatrixAt(i, m4); });
+      im.castShadow = false; im.receiveShadow = true;
+      g.add(im);
+    };
+    mkInst(new THREE.BoxGeometry(0.95, 0.04, 1.35), nTableMat, nTableInst);
+    mkInst(new THREE.BoxGeometry(0.32, 0.30, 0.32), nChairMat, nChairInst);
+  }
 
   // ==========================================================================
   // 2.1 【西棟與新棟 100% 緊鄰無縫銜接建築體】(`①–④`, `zE = 15.918m` 至 `zD = 19.053m`)
@@ -16938,6 +17601,77 @@ function buildNewBuilding() {
     addBox(g, canW + 0.15, 0.12, canD + 0.15, blueTarpMat, canCx, canH + 0.12, canCz);
     // 篷頂中央微拱加強橫肋
     addBox(g, canW, 0.08, 0.08, greenSteelMat, canCx, canH + 0.19, canCz);
+  }
+
+  // ==========================================================================
+  // 12. 3D 行走碰撞、樓板、北梯、西棟連通梯與空間標籤登錄 (WalkWorld — 新棟)
+  // ==========================================================================
+  {
+    const xf = NEW_LOCAL_XF;
+    const zStair0 = zF - 6 * 0.34, entCx = -19.58;
+
+    // 1F～3F 北走廊、南陽台走廊、西側交接穿廊與 9 間幼兒園教室
+    for (let fl = 0; fl < 3; fl++) {
+      const fy = fl * FH;
+      const flLabel = `${fl + 1}F`;
+      // 北走廊 (④–⑩, zE..zD) 與西交接段 (①–④, zE..zD)
+      walkWorld.addFloor(ax(1), ax(10), zE - 0.1, zD + 0.1, fl === 0 ? 0.15 : fy, xf, { label: `新棟（幼兒園）· ${flLabel} 北走廊` });
+      walkWorld.addFloor(ax(1), ax(8), zB - 0.1, zA + 0.1, fl === 0 ? 0.15 : fy, xf, { label: `新棟（幼兒園）· ${flLabel} 南走廊` });
+      walkWorld.addZone(ax(1), ax(10), fy, fy + FH - 0.2, zE, zD, xf, `新棟（幼兒園）· ${flLabel} 北走廊`, 12);
+      walkWorld.addZone(ax(1), ax(8), fy, fy + FH - 0.2, zB, zA, xf, `新棟（幼兒園）· ${flLabel} 南走廊`, 12);
+
+      // 南走廊外緣護欄 (zA)
+      walkWorld.addSolid(ax(1), ax(8), fy, fy + 1.25, zA - 0.18, zA + 0.18, xf, 'new-s-rail');
+      // 北走廊外緣護欄 (2F/3F：西交接段 ①–④ 與 ⑥–⑩；留出 ④–⑥ 樓梯口)
+      if (fl > 0) {
+        walkWorld.addSolid(ax(1), ax(4), fy, fy + 1.25, zE - 0.16, zE + 0.16, xf, 'new-n-rail-w');
+        walkWorld.addSolid(ax(6), ax(10), fy, fy + 1.25, zE - 0.16, zE + 0.16, xf, 'new-n-rail-e');
+      }
+      // 西端外牆 (ax(1))
+      walkWorld.addSolid(ax(1) - 0.16, ax(1) + 0.16, fy, fy + FH, zD, zA, xf, 'new-w-end-wall');
+
+      // 3 間教室：樓板、隔間牆、南窗牆、北門洞牆
+      for (const [a1, a2, n1, n2, n3] of newRoomDefs) {
+        const x1 = ax(a1), x2 = ax(a2);
+        const doorX = x1 + 1.05;
+        const rName = fl === 0 ? n1 : (fl === 1 ? n2 : n3);
+        walkWorld.addFloor(x1, x2, zD, zB, fl === 0 ? 0.15 : fy, xf, { label: `新棟（幼兒園）· ${rName}` });
+        walkWorld.addZone(x1 + 0.15, x2 - 0.15, fy, fy + FH - 0.2, zD + 0.15, zB - 0.15, xf, `新棟（幼兒園）· ${rName}`, 22);
+        walkWorld.addSolid(x1 - 0.14, x1 + 0.14, fy, fy + FH, zD, zB, xf, 'new-part-wall');
+        walkWorld.addSolid(x2 - 0.14, x2 + 0.14, fy, fy + FH, zD, zB, xf, 'new-part-wall');
+        walkWorld.addSolid(x1, x2, fy, fy + FH, zB - 0.16, zB + 0.12, xf, 'new-room-s-wall');
+        walkWorld.addWallWithDoors('x', zD + 0.06, x1, x2, fy, fy + FH, 0.24, [{ pos: doorX, width: 1.06, height: 2.16 }], xf, 'new-room-n-wall');
+      }
+    }
+
+    // 1F 北側主入口 6 階迎賓階梯 + 平台 + 西棟↔新棟 1F 連通樓梯
+    walkWorld.addRamp(entCx - 1.35, entCx + 1.35, zStair0, zF, 'z', 0.0, 0.72, xf, { label: '新棟（幼兒園）· 北側入口階梯' });
+    walkWorld.addFloor(-24.31, entCx + 1.35, zStair0, 13.65, 0.72, xf, { label: '新棟（幼兒園）· 1F 入口平台' });
+    walkWorld.addFloor(-27.04, -24.25, 13.60, zE + 0.1, 0.40, xf, { label: '西棟↔新棟 1F 交接平台' });
+    walkWorld.addRamp(-24.31, -21.51, 13.60, zE + 0.1, 'x', 0.40, 1.20, xf, { label: '西棟↔新棟 1F 連通階梯' });
+    walkWorld.addFloor(-21.55, -6.70, 13.60, zE + 0.1, 1.20, xf, { label: '新棟（幼兒園）· 1F 北走廊台階' });
+
+    // 北側主樓梯間 (④–⑥, x = ax(4)..ax(6), z = zF..zE)：1F→2F→3F 雙跑折返樓梯
+    const stX1 = ax(4), stX2 = ax(6), stMidX = (stX1 + stX2) / 2;
+    const stLandZ = zF + 1.05;
+    for (let fl = 0; fl < 2; fl++) {
+      const yB = fl === 0 ? 0.72 : fl * FH;
+      const yT = (fl + 1) * FH;
+      const yM = (yB + yT) / 2;
+      // 東半跑：南(zE)→北(stLandZ) 上升
+      walkWorld.addRamp(stMidX + 0.05, stX2 - 0.12, stLandZ, zE + 0.1, 'z', yM, yB, xf, { label: `新棟（幼兒園）· 北主樓梯 ${fl + 1}F→${fl + 2}F` });
+      // 北側半層平台
+      walkWorld.addFloor(stX1 + 0.1, stX2 - 0.1, zF - 0.05, stLandZ + 0.1, yM, xf, { label: `新棟（幼兒園）· 北主樓梯 ${fl + 1}.5F 平台` });
+      // 西半跑：北(stLandZ)→南(zE) 上升
+      walkWorld.addRamp(stX1 + 0.12, stMidX - 0.05, stLandZ, zE + 0.1, 'z', yM, yT, xf, { label: `新棟（幼兒園）· 北主樓梯 ${fl + 1}F→${fl + 2}F` });
+      walkWorld.addSolid(stMidX - 0.06, stMidX + 0.06, yB, yT, stLandZ + 0.1, zE - 0.15, xf, 'new-stair-mid');
+    }
+    walkWorld.addSolid(stX1, stX2, 1.2, yRF, zF - 0.14, zF + 0.14, xf, 'new-stair-n-wall');
+
+    // 共用走廊 (⑩–⑪, 連接新棟與南棟)
+    walkWorld.addFloor(ax(10), ax(11), zG, zB, 0.0, xf, { label: '新棟↔南棟 共用走廊' });
+    // 東側廁所／廚房實體核心 (⑧–⑩)
+    walkWorld.addSolid(ax(8), ax(10), 0, yRF, zD, zB, xf, 'new-restroom-kitchen-core');
   }
 
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'new-building'; });
@@ -24099,13 +24833,19 @@ window.__closePano = closePano;
 
 const walkState = {
   active: false,
+  mode: 'walk', // 'walk' | 'fly'
   yaw: 0,
   pitch: 0,
-  keys: { forward: false, backward: false, left: false, right: false, up: false, down: false, sprint: false },
+  keys: { forward: false, backward: false, left: false, right: false, turnLeft: false, turnRight: false, up: false, down: false, sprint: false },
   joy: { active: false, x: 0, y: 0 },
+  phys: { x: 0, feetY: 0, z: 0, velY: 0, onGround: true, onStair: false },
   dragging: false,
+  dragMoved: false,
+  pointerLocked: false,
   lastX: 0,
   lastY: 0,
+  bobPhase: 0,
+  lastLocLabel: '',
   detachedFromRoute: true
 };
 
@@ -25919,27 +26659,75 @@ function isWalkPointAllowed(wx, wz) {
   return !SOLID_BUILDING_OBSTACLES.some(b => wx > b.minX && wx < b.maxX && wz > b.minZ && wz < b.maxZ);
 }
 
+// 註冊校園地面高程函式（自動處理下沉中庭與戶外地面）與主要戶外區域標籤
+walkWorld.setGroundFn((wx, wz) => {
+  if (inCourtyardSink(wx, wz, -0.35)) return -COURTYARD_SINK.D;
+  return 0.0;
+});
+walkWorld.addZone(-22, 50, -3, 6, -24, 9, null, '校園中庭花園', 4);
+walkWorld.addZone(-125, -42, -2, 10, -45, 55, null, 'PU 環形運動場', 4);
+walkWorld.addZone(62, 125, -2, 10, -40, 45, null, '校門前庭廣場', 4);
+
+function resetWalkKeys() {
+  walkState.keys = { forward: false, backward: false, left: false, right: false, turnLeft: false, turnRight: false, up: false, down: false, sprint: false };
+}
+
 function syncWalkHUD() {
   const hasRoute = activeRoutePoints3D.length > 1;
   const done = hasRoute && routeWalkProgress >= 0.99;
+  const isFly = walkState.mode === 'fly';
   const pauseBtn = document.getElementById('walk-pause');
   const modeEl = document.getElementById('walk-mode');
+  const locEl = document.getElementById('walk-location');
   const distEl = document.getElementById('walk-distance');
+  const toggleFlyBtn = document.getElementById('walk-toggle-fly');
   const routePlayBtn = document.getElementById('route-walk');
+  const walkBtn = document.getElementById('walk-start');
+  const flyBtn = document.getElementById('fly-start');
 
   if (pauseBtn) {
-    pauseBtn.hidden = !hasRoute;
+    pauseBtn.hidden = !hasRoute || isFly;
     pauseBtn.textContent = routeWalkActive ? '暫停' : (done ? '再走一遍' : (walkState.detachedFromRoute ? '回到路線' : '繼續步行'));
   }
   if (modeEl) {
-    modeEl.textContent = routeWalkActive ? '沿路步行' : (hasRoute && !walkState.detachedFromRoute ? (done ? '已抵達終點' : '路線已暫停') : '自由步行');
+    modeEl.textContent = isFly
+      ? '自由飛行'
+      : (routeWalkActive ? '沿路步行' : (hasRoute && !walkState.detachedFromRoute ? (done ? '已抵達終點' : '路線已暫停') : '地面步行'));
+  }
+  if (locEl && walkState.active) {
+    if (isFly) {
+      locEl.textContent = `高度 ${camera.position.y.toFixed(1)} m`;
+    } else {
+      const lbl = walkWorld.getLocationLabel(walkState.phys.x, walkState.phys.feetY, walkState.phys.z);
+      locEl.textContent = lbl;
+      walkState.lastLocLabel = lbl;
+    }
   }
   if (distEl) {
     const curM = Math.round(routeWalkProgress * activeRouteLengthMeters);
-    distEl.textContent = (hasRoute && !walkState.detachedFromRoute)
-      ? `${curM} / ${activeRouteLengthMeters} m · W A S D 可隨時自由探索`
-      : '沿校園步道漫遊 · W A S D 移動 · 拖曳環顧';
+    if (isFly) {
+      distEl.textContent = walkState.pointerLocked
+        ? '滑鼠鎖定中 · WASD 飛行 · E/空白鍵上升 · Q/C 下降 · Shift 加速 · F 降落 · Esc 解鎖'
+        : 'WASD 飛行 · E/空白鍵上升 · Q/C 下降 · ←/→ 轉向 · 點畫面鎖定滑鼠 · F 降落';
+    } else if (hasRoute && !walkState.detachedFromRoute) {
+      distEl.textContent = `${curM} / ${activeRouteLengthMeters} m · WASD 可隨時自由探索`;
+    } else {
+      distEl.textContent = walkState.pointerLocked
+        ? '滑鼠鎖定中 · WASD 移動 · Shift 小跑 · F 飛行 · Esc 解鎖滑鼠'
+        : 'WASD 移動 · ←/→ 轉向 · 點畫面鎖定滑鼠或拖曳環顧 · Shift 小跑 · F 飛行';
+    }
   }
+  if (toggleFlyBtn) {
+    toggleFlyBtn.textContent = isFly ? '降落步行 (F)' : '飛行 (F)';
+  }
+  if (walkBtn) walkBtn.classList.toggle('is-active', walkState.active && !isFly);
+  if (flyBtn) flyBtn.classList.toggle('is-active', walkState.active && isFly);
+
+  // 觸控上下鍵僅在飛行模式顯示
+  document.querySelectorAll('#walk-pad button[data-move="up"], #walk-pad button[data-move="down"]').forEach(b => {
+    b.hidden = !isFly;
+  });
+
   if (routePlayBtn) {
     routePlayBtn.textContent = routeWalkActive ? '暫停漫步 ❚❚' : (done ? '再走一遍 ▶' : '沿線自動漫步 ▶');
   }
@@ -25952,57 +26740,148 @@ function startWalkMode(startPos = null, lookTarget = null, keepRoute = false) {
   if (isIsolated) setIsolationMode(false);
   if (activeMode !== '3d') switchViewMode('3d');
 
-  // If no explicit startPos is given, snap near the selected landmark or current camera target (`PKU-3D enterNearby`)
+  // 若未指定起點，優先降落至目前選取地標入口或目前鏡頭焦點的安全地面
   if (!startPos) {
     const lm = selectedId && LANDMARKS.find(l => l.id === selectedId);
     if (lm && lm.views?.entrance) {
-      startPos = [lm.views.entrance.p[0], 1.72, lm.views.entrance.p[2]];
-      lookTarget = [lm.views.entrance.t[0], 1.72, lm.views.entrance.t[2]];
+      const drop = walkWorld.findSafeWalkDrop(lm.views.entrance.p[0], 3.0, lm.views.entrance.p[2]);
+      startPos = [drop.x, drop.eyeY, drop.z];
+      lookTarget = [lm.views.entrance.t[0], drop.eyeY, lm.views.entrance.t[2]];
     } else {
-      startPos = [X(680), 1.72, Z(205)];
-      lookTarget = [X(575), 1.72, Z(155)];
+      const tx = Number.isFinite(controls.target?.x) ? controls.target.x : X(680);
+      const tz = Number.isFinite(controls.target?.z) ? controls.target.z : Z(205);
+      const drop = walkWorld.findSafeWalkDrop(tx, 2.5, tz);
+      startPos = [drop.x, drop.eyeY, drop.z];
+      // 朝向與原本鏡頭水平方向一致
+      const vx = tx - camera.position.x, vz = tz - camera.position.z;
+      const vl = Math.hypot(vx, vz) || 1;
+      lookTarget = [drop.x + (vx / vl) * 10, drop.eyeY, drop.z + (vz / vl) * 10];
     }
+  } else if (!lookTarget) {
+    lookTarget = [startPos[0], startPos[1], startPos[2] - 10];
   }
 
   walkState.active = true;
+  walkState.mode = 'walk';
   walkState.detachedFromRoute = !keepRoute;
   controls.enabled = false;
   camAnim = null;
 
-  camera.position.set(...startPos);
+  const feetY = startPos[1] - WALK_CONSTANTS.PLAYER_EYE_H;
+  walkState.phys = { x: startPos[0], feetY, z: startPos[2], velY: 0, onGround: true, onStair: false };
+  camera.position.set(startPos[0], startPos[1], startPos[2]);
   const dx = lookTarget[0] - startPos[0];
   const dz = lookTarget[2] - startPos[2];
   walkState.yaw = Math.atan2(-dx, -dz);
-  walkState.pitch = 0.04;
+  walkState.pitch = 0.0;
+  walkState.bobPhase = 0;
   updateWalkCameraTarget();
 
   document.getElementById('walk-hud').hidden = false;
   document.getElementById('walk-pad').hidden = false;
   if (walkJoyEl && isCoarsePointer) walkJoyEl.hidden = false;
-  document.getElementById('walk-start').classList.add('is-active');
-  document.getElementById('view-hint').textContent = '步行模式 · W A S D 或方向鍵移動 · 拖曳畫面環顧四周 · Esc 退出';
+  document.getElementById('view-hint').textContent = '地面步行 · WASD 移動 · ←/→ 轉向 · 點畫面鎖定滑鼠或拖曳環顧 · F 切換飛行 · Esc 退出';
   syncWalkHUD();
-  showToast('已進入第一人稱校園地面步行模式（身高 1.72m · 自動避開建築牆體）');
+  showToast('已進入地面行走模式（自動上下樓梯、進教室開門、防穿牆 · 按 F 可切換飛行）');
 }
 
-window.__walk = { start: (...a) => startWalkMode(...a), exit: () => exitWalkMode(), state: walkState, allowed: (x, z) => isWalkPointAllowed(x, z) };   // v2.12.68 自動化步行測試用
+function startFlyMode(startPos = null, lookTarget = null) {
+  stopTour(true);
+  followingPedestrianIdx = -1;
+  routeWalkActive = false;
+  if (isIsolated) setIsolationMode(false);
+  if (activeMode !== '3d') switchViewMode('3d');
+
+  if (!startPos) {
+    const cy = Math.max(camera.position.y, 12.0);
+    startPos = [camera.position.x, cy, camera.position.z];
+    lookTarget = [controls.target.x, Math.min(controls.target.y, cy - 2.0), controls.target.z];
+  } else if (!lookTarget) {
+    lookTarget = [startPos[0], startPos[1] - 4, startPos[2] - 12];
+  }
+
+  walkState.active = true;
+  walkState.mode = 'fly';
+  walkState.detachedFromRoute = true;
+  controls.enabled = false;
+  camAnim = null;
+
+  camera.position.set(startPos[0], startPos[1], startPos[2]);
+  const dx = lookTarget[0] - startPos[0];
+  const dy = lookTarget[1] - startPos[1];
+  const dz = lookTarget[2] - startPos[2];
+  const hDist = Math.hypot(dx, dz) || 1;
+  walkState.yaw = Math.atan2(-dx, -dz);
+  walkState.pitch = THREE.MathUtils.clamp(Math.atan2(dy, hDist), -1.35, 1.35);
+  updateWalkCameraTarget();
+
+  document.getElementById('walk-hud').hidden = false;
+  document.getElementById('walk-pad').hidden = false;
+  if (walkJoyEl && isCoarsePointer) walkJoyEl.hidden = false;
+  document.getElementById('view-hint').textContent = '自由飛行模式 · WASD 飛行 · E/空白鍵上升 · Q/C 下降 · Shift 加速 · F 降落地面 · Esc 退出';
+  syncWalkHUD();
+  showToast('已進入自由飛行鳥瞰模式（WASD 飛行 · E/空白鍵上升 · Q/C 下降 · 按 F 降落地面）');
+}
+
+function toggleFlyMode() {
+  if (!walkState.active) {
+    startFlyMode();
+    return;
+  }
+  if (walkState.mode === 'walk') {
+    walkState.mode = 'fly';
+    routeWalkActive = false;
+    camera.position.y = Math.max(camera.position.y + 0.5, 2.2);
+    document.getElementById('view-hint').textContent = '自由飛行模式 · WASD 飛行 · E/空白鍵上升 · Q/C 下降 · Shift 加速 · F 降落地面 · Esc 退出';
+    syncWalkHUD();
+    showToast('已切換為自由飛行鳥瞰模式（按 F 可安全降落回地面步行）');
+  } else {
+    const drop = walkWorld.findSafeWalkDrop(camera.position.x, camera.position.y, camera.position.z);
+    walkState.mode = 'walk';
+    walkState.phys = { x: drop.x, feetY: drop.feetY, z: drop.z, velY: 0, onGround: true, onStair: false };
+    camera.position.set(drop.x, drop.eyeY, drop.z);
+    walkState.pitch = THREE.MathUtils.clamp(walkState.pitch, -0.82, 0.82);
+    walkState.keys.up = false;
+    walkState.keys.down = false;
+    updateWalkCameraTarget();
+    document.getElementById('view-hint').textContent = '地面步行 · WASD 移動 · ←/→ 轉向 · 點畫面鎖定滑鼠或拖曳環顧 · F 切換飛行 · Esc 退出';
+    syncWalkHUD();
+    showToast(`已安全降落至地面：${walkWorld.getLocationLabel(drop.x, drop.feetY, drop.z)}`);
+  }
+}
+
+window.__walk = {
+  start: (...a) => startWalkMode(...a),
+  startFly: (...a) => startFlyMode(...a),
+  toggleFly: () => toggleFlyMode(),
+  exit: () => exitWalkMode(),
+  state: walkState,
+  world: walkWorld,
+  allowed: (x, z, y = 0) => !walkWorld.isBlockedAt(x, y, z)
+};
 
 function exitWalkMode() {
   if (!walkState.active) return;
+  if (document.pointerLockElement === renderer.domElement) {
+    try { document.exitPointerLock(); } catch {}
+  }
   walkState.active = false;
+  walkState.mode = 'walk';
+  walkState.pointerLocked = false;
   routeWalkActive = false;
-  walkState.keys = { forward: false, backward: false, left: false, right: false, sprint: false };
+  resetWalkKeys();
   controls.enabled = true;
   document.getElementById('walk-hud').hidden = true;
   document.getElementById('walk-pad').hidden = true;
   if (walkJoyEl) { walkJoyEl.hidden = true; resetWalkJoy(); }
-  document.getElementById('walk-start').classList.remove('is-active');
-  document.getElementById('view-hint').textContent = '左鍵旋轉 · 右鍵平移 · 滾輪縮放 · 點擊建築查看立面與教室';
+  document.getElementById('walk-start')?.classList.remove('is-active');
+  document.getElementById('fly-start')?.classList.remove('is-active');
+  document.getElementById('view-hint').textContent = '左鍵旋轉 · 右鍵平移 · 滾輪縮放 · 按 WASD 地面步行 · 按 F 自由飛行';
   syncWalkHUD();
 
   // Smoothly lift camera back to a comfortable oblique view around current location
   const cur = camera.position.clone();
-  flyTo([cur.x - 18, 28, cur.z + 32], [cur.x, 3, cur.z], 750);
+  flyTo([cur.x - 18, Math.max(cur.y + 18, 28), cur.z + 32], [cur.x, 3, cur.z], 750);
 }
 
 function updateWalkCameraTarget() {
@@ -26017,26 +26896,39 @@ function updateWalkCameraTarget() {
   camera.lookAt(controls.target);
 }
 
-document.getElementById('walk-start').addEventListener('click', () => {
-  if (walkState.active) exitWalkMode();
+document.getElementById('walk-start')?.addEventListener('click', () => {
+  if (walkState.active && walkState.mode === 'walk') exitWalkMode();
+  else if (walkState.active && walkState.mode === 'fly') toggleFlyMode();
   else startWalkMode();
 });
-document.getElementById('walk-exit').addEventListener('click', exitWalkMode);
+document.getElementById('fly-start')?.addEventListener('click', () => {
+  if (walkState.active && walkState.mode === 'fly') exitWalkMode();
+  else if (walkState.active && walkState.mode === 'walk') toggleFlyMode();
+  else startFlyMode();
+});
+document.getElementById('walk-toggle-fly')?.addEventListener('click', toggleFlyMode);
+document.getElementById('walk-exit')?.addEventListener('click', exitWalkMode);
 
-// Quick Floor Jump Shortcuts inside North Building (BF: y=-0.78m, 1F: y=2.97m, 2F: y=6.57m, 3F: y=10.17m)
+// Quick Floor Jump Shortcuts inside North Building (BF: y=-2.50, 1F: y=1.25, 2F: y=4.85, 3F: y=8.45)
 const jumpToNorthFloor = (floorLevel) => {
   const isBf = (floorLevel === 0 || floorLevel === 'BF' || floorLevel === 'B1');
-  const posY = isBf ? (-2.50 + 1.72) : (1.25 + (floorLevel - 1) * 3.6 + 1.72);
-  const posZ = isBf ? -30.0 : -26.0;
-  const tgtZ = isBf ? -34.0 : -32.0;
+  const feetY = isBf ? -2.50 : (1.25 + (floorLevel - 1) * 3.6);
+  const posY = feetY + WALK_CONSTANTS.PLAYER_EYE_H;
+  const localZ = isBf ? -30.0 : -26.2;
+  const [wx, wz] = NORTH_XF.toWorld(20.0, localZ);
+  const [tx, tz] = NORTH_XF.toWorld(20.0, localZ - 5.0);
   const label = isBf ? 'BF 地下室防空避難大廳' : `${floorLevel}F 走廊`;
-  if (!walkState.active) startWalkMode([20.0, posY, posZ], [20.0, posY, tgtZ]);
-  else {
-    camera.position.set(20.0, posY, posZ);
-    walkState.yaw = 0;
-    walkState.pitch = 0.02;
+  if (!walkState.active) {
+    startWalkMode([wx, posY, wz], [tx, posY, tz]);
+  } else {
+    walkState.mode = 'walk';
+    walkState.phys = { x: wx, feetY, z: wz, velY: 0, onGround: true, onStair: false };
+    camera.position.set(wx, posY, wz);
+    walkState.yaw = Math.atan2(-(tx - wx), -(tz - wz));
+    walkState.pitch = 0.0;
     updateWalkCameraTarget();
-    showToast(`已抵達北棟（愛悅樓）${label}（可自由走動探索）`);
+    syncWalkHUD();
+    showToast(`已抵達北棟（愛悅樓）${label}`);
   }
 };
 document.getElementById('walk-floor-bf')?.addEventListener('click', () => jumpToNorthFloor('BF'));
@@ -26096,24 +26988,50 @@ document.querySelectorAll('#walk-pad button').forEach(btn => {
   btn.addEventListener('pointerleave', () => setKey(false));
 });
 
-// Pointer drag look-around when in Walk Mode
+// Pointer Lock (FPS 滑鼠環顧) + 滑鼠拖曳環顧雙支援
+document.addEventListener('pointerlockchange', () => {
+  walkState.pointerLocked = (document.pointerLockElement === renderer.domElement);
+  if (walkState.active) syncWalkHUD();
+});
+
 renderer.domElement.addEventListener('pointerdown', e => {
-  if (!walkState.active) return;
+  if (!walkState.active || e.button !== 0) return;
   walkState.dragging = true;
+  walkState.dragMoved = false;
   walkState.lastX = e.clientX;
   walkState.lastY = e.clientY;
 });
 window.addEventListener('pointermove', e => {
-  if (!walkState.active || !walkState.dragging) return;
+  if (!walkState.active) return;
+  const maxPitch = walkState.mode === 'fly' ? 1.38 : 0.85;
+  if (walkState.pointerLocked) {
+    const dx = e.movementX || 0;
+    const dy = e.movementY || 0;
+    walkState.yaw -= dx * 0.0024;
+    walkState.pitch = THREE.MathUtils.clamp(walkState.pitch - dy * 0.0022, -maxPitch, maxPitch);
+    updateWalkCameraTarget();
+    requestRender(6);
+    return;
+  }
+  if (!walkState.dragging) return;
   const dx = e.clientX - walkState.lastX;
   const dy = e.clientY - walkState.lastY;
+  if (Math.hypot(dx, dy) > 4) walkState.dragMoved = true;
   walkState.lastX = e.clientX;
   walkState.lastY = e.clientY;
   walkState.yaw -= dx * 0.0042;
-  walkState.pitch = THREE.MathUtils.clamp(walkState.pitch - dy * 0.0032, -0.55, 0.65);
+  walkState.pitch = THREE.MathUtils.clamp(walkState.pitch - dy * 0.0032, -maxPitch, maxPitch);
   updateWalkCameraTarget();
+  requestRender(6);
 });
-window.addEventListener('pointerup', () => { walkState.dragging = false; });
+window.addEventListener('pointerup', e => {
+  if (walkState.active && walkState.dragging && !walkState.dragMoved && !walkState.pointerLocked && !isCoarsePointer && e.target === renderer.domElement) {
+    // 單擊畫面進入 FPS 滑鼠鎖定環顧（拖曳則不鎖定，兩者完美共存）
+    try { renderer.domElement.requestPointerLock?.(); } catch {}
+  }
+  walkState.dragging = false;
+  walkState.dragMoved = false;
+});
 
 // ============================================================================
 // 11. PKU-3D STYLE 3D TOP-DOWN FLOOR CUTAWAY & OFFICIAL FLOOR PLAN SYSTEM
@@ -27160,7 +28078,14 @@ window.addEventListener('keydown', e => {
       closePano();
       return;
     }
-    if (walkState.active) { exitWalkMode(); return; }
+    if (walkState.active) {
+      if (walkState.pointerLocked) {
+        try { document.exitPointerLock?.(); } catch {}
+        return;
+      }
+      exitWalkMode();
+      return;
+    }
     if (isIsolated) { setIsolationMode(false); return; }
     if (!detailEl.hidden) { detailEl.hidden = true; setDetailCompact(false); return; }
     document.getElementById('environment').hidden = true;
@@ -27177,9 +28102,15 @@ window.addEventListener('keydown', e => {
     return;
   }
 
-  // First-person walking keys
+  const k = e.key.toLowerCase();
+
+  // First-person walking & free-flight keys
   if (walkState.active) {
-    const k = e.key.toLowerCase();
+    if (k === 'f' && !e.repeat) {
+      e.preventDefault();
+      toggleFlyMode();
+      return;
+    }
     if (k === 'e') {
       const walk360El = document.getElementById('walk360Prompt');
       if (walk360El && !walk360El.hidden && walk360El.dataset.spotId) {
@@ -27190,10 +28121,15 @@ window.addEventListener('keydown', e => {
     }
     if (e.code === 'Space') {
       e.preventDefault();
-      if (activeRoutePoints3D.length > 1) toggleRouteTravel();
+      if (walkState.mode === 'fly') {
+        walkState.keys.up = true;
+      } else if (activeRoutePoints3D.length > 1) {
+        toggleRouteTravel();
+      }
       return;
     }
     if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
+      e.preventDefault();
       if (routeWalkActive) {
         routeWalkActive = false;
         walkState.detachedFromRoute = true;
@@ -27202,12 +28138,37 @@ window.addEventListener('keydown', e => {
     }
     if (k === 'w' || e.key === 'ArrowUp') walkState.keys.forward = true;
     if (k === 's' || e.key === 'ArrowDown') walkState.keys.backward = true;
-    if (k === 'a' || e.key === 'ArrowLeft') walkState.keys.left = true;
-    if (k === 'd' || e.key === 'ArrowRight') walkState.keys.right = true;
-    if (k === 'e' || (e.code === 'Space' && !activeRoutePoints3D.length)) walkState.keys.up = true;
-    if (k === 'q' || k === 'c') walkState.keys.down = true;
+    if (k === 'a') walkState.keys.left = true;
+    if (k === 'd') walkState.keys.right = true;
+    if (e.key === 'ArrowLeft') walkState.keys.turnLeft = true;
+    if (e.key === 'ArrowRight') walkState.keys.turnRight = true;
+    if (walkState.mode === 'fly') {
+      if (k === 'e') walkState.keys.up = true;
+      if (k === 'q' || k === 'c') walkState.keys.down = true;
+    }
     if (e.key === 'Shift') walkState.keys.sprint = true;
+    requestRender(12);
     return;
+  }
+
+  // 在預設鳥瞰模式下：按 WASD 直接降落進入地面行走；按 F 進入自由飛行鳥瞰
+  if (walkModeAllowed && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (['w', 'a', 's', 'd'].includes(k)) {
+      e.preventDefault();
+      startWalkMode();
+      if (k === 'w') walkState.keys.forward = true;
+      if (k === 's') walkState.keys.backward = true;
+      if (k === 'a') walkState.keys.left = true;
+      if (k === 'd') walkState.keys.right = true;
+      requestRender(16);
+      return;
+    }
+    if (k === 'f' && !e.repeat) {
+      e.preventDefault();
+      startFlyMode();
+      requestRender(16);
+      return;
+    }
   }
 
   // Browse Mode Keyboard Navigation (`PKU-3D app-v29.js` lines 331-332)
@@ -27233,15 +28194,17 @@ window.addEventListener('keyup', e => {
   const k = e.key.toLowerCase();
   if (k === 'w' || e.key === 'ArrowUp') walkState.keys.forward = false;
   if (k === 's' || e.key === 'ArrowDown') walkState.keys.backward = false;
-  if (k === 'a' || e.key === 'ArrowLeft') walkState.keys.left = false;
-  if (k === 'd' || e.key === 'ArrowRight') walkState.keys.right = false;
+  if (k === 'a') walkState.keys.left = false;
+  if (k === 'd') walkState.keys.right = false;
+  if (e.key === 'ArrowLeft') walkState.keys.turnLeft = false;
+  if (e.key === 'ArrowRight') walkState.keys.turnRight = false;
   if (k === 'e' || e.code === 'Space') walkState.keys.up = false;
   if (k === 'q' || k === 'c') walkState.keys.down = false;
   if (e.key === 'Shift') walkState.keys.sprint = false;
 });
 
 window.addEventListener('blur', () => {
-  walkState.keys = { forward: false, backward: false, left: false, right: false, up: false, down: false, sprint: false };
+  resetWalkKeys();
 });
 
 // Modals & Full Gallery Initialization
@@ -27564,148 +28527,92 @@ renderer.setAnimationLoop(mainLoopFn = now => {
     if (walk360El && !walk360El.hidden) walk360El.hidden = true;
   }
 
-  // 1) Collision-Aware First-Person Ground Walk Movement (`PKU-3D FirstPerson.move` substepping)
+  // 1) 3D 實體防穿牆地面行走 & 自由飛行鳥瞰物理迴圈 (WalkWorld)
   if (walkState.active && !routeWalkActive) {
-    const speed = (walkState.keys.sprint ? 16.0 : 8.2) * dtSec;
+    // 鍵盤左右方向鍵平順轉向 (← / →)
+    if (walkState.keys.turnLeft) walkState.yaw += WALK_CONSTANTS.TURN_SPEED * dtSec;
+    if (walkState.keys.turnRight) walkState.yaw -= WALK_CONSTANTS.TURN_SPEED * dtSec;
+
     const fwdX = -Math.sin(walkState.yaw), fwdZ = -Math.cos(walkState.yaw);
     const rightX = Math.cos(walkState.yaw), rightZ = -Math.sin(walkState.yaw);
-    let moveX = 0, moveZ = 0;
-    if (walkState.keys.forward) { moveX += fwdX; moveZ += fwdZ; }
-    if (walkState.keys.backward) { moveX -= fwdX; moveZ -= fwdZ; }
-    if (walkState.keys.right) { moveX += rightX; moveZ += rightZ; }
-    if (walkState.keys.left) { moveX -= rightX; moveZ -= rightZ; }
-    // 觸控類比搖桿：推得越遠走得越快（參考 gses-campus-3d 的 #joy 設計）
-    if (walkState.joy.active) {
-      moveX += fwdX * -walkState.joy.y + rightX * walkState.joy.x;
-      moveZ += fwdZ * -walkState.joy.y + rightZ * walkState.joy.x;
-    }
-    const len = Math.hypot(moveX, moveZ);
-    if (len > 0.001) {
-      const mag = Math.min(1, len);
-      const dx = (moveX / len) * speed * mag;
-      const dz = (moveZ / len) * speed * mag;
-      const curX = camera.position.x, curZ = camera.position.z;
-      // Check full step, or slide along X / Z axis (`PKU-3D FirstPerson.move` line 63)
-      if (isWalkPointAllowed(curX + dx, curZ + dz)) {
-        camera.position.x = curX + dx;
-        camera.position.z = curZ + dz;
-      } else if (isWalkPointAllowed(curX + dx, curZ)) {
-        camera.position.x = curX + dx;
-      } else if (isWalkPointAllowed(curX, curZ + dz)) {
-        camera.position.z = curZ + dz;
-      }
+    const locEl = document.getElementById('walk-location');
 
-      // Vertical Up / Down Movement (Q / E, Space / C, or Up / Down buttons)
-      const vSpeed = (walkState.keys.sprint ? 10.0 : 5.0) * dtSec;
-      if (walkState.keys.up) {
-        camera.position.y += vSpeed;
-      } else if (walkState.keys.down) {
-        camera.position.y = Math.max(-0.78, camera.position.y - vSpeed);
-      } else {
-        // v2.12.40 北棟／西棟已依航照定位：樓梯判斷改用各棟局部座標
-        const [_nX, _nZ] = NORTH_XF.toLocal(camera.position.x, camera.position.z);
-        const [_wX, _wZ] = WEST_XF.toLocal(camera.position.x, camera.position.z);
-        // Automatic Stair Climbing inside North Building Central Stairwell (⑪–⑫: X from 17.0 to 23.0, Z from -38.5 to -26.5)
-        const inStairwell = (_nX >= 17.0 && _nX <= 23.0 && _nZ >= -38.5 && _nZ <= -26.5);
-        if (inStairwell) {
-          // Downward flight to Basement on west run (x <= 20.0, z from -26.0 to -32.5, y < 3.20)
-          if (_nX <= 20.0 && camera.position.y < 3.20 && _nZ >= -32.5 && _nZ <= -26.0) {
-            const bfProg = (-26.0 - _nZ) / 6.0; // 0 at 1F (z=-26.0), 1 at BF (z=-32.0)
-            const targetY = THREE.MathUtils.lerp(2.97, -0.78, THREE.MathUtils.clamp(bfProg, 0, 1));
-            camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
-          } else {
-            // East flight (x > 20.0): goes up from south (Z=-26.5) to north (Z=-35.0)
-            // West flight (x <= 20.0): goes up from north (Z=-35.0) to south (Z=-26.5)
-            const curFloor = Math.floor(Math.max(0, (camera.position.y - 1.72 - 1.25) / 3.6));
-            const floorBaseY = 1.25 + curFloor * 3.6 + 1.72;
-            const isEastUp = _nX > 20.0;
-            if (isEastUp && _nZ <= -26.5 && _nZ >= -35.0) {
-              const stairProgress = (-26.5 - _nZ) / 8.5; // 0 to 1
-              const targetY = floorBaseY + THREE.MathUtils.clamp(stairProgress, 0, 1) * 1.8;
-              camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
-            } else if (!isEastUp && _nZ >= -35.0 && _nZ <= -26.5) {
-              const stairProgress = (_nZ - (-35.0)) / 8.5; // 0 to 1
-              const targetY = floorBaseY + 1.8 + THREE.MathUtils.clamp(stairProgress, 0, 1) * 1.8;
-              camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
-            }
-          }
-        }
-        // Stepped Garden Planters descent to Basement South Lightwell (X: -26.5..-17.5 & 32.0..43.0, Z: -21.65..-19.15)
-        const inSteppedPlanter = (_nZ >= -21.65 && _nZ <= -19.15 &&
-          ((_nX >= -26.5 && _nX <= -17.5) || (_nX >= 32.0 && _nX <= 43.0)));
-        if (inSteppedPlanter) {
-          const pProg = (_nZ - (-19.25)) / (-2.40); // 0 at south ground, 1 at sunken lightwell
-          const targetY = THREE.MathUtils.lerp(1.72, -0.78, THREE.MathUtils.clamp(pProg, 0, 1));
-          camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
-        }
-        // Automatic Stair Climbing inside West Building North Staircase (東面上樓：X from -26.80 to -32.15, Z from -16.05 to -14.19)
-        const inWestNorthStair = (_wX >= -32.25 && _wX <= -26.70 && _wZ >= -16.05 && _wZ <= -14.19);
-        if (inWestNorthStair) {
-          const curFloor = (camera.position.y - 1.72 >= 3.80) ? 1 : 0;
-          const baseFloorY = (curFloor === 0 ? 0.25 : 3.95) + 1.72;
-          const riseH = (curFloor === 0 ? 3.70 : 3.75);
-          const stairProgress = (-26.80 - _wX) / 5.35; // 0 (East) to 1 (West)
-          const targetY = baseFloorY + THREE.MathUtils.clamp(stairProgress, 0, 1) * riseH;
-          camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
-        }
-        // 北棟西側後走廊戶外直梯：地面 8 階入口踏步、三段西→東直梯與東西端平台（v2.12.118 新幾何）
-        const NS = window.NORTH_REAR_STAIR;
-        if (NS) {
-          const px = _nX, pz = _nZ, eye = 1.72;
-          const feet = camera.position.y - eye;
-          const zEastN = NS.zEastNorth !== undefined ? NS.zEastNorth : NS.zFlightN;
-          let targetFeet = null;
-          if (pz <= zEastN && pz >= NS.zBoxNorth && px >= NS.xs && px <= NS.eX0 && feet < NS.baseH + 1.0) {
-            targetFeet = NS.baseH * THREE.MathUtils.clamp((NS.eX0 - px) / (NS.eX0 - NS.xs), 0, 1);      // 1F 入口踏步
-          } else if (pz <= NS.zFlightS && pz >= NS.zFlightN && px >= NS.xs && px <= NS.xe) {
-            const prog = (px - NS.xs) / (NS.xe - NS.xs);
-            let best = null;
-            for (let k = 0; k < 3; k++) { const fy = NS.baseH + k * NS.FH + prog * NS.FH; if (best === null || Math.abs(fy - feet) < Math.abs(best - feet)) best = fy; }
-            targetFeet = best;                                                                           // 直梯
-          } else if ((pz <= NS.zb && pz >= NS.zBoxNorth && px >= NS.b2L && px < NS.xs) ||
-                     (pz <= NS.zb && pz >= zEastN && px > NS.xe && px <= NS.xEastBoxEnd)) {
-            const maxLv = (px < NS.xs) ? 2 : 3;
-            const lv = Math.max(0, Math.min(maxLv, Math.round((feet - NS.baseH) / NS.FH)));
-            targetFeet = NS.baseH + lv * NS.FH;                                                          // 西端（1F~3F）／東端（2F~屋頂）平台
-          }
-          if (targetFeet !== null) camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetFeet + eye, 0.18);
-        }
+    if (walkState.mode === 'fly') {
+      // ---- 自由飛行鳥瞰模式 ----
+      const flySpeed = (walkState.keys.sprint ? WALK_CONSTANTS.FLY_SPRINT_SPEED : WALK_CONSTANTS.FLY_SPEED) * dtSec;
+      const cosP = Math.cos(walkState.pitch), sinP = Math.sin(walkState.pitch);
+      const fwd3X = fwdX * cosP, fwd3Y = sinP, fwd3Z = fwdZ * cosP;
+      let mx = 0, my = 0, mz = 0;
+      if (walkState.keys.forward) { mx += fwd3X; my += fwd3Y; mz += fwd3Z; }
+      if (walkState.keys.backward) { mx -= fwd3X; my -= fwd3Y; mz -= fwd3Z; }
+      if (walkState.keys.right) { mx += rightX; mz += rightZ; }
+      if (walkState.keys.left) { mx -= rightX; mz -= rightZ; }
+      if (walkState.joy.active) {
+        mx += fwd3X * -walkState.joy.y + rightX * walkState.joy.x;
+        my += fwd3Y * -walkState.joy.y;
+        mz += fwd3Z * -walkState.joy.y + rightZ * walkState.joy.x;
       }
-      // v2.12.69 新棟北側入口階梯、1F 走廊平台、連通樓梯與北走廊之自動升降（新棟建置局部座標，僅 1F）
-      if (!walkState.keys.up && !walkState.keys.down && camera.position.y < 3.2) {
-        const [nx, nz0] = NEW_XF.toLocal(camera.position.x, camera.position.z), nz = nz0 - SOUTH_SHIFT;
-        const zF = 13.398, zStair0 = zF - 6 * 0.34, entCx = -19.58;
-        let feet = null;
-        if (nz >= zStair0 && nz < zF && nx >= entCx - 1.30 && nx <= entCx + 1.30) feet = 0.72 * THREE.MathUtils.clamp((nz - zStair0) / (zF - zStair0), 0, 1);   // 入口階梯
-        else if (nz >= zStair0 && nz < 13.633 && nx >= -24.31 && nx < entCx + 1.30) feet = 0.72;                                                                   // 1F 走廊平台、入口平台
-        else if (nz >= 13.633 && nz <= 15.918 && nx >= -27.04 && nx <= -6.7) {
-          if (nx < -24.31) feet = 0.40;                                                                     // 西棟端下層平台
-          else if (nx < -21.51) feet = 0.40 + 0.80 * (nx + 24.31) / 2.80;                                    // 連通樓梯 8 階
-          else feet = 1.20;                                                                                  // 新棟 1F 北走廊
-        }
-        if (feet !== null) camera.position.y = THREE.MathUtils.lerp(camera.position.y, feet + 1.72, 0.2);
-        else if (camera.position.y > 1.75 && camera.position.y < 3.0 && walkState.__newRaised) camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72, 0.2);
-        walkState.__newRaised = feet !== null || camera.position.y > 1.76;
+      if (walkState.keys.up) my += 1.0;
+      if (walkState.keys.down) my -= 1.0;
+
+      const mLen = Math.hypot(mx, my, mz);
+      if (mLen > 0.001) {
+        const mag = Math.min(1, mLen);
+        const res = walkWorld.stepFly(
+          camera.position,
+          (mx / mLen) * flySpeed * mag,
+          (my / mLen) * flySpeed * mag,
+          (mz / mLen) * flySpeed * mag
+        );
+        camera.position.set(res.x, res.y, res.z);
       }
-      // 下沉中庭：進入中庭範圍時視高隨地面下降，離開時回復（東棟坡道／台階由其本身邏輯處理）
-      {
-        const inC = inCourtyardSink(camera.position.x, camera.position.z, -0.4);
-        const onRamp = window.EAST_REAR_RAMP && EAST_XF.toLocal(camera.position.x, camera.position.z)[0] > window.EAST_REAR_RAMP.xA1 - 0.3;   // v2.12.40 東棟局部座標
-        if (inC && !onRamp && camera.position.y < 2.8) { camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72 - COURTYARD_SINK.D, 0.18); walkState.sunk = true; }
-        else if (!inC && walkState.sunk && camera.position.y < 1.6) { camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72, 0.18); if (Math.abs(camera.position.y - 1.72) < 0.02) walkState.sunk = false; }
-      }
-      camera.position.y += Math.sin(now * 0.012) * (len > 0.001 ? 0.018 : 0);
+      walkWorld.updateDoors(camera.position.x, camera.position.y - WALK_CONSTANTS.PLAYER_EYE_H, camera.position.z, dtSec);
+      if (locEl) locEl.textContent = `高度 ${camera.position.y.toFixed(1)} m`;
       updateWalkCameraTarget();
     } else {
-      // Idle vertical control handling
-      const vSpeed = (walkState.keys.sprint ? 10.0 : 5.0) * dtSec;
-      if (walkState.keys.up) {
-        camera.position.y += vSpeed;
-        updateWalkCameraTarget();
-      } else if (walkState.keys.down) {
-        camera.position.y = Math.max(-0.78, camera.position.y - vSpeed);
-        updateWalkCameraTarget();
+      // ---- 地面真實行走模式（3D OBB 碰撞 + 重力貼地 + 自動上下樓梯 + 自動感應開門） ----
+      const walkSpeed = (walkState.keys.sprint ? WALK_CONSTANTS.SPRINT_SPEED : WALK_CONSTANTS.WALK_SPEED) * dtSec;
+      let moveX = 0, moveZ = 0;
+      if (walkState.keys.forward) { moveX += fwdX; moveZ += fwdZ; }
+      if (walkState.keys.backward) { moveX -= fwdX; moveZ -= fwdZ; }
+      if (walkState.keys.right) { moveX += rightX; moveZ += rightZ; }
+      if (walkState.keys.left) { moveX -= rightX; moveZ -= rightZ; }
+      if (walkState.joy.active) {
+        moveX += fwdX * -walkState.joy.y + rightX * walkState.joy.x;
+        moveZ += fwdZ * -walkState.joy.y + rightZ * walkState.joy.x;
       }
+
+      const len = Math.hypot(moveX, moveZ);
+      let dx = 0, dz = 0;
+      if (len > 0.001) {
+        const mag = Math.min(1, len);
+        dx = (moveX / len) * walkSpeed * mag;
+        dz = (moveZ / len) * walkSpeed * mag;
+      }
+
+      const prevX = walkState.phys.x, prevZ = walkState.phys.z;
+      const res = walkWorld.stepWalk(walkState.phys, dx, dz, dtSec);
+      const movedDist = Math.hypot(res.x - prevX, res.z - prevZ);
+
+      // 自然步伐起伏（僅在實際移動且貼地時輕微起伏）
+      if (movedDist > 0.002 && res.onGround) {
+        walkState.bobPhase += movedDist * (walkState.keys.sprint ? 3.2 : 3.8);
+      }
+      const bob = (movedDist > 0.002 && res.onGround) ? Math.sin(walkState.bobPhase) * 0.024 : 0;
+      camera.position.set(res.x, res.eyeY + bob, res.z);
+
+      // 更新五棟教室自動感應門動畫
+      walkWorld.updateDoors(res.x, res.feetY, res.z, dtSec);
+
+      // 即時更新 HUD 所在位置（建築・樓層・教室名稱）
+      if (locEl) {
+        const lbl = walkWorld.getLocationLabel(res.x, res.feetY, res.z);
+        if (lbl !== walkState.lastLocLabel) {
+          walkState.lastLocLabel = lbl;
+          locEl.textContent = lbl;
+        }
+      }
+      updateWalkCameraTarget();
     }
   } else if (routeWalkActive && activeRoutePoints3D.length > 1) {
     // 2) Automated Route Explorer Walk Playback (`沿路探索`)
