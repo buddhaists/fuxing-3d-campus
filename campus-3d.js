@@ -8284,7 +8284,13 @@ function buildNorthBuilding() {
   // ==========================================================================
   {
     const xf = NORTH_XF;
-    const hallL = ax(11), hallR = ax(12), hallMid = (hallL + hallR) / 2;
+    const hallL = ax(11), hallR = ax(12), hcx = (hallL + hallR) / 2;
+    const stairCoreW = (hallR - hallL) * 0.54;
+    const stairW = stairCoreW * 0.92;
+    const stLeft = hcx - stairW / 2, stRight = hcx + stairW / 2;
+    const landD = 1.75, platD = 1.05;
+    const NS = window.NORTH_REAR_STAIR;
+    const rearMinX = NS ? Math.min(ax(3), NS.b2L) : ax(3);
     const roomNames = [
       ['1F 西側教室 1', '1F 西側教室 2', '1F 西側教室 3', '1F 西側教室 4', '1F 東側教室 1', '1F 東側教室 2', '1F 東側教室 3'],
       ['2F 西側教室 1', '2F 西側教室 2', '2F 西側教室 3', '2F 西側教室 4', '2F 東側教室 1', '2F 東側教室 2', '2F 東側教室 3'],
@@ -8295,12 +8301,19 @@ function buildNorthBuilding() {
     for (let k = 0; k < 3; k++) {
       const fy = baseH + k * FH;
       const flLabel = `${k + 1}F`;
-      // 前走廊、後走廊與中央穿堂樓板
-      walkWorld.addFloor(ax(3), ax(18), zCoreFront, zf + 0.15, fy, xf, { label: `北棟（愛悅樓）· ${flLabel} 前走廊` });
-      walkWorld.addFloor(ax(3), ax(18), zb - 0.15, zCoreBack, fy, xf, { label: `北棟（愛悅樓）· ${flLabel} 後走廊` });
-      walkWorld.addFloor(hallL, hallR, zb, zf, fy, xf, { label: `北棟（愛悅樓）· ${flLabel} 中央梯廳` });
+      // 前走廊與後走廊樓板（後走廊延伸至西後梯西端平台，確保 1F–3F 皆可無縫進出）
+      walkWorld.addFloor(ax(3), ax(18), zCoreFront - 0.1, zf + 0.15, fy, xf, { label: `北棟（愛悅樓）· ${flLabel} 前走廊` });
+      walkWorld.addFloor(rearMinX, ax(18), zb - 0.15, zCoreBack + 0.1, fy, xf, { label: `北棟（愛悅樓）· ${flLabel} 後走廊` });
+      // 中央梯廳左右兩側通道（樓梯核心 stLeft..stRight 留空給真實階梯上下，不鋪實心封板）
+      walkWorld.addFloor(hallL, stLeft + 0.05, zb, zf, fy, xf, { label: `北棟（愛悅樓）· ${flLabel} 中央梯廳` });
+      walkWorld.addFloor(stRight - 0.05, hallR, zb, zf, fy, xf, { label: `北棟（愛悅樓）· ${flLabel} 中央梯廳` });
+      // 1F 梯廳中央底板（讓 1F 可平走至梯口）
+      if (k === 0) {
+        walkWorld.addFloor(stLeft, stRight, zCoreFront - platD - 0.1, zf, fy, xf, { label: '北棟（愛悅樓）· 1F 中央梯廳' });
+        walkWorld.addFloor(stLeft, stRight, zb, zCoreBack + platD + 0.1, fy, xf, { label: '北棟（愛悅樓）· 1F 中央梯廳' });
+      }
       walkWorld.addZone(ax(3), ax(18), fy, fy + FH - 0.2, zCoreFront, zf + 0.2, xf, `北棟（愛悅樓）· ${flLabel} 前走廊`, 12);
-      walkWorld.addZone(ax(3), ax(18), fy, fy + FH - 0.2, zb - 0.2, zCoreBack, xf, `北棟（愛悅樓）· ${flLabel} 後走廊`, 12);
+      walkWorld.addZone(rearMinX, ax(18), fy, fy + FH - 0.2, zb - 0.2, zCoreBack, xf, `北棟（愛悅樓）· ${flLabel} 後走廊`, 12);
 
       // 前走廊南緣護欄（1F 中央梯廳口留通道；2F/3F 全線防護）
       if (k === 0) {
@@ -8309,9 +8322,9 @@ function buildNorthBuilding() {
       } else {
         walkWorld.addSolid(ax(3), ax(18), fy, fy + 1.25, zf - 0.18, zf + 0.18, xf, 'north-front-rail');
       }
-      // 後走廊北緣護欄（留出西側後梯開口）
+      // 後走廊北緣護欄（2F/3F 留出西側後梯東端抵達平台開口 stOpen）
       const stOpen = window.NORTH_REAR_STAIR_OPENING;
-      if (stOpen) {
+      if (stOpen && k >= 1) {
         walkWorld.addSolid(ax(3), stOpen[0], fy, fy + 1.25, zb - 0.18, zb + 0.18, xf, 'north-rear-rail-l');
         walkWorld.addSolid(stOpen[1], ax(18), fy, fy + 1.25, zb - 0.18, zb + 0.18, xf, 'north-rear-rail-r');
       } else {
@@ -8338,42 +8351,57 @@ function buildNorthBuilding() {
 
     // 1F 中央主入口台階（由地面 0 升至 1F baseH=1.25）
     walkWorld.addRamp(hallL, hallR, zf, zf + 2.6, 'z', baseH, 0.0, xf, { label: '北棟（愛悅樓）· 1F 入口台階' });
-    // 中央主樓梯（1F→2F、2F→3F 雙跑折返）
+
+    // 中央雙向主樓梯（1F→2F、2F→3F，完全對齊 3D 幾何）：
+    //  - 東側梯段 (hcx..stRight)：自南(前走廊 zCoreFront)向北直上 → 中間平台(cz, yMid) → 抵達高一層北(後走廊 zCoreBack, yTop)
+    //  - 西側梯段 (stLeft..hcx)：自北(後走廊 zCoreBack)向南直上 → 中間平台(cz, yMid) → 抵達高一層南(前走廊 zCoreFront, yTop)
     for (let k = 0; k < 2; k++) {
       const yBot = baseH + k * FH;
       const yMid = yBot + FH * 0.5;
       const yTop = yBot + FH;
-      // 東跑：南(z=-26.5)→北(z=-35.0) 上升
-      walkWorld.addRamp(hallMid + 0.05, hallR - 0.1, -35.0, -26.5, 'z', yMid, yBot, xf, { label: `北棟（愛悅樓）· ${k + 1}F→${k + 2}F 中央樓梯` });
-      // 中間轉折平台
-      walkWorld.addFloor(hallL + 0.1, hallR - 0.1, -38.5, -34.9, yMid, xf, { label: `北棟（愛悅樓）· ${k + 1}.5F 樓梯平台` });
-      // 西跑：北(z=-35.0)→南(z=-26.5) 上升
-      walkWorld.addRamp(hallL + 0.1, hallMid - 0.05, -35.0, -26.5, 'z', yMid, yTop, xf, { label: `北棟（愛悅樓）· ${k + 1}F→${k + 2}F 中央樓梯` });
-      // 中央扶手隔牆
-      walkWorld.addSolid(hallMid - 0.09, hallMid + 0.09, yBot, yTop, -34.8, -26.8, xf, 'north-stair-divider');
+      const zSStart = zCoreFront - platD;
+      const zMidS = cz + landD / 2;
+      const zMidN = cz - landD / 2;
+      const zNStart = zCoreBack + platD;
+
+      // 東側梯段（南→北連續上升 yBot → yMid → yTop）
+      walkWorld.addFloor(hcx + 0.04, stRight, zSStart - 0.08, zCoreFront + 0.12, yBot, xf, { label: `北棟 · ${k + 1}F 東梯起跑台` });
+      walkWorld.addRamp(hcx + 0.04, stRight, zMidS - 0.08, zSStart + 0.08, 'z', yMid, yBot, xf, { label: `北棟（愛悅樓）· ${k + 1}F→${k + 2}F 中央東梯` });
+      walkWorld.addFloor(hcx + 0.04, stRight, zMidN - 0.08, zMidS + 0.08, yMid, xf, { label: `北棟（愛悅樓）· ${k + 1}.5F 中央平台` });
+      walkWorld.addRamp(hcx + 0.04, stRight, zNStart - 0.08, zMidN + 0.08, 'z', yTop, yMid, xf, { label: `北棟（愛悅樓）· ${k + 1}F→${k + 2}F 中央東梯` });
+      walkWorld.addFloor(hcx + 0.04, stRight, zCoreBack - 0.15, zNStart + 0.08, yTop, xf, { label: `北棟 · ${k + 2}F 後走廊梯口` });
+
+      // 西側梯段（北→南連續上升 yBot → yMid → yTop）
+      walkWorld.addFloor(stLeft, hcx - 0.04, zCoreBack - 0.12, zNStart + 0.08, yBot, xf, { label: `北棟 · ${k + 1}F 西梯起跑台` });
+      walkWorld.addRamp(stLeft, hcx - 0.04, zNStart - 0.08, zMidN + 0.08, 'z', yBot, yMid, xf, { label: `北棟（愛悅樓）· ${k + 1}F→${k + 2}F 中央西梯` });
+      walkWorld.addFloor(stLeft, hcx - 0.04, zMidN - 0.08, zMidS + 0.08, yMid, xf, { label: `北棟（愛悅樓）· ${k + 1}.5F 中央平台` });
+      walkWorld.addRamp(stLeft, hcx - 0.04, zMidS - 0.08, zSStart + 0.08, 'z', yMid, yTop, xf, { label: `北棟（愛悅樓）· ${k + 1}F→${k + 2}F 中央西梯` });
+      walkWorld.addFloor(stLeft, hcx - 0.04, zSStart - 0.08, zCoreFront + 0.15, yTop, xf, { label: `北棟 · ${k + 2}F 前走廊梯口` });
+
+      // 中央休息平台矮分隔牆 (只分隔東西兩側梯段，高 0.90m)
+      walkWorld.addSolid(hcx - 0.08, hcx + 0.08, yBot, yTop, zNStart, zSStart, xf, 'north-stair-divider');
     }
+
     // 1F→BF 地下室下樓梯 + 地下室大廳樓板
-    walkWorld.addRamp(hallL + 0.1, hallMid - 0.05, -32.5, -26.0, 'z', -2.50, baseH, xf, { label: '北棟（愛悅樓）· BF 地下室樓梯' });
     walkWorld.addFloor(ax(3), ax(18), zb - 1.85, zf + 2.55, -2.50, xf, { label: '北棟（愛悅樓）· BF 地下室' });
     // 南側階梯花台通往地下室採光天井
     walkWorld.addRamp(-26.5, -17.5, -21.65, -19.15, 'z', -2.50, 0.0, xf, { label: '北棟（愛悅樓）· 西側天井階梯' });
     walkWorld.addRamp(32.0, 43.0, -21.65, -19.15, 'z', -2.50, 0.0, xf, { label: '北棟（愛悅樓）· 東側天井階梯' });
 
     // 西側後走廊戶外直梯（1F 入口踏步 + 1F→2F→3F→RF 三段直梯 + 東西平台）
-    const NS = window.NORTH_REAR_STAIR;
     if (NS) {
       const zEastN = NS.zEastNorth !== undefined ? NS.zEastNorth : NS.zFlightN;
       walkWorld.addRamp(NS.xs, NS.eX0, NS.zBoxNorth, zEastN, 'x', NS.baseH, 0.0, xf, { label: '北棟（愛悅樓）· 西後梯入口' });
       for (let k = 0; k < 3; k++) {
         const yB = NS.baseH + k * NS.FH, yT = yB + NS.FH;
-        walkWorld.addRamp(NS.xs, NS.xe, NS.zFlightN, NS.zFlightS, 'x', yB, yT, xf, { label: `北棟（愛悅樓）· 西後戶外樓梯 ${k + 1}F→${k + 2}F` });
-        walkWorld.addFloor(NS.b2L, NS.xs + 0.1, NS.zBoxNorth, NS.zb + 0.1, yB, xf, { label: `北棟（愛悅樓）· 西後梯 ${k + 1}F 平台` });
-        walkWorld.addFloor(NS.xe - 0.1, NS.xEastBoxEnd, zEastN, NS.zb + 0.1, yT, xf, { label: `北棟（愛悅樓）· 西後梯 ${k + 2}F 平台` });
+        walkWorld.addRamp(NS.xs - 0.08, NS.xe + 0.08, NS.zFlightN, NS.zFlightS, 'x', yB, yT, xf, { label: `北棟（愛悅樓）· 西後戶外樓梯 ${k + 1}F→${k + 2}F` });
+        walkWorld.addFloor(NS.b2L, NS.xs + 0.15, NS.zBoxNorth, NS.zb + 0.15, yB, xf, { label: `北棟（愛悅樓）· 西後梯 ${k + 1}F 平台` });
+        walkWorld.addFloor(NS.xe - 0.15, NS.xEastBoxEnd, zEastN, NS.zb + 0.25, yT, xf, { label: `北棟（愛悅樓）· 西後梯 ${k + 2}F 平台` });
       }
     }
 
-    // 西側廁所大樓與電梯塔實體量體（防穿牆）
-    walkWorld.addSolid(ax(1) - 0.2, ax(3) - 0.05, 0, H, zb - 0.2, zf + 0.3, xf, 'north-west-toilet-core');
+    // 西側廁所大樓與電梯塔實體量體（止於後走廊南緣 zCoreBack，避免擋住西側後走廊與後梯入口）
+    walkWorld.addSolid(ax(1) - 0.2, ax(3) - 0.05, 0, H, zCoreBack - 0.05, zf + 0.3, xf, 'north-west-toilet-core');
   }
 
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'north-building'; });
