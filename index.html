@@ -24,7 +24,7 @@ window.addEventListener('unhandledrejection', e => {
 <meta name="theme-color" content="#faf8f2">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>復</text></svg>">
 <link rel="preload" as="image" href="./assets/campus_overview_preview.webp" type="image/webp">
-<link rel="preload" as="script" href="./campus-ui.js?v=2.6.0">
+<link rel="preload" as="script" href="./campus-ui.js?v=2.12.121">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=Noto+Serif+TC:wght@500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
@@ -43,7 +43,7 @@ window.__updateProgress(15, '正在啟動三維校園引擎...');
 if ('serviceWorker' in navigator) {
   window.addEventListener('DOMContentLoaded', () => {
     window.__updateProgress(25, '校園核心樣式就緒...');
-    navigator.serviceWorker.register('./sw.js?v=2.6.0').then(reg => {
+    navigator.serviceWorker.register('./sw.js?v=2.12.121').then(reg => {
       reg.update();
     }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -74,6 +74,9 @@ document.addEventListener('click', function(e) {
   }
 }
 </script>
+<!-- modulepreload 必須放在 importmap 之後，否則瀏覽器會在 import map 生效前解析 "three" 而失敗 -->
+<link rel="modulepreload" href="./vendor/three/three.module.js">
+<link rel="modulepreload" href="./campus-3d.js?v=2.12.121">
 <style>
   /* ==========================================================================
      PKU-3D ("燕园 · 循图，走进燕园") Editorial Design System
@@ -1156,6 +1159,14 @@ document.addEventListener('click', function(e) {
     font-size: 11px;
     transition: all 0.14s;
   }
+  .month-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .month-row input[type=range] { flex: 1; accent-color: #b5562e; }
+  .month-row span { min-width: 3.2em; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .bloom-now { margin-top: 6px; font-size: 12px; line-height: 1.6; opacity: .85; }
+  .bloom-now b { font-weight: 600; margin-right: 4px; }
+  .bloom-row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 3px; }
+  .bloom-chip { font: inherit; font-size: 11.5px; padding: 1px 7px; border-radius: 999px; border: 1px solid rgba(181,86,46,.35); background: rgba(181,86,46,.08); color: inherit; cursor: pointer; }
+  .bloom-chip:hover, .bloom-chip:focus-visible { background: rgba(181,86,46,.2); outline: none; }
   .segmented button.is-active {
     background: var(--paper);
     color: var(--ink);
@@ -1261,6 +1272,26 @@ document.addEventListener('click', function(e) {
     font-size: 11px;
     font-weight: 600;
   }
+  .walk-joy {
+    position: fixed; left: 20px; bottom: 56px; z-index: 22;
+    width: 124px; height: 124px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(250,248,242,.55) 0%, rgba(250,248,242,.82) 70%);
+    border: 1px solid var(--line); box-shadow: var(--shadow);
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .walk-joy-knob {
+    position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; border-radius: 50%;
+    transform: translate(-50%, -50%); background: var(--accent, #315b4e); opacity: .88;
+    box-shadow: 0 4px 12px rgba(0,0,0,.22); pointer-events: none;
+  }
+  @media (max-width: 820px) {
+    .walk-joy { bottom: calc(env(safe-area-inset-bottom, 0px) + 176px); width: 112px; height: 112px; }
+    .walk-pad.has-joy { bottom: calc(env(safe-area-inset-bottom, 0px) + 180px) !important; }
+  }
+  .walk-pad.has-joy { left: 156px; grid-template-columns: repeat(1, 56px); grid-template-rows: repeat(2, 44px); }
+  .walk-pad.has-joy button[data-move="forward"], .walk-pad.has-joy button[data-move="backward"],
+  .walk-pad.has-joy button[data-move="left"], .walk-pad.has-joy button[data-move="right"] { display: none; }
+  .walk-pad.has-joy button[data-move="up"], .walk-pad.has-joy button[data-move="down"] { grid-column: 1; grid-row: auto; }
   .walk-pad {
     position: fixed;
     left: 20px;
@@ -2131,6 +2162,13 @@ document.addEventListener('click', function(e) {
     z-index: 920;
     transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
   }
+  /* 右側資訊卡開啟時，指北針移到卡片左側，避免蓋住卡片右上角的關閉鍵 ✕ */
+  body:has(#gsesSpotCard:not([hidden])) .gses-compass { right: calc(min(360px, 100vw - 36px) + 18px + 12px); }
+  body:has(#detail:not([hidden])) .gses-compass { right: calc(332px + 20px + 12px); }
+  @media (max-width: 820px) {
+    body:has(#gsesSpotCard:not([hidden])) .gses-compass,
+    body:has(#detail:not([hidden])) .gses-compass { opacity: 0; pointer-events: none; }
+  }
   .gses-compass:hover {
     transform: scale(1.08);
     box-shadow: var(--shadow-lg);
@@ -2310,6 +2348,22 @@ document.addEventListener('click', function(e) {
   .pano-host:active {
     cursor: grabbing;
   }
+  .pano-error {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5;
+    width: min(440px, calc(100vw - 32px)); padding: 22px 24px; border-radius: 14px;
+    background: rgba(250, 248, 242, 0.97); color: #253d37; text-align: center;
+    box-shadow: 0 18px 48px rgba(0,0,0,.45); font-size: 14px; line-height: 1.65;
+  }
+  .pano-error[hidden] { display: none; }
+  .pano-error strong { display: block; font-size: 17px; margin-bottom: 6px; color: #923c32; }
+  .pano-error p { margin: 0 0 14px; color: #4f5a54; }
+  .pano-error-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .pano-error-btn {
+    padding: 9px 14px; border-radius: 8px; border: 1px solid #c9c4b4; background: #fff;
+    color: #253d37; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+  }
+  .pano-error-btn.primary { background: #315b4e; border-color: #315b4e; color: #fff; }
+  .pano-error-btn[hidden] { display: none; }
   .pano-loading {
     position: absolute;
     inset: 0;
@@ -2787,6 +2841,7 @@ document.addEventListener('click', function(e) {
     color: var(--seal);
     flex: none;
   }
+  .perf-stats { display:block; margin-top:6px; font-size:11px; color:var(--muted, #737c73); font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -2860,10 +2915,9 @@ document.addEventListener('click', function(e) {
       <button type="button" class="plan-floor-btn" data-plan-floor="B1">BF 地下層</button>
     </div>
     <label class="plan-check" title="在 3D 樓層上顯示彩色教室隔間與分機標籤"><input type="checkbox" id="plan-show-rooms" checked /> 教室隔間</label>
-    <label class="plan-check" title="顯示右側處室分機快查表，點擊直接定位"><input type="checkbox" id="plan-show-ext" checked /> 處室分機表</label>
     <label class="plan-check" title="在 3D 俯視中顯示校園步道動線與校門"><input type="checkbox" id="plan-show-paths" checked /> 步道網路</label>
     <label class="plan-check" title="切換 3D 樹木綠植顯示（取消勾選可清楚檢視 1F 走廊）"><input type="checkbox" id="plan-show-trees" checked /> 樹冠綠帶</label>
-    <label class="plan-check" title="在 3D 樓層高度直接疊加 115 學年度官方平面圖原圖"><input type="checkbox" id="plan-show-img" /> 疊加官方原圖</label>
+    <label class="plan-check" title="疊加校園樹木資訊平臺之航照空拍圖（已依樹木普查座標對位），用來比對模型與實景"><input type="checkbox" id="plan-show-sat" /> 疊加空拍底圖</label>
     <button type="button" class="plan-action-btn" id="plan-open-lightbox" title="彈窗檢視 5 張 115 學年度官方平面圖高解析原圖">🔍 原圖檢視</button>
     <button type="button" class="plan-action-btn" id="plan-download-btn" title="下載當前樓層平面布局圖">⬇ 下載圖紙</button>
   </div>
@@ -3096,6 +3150,11 @@ document.addEventListener('click', function(e) {
         <button type="button" data-season="autumn">秋</button>
         <button type="button" data-season="winter">冬</button>
       </div>
+      <div class="month-row">
+        <input type="range" id="month-slider" min="1" max="12" step="1" value="11" aria-label="月份（樹木物候）">
+        <span id="month-label">11 月</span>
+      </div>
+      <div id="bloom-now" class="bloom-now" aria-live="polite"></div>
     </div>
 
     <div class="control-block">
@@ -3112,9 +3171,10 @@ document.addEventListener('click', function(e) {
       <span>繪圖畫質 · <strong id="fpsText" style="color:var(--accent)">60 FPS</strong></span>
       <div class="segmented segmented-3" role="group" aria-label="畫質">
         <button type="button" data-quality="smooth">低 · 流暢</button>
-        <button type="button" data-quality="auto">中 · 均衡</button>
+        <button type="button" data-quality="auto" title="依裝置實測幀率自動調整渲染解析度">中 · 自動</button>
         <button type="button" class="is-active" data-quality="fine">高 · 清晰</button>
       </div>
+      <small id="perfStats" class="perf-stats" aria-live="off">效能統計：轉動視角後更新</small>
     </div>
 
     <div class="toggles">
@@ -3173,6 +3233,7 @@ document.addEventListener('click', function(e) {
     <button id="walk-exit" type="button">退出步行 (Esc)</button>
   </div>
 
+  <div id="walk-joy" class="walk-joy" aria-label="步行搖桿：拖曳控制前進方向與速度" hidden><div id="walk-joy-knob" class="walk-joy-knob"></div></div>
   <div id="walk-pad" class="walk-pad" aria-label="步行方向鍵" hidden>
     <button type="button" data-move="forward" aria-label="前進">↑</button>
     <button type="button" data-move="left" aria-label="左移">←</button>
@@ -3561,6 +3622,14 @@ document.addEventListener('click', function(e) {
       <div class="pano-spinner"></div>
       <p>正在串流加載 360° 高解析實景環景照片...</p>
     </div>
+    <div id="panoError" class="pano-error" role="alert" hidden>
+      <strong>這張 360° 實景照片目前無法載入</strong>
+      <p>照片原本連結到 Google 地圖的相片網址，該網址可能已過期或不允許其他網站讀取。您仍可在 Google 地圖觀看此處的 360° 實景。</p>
+      <div class="pano-error-actions">
+        <a id="panoErrorLink" class="pano-error-btn primary" href="#" target="_blank" rel="noopener">在 Google 地圖觀看 360° 實景 ↗</a>
+        <button type="button" class="pano-error-btn" onclick="window.__closePano && window.__closePano()">返回 3D 校園</button>
+      </div>
+    </div>
   </div>
   <div id="panoAdjBar" class="pano-adj-bar" hidden>
     <span class="pano-adj-label">鄰近景點穿梭：</span>
@@ -3576,7 +3645,8 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script src="./vendor/qrcode.min.js"></script>
-<script src="./campus-ui.js?v=2.8.0"></script>
-<script type="module" src="./campus-3d.js?v=2.8.0"></script>
+<script src="./data/spots.js"></script>
+<script src="./campus-ui.js?v=2.12.121"></script>
+<script type="module" src="./campus-3d.js?v=2.12.121"></script>
 </body>
 </html>

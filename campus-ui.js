@@ -6,6 +6,52 @@ const S = 0.26, OX = 512, OY = 240;
 const X = px => (px - OX) * S;
 const Z = py => (py - OY) * S;
 
+// v2.12.40 依北棟建築平面圖與航照定位：北棟、東棟整棟平移＋旋轉，西棟（含北側廚房增建）平移。
+// 建築本體程式仍以「局部座標」（原模型座標）建置，群組套用此轉換後落到航照位置；
+// 步行碰撞、教室標籤、鏡頭位置等以 toLocal / toWorld 互換。
+// 角度 th 為平面圖上順時針（x 往東時 z 往南增加）之度數；pc 為局部旋轉中心，tc 為其世界座標落點。
+function makeBuildingXf(thDeg, pc, tc) {
+  const th = thDeg * Math.PI / 180, c = Math.cos(th), s = Math.sin(th);
+  const toWorld = (x, z) => {
+    const dx = x - pc[0], dz = z - pc[1];
+    return [tc[0] + dx * c - dz * s, tc[1] + dx * s + dz * c];
+  };
+  const toLocal = (x, z) => {
+    const dx = x - tc[0], dz = z - tc[1];
+    return [pc[0] + dx * c + dz * s, pc[1] - dx * s + dz * c];
+  };
+  const origin = toWorld(0, 0);
+  return {
+    th, rotY: -th, toWorld, toLocal,
+    // 將「以局部座標建置」的群組放到世界位置（保留原有 y）
+    apply(obj) { obj.rotation.y = -th; obj.position.x = origin[0]; obj.position.z = origin[1]; return obj; }
+  };
+}
+// 北棟：③～⑱ 教室主體對齊航照外框（殘差 < 0.8 m），⑳ 銜接東棟
+const NORTH_XF = makeBuildingXf(5.074, [8.2846, -32.44], [14.525, -43.975]);
+// 東棟：依航照外框旋轉約 6°，北端東移約 6 m
+const EAST_XF = makeBuildingXf(5.967, [58.89, -10.0], [62.0, -12.45]);
+// 西棟（含北側廚房增建）：恢復原始 9 跨長度（30.11 m）後北移 6.02 m，南端仍接新棟北面 (z 9.9)；
+// v2.12.49 依航照與實景照片 5166／5167 整排東移 3.5 m（西側外牆 x −34.61）
+const WEST_XF = makeBuildingXf(5.074, [-38.11, -34.68], [-32.222, -43.766]);   // v2.12.58 依照片 86 與航照：三層樓本體沿棟軸北移 3 m（廚房增建縮短 3 m）   // v2.12.54 使用者實測：西棟西牆線（遮雨棚前緣）比廁所大樓西牆向西 1.35 m   // v2.12.51 以凸出部西北角為軸、與北棟同角度順時針轉 5.07°（航照：南端偏西）   // v2.12.50 再東移 3 m（遮雨棚進深約 3.5 m，依實景照片與航照 ③）
+// 新棟：v2.12.64 依航照與實景照片 4634／4897／4900 整棟再北移 3 m（北面 z≈6.9，與西棟西南角相接）；局部座標＝v2.12.63 之世界座標
+const NEW_XF = makeBuildingXf(0, [0, 0], [0, -3.0]);
+const BUILDING_XF = {
+  'new-building': NEW_XF,
+  'north-building': NORTH_XF, 'playground-zone': NORTH_XF,
+  'east-building': EAST_XF, 'breezeway-hub': EAST_XF,
+  'west-building': WEST_XF
+};
+window.BUILDING_XF = BUILDING_XF;
+window.NORTH_XF = NORTH_XF; window.EAST_XF = EAST_XF; window.WEST_XF = WEST_XF; window.NEW_XF = NEW_XF;
+// 地標局部座標 → 世界座標（無轉換者原樣傳回）
+function lmToWorld(lmOrId, x, z) {
+  const id = typeof lmOrId === 'string' ? lmOrId : lmOrId?.id;
+  const xf = BUILDING_XF[id];
+  return xf ? xf.toWorld(x, z) : [x, z];
+}
+window.lmToWorld = lmToWorld;
+
 const LANDMARKS = [
   {
     id: 'north-building',
@@ -111,8 +157,8 @@ const LANDMARKS = [
     floors: '地上 3 層・半地下 1 層（前後雙走廊・十四道結構柱軸 ①～⑭・左右雙側中庭樓梯・屋頂太陽能光電棚架）',
     height: '12.65 公尺（屋頂光電棚架頂 13.65 公尺）',
     basis: '南棟教室耐震能力補強工程現況平面圖（1F/2F/3F）＋南北東西向立面圖（總長5700cm）＋手繪彩繪立面基準圖＋現場高解析實景寫真',
-    pxBounds: [496, 274, 715, 319],
-    center: [X(605.5), 14.0, Z(296.5)],
+    pxBounds: [496, 251, 715, 296],   // v2.12.34 依航照北移 6 m
+    center: [X(605.5), 14.0, Z(273.4)],
     summary: `依據「115學年度 屏東縣復興國小校園平面圖（版本: 2026_0801）」、建築現況平面配置線圖（1F/2F/3F）、南北東西向立面線圖（總長 57.0m、軸線 ①～⑭、總深 11.5m）及現場實拍照片 1:1 精緻建模：全棟採前後雙走廊格局（北側後走廊深 2.0m 面對中庭，中央教室主體深 6.0m，南側前走廊深 3.5m 出挑陽台臨建興南路42巷）。
 
 【建築主體平面格局（依 115 學年度校園平面圖，面向中庭立面由左 ① 東端至右 ⑭ 西端）】
@@ -177,16 +223,16 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [24.0, 38.0, -32.0], t: [24.3, 5.5, 14.5] },
-      top: { p: [24.3, 38.0, 14.5], t: [24.3, 6.0, 14.5] },
-      front: { p: [24.3, 8.0, -22.5], t: [24.3, 5.2, 9.5] },
-      back: { p: [24.3, 6.5, 34.0], t: [24.3, 5.5, 20.0] },
-      entrance: { p: [37.8, 3.8, -3.5], t: [37.8, 3.8, 9.5] },
-      rightStair: { p: [0.5, 3.8, -3.5], t: [0.0, 3.5, 9.5] },
-      ramp: { p: [46.5, 3.2, -3.5], t: [44.0, 3.2, 9.5] },
-      towers: { p: [20.5, 7.2, -8.0], t: [20.5, 6.5, 9.0] },
-      dinosaur: { p: [24.0, 2.8, 0.5], t: [24.0, 2.2, 8.5] },
-      south_new_junction: { p: [-5.2, 2.3, 27.8], t: [-5.4, 3.4, 16.5] }
+      oblique: { p: [24.0, 38.0, -38.0], t: [24.3, 5.5, 8.5] },
+      top: { p: [24.3, 38.0, 8.5], t: [24.3, 6.0, 8.5] },
+      front: { p: [24.3, 8.0, -28.5], t: [24.3, 5.2, 3.5] },
+      back: { p: [24.3, 6.5, 28.0], t: [24.3, 5.5, 14.0] },
+      entrance: { p: [37.8, 3.8, -9.5], t: [37.8, 3.8, 3.5] },
+      rightStair: { p: [0.5, 3.8, -9.5], t: [0.0, 3.5, 3.5] },
+      ramp: { p: [46.5, 3.2, -9.5], t: [44.0, 3.2, 3.5] },
+      towers: { p: [20.5, 7.2, -14.0], t: [20.5, 6.5, 3.0] },
+      dinosaur: { p: [24.0, 2.8, -5.5], t: [24.0, 2.2, 2.5] },
+      south_new_junction: { p: [-5.2, 2.3, 21.8], t: [-5.4, 3.4, 10.5] }
     }
   },
   {
@@ -261,8 +307,8 @@ const LANDMARKS = [
     floors: '地上 3 層（東西向 11 道結構柱軸 ①～⑪ 總跨距 33.61m・南北向 A～G 軸・雙坡紅瓦斜屋頂）',
     height: '11.25 公尺（斜屋頂最高脊高 14.10 公尺）',
     basis: '新棟大樓 1F/2F/3F 建築平面圖（S:1/150）＋北向中庭立面圖＋南向與東南45度實景寫真＋南側幼兒園大門與運動場南側圍牆實景',
-    pxBounds: [367, 292, 496, 343],
-    center: [X(432), 13.0, Z(318)],
+    pxBounds: [367, 269, 496, 320],   // v2.12.35 依航照北移 6 m
+    center: [X(432), 13.0, Z(294.9)],
     summary: `依據「新棟 1F / 2F / 3F 建築平面圖（比例 1:150）」與現場北向、南向、東南 45° 實拍照片及運動場南側圍牆照片 1:1 精緻建模。全棟東西向共設 11 道結構柱軸（①～⑪ 軸，跨距依序為 452、450、450、53、397、213、237、457.5、401.5、250 cm，總長 3361 cm = 33.61 m），南北向設 A～G 共 7 道深度軸線，西接西棟大樓（①～④ 軸北側），東端（⑪ 軸）與南棟（興學樓）西側幼兒園辦公室／活動室無縫連通。
 
 【北向中庭立面（由西 ① 至東 ⑪）】
@@ -318,20 +364,20 @@ const LANDMARKS = [
       ]
     },
     views: {
-      oblique: { p: [-16.0, 36.0, 72.0], t: [-21.0, 5.5, 20.0] },
-      top: { p: [-21, 68, 22], t: [-21, 0, 22] },
-      front: { p: [-14, 5.2, -1], t: [-18, 5.2, 17] },
-      back: { p: [-19, 4.8, 50], t: [-21, 5.5, 24] },
-      entrance: { p: [-19.5, 3.0, 44.5], t: [-21.5, 3.8, 26] },
-      track_junction: { p: [-53.0, 3.8, 16.5], t: [-34.5, 4.8, 16.5] },
-      courtyard_junction: { p: [-17.0, 3.2, 10.5], t: [-24.8, 4.2, 15.8] },
-      indoor_junction: { p: [-25.7, 2.2, 13.8], t: [-25.7, 2.6, 17.2] },
-      stair_2f_down: { p: [-20.3, 7.35, 14.658], t: [-25.5, 4.6, 14.658] },
-      stair_2f_up: { p: [-26.4, 5.35, 14.658], t: [-20.5, 6.6, 14.658] },
-      stair_1f_down: { p: [-20.3, 2.50, 14.658], t: [-25.5, 1.0, 14.658] },
-      stair_1f_up: { p: [-26.4, 1.80, 14.658], t: [-20.5, 2.3, 14.658] },
-      stair_facade: { p: [-22.06, 7.5, 4.5], t: [-22.06, 6.5, 14.658] },
-      south_new_junction: { p: [-5.2, 2.3, 27.8], t: [-5.4, 3.4, 16.5] }
+      oblique: { p: [-16.0, 36.0, 66.0], t: [-21.0, 5.5, 14.0] },
+      top: { p: [-21.0, 68.0, 16.0], t: [-21.0, 0.0, 16.0] },
+      front: { p: [-14.0, 5.2, -7.0], t: [-18.0, 5.2, 11.0] },
+      back: { p: [-19.0, 4.8, 44.0], t: [-21.0, 5.5, 18.0] },
+      entrance: { p: [-19.5, 3.0, 38.5], t: [-21.5, 3.8, 20.0] },
+      track_junction: { p: [-53.0, 3.8, 10.5], t: [-34.5, 4.8, 10.5] },
+      courtyard_junction: { p: [-17.0, 3.2, 4.5], t: [-24.8, 4.2, 9.8] },
+      indoor_junction: { p: [-25.7, 2.2, 7.8], t: [-25.7, 2.6, 11.2] },
+      stair_2f_down: { p: [-20.3, 7.3, 8.7], t: [-25.5, 4.6, 8.7] },
+      stair_2f_up: { p: [-26.4, 5.3, 8.7], t: [-20.5, 6.6, 8.7] },
+      stair_1f_down: { p: [-20.3, 2.5, 8.7], t: [-25.5, 1.0, 8.7] },
+      stair_1f_up: { p: [-26.4, 1.8, 8.7], t: [-20.5, 2.3, 8.7] },
+      stair_facade: { p: [-22.1, 7.5, -1.5], t: [-22.1, 6.5, 8.7] },
+      south_new_junction: { p: [-5.2, 2.3, 21.8], t: [-5.4, 3.4, 10.5] }
     }
   },
   {
@@ -393,7 +439,7 @@ const LANDMARKS = [
     floors: '戶外景觀廣場',
     height: '地面層',
     basis: '北棟正面圖＋實景照片＋空拍圖',
-    pxBounds: [445, 145, 712, 278],
+    pxBounds: [445, 93, 734, 278],   // v2.12.40 北棟北移後中庭向北延伸
     center: [X(578), 3.0, Z(211)],
     summary: '由北棟、東棟、南棟、西棟四面環抱的校園核心開放空間。地面鋪設極具辨識度的紅、白、深灰三色「回字形幾何透水花磚」，愛悅樓前方配置白磁磚邊框長方綠草花台與深灰安全地墊，中庭兩側隆起翠綠草坡並栽植大樹，草坡旁還佇立著深受學童喜愛的綠色雷龍雕塑。',
     photos: [
@@ -448,19 +494,19 @@ const LANDMARKS = [
     floors: '戶外運動設施（位於學校後圍牆內 · 含校園草地緩衝區）',
     height: '地面層',
     basis: 'Google衛星空拍＋115學年度平面圖',
-    pxBounds: [224, 120, 352, 376],
-    center: [X(288), 3.0, Z(248)],
+    pxBounds: [203, 28, 353, 378],
+    center: [-58.15, 0.5, -9.5],   // v2.12.54 跑道東移並旋轉 5.07°
     summary: '位於校園西半部，依據 20261110 實景照片精準建模：標準 200m 紅色 PU 環形跑道（6道）、跑道外環水泥通學步道、內場翠綠草坪、西側直線段專用長條跳遠助跑道、白色木質起跳板、長條跳遠沙坑、螢光橘色警示三角錐與金屬排水溝蓋格柵；跑道與西側籃球場之間聳立著壯麗的百年大榕樹（枝繁葉茂、氣根垂懸並設有圓形水泥休憩座席）；外圍緊鄰建興南路紅磚圍牆與西南不銹鋼電動伸縮門。',
     photos: [
       { src: './tex/aerial_map.jpg', title: '空拍視角下的 PU 跑道、運動場與後圍牆間之校園草地緩衝區、以及圍牆外通學步道' }
     ],
     rooms: {},
     views: {
-      oblique: { p: [-110.0, 18.0, 28.0], t: [-57.0, 1.0, 8.0] },
-      top: { p: [-57, 130, 5], t: [-57, 0, 4] },
-      front: { p: [-20, 12, 4], t: [-57, 1, 4] },
-      back: { p: [-110, 18, 28], t: [-57, 1, 8] },
-      entrance: { p: [-78, 4, 10], t: [-57, 2, 4] }
+      oblique: { p: [-112.6, 18.0, 16.4], t: [-59.6, 1.0, -3.6] },
+      top: { p: [-59.6, 130.0, -6.6], t: [-59.6, 0.0, -7.6] },
+      front: { p: [-22.6, 12.0, -7.6], t: [-59.6, 1.0, -7.6] },
+      back: { p: [-112.6, 18.0, 16.4], t: [-59.6, 1.0, -3.6] },
+      entrance: { p: [-80.6, 4.0, -1.6], t: [-59.6, 2.0, -7.6] }
     }
   },
   {
@@ -472,8 +518,8 @@ const LANDMARKS = [
     floors: '戶外雙球場（籃球場開闊無圍網 · 排球場東側北側鐵欄網與西側綠色高牆）',
     height: '地面層・排球場西側高牆 3.9 米・鐵欄網 3.65 米',
     basis: '現場實景照片 20261110_135714.jpg、160224.jpg、135510.jpg、135514.jpg＋115學年度平面圖',
-    pxBounds: [102, 112, 184, 288],
-    center: [X(142), 3.0, Z(200)],
+    pxBounds: [78, 17, 180, 215],   // v2.12.25 依衛星圖標註北移
+    center: [X(115), 3.0, Z(103)],
     summary: '位於運動場西側，依據 20261110 現場實拍照片精準建模：1. 【籃球場四周開闊無鐵網】：四周完全無高架鐵欄網，由平整綠意草坪環繞，視線完全通透，配置深藍烤漆雙管主籃球架、透明壓克力籃板、東側練習籃架與草坪旁 3 階看台長凳；2. 【排球場東側與北側高架鐵欄網】：於排球場北緣與東緣設置 3.65m 高挑綠色防護菱形金屬網，面向跑道與後方校舍；3. 【排球場西側綠色高牆】：西側構築約 3.9m 高之實體薄荷綠/海綠色防護高牆，阻隔西向界線；4. 配置 4 座高桿球場夜間投光照明水銀燈塔。',
     photos: [
       { src: './tex/basketball_court_stage_view.jpg', title: '戶外籃球場：四周無高架鐵欄網、開闊草坪環繞與眺望司令台全景 (20261110_160224.jpg 實景)' },
@@ -484,11 +530,11 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [-135, 34, 42], t: [-94, 0, -10] },
-      top: { p: [-96, 75, -10], t: [-96, 0, -10] },
-      front: { p: [-58, 8, -2], t: [-96, 1, -2] },
-      back: { p: [-128, 6, -26], t: [-96, 2, -26] },
-      entrance: { p: [-96, 4, 22], t: [-96, 2, -10] }
+      oblique: { p: [-140, 34, 10], t: [-103, 0, -36] },
+      top: { p: [-103, 75, -36], t: [-103, 0, -36] },
+      front: { p: [-66, 8, -30], t: [-103, 1, -32] },
+      back: { p: [-112, 6, -64], t: [-102, 2, -40] },
+      entrance: { p: [-100, 4, -2], t: [-104, 2, -24] }
     }
   },
   {
@@ -500,8 +546,8 @@ const LANDMARKS = [
     floors: '戶外典禮設施',
     height: '4.2 公尺',
     basis: '現場實景照片＋115學年度平面圖',
-    pxBounds: [180, 205, 206, 305],
-    center: [X(192), 4.5, Z(252)],
+    pxBounds: [166, 180, 189, 236],
+    center: [-89.8, 3.0, -8.2],
     summary: '座落於運動場西側中央、學校後圍牆內的草地緩衝綠帶旁，面向東方朝陽與運動場跑道。依最新實景全景與細部照片 1:1 精確還原：具備特色雙層挑簷屋頂（下層中央倒懸圓拱挑簷配拱頂垂直洗石子短柱/拱心石、上層大懸臂水平平簷配鋼構斜撐架與兩側梯形山牆立板）、兩側造型側牆（各開兩道垂直梭形上下尖橢圓透光採光窗）、台座正面鑲嵌兒童動物自然彩繪磁磚壁畫、南北兩側配置專屬登台階梯與階梯狀洗石子側翼護欄、後背牆設通風百葉窗與「復興國小」童趣舞台幕、北向山牆外側設籃球場使用規則告示板與配電箱、兩翼設三層踏階洗石子升旗台，旗桿高懸依國徽國旗法精確標準繪製的中華民國國旗（青天白日滿地紅旗）並具備真實微風飄動動畫，為全校朝會與慶典檢閱中心。',
     photos: [
       { src: './tex/20261019_135236 (1).jpg', title: '司令台正面全貌：雙層挑簷屋頂、兒童動物彩繪磁磚壁畫與舞台布幕' },
@@ -512,11 +558,11 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [-52.0, 22.0, 25.0], t: [-83.2, 2.6, 3.12] },
-      top: { p: [-83.2, 45, 3.12], t: [-83.2, 0, 3.12] },
-      front: { p: [-64, 3.5, 3.12], t: [-83.2, 2.5, 3.12] },
-      back: { p: [-104, 5.5, 3.12], t: [-83.2, 2.5, 3.12] },
-      entrance: { p: [-72, 2.2, 3.12], t: [-83.2, 2.2, 3.12] }
+      oblique: { p: [-58.6, 22.0, 13.7], t: [-89.8, 2.6, -8.2] },
+      top: { p: [-89.8, 45.0, -8.2], t: [-89.8, 0.0, -8.2] },
+      front: { p: [-70.6, 3.5, -8.2], t: [-89.8, 2.5, -8.2] },
+      back: { p: [-110.6, 5.5, -8.2], t: [-89.8, 2.5, -8.2] },
+      entrance: { p: [-78.6, 2.2, -8.2], t: [-89.8, 2.2, -8.2] }
     }
   },
   {
@@ -613,8 +659,8 @@ const LANDMARKS = [
     floors: '古典柱頭三門柱＋不銹鋼伸縮門＋弧形花台',
     height: '3.65 公尺（太陽能路燈桿高 6.2 公尺）',
     basis: '學校西側的後門實景照片（可以看到西棟大樓與北棟大樓）＋115學年度平面圖',
-    pxBounds: [46, 76, 68, 106],
-    center: [X(56), 3.2, Z(90)],
+    pxBounds: [54, -64, 76, -34],   // v2.12.25 依衛星圖移至西北角
+    center: [X(62.44), 3.2, Z(-18.1)],
     summary: `依據「學校西側的後門_可以看到西棟大樓與北棟大樓.jpg」1:1 實景建模。座落於校園西側建興南路50巷（座標 X=-128.76, Z=-31.90），由北至南設有三座淺藍灰刷漆門柱，柱頂皆冠以「玫瑰陶紅多層弧形古典線腳柱頭」：
 1. 左柱（北柱）：柱身具水平凹槽線，貼有圓形禁菸標誌，後方聳立雙向太陽能光電板 LED 路燈高桿，北側銜接淺青綠波浪鐵皮圍籬與攀附綠植。
 2. 左側行人通道：設兩道前後交錯之「不銹鋼ㄇ字型直柵防衝撞護欄（Pedestrian Chicane）」與深色防滑地墊。
@@ -626,11 +672,11 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [-156.0, 22.0, -10.0], t: [-124.0, 2.6, -31.9] },
-      top: { p: [-128.8, 36.0, -31.9], t: [-128.8, 0.0, -31.9] },
-      front: { p: [-141.0, 2.4, -31.9], t: [-110.0, 2.5, -31.5] },
-      back: { p: [-114.0, 4.0, -31.9], t: [-136.0, 2.2, -31.9] },
-      entrance: { p: [-135.5, 1.85, -31.9], t: [-40.0, 4.5, -28.0] }
+      oblique: { p: [-144.1, 22.0, -45.2], t: [-112.0, 2.6, -67.1] },
+      top: { p: [-116.9, 36.0, -67.1], t: [-116.9, 0.0, -67.1] },
+      front: { p: [-129.1, 2.4, -67.1], t: [-98.0, 2.5, -66.7] },
+      back: { p: [-102.0, 4.0, -67.1], t: [-124.0, 2.2, -67.1] },
+      entrance: { p: [-123.5, 1.9, -67.1], t: [-28.0, 4.5, -63.2] }
     }
   },
   {
@@ -740,8 +786,8 @@ const LANDMARKS = [
     floors: '全長 233 米北側東西貫通車道通道（東側門直通後門）＋55 米藍色浪板鋼構大車棚',
     height: '車道寬 5.2~6.4 米・鋼構棚架挑高 3.6 公尺',
     basis: '現場實景照片 20261110_135208.jpg、20261110_135221.jpg＋115學年度校園平面圖',
-    pxBounds: [56, 20, 955, 100],
-    center: [X(512), 2.5, -42.0],
+    pxBounds: [390, -22, 735, 42],   // v2.12.37 依航照：車道與車棚沿北牆
+    center: [13.5, 2.5, -62.6],
     summary: '學校北側全線東西貫通之主要車行與勤務通道，西起建興南路50巷西側學校後門（x=-118.6m, z=-39.0m），沿運動場北緣平整水泥混凝土路面（寬5.2米，配置橫向伸縮縫與路緣石）與林蔭綠廊向東延伸，經北棟西側過渡段直通北側藍色浪板鋼構大車棚（55米）、教職員汽機車停放區、白色導引地面箭頭標線，並經有機農場南緣無縫直達復興路東側門（x=+115.2m, z=-43.5m），全長達 233.7 米，建構出校園最關鍵之南北交通與後勤車道動線。',
     photos: [
       { src: './tex/north_driveway_west_track.jpg', title: '學校北側車道西段：平整混凝土路面、伸縮縫割線、路緣石與運動場林蔭綠廊直通後門 (20261110_135221.jpg 實景)' },
@@ -750,11 +796,11 @@ const LANDMARKS = [
     ],
     rooms: {},
     views: {
-      oblique: { p: [-35.0, 32.0, -8.0], t: [-35.0, 2.0, -42.0] },
-      top: { p: [0.0, 85.0, -42.0], t: [0.0, 0.0, -42.0] },
-      front: { p: [14.0, 4.5, -36.0], t: [14.0, 2.2, -51.5] },
-      back: { p: [-98.0, 4.2, -40.15], t: [20.0, 2.2, -42.5] },
-      entrance: { p: [92.0, 3.8, -43.5], t: [-60.0, 2.0, -41.0] }
+      oblique: { p: [13.0, 32.0, -28.0], t: [13.0, 2.0, -62.0] },
+      top: { p: [13.0, 85.0, -62.0], t: [13.0, 0.0, -62.0] },
+      front: { p: [13.0, 4.5, -52.0], t: [14.0, 2.2, -63.5] },
+      back: { p: [-48.0, 4.2, -65.0], t: [20.0, 2.2, -59.0] },
+      entrance: { p: [100.0, 3.8, -48.0], t: [40.0, 2.0, -56.0] }
     }
   },
   {
@@ -763,22 +809,22 @@ const LANDMARKS = [
     name: '前庭北側有機農場與食農教育園區',
     enName: 'North Forecourt Organic Educational Farm',
     category: '其他',
-    floors: '紅磚矮牆花台、木竹絲瓜棚架、甘蔗叢、蔬菜畦與農具資材室',
-    height: '紅磚矮牆高 0.52 公尺・瓜果棚架高 2.35 公尺・資材室高 2.8 公尺',
-    basis: '前庭北側有機農場實拍照片＋115學年度校園平面圖',
-    pxBounds: [715, 22, 888, 62],
-    center: [X(802), 2.0, Z(44)],
-    summary: '座落於學校前庭北側柏油車道北緣（西接藍色浪板車棚、東接東北角環保場）的食農教育有機農場，依據現場實拍照片 1:1 精緻建模：1. 【復古紅磚砌矮牆長條花台与東端彩繪矮牆】：沿柏油車道北緣砌築長條形復古紅磚矮牆圍塑耕作花台，東端轉角銜接幾何彩繪矮牆；2. 【木竹交錯瓜果攀爬棚架】：於農場中西段搭設木竹交錯 A 字與平頂攀爬棚架，覆滿翠綠絲瓜/百香果藤蔓、垂掛絲瓜與盛開金黃小花；3. 【西端高聳甘蔗/牧草叢與果樹】：緊鄰車棚東側栽植濃密高聳之甘蔗/牧草叢與木瓜果樹；4. 【中東段有機蔬菜畦與香草灌木叢】：整齊規劃多道有機培養土菜畦，種植葉菜類、番茄支架與修剪圓潤之香草灌木叢，並插設木製食農作物名牌；5. 【後方米白色鐵皮農具資材室】：緊貼北側水泥圍牆設置米白色浪板斜頂農具資材室，完整重現校園食農教育實作基地。',
+    floors: '紅磚壓頂矮牆、淺沙土耕作區、水泥磚步道、雙層階梯花台、木竹棚架與彩繪落葉堆肥池',
+    height: '紅磚壓頂矮牆高 0.43 公尺・木竹棚架高 1.75 公尺・彩繪落葉堆肥池高 0.98 公尺',
+    basis: '東側門有機農場 5 張實拍照片＋115學年度校園平面圖',
+    pxBounds: [729, -14, 912, 50],   // v2.12.40 依航照：車道北側、停車棚東邊
+    center: [80.3, 2.0, -57.0],
+    summary: '座落於學校東側門北側車道北緣（西接藍色浪板車棚、東接東北角環保場）的食農教育有機農場，依據最新 5 張現場實拍照片 1:1 精緻重建：1. 【灰磚基底＋紅磚壓頂矮牆】：沿車道北緣砌築風化灰磚基底配紅磚壓頂長條矮牆，東端採紅灰交錯磚轉角收頭與防滑踏墊，西端入口擺放兩座橘色三角錐與紅陶朱蕉盆栽群；2. 【三帶狀農場地貌與溝紋水泥磚步道】：前排為淺沙土與稀疏雜草耕作帶（局部覆設黑色抑草蓆），中北側貫通東西向溝紋灰水泥磚步道並蜿蜒配置黃、灰澆花軟管；3. 【北界亂石片牆、解說牌與雙層階梯花台】：西半段為粉灰亂石片拼貼牆，牆頂架設雙條灰色 PVC 灌溉管與垂掛綠籬，懸掛「綠籬改善 環境永續」與「田代氏石斑木」解說牌；東半段改為雙層階梯式灰水泥磚花台種植綠籬灌木，後方緊鄰苔蘚綠漆磚牆與米白直紋浪板牆；4. 【西中段甘蔗叢、芭樂樹與輕量木竹棚架】：栽植圓球灌木、纖細高聳甘蔗叢、芭樂果樹及開放式木竹 A 字攀爬棚架（附綠色攀爬網與藤蔓）；5. 【東端彩繪落葉堆肥池與雞蛋花樹】：東端設置繪有少女、地球、綠丘與城市剪影之水泥落葉堆肥池（內堆滿枯黃落葉），後方搭配開展分叉之雞蛋花樹，完整還原校園食農教育與環境永續實景。',
     photos: [
       { src: './tex/forecourt_organic_farm.jpg', title: '學校前庭北側有機農場實景：紅磚砌矮牆長條花台、木竹絲瓜攀爬棚架、西端甘蔗叢與果樹、後方米白色鐵皮農具資材室、中東段蔬菜灌木叢與東端彩繪矮牆' }
     ],
     rooms: {},
     views: {
-      oblique: { p: [84.0, 22.0, -28.0], t: [74.0, 1.8, -50.5] },
-      top: { p: [75.0, 36.0, -50.5], t: [75.0, 0.0, -50.5] },
-      front: { p: [75.0, 3.5, -38.0], t: [75.0, 1.8, -51.0] },
-      back: { p: [75.0, 6.0, -62.0], t: [75.0, 1.8, -50.5] },
-      entrance: { p: [92.0, 2.4, -42.5], t: [72.0, 1.8, -50.5] }
+      oblique: { p: [90.0, 22.0, -34.0], t: [80.0, 1.8, -57.0] },
+      top: { p: [80.0, 36.0, -56.9], t: [80.0, 0.0, -57.0] },
+      front: { p: [80.0, 3.5, -46.0], t: [80.0, 1.8, -57.5] },
+      back: { p: [80.0, 6.0, -68.0], t: [80.0, 1.8, -57.0] },
+      entrance: { p: [98.0, 2.4, -50.0], t: [78.0, 1.8, -57.0] }
     }
   },
   {
@@ -813,701 +859,19 @@ window.OY = OY;
 window.X = X;
 window.Z = Z;
 window.LANDMARKS = LANDMARKS;
+// v2.12.40 北棟／東棟／西棟／遊戲區：中心點與預設視角原以局部座標撰寫，載入時換算到世界座標
+LANDMARKS.forEach(lm => {
+  const xf = BUILDING_XF[lm.id];
+  if (!xf) return;
+  const tw = v => { if (Array.isArray(v) && v.length === 3) { const [x, z] = xf.toWorld(v[0], v[2]); v[0] = +x.toFixed(2); v[2] = +z.toFixed(2); } };
+  tw(lm.center);
+  Object.values(lm.views || {}).forEach(vw => { tw(vw.p); tw(vw.t); });
+});
 
 let activeGsesTab = 'spots'; // 'spots' | 'buildings' | 'classrooms'
 
-const CAMPUS_360_SPOTS = [
-  {
-    id: 'spot-12',
-    num: 12,
-    name: '復興路正門口與通學步道',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 920, py: 220,
-    x: 106.08, y: 2.2, z: -5.2,
-    pos: [106.08, 2.2, -5.2],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9T8HGWFY3y7d4cHjDdhEkKrKYxQZTkUOw2igH4rnmKNktVGP8kGEnZvSNc5BgqUFChTjDPCao_1Y9bMYfMS76frEo_jGxX-4ubcHYCLZlkardvym0hwE_6iQmnL3sI2Ed8kPWrjWQ=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9T8HGWFY3y7d4cHjDdhEkKrKYxQZTkUOw2igH4rnmKNktVGP8kGEnZvSNc5BgqUFChTjDPCao_1Y9bMYfMS76frEo_jGxX-4ubcHYCLZlkardvym0hwE_6iQmnL3sI2Ed8kPWrjWQ=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,340h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtO6Y4wE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9T8HGWFY3y7d4cHjDdhEkKrKYxQZTkUOw2igH4rnmKNktVGP8kGEnZvSNc5BgqUFChTjDPCao_1Y9bMYfMS76frEo_jGxX-4ubcHYCLZlkardvym0hwE_6iQmnL3sI2Ed8kPWrjWQ%3Dw900-h600-k-no-pi-10-ya339-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '復興路宏偉大門，通學綠色步道與寬闊正門迎賓景觀。',
-    adjacentSpotIds: ["spot-41", "spot-37", "spot-44"]
-  },
-  {
-    id: 'spot-37',
-    num: 37,
-    name: '復興路百年老榕綠廊與通學步道',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 890, py: 140,
-    x: 98.28, y: 2.2, z: -26.0,
-    pos: [98.28, 2.2, -26.0],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U_QEnaJR_Q562qIlKNSup-UJuDUTK6aNKTftcieR6gEIno-ed-jbKT52JHfTd35NHqLnYBTyP4yZMGS6vUsVhOV1Pxvihk7TvGF2KhxqKb-yE_3JXmyOGWVhb5GFgRC2xVp720-=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U_QEnaJR_Q562qIlKNSup-UJuDUTK6aNKTftcieR6gEIno-ed-jbKT52JHfTd35NHqLnYBTyP4yZMGS6vUsVhOV1Pxvihk7TvGF2KhxqKb-yE_3JXmyOGWVhb5GFgRC2xVp720-=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94WchAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U_QEnaJR_Q562qIlKNSup-UJuDUTK6aNKTftcieR6gEIno-ed-jbKT52JHfTd35NHqLnYBTyP4yZMGS6vUsVhOV1Pxvihk7TvGF2KhxqKb-yE_3JXmyOGWVhb5GFgRC2xVp720-%3Dw900-h600-k-no-pi0-ya240-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '校門北側茂密百年老榕樹形成的天然綠蔭走廊，通學步道綠意盎然。',
-    adjacentSpotIds: ["spot-12", "spot-36", "spot-4"]
-  },
-  {
-    id: 'spot-4',
-    num: 4,
-    name: '前庭北側大草坪步道',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 850, py: 130,
-    x: 87.88, y: 2.2, z: -28.6,
-    pos: [87.88, 2.2, -28.6],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U8cxQVUQHzXoLUZkK4OsMgz-gxuxBwj_jAQobYmM9ojlSwnkyGuOGYiSXDctDv1E5k-rnNg5Wfn72Fjocl2WqEkxSZNfWskKOBapKDuna1m4QFTw8FJ9FRtrblf2-O1yCVf_Gp6=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U8cxQVUQHzXoLUZkK4OsMgz-gxuxBwj_jAQobYmM9ojlSwnkyGuOGYiSXDctDv1E5k-rnNg5Wfn72Fjocl2WqEkxSZNfWskKOBapKDuna1m4QFTw8FJ9FRtrblf2-O1yCVf_Gp6=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,359.89h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94WcRA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U8cxQVUQHzXoLUZkK4OsMgz-gxuxBwj_jAQobYmM9ojlSwnkyGuOGYiSXDctDv1E5k-rnNg5Wfn72Fjocl2WqEkxSZNfWskKOBapKDuna1m4QFTw8FJ9FRtrblf2-O1yCVf_Gp6%3Dw900-h600-k-no-pi0-ya359.88742-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '北側前庭茵茵綠草與步道，遠眺北棟愛悅樓宏偉輪廓。',
-    adjacentSpotIds: ["spot-37", "spot-6", "spot-41"]
-  },
-  {
-    id: 'spot-6',
-    num: 6,
-    name: '前庭北側大榕樹草坪',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 860, py: 110,
-    x: 90.48, y: 2.2, z: -33.8,
-    pos: [90.48, 2.2, -33.8],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-cyT50fvp8_50bQ-SJQFOiewc5SrSQHvhbvC07g4JwEhFDUPAQYEepkkW1hfWMLtV90BDt0h2Z-IEuiOT1jsMtTLYaWmdk2HcnYjG7V_u3M3ydvSU9Nv_V-P6o3ju4DM9qtL0I=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-cyT50fvp8_50bQ-SJQFOiewc5SrSQHvhbvC07g4JwEhFDUPAQYEepkkW1hfWMLtV90BDt0h2Z-IEuiOT1jsMtTLYaWmdk2HcnYjG7V_u3M3ydvSU9Nv_V-P6o3ju4DM9qtL0I=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,320h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtPbQ1gE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-cyT50fvp8_50bQ-SJQFOiewc5SrSQHvhbvC07g4JwEhFDUPAQYEepkkW1hfWMLtV90BDt0h2Z-IEuiOT1jsMtTLYaWmdk2HcnYjG7V_u3M3ydvSU9Nv_V-P6o3ju4DM9qtL0I%3Dw900-h600-k-no-pi-20-ya319-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '高聳茂密的大榕樹下，綠意清幽的校園前庭景致。',
-    adjacentSpotIds: ["spot-4", "spot-36"]
-  },
-  {
-    id: 'spot-16',
-    num: 16,
-    name: '前庭南側小葉欖仁與草坪',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 820, py: 260,
-    x: 80.08, y: 2.2, z: 5.2,
-    pos: [80.08, 2.2, 5.2],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9Svy1doF1B-eff-6CADtR8NCcON_wlA8B7B9DSENxH5syNF_L0PP5cytnczLlDAxsTHZK2ie3WQ5zC_SRo-UVuRLCInurYLkNhxSlM8i3SZIKecBGgBsrKKh7Q5tDv_1EFnUnTH=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9Svy1doF1B-eff-6CADtR8NCcON_wlA8B7B9DSENxH5syNF_L0PP5cytnczLlDAxsTHZK2ie3WQ5zC_SRo-UVuRLCInurYLkNhxSlM8i3SZIKecBGgBsrKKh7Q5tDv_1EFnUnTH=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,60h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH7fKNDQ!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9Svy1doF1B-eff-6CADtR8NCcON_wlA8B7B9DSENxH5syNF_L0PP5cytnczLlDAxsTHZK2ie3WQ5zC_SRo-UVuRLCInurYLkNhxSlM8i3SZIKecBGgBsrKKh7Q5tDv_1EFnUnTH%3Dw900-h600-k-no-pi0-ya59-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '南側前庭排列整齊的小葉欖仁樹與開闊草坪，陽光穿透葉縫灑落地面。',
-    adjacentSpotIds: ["spot-41", "spot-20", "spot-17"]
-  },
-  {
-    id: 'spot-20',
-    num: 20,
-    name: '前庭南側雕塑綠蔭',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 800, py: 280,
-    x: 74.88, y: 2.2, z: 10.4,
-    pos: [74.88, 2.2, 10.4],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9QPJToO-sgVZrdcUUR7knpIRh31PjRhaHJFYRIrCAklicMsGocQvX0S-JwyUWP08CcJGS-z04xJb_YQU2qn2hQRMGf3xsKwfo2FCi6rJ46qXR8Qk5wxq8hWqAXOyxf6zyk8VLzkwg=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9QPJToO-sgVZrdcUUR7knpIRh31PjRhaHJFYRIrCAklicMsGocQvX0S-JwyUWP08CcJGS-z04xJb_YQU2qn2hQRMGf3xsKwfo2FCi6rJ46qXR8Qk5wxq8hWqAXOyxf6zyk8VLzkwg=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,340h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtM7oigE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9QPJToO-sgVZrdcUUR7knpIRh31PjRhaHJFYRIrCAklicMsGocQvX0S-JwyUWP08CcJGS-z04xJb_YQU2qn2hQRMGf3xsKwfo2FCi6rJ46qXR8Qk5wxq8hWqAXOyxf6zyk8VLzkwg%3Dw900-h600-k-no-pi-20-ya339-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '前庭南側綠蔭花木中的校園藝術雕塑，散發人文藝術氛圍。',
-    adjacentSpotIds: ["spot-16", "spot-38", "spot-17"]
-  },
-  {
-    id: 'spot-36',
-    num: 36,
-    name: '前庭百年老榕樹下',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 880, py: 130,
-    x: 95.68, y: 2.2, z: -28.6,
-    pos: [95.68, 2.2, -28.6],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-s2aOSyF1i-l3SggTqKU6A74Rnrb2x5KAUIMDn9zFNyui-VaaA1l9o4Tyymg1qN8pp43yXlv5LXLjvC0xPOkT0jmz70BK6dDn0KiE3BTMxbRnyMWPbA-7FP7lQgJaIMYL1Fu14eg=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-s2aOSyF1i-l3SggTqKU6A74Rnrb2x5KAUIMDn9zFNyui-VaaA1l9o4Tyymg1qN8pp43yXlv5LXLjvC0xPOkT0jmz70BK6dDn0KiE3BTMxbRnyMWPbA-7FP7lQgJaIMYL1Fu14eg=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94WcxAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-s2aOSyF1i-l3SggTqKU6A74Rnrb2x5KAUIMDn9zFNyui-VaaA1l9o4Tyymg1qN8pp43yXlv5LXLjvC0xPOkT0jmz70BK6dDn0KiE3BTMxbRnyMWPbA-7FP7lQgJaIMYL1Fu14eg%3Dw900-h600-k-no-pi-20-ya240-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '百年老榕繁茂氣根與濃密樹冠，承載復興世代學子記憶。',
-    adjacentSpotIds: ["spot-37", "spot-6", "spot-4"]
-  },
-  {
-    id: 'spot-38',
-    num: 38,
-    name: '前庭南側踏石草坪',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 790, py: 290,
-    x: 72.28, y: 2.2, z: 13.0,
-    pos: [72.28, 2.2, 13.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RBEhfrsjy5TZNWbnD_tO20eO4KrSgwxigZR8d4h-6vN3iri5OMbsZZ-YY7QqamLpto6ef4ZVDNkCqjf3bAnOryKSIiBirL-AbUeM-fkKRnxJANegJxYMPQRfka0anFohvvrfY=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RBEhfrsjy5TZNWbnD_tO20eO4KrSgwxigZR8d4h-6vN3iri5OMbsZZ-YY7QqamLpto6ef4ZVDNkCqjf3bAnOryKSIiBirL-AbUeM-fkKRnxJANegJxYMPQRfka0anFohvvrfY=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,340h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XgEg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RBEhfrsjy5TZNWbnD_tO20eO4KrSgwxigZR8d4h-6vN3iri5OMbsZZ-YY7QqamLpto6ef4ZVDNkCqjf3bAnOryKSIiBirL-AbUeM-fkKRnxJANegJxYMPQRfka0anFohvvrfY%3Dw900-h600-k-no-pi-20-ya340-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '前庭綠草如茵的步道與踏石，連接南棟教學區。',
-    adjacentSpotIds: ["spot-20", "spot-17", "spot-24"]
-  },
-  {
-    id: 'spot-41',
-    num: 41,
-    name: '前庭迎賓廣場停車場',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 840, py: 210,
-    x: 85.28, y: 2.2, z: -7.8,
-    pos: [85.28, 2.2, -7.8],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-dTHDeoy489xz8mB37IG6oM624QOdTXkXkR9YBNgaacArCL7hXhf18YvtG-BXU6WIWwEYSPVmFXwJiJpVmbQvPtp9czOaz-wzwF85WUtnprtHg5EzCiZwhS7HsAhI5AN6k_z8U=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-dTHDeoy489xz8mB37IG6oM624QOdTXkXkR9YBNgaacArCL7hXhf18YvtG-BXU6WIWwEYSPVmFXwJiJpVmbQvPtp9czOaz-wzwF85WUtnprtHg5EzCiZwhS7HsAhI5AN6k_z8U=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94WceA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-dTHDeoy489xz8mB37IG6oM624QOdTXkXkR9YBNgaacArCL7hXhf18YvtG-BXU6WIWwEYSPVmFXwJiJpVmbQvPtp9czOaz-wzwF85WUtnprtHg5EzCiZwhS7HsAhI5AN6k_z8U%3Dw900-h600-k-no-pi0-ya240-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '正門迎賓車道與綠樹環抱的停車廣場，通往東棟行政大樓。',
-    adjacentSpotIds: ["spot-12", "spot-4", "spot-16", "spot-13"]
-  },
-  {
-    id: 'spot-17',
-    num: 17,
-    name: '學校新南側門（建興南路42巷）',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 772, py: 320,
-    x: 67.6, y: 2.2, z: 20.8,
-    pos: [67.6, 2.2, 20.8],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RfGqFYimyBQLgnNek_OFhP-Z_h_3FGaKdkwKrP2F2PUQCnlRPWTcMUpjqlYS6bIsmSXxf38G3RthgYBMfPdbHrfP2qmN-_QMh1voQZO-QkAotjWCsf11Y1e_gcaV9IsZNhiSk8=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RfGqFYimyBQLgnNek_OFhP-Z_h_3FGaKdkwKrP2F2PUQCnlRPWTcMUpjqlYS6bIsmSXxf38G3RthgYBMfPdbHrfP2qmN-_QMh1voQZO-QkAotjWCsf11Y1e_gcaV9IsZNhiSk8=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,180h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtK71fA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RfGqFYimyBQLgnNek_OFhP-Z_h_3FGaKdkwKrP2F2PUQCnlRPWTcMUpjqlYS6bIsmSXxf38G3RthgYBMfPdbHrfP2qmN-_QMh1voQZO-QkAotjWCsf11Y1e_gcaV9IsZNhiSk8%3Dw900-h600-k-no-pi-20-ya179-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '南側通學副門，緊鄰色彩鮮豔的東南側馬賽克藝術拼貼牆。',
-    adjacentSpotIds: ["spot-20", "spot-38", "spot-24"]
-  },
-  {
-    id: 'spot-24',
-    num: 24,
-    name: '學校舊南側門（興安街）',
-    group: '校門與戶外前庭',
-    floor: '1F',
-    px: 657, py: 318,
-    x: 37.7, y: 2.2, z: 20.28,
-    pos: [37.7, 2.2, 20.28],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RVRWgohpuz8xD_SchXIb713C17dXEk0enKTIoGX-sc_kg55U93DYUMdcBdGfIE589gBqDIVkrsiz7A95rHzhVy_SKgpFaBJm3L1DCSJ8tBcLp3GJJsrmbyi9ViETxPHIlk6c7q=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RVRWgohpuz8xD_SchXIb713C17dXEk0enKTIoGX-sc_kg55U93DYUMdcBdGfIE589gBqDIVkrsiz7A95rHzhVy_SKgpFaBJm3L1DCSJ8tBcLp3GJJsrmbyi9ViETxPHIlk6c7q=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,180.89h,90.11t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtPaPIQ!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RVRWgohpuz8xD_SchXIb713C17dXEk0enKTIoGX-sc_kg55U93DYUMdcBdGfIE589gBqDIVkrsiz7A95rHzhVy_SKgpFaBJm3L1DCSJ8tBcLp3GJJsrmbyi9ViETxPHIlk6c7q%3Dw900-h600-k-no-pi-0.11253999999999564-ya179.88747-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '南側興安街出入口，可經由興學樓穿堂直通校園核心中庭。',
-    adjacentSpotIds: ["spot-17", "spot-15", "spot-40"]
-  },
-  {
-    id: 'spot-1',
-    num: 1,
-    name: '中庭幾何花磚廣場（北向視角）',
-    group: '中庭花園與愛悅樓',
-    floor: '1F',
-    px: 512, py: 180,
-    x: 0.0, y: 2.2, z: -15.6,
-    pos: [0.0, 2.2, -15.6],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RJtuYn7zGFpqcFUi4gi6AYzzXGf8GUes9ERh8WieealGl29R0pY67814jSxq7N9Rh9Y9MTo43tTK9Xe3a-YBHXQC3Eh6ppURTVSJ8STNFb8UQ2okMi4yUIFwUBHBzf1S-70SFG=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RJtuYn7zGFpqcFUi4gi6AYzzXGf8GUes9ERh8WieealGl29R0pY67814jSxq7N9Rh9Y9MTo43tTK9Xe3a-YBHXQC3Eh6ppURTVSJ8STNFb8UQ2okMi4yUIFwUBHBzf1S-70SFG=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,340h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XJIg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RJtuYn7zGFpqcFUi4gi6AYzzXGf8GUes9ERh8WieealGl29R0pY67814jSxq7N9Rh9Y9MTo43tTK9Xe3a-YBHXQC3Eh6ppURTVSJ8STNFb8UQ2okMi4yUIFwUBHBzf1S-70SFG%3Dw900-h600-k-no-pi-20-ya340-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '幾何紅磚地坪鋪設的開闊中庭廣場，正對北棟愛悅樓典雅立面。',
-    adjacentSpotIds: ["spot-10", "spot-21", "spot-35"]
-  },
-  {
-    id: 'spot-10',
-    num: 10,
-    name: '中庭廣場中央景觀',
-    group: '中庭花園與愛悅樓',
-    floor: '1F',
-    px: 512, py: 220,
-    x: 0.0, y: 2.2, z: -5.2,
-    pos: [0.0, 2.2, -5.2],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9S8iyeZJInuldmeU8TFOR_t7mNPYsalvH1BP3Pbd8GjsVTHoNSVzJf4ym9lFk42Bl6FhxOyjXynU0IMRm4OFvZenLOr4Ax-PVJ3GiO-40qFRllJD0G8CN0-l9vVyxLVQ0J9-U33=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9S8iyeZJInuldmeU8TFOR_t7mNPYsalvH1BP3Pbd8GjsVTHoNSVzJf4ym9lFk42Bl6FhxOyjXynU0IMRm4OFvZenLOr4Ax-PVJ3GiO-40qFRllJD0G8CN0-l9vVyxLVQ0J9-U33=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,180h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH7arAjgE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9S8iyeZJInuldmeU8TFOR_t7mNPYsalvH1BP3Pbd8GjsVTHoNSVzJf4ym9lFk42Bl6FhxOyjXynU0IMRm4OFvZenLOr4Ax-PVJ3GiO-40qFRllJD0G8CN0-l9vVyxLVQ0J9-U33%3Dw900-h600-k-no-pi-10-ya179-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '校園心臟地帶中庭花園，四周綠樹花圃環繞，四棟大樓交匯之處。',
-    adjacentSpotIds: ["spot-1", "spot-21", "spot-29", "spot-35"]
-  },
-  {
-    id: 'spot-21',
-    num: 21,
-    name: '中庭環視全景',
-    group: '中庭花園與愛悅樓',
-    floor: '1F',
-    px: 500, py: 210,
-    x: -3.12, y: 2.2, z: -7.8,
-    pos: [-3.12, 2.2, -7.8],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9R8-9CFze5Qe8PL27X0fWD-8br13O8O6Ntc1PxboXf9-s2qbG5GUUP9xk-b_FeAaF9cpg5Zj9I2VSwD_b21rEwHEmaldWqNxFlkuJfVdOXCW5CgUrfKbUiZMVuFA7a09CToQRbN=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9R8-9CFze5Qe8PL27X0fWD-8br13O8O6Ntc1PxboXf9-s2qbG5GUUP9xk-b_FeAaF9cpg5Zj9I2VSwD_b21rEwHEmaldWqNxFlkuJfVdOXCW5CgUrfKbUiZMVuFA7a09CToQRbN=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94WcpAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9R8-9CFze5Qe8PL27X0fWD-8br13O8O6Ntc1PxboXf9-s2qbG5GUUP9xk-b_FeAaF9cpg5Zj9I2VSwD_b21rEwHEmaldWqNxFlkuJfVdOXCW5CgUrfKbUiZMVuFA7a09CToQRbN%3Dw900-h600-k-no-pi0-ya0-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '360° 全景環顧北棟愛悅樓、南棟興學樓、東棟行政樓與西棟專科樓。',
-    adjacentSpotIds: ["spot-1", "spot-10", "spot-29"]
-  },
-  {
-    id: 'spot-29',
-    num: 29,
-    name: '中庭愛悅樓前拱門廣場',
-    group: '中庭花園與愛悅樓',
-    floor: '1F',
-    px: 520, py: 240,
-    x: 2.08, y: 2.2, z: 0.0,
-    pos: [2.08, 2.2, 0.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SKHvnzeWz6vCs7iUgHHEbyGG7tkFf0HI9DTuOZSuCOGeBSQ2QtM5L9dFiSmdwJEEsdnhIxRDlxYXW7ApbOrueKD5cPF8qJemHOD-aKVLky1riunBA97o533dmRIzNuQzxeOlTH=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SKHvnzeWz6vCs7iUgHHEbyGG7tkFf0HI9DTuOZSuCOGeBSQ2QtM5L9dFiSmdwJEEsdnhIxRDlxYXW7ApbOrueKD5cPF8qJemHOD-aKVLky1riunBA97o533dmRIzNuQzxeOlTH=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,59.89h,90.11t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94Wc5AE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9SKHvnzeWz6vCs7iUgHHEbyGG7tkFf0HI9DTuOZSuCOGeBSQ2QtM5L9dFiSmdwJEEsdnhIxRDlxYXW7ApbOrueKD5cPF8qJemHOD-aKVLky1riunBA97o533dmRIzNuQzxeOlTH%3Dw900-h600-k-no-pi-0.11253999999999564-ya59.887460000000004-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '愛悅樓標誌性圓拱造型前的綠意休閒廣場，學生課間聚會場所。',
-    adjacentSpotIds: ["spot-10", "spot-21", "spot-35", "spot-2"]
-  },
-  {
-    id: 'spot-3',
-    num: 3,
-    name: '愛悅樓 2F 鏤空大圓洞走廊',
-    group: '中庭花園與愛悅樓',
-    floor: '2F',
-    px: 530, py: 250,
-    x: 4.68, y: 6.8, z: 2.6,
-    pos: [4.68, 6.8, 2.6],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,359.89h,90.11t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98X_pAE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U9CDjGTKwV6_SRWruxdNjMZVjbcO0g_ouJbgQOdQo54D4mAMKC7bWoAoGbdljkf-eWieoQproW30OuCzGV-htWwhbwKKnpM5ste1qItQ79x7EQ0PEl8ZC54IcKhW6luaDG6u_XK4g%3Dw900-h600-k-no-pi-0.11253999999999564-ya359.88745-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '愛悅樓最著名的鮮紅鏤空大圓洞走廊，從二樓框景俯瞰美麗中庭花園。',
-    adjacentSpotIds: ["spot-32", "spot-9", "spot-35"]
-  },
-  {
-    id: 'spot-35',
-    num: 35,
-    name: '愛悅樓 1F 黃色圓洞走廊景觀',
-    group: '中庭花園與愛悅樓',
-    floor: '1F',
-    px: 530, py: 250,
-    x: 4.68, y: 2.2, z: 2.6,
-    pos: [4.68, 2.2, 2.6],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-ATXAXKyGNdw3YaXSUNtzb5ee4aCjRhg6399g9-Gy1uQ0-o6E9jyJBsrZromUKdVoq7rHluxRS-CG-C4cBBStj7hW2MbFaY3j9YAY2VF2J2UUrXXtLBW2c7rt7cI5aW-FMQCo=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-ATXAXKyGNdw3YaXSUNtzb5ee4aCjRhg6399g9-Gy1uQ0-o6E9jyJBsrZromUKdVoq7rHluxRS-CG-C4cBBStj7hW2MbFaY3j9YAY2VF2J2UUrXXtLBW2c7rt7cI5aW-FMQCo=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,20h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH7YqPPg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-ATXAXKyGNdw3YaXSUNtzb5ee4aCjRhg6399g9-Gy1uQ0-o6E9jyJBsrZromUKdVoq7rHluxRS-CG-C4cBBStj7hW2MbFaY3j9YAY2VF2J2UUrXXtLBW2c7rt7cI5aW-FMQCo%3Dw900-h600-k-no-pi-20-ya19-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '愛悅樓一樓走廊明亮的黃色造型圓洞，光影交錯別具現代建築美感。',
-    adjacentSpotIds: ["spot-29", "spot-10", "spot-3"]
-  },
-  {
-    id: 'spot-2',
-    num: 2,
-    name: '穿堂操場景觀入口',
-    group: '大樓穿堂與走廊',
-    floor: '1F',
-    px: 420, py: 280,
-    x: -23.92, y: 2.2, z: 10.4,
-    pos: [-23.92, 2.2, 10.4],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-zCqXeFh389QzhREcJc2sxQ06CPmF2se2wfMzhsC_pAYG34Ef_2OwruPdD4G7N5ooNYBmSDswlZwW6KiuFRnOVUzxeBS6jxTSMSZPBomUYUgsTyfU_3oEUfIsCYLX8cNHaOlQf=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-zCqXeFh389QzhREcJc2sxQ06CPmF2se2wfMzhsC_pAYG34Ef_2OwruPdD4G7N5ooNYBmSDswlZwW6KiuFRnOVUzxeBS6jxTSMSZPBomUYUgsTyfU_3oEUfIsCYLX8cNHaOlQf=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtK7czgE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-zCqXeFh389QzhREcJc2sxQ06CPmF2se2wfMzhsC_pAYG34Ef_2OwruPdD4G7N5ooNYBmSDswlZwW6KiuFRnOVUzxeBS6jxTSMSZPBomUYUgsTyfU_3oEUfIsCYLX8cNHaOlQf%3Dw900-h600-k-no-pi0-ya359-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '西棟通往大操場的主要穿堂通道，視野豁然開朗迎向蔚藍天空與綠茵球場。',
-    adjacentSpotIds: ["spot-29", "spot-18", "spot-19"]
-  },
-  {
-    id: 'spot-9',
-    num: 9,
-    name: '2F 走廊半圓拱形窗台',
-    group: '大樓穿堂與走廊',
-    floor: '2F',
-    px: 480, py: 160,
-    x: -8.32, y: 6.8, z: -20.8,
-    pos: [-8.32, 6.8, -20.8],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RuBBnmoEMcoANMBNNWT7EhdHVvXPloAmhPD3wt2CDJynHyKrPs2Mu-8OesK6NtW92JJqGiCIzx9MLZg_WRUyir4rX5MjswAnELWaX_Klwc4jUPs_kMwMCE2abHbp495E97tyBJ=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RuBBnmoEMcoANMBNNWT7EhdHVvXPloAmhPD3wt2CDJynHyKrPs2Mu-8OesK6NtW92JJqGiCIzx9MLZg_WRUyir4rX5MjswAnELWaX_Klwc4jUPs_kMwMCE2abHbp495E97tyBJ=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,120h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98X_NA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RuBBnmoEMcoANMBNNWT7EhdHVvXPloAmhPD3wt2CDJynHyKrPs2Mu-8OesK6NtW92JJqGiCIzx9MLZg_WRUyir4rX5MjswAnELWaX_Klwc4jUPs_kMwMCE2abHbp495E97tyBJ%3Dw900-h600-k-no-pi-20-ya120-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '教學大樓二樓走廊經典的半圓拱形窗台，採光通風極佳。',
-    adjacentSpotIds: ["spot-3", "spot-31", "spot-32"]
-  },
-  {
-    id: 'spot-13',
-    num: 13,
-    name: '東棟行政大樓 1F 門廳',
-    group: '大樓穿堂與走廊',
-    floor: '1F',
-    px: 720, py: 200,
-    x: 54.08, y: 2.2, z: -10.4,
-    pos: [54.08, 2.2, -10.4],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9TAIhdyLYoNhq2PblBjHVa4a3BdH17Gqpeu7i68jcvYQCfyLhVzfFbpfHWITUisfOoT3MeUx51fsuUqeHwbdX89OZ4C5kTJwU_Ks5ub2JdAYh7ycvlsEXGT0ESDqU-1QZo7n-u8rQ=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9TAIhdyLYoNhq2PblBjHVa4a3BdH17Gqpeu7i68jcvYQCfyLhVzfFbpfHWITUisfOoT3MeUx51fsuUqeHwbdX89OZ4C5kTJwU_Ks5ub2JdAYh7ycvlsEXGT0ESDqU-1QZo7n-u8rQ=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,180h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XgkgE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9TAIhdyLYoNhq2PblBjHVa4a3BdH17Gqpeu7i68jcvYQCfyLhVzfFbpfHWITUisfOoT3MeUx51fsuUqeHwbdX89OZ4C5kTJwU_Ks5ub2JdAYh7ycvlsEXGT0ESDqU-1QZo7n-u8rQ%3Dw900-h600-k-no-pi-20-ya180-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '東棟彩繪大樓入口大廳，校務行政運作的核心中樞。',
-    adjacentSpotIds: ["spot-41", "spot-28", "spot-22"]
-  },
-  {
-    id: 'spot-14',
-    num: 14,
-    name: '南棟 2F 穿堂走廊',
-    group: '大樓穿堂與走廊',
-    floor: '2F',
-    px: 580, py: 290,
-    x: 17.68, y: 6.8, z: 13.0,
-    pos: [17.68, 6.8, 13.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9StcjcpQk5h_sDOzmT57Eyz3oJGYxHOh2yM1bnIsxI5P3FlNab_9O7mLF7MbTM39RK7-KHgGLiefrCORR9xFQJHfJkkml8v2vvmeLRcjBkYKw_ocFE5lJ76X6y-W4t4nlP_IZ00zA=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9StcjcpQk5h_sDOzmT57Eyz3oJGYxHOh2yM1bnIsxI5P3FlNab_9O7mLF7MbTM39RK7-KHgGLiefrCORR9xFQJHfJkkml8v2vvmeLRcjBkYKw_ocFE5lJ76X6y-W4t4nlP_IZ00zA=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,140h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98Xg0gE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9StcjcpQk5h_sDOzmT57Eyz3oJGYxHOh2yM1bnIsxI5P3FlNab_9O7mLF7MbTM39RK7-KHgGLiefrCORR9xFQJHfJkkml8v2vvmeLRcjBkYKw_ocFE5lJ76X6y-W4t4nlP_IZ00zA%3Dw900-h600-k-no-pi0-ya140-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '興學樓二樓明亮寬敞的課室走廊，前後通風視野極佳。',
-    adjacentSpotIds: ["spot-15", "spot-43", "spot-34"]
-  },
-  {
-    id: 'spot-15',
-    num: 15,
-    name: '樓梯穿堂與 1F 走廊',
-    group: '大樓穿堂與走廊',
-    floor: '1F',
-    px: 620, py: 290,
-    x: 28.08, y: 2.2, z: 13.0,
-    pos: [28.08, 2.2, 13.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9Si-pnTPcW7_IqhkUAw3HhaoqfunqTwAqwPhIQ-KDM2kR9R1Hp7HRU24wg1ufwhm-4SPbJSc3La9i7GRIW3OnYDxSA7csZJxuG3snWaD9NdzyMgAeZgHkYzMrkvhyzHDW5p7wIx=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9Si-pnTPcW7_IqhkUAw3HhaoqfunqTwAqwPhIQ-KDM2kR9R1Hp7HRU24wg1ufwhm-4SPbJSc3La9i7GRIW3OnYDxSA7csZJxuG3snWaD9NdzyMgAeZgHkYzMrkvhyzHDW5p7wIx=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XgYg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9Si-pnTPcW7_IqhkUAw3HhaoqfunqTwAqwPhIQ-KDM2kR9R1Hp7HRU24wg1ufwhm-4SPbJSc3La9i7GRIW3OnYDxSA7csZJxuG3snWaD9NdzyMgAeZgHkYzMrkvhyzHDW5p7wIx%3Dw900-h600-k-no-pi0-ya0-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '南棟樓梯穿堂轉角，連通各教室與戶外庭園的交通樞紐。',
-    adjacentSpotIds: ["spot-23", "spot-24", "spot-14"]
-  },
-  {
-    id: 'spot-23',
-    num: 23,
-    name: '1F 穿堂走廊與樓梯彩繪',
-    group: '大樓穿堂與走廊',
-    floor: '1F',
-    px: 600, py: 290,
-    x: 22.88, y: 2.2, z: 13.0,
-    pos: [22.88, 2.2, 13.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RKBjRkRXM3MQvf8bojzFLp5rO49-ORS9TYVECCUkg8SznD8oKYx6vLLzWSbb-kPSTP0jwJsTS0UZ4NQugzuTS1FqKXvbH7IhfR_9wqtXdRL_qIO1HJmClEaD8IT7v96cTD6mwh=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RKBjRkRXM3MQvf8bojzFLp5rO49-ORS9TYVECCUkg8SznD8oKYx6vLLzWSbb-kPSTP0jwJsTS0UZ4NQugzuTS1FqKXvbH7IhfR_9wqtXdRL_qIO1HJmClEaD8IT7v96cTD6mwh=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtI72Pw!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RKBjRkRXM3MQvf8bojzFLp5rO49-ORS9TYVECCUkg8SznD8oKYx6vLLzWSbb-kPSTP0jwJsTS0UZ4NQugzuTS1FqKXvbH7IhfR_9wqtXdRL_qIO1HJmClEaD8IT7v96cTD6mwh%3Dw900-h600-k-no-pi0-ya359-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '充滿童趣與教育意義的樓梯彩繪壁畫，營造溫馨活潑的校園氛圍。',
-    adjacentSpotIds: ["spot-15", "spot-10", "spot-24"]
-  },
-  {
-    id: 'spot-27',
-    num: 27,
-    name: '3F 頂層圓拱望向操場',
-    group: '大樓穿堂與走廊',
-    floor: '3F',
-    px: 460, py: 290,
-    x: -13.52, y: 11.2, z: 13.0,
-    pos: [-13.52, 11.2, 13.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SkYb1YIXtkn-L9_9m7CuQExIp1XYUofMHUhF6L-0SWa_Xazn3EyOMl4-TmWAJxbn6uJKdWVmSzZrJ7Ktkvuccxn6nv_izGNZ1rRCv5hj2rFrAnTpb0SoEJLW2fmF-9Ml711WmrhQ=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SkYb1YIXtkn-L9_9m7CuQExIp1XYUofMHUhF6L-0SWa_Xazn3EyOMl4-TmWAJxbn6uJKdWVmSzZrJ7Ktkvuccxn6nv_izGNZ1rRCv5hj2rFrAnTpb0SoEJLW2fmF-9Ml711WmrhQ=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,120h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH7YrhoQE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9SkYb1YIXtkn-L9_9m7CuQExIp1XYUofMHUhF6L-0SWa_Xazn3EyOMl4-TmWAJxbn6uJKdWVmSzZrJ7Ktkvuccxn6nv_izGNZ1rRCv5hj2rFrAnTpb0SoEJLW2fmF-9Ml711WmrhQ%3Dw900-h600-k-no-pi0-ya119-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '最高三樓圓拱觀景走廊，居高臨下俯瞰整個大操場與綜合球場全景。',
-    adjacentSpotIds: ["spot-43", "spot-9", "spot-2"]
-  },
-  {
-    id: 'spot-28',
-    num: 28,
-    name: '東棟 1F 穿堂「READ 喜閱復興」展示牆',
-    group: '大樓穿堂與走廊',
-    floor: '1F',
-    px: 710, py: 230,
-    x: 51.48, y: 2.2, z: -2.6,
-    pos: [51.48, 2.2, -2.6],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9TGrg5l6hZu2Zpe-vxhBayZRQeigPYWuFxc8nIAvOf1XcN3S-uETRFj8x0yGJ_TZppRTLTJiy4MAb9PKcy8OlCS3AeMamffN38hGTd7qfpO3hm3JrAF68FQEFl6Pp6GkTcGCLs=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9TGrg5l6hZu2Zpe-vxhBayZRQeigPYWuFxc8nIAvOf1XcN3S-uETRFj8x0yGJ_TZppRTLTJiy4MAb9PKcy8OlCS3AeMamffN38hGTd7qfpO3hm3JrAF68FQEFl6Pp6GkTcGCLs=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,200h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94WcZA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9TGrg5l6hZu2Zpe-vxhBayZRQeigPYWuFxc8nIAvOf1XcN3S-uETRFj8x0yGJ_TZppRTLTJiy4MAb9PKcy8OlCS3AeMamffN38hGTd7qfpO3hm3JrAF68FQEFl6Pp6GkTcGCLs%3Dw900-h600-k-no-pi0-ya200-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '東棟一樓特色閱讀廊道，展示「喜閱復興」主題閱讀與藝文展覽。',
-    adjacentSpotIds: ["spot-13", "spot-22", "spot-38"]
-  },
-  {
-    id: 'spot-31',
-    num: 31,
-    name: '教學大樓樓梯平台',
-    group: '大樓穿堂與走廊',
-    floor: '2F',
-    px: 490, py: 160,
-    x: -5.72, y: 6.8, z: -20.8,
-    pos: [-5.72, 6.8, -20.8],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9S2pQst0y8nkCfarS3xMBsFyScoW44WtSlPq9juxAUqQOXWo8yckkDZdHpmK7lY2J26QLsIpVFEyxWktwsIgbcismmdhAYwk9t6W7zZnabWXuApCQl4p6ceKGAgtk3M3BY3PiCg=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9S2pQst0y8nkCfarS3xMBsFyScoW44WtSlPq9juxAUqQOXWo8yckkDZdHpmK7lY2J26QLsIpVFEyxWktwsIgbcismmdhAYwk9t6W7zZnabWXuApCQl4p6ceKGAgtk3M3BY3PiCg=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtM6iaA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9S2pQst0y8nkCfarS3xMBsFyScoW44WtSlPq9juxAUqQOXWo8yckkDZdHpmK7lY2J26QLsIpVFEyxWktwsIgbcismmdhAYwk9t6W7zZnabWXuApCQl4p6ceKGAgtk3M3BY3PiCg%3Dw900-h600-k-no-pi0-ya359-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '大樓雙向連通安全樓梯轉角平台，採光充足視野通透。',
-    adjacentSpotIds: ["spot-9", "spot-32", "spot-1"]
-  },
-  {
-    id: 'spot-32',
-    num: 32,
-    name: '2F 走廊綠植盆栽步道',
-    group: '大樓穿堂與走廊',
-    floor: '2F',
-    px: 540, py: 160,
-    x: 7.28, y: 6.8, z: -20.8,
-    pos: [7.28, 6.8, -20.8],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U9adVexgXOkawxZcTAZcWTwjVmQKFL4KvAE4yv_bwcXqDO8dMiXNm6FIxPW3SWrpaHzov0yVeGrSUh0YKT1KF4P5UumwJ6f4dUbzh92ro4t90EhnispNdRa07RkCk_93jr2QerM=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U9adVexgXOkawxZcTAZcWTwjVmQKFL4KvAE4yv_bwcXqDO8dMiXNm6FIxPW3SWrpaHzov0yVeGrSUh0YKT1KF4P5UumwJ6f4dUbzh92ro4t90EhnispNdRa07RkCk_93jr2QerM=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH7crWXg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U9adVexgXOkawxZcTAZcWTwjVmQKFL4KvAE4yv_bwcXqDO8dMiXNm6FIxPW3SWrpaHzov0yVeGrSUh0YKT1KF4P5UumwJ6f4dUbzh92ro4t90EhnispNdRa07RkCk_93jr2QerM%3Dw900-h600-k-no-pi0-ya239-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '二樓走廊邊綠意盎然的小盆栽綠帶，帶來生機與舒壓視角。',
-    adjacentSpotIds: ["spot-3", "spot-9", "spot-31"]
-  },
-  {
-    id: 'spot-43',
-    num: 43,
-    name: '3F 景觀圓拱俯瞰南校園',
-    group: '大樓穿堂與走廊',
-    floor: '3F',
-    px: 580, py: 290,
-    x: 17.68, y: 11.2, z: 13.0,
-    pos: [17.68, 11.2, 13.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SS9PkmIA7UNCpTlhydjtGpE5FZoBT2HhDK_FAhvuiijOnt_UdXMTHKLNvk5XH5BVu0bntp4VD8Z_TMbVeemHryCOgoYnKxUIDRyylceaqgPAVL-RQ2KSkpaEpYBmdLa5FxlURW=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SS9PkmIA7UNCpTlhydjtGpE5FZoBT2HhDK_FAhvuiijOnt_UdXMTHKLNvk5XH5BVu0bntp4VD8Z_TMbVeemHryCOgoYnKxUIDRyylceaqgPAVL-RQ2KSkpaEpYBmdLa5FxlURW=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,300h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHso74Wg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9SS9PkmIA7UNCpTlhydjtGpE5FZoBT2HhDK_FAhvuiijOnt_UdXMTHKLNvk5XH5BVu0bntp4VD8Z_TMbVeemHryCOgoYnKxUIDRyylceaqgPAVL-RQ2KSkpaEpYBmdLa5FxlURW%3Dw900-h600-k-no-pi0-ya299-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '三樓標誌性連續圓拱造型，極目遠眺屏東市南向景觀。',
-    adjacentSpotIds: ["spot-27", "spot-14"]
-  },
-  {
-    id: 'spot-22',
-    num: 22,
-    name: '復興社區共讀站・陽光沙發閱讀區',
-    group: '圖書館與特色教室',
-    floor: '1F',
-    px: 680, py: 180,
-    x: 43.68, y: 2.2, z: -15.6,
-    pos: [43.68, 2.2, -15.6],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9T8JGdXTHTIxgiDXWqXij3b16YColYIh15ILLumRP2uvfkr29tknqYE7xZju4HGfg2B2lC255QCYr4qEt_Navbx8LK8gFY-purURNOAAXRXZAC908rES1cevZcZPSCzD9QiCdhh=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9T8JGdXTHTIxgiDXWqXij3b16YColYIh15ILLumRP2uvfkr29tknqYE7xZju4HGfg2B2lC255QCYr4qEt_Navbx8LK8gFY-purURNOAAXRXZAC908rES1cevZcZPSCzD9QiCdhh=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,280h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH3b7TRA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9T8JGdXTHTIxgiDXWqXij3b16YColYIh15ILLumRP2uvfkr29tknqYE7xZju4HGfg2B2lC255QCYr4qEt_Navbx8LK8gFY-purURNOAAXRXZAC908rES1cevZcZPSCzD9QiCdhh%3Dw900-h600-k-no-pi0-ya279-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '溫馨舒適的木質閱讀空間，柔和採光與沙發區，打造如家般的閱讀體驗。',
-    adjacentSpotIds: ["spot-30", "spot-45", "spot-13"]
-  },
-  {
-    id: 'spot-30',
-    num: 30,
-    name: '復興圖書館主閱覽展書區',
-    group: '圖書館與特色教室',
-    floor: '1F',
-    px: 690, py: 180,
-    x: 46.28, y: 2.2, z: -15.6,
-    pos: [46.28, 2.2, -15.6],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U_0qnkKkwb4xQeVeaWy0wdzpbaHqyt9anWHp17xC6AYvUFVG_-pwKD51w24ilQZeXVp184_CuEj7vL2m1THEKOHkAkTchkI_yXnBR-wD5ULoyEHyQ2X7wo4ojmo_e0GnI2su0Ne=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U_0qnkKkwb4xQeVeaWy0wdzpbaHqyt9anWHp17xC6AYvUFVG_-pwKD51w24ilQZeXVp184_CuEj7vL2m1THEKOHkAkTchkI_yXnBR-wD5ULoyEHyQ2X7wo4ojmo_e0GnI2su0Ne=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH3b7bOg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U_0qnkKkwb4xQeVeaWy0wdzpbaHqyt9anWHp17xC6AYvUFVG_-pwKD51w24ilQZeXVp184_CuEj7vL2m1THEKOHkAkTchkI_yXnBR-wD5ULoyEHyQ2X7wo4ojmo_e0GnI2su0Ne%3Dw900-h600-k-no-pi0-ya359-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '豐富館藏圖書與最新主題書展專區，孩子們遨遊書海的知識寶庫。',
-    adjacentSpotIds: ["spot-22", "spot-45", "spot-28"]
-  },
-  {
-    id: 'spot-45',
-    num: 45,
-    name: '圖書館圓桌研習區',
-    group: '圖書館與特色教室',
-    floor: '1F',
-    px: 700, py: 180,
-    x: 48.88, y: 2.2, z: -15.6,
-    pos: [48.88, 2.2, -15.6],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9QzEO9Hf1KBurKhactnNQJcEUNmeQ5-paggVw2OoEs5M2tWFQLRwCBTWB522rbG697Gfek9eAaQMiMOs9B3rrw4wVXj1dzofmfaIdTgUKlJKS-j8As71mYfD7EugTrnHLwzGd_jkw=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9QzEO9Hf1KBurKhactnNQJcEUNmeQ5-paggVw2OoEs5M2tWFQLRwCBTWB522rbG697Gfek9eAaQMiMOs9B3rrw4wVXj1dzofmfaIdTgUKlJKS-j8As71mYfD7EugTrnHLwzGd_jkw=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98X_5AE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9QzEO9Hf1KBurKhactnNQJcEUNmeQ5-paggVw2OoEs5M2tWFQLRwCBTWB522rbG697Gfek9eAaQMiMOs9B3rrw4wVXj1dzofmfaIdTgUKlJKS-j8As71mYfD7EugTrnHLwzGd_jkw%3Dw900-h600-k-no-pi-10-ya0-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '多組圓形共讀研習桌椅，便於小組討論、故事分享與專題學習。',
-    adjacentSpotIds: ["spot-22", "spot-30", "spot-13"]
-  },
-  {
-    id: 'spot-33',
-    num: 33,
-    name: '智慧數位學習創客教室',
-    group: '圖書館與特色教室',
-    floor: '2F',
-    px: 380, py: 200,
-    x: -34.32, y: 6.8, z: -10.4,
-    pos: [-34.32, 6.8, -10.4],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9R122zk0_VWRBo9DMLJXro--HIMjsAiwT-nw201h4PvUaKjnlVOB58SDi-aYUsZtEYsOtrhBVBRIW2VJYNFZGggvs6AS6o4yPlDsM-VqgMEtdHqslT7jzT4jduXzovz418U9V7ElA=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9R122zk0_VWRBo9DMLJXro--HIMjsAiwT-nw201h4PvUaKjnlVOB58SDi-aYUsZtEYsOtrhBVBRIW2VJYNFZGggvs6AS6o4yPlDsM-VqgMEtdHqslT7jzT4jduXzovz418U9V7ElA=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH3YHxwgE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9R122zk0_VWRBo9DMLJXro--HIMjsAiwT-nw201h4PvUaKjnlVOB58SDi-aYUsZtEYsOtrhBVBRIW2VJYNFZGggvs6AS6o4yPlDsM-VqgMEtdHqslT7jzT4jduXzovz418U9V7ElA%3Dw900-h600-k-no-pi0-ya239-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '配備最新觸控大螢幕與平板電腦，進行科技創新與程式創客課程。',
-    adjacentSpotIds: ["spot-9", "spot-34", "spot-2"]
-  },
-  {
-    id: 'spot-34',
-    num: 34,
-    name: '綜合多功能會議研習室',
-    group: '圖書館與特色教室',
-    floor: '2F',
-    px: 710, py: 190,
-    x: 51.48, y: 6.8, z: -13.0,
-    pos: [51.48, 6.8, -13.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9TkFZOWhMXm8Xo7HVAFHn1BLQgYxNRTrO5beCulpy6ng8_3xZiZGt1gnn8XSWkbhMCYSpigO0YhmFpbobQDZ3q9HALbzh-5cTWAP04zoes2KFc2XEVuqd8OQJawFaN_QYisCJXf=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9TkFZOWhMXm8Xo7HVAFHn1BLQgYxNRTrO5beCulpy6ng8_3xZiZGt1gnn8XSWkbhMCYSpigO0YhmFpbobQDZ3q9HALbzh-5cTWAP04zoes2KFc2XEVuqd8OQJawFaN_QYisCJXf=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,260h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH3d7NEQ!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9TkFZOWhMXm8Xo7HVAFHn1BLQgYxNRTrO5beCulpy6ng8_3xZiZGt1gnn8XSWkbhMCYSpigO0YhmFpbobQDZ3q9HALbzh-5cTWAP04zoes2KFc2XEVuqd8OQJawFaN_QYisCJXf%3Dw900-h600-k-no-pi0-ya259-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '現代化音響投影設備與機動性座椅，支援各類研習會與教學研討。',
-    adjacentSpotIds: ["spot-14", "spot-33", "spot-13"]
-  },
-  {
-    id: 'spot-5',
-    num: 5,
-    name: '幼兒園室內活動走廊',
-    group: '圖書館與特色教室',
-    floor: '1F',
-    px: 420, py: 320,
-    x: -23.92, y: 2.2, z: 20.8,
-    pos: [-23.92, 2.2, 20.8],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U_E5YZORq_rfCxBm3RSzE9R32yuHilYL1lEiikxvT2KKv1LSMSmtyk-XK_IqEZCC_Erp3uHs5t3AHsj7oRNPDtyIGcJBpjgLfL1-Q6XX0iuWNe6q6P6GwZHETYLkxDZ2vf2ybtD=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U_E5YZORq_rfCxBm3RSzE9R32yuHilYL1lEiikxvT2KKv1LSMSmtyk-XK_IqEZCC_Erp3uHs5t3AHsj7oRNPDtyIGcJBpjgLfL1-Q6XX0iuWNe6q6P6GwZHETYLkxDZ2vf2ybtD=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,60h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH7YrLew!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U_E5YZORq_rfCxBm3RSzE9R32yuHilYL1lEiikxvT2KKv1LSMSmtyk-XK_IqEZCC_Erp3uHs5t3AHsj7oRNPDtyIGcJBpjgLfL1-Q6XX0iuWNe6q6P6GwZHETYLkxDZ2vf2ybtD%3Dw900-h600-k-no-pi0-ya59-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '新棟非營利幼兒園安全防撞走廊，色彩繽紛明亮，專為幼兒量身打造。',
-    adjacentSpotIds: ["spot-46", "spot-19", "spot-2"]
-  },
-  {
-    id: 'spot-7',
-    num: 7,
-    name: '戶外綜合球場',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 280, py: 160,
-    x: -60.32, y: 2.2, z: -20.8,
-    pos: [-60.32, 2.2, -20.8],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U8XkWJN9QDH8eN44-6AHMAjMckRkCmWmHEQdVcPDuKbjqPJfAnDPMVFbrMH_3K_5mhTlh7ECrFoAp4KEhsQJqQ-1ftFDeGT469o1voOsVZXTaRX20rUktWP1ff8Q_RnexQMmR4ooA=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U8XkWJN9QDH8eN44-6AHMAjMckRkCmWmHEQdVcPDuKbjqPJfAnDPMVFbrMH_3K_5mhTlh7ECrFoAp4KEhsQJqQ-1ftFDeGT469o1voOsVZXTaRX20rUktWP1ff8Q_RnexQMmR4ooA=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,80h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XJ4gE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U8XkWJN9QDH8eN44-6AHMAjMckRkCmWmHEQdVcPDuKbjqPJfAnDPMVFbrMH_3K_5mhTlh7ECrFoAp4KEhsQJqQ-1ftFDeGT469o1voOsVZXTaRX20rUktWP1ff8Q_RnexQMmR4ooA%3Dw900-h600-k-no-pi-20-ya80-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '標準彩繪戶外綜合球場，可進行籃球、排球等多項體育競技活動。',
-    adjacentSpotIds: ["spot-42", "spot-25", "spot-11"]
-  },
-  {
-    id: 'spot-8',
-    num: 8,
-    name: '操場司令台與旗桿廣場',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 230, py: 240,
-    x: -73.32, y: 2.2, z: 0.0,
-    pos: [-73.32, 2.2, 0.0],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-p34gPMWwcy8y-KZEmE0BqK8j0v40s9NbWPxEjMygzdNAKNqA6nLdpJOxFNhPQrgqDxHNFRMtuSxRzTLQJgyhIviR2155NJurOKEFii2hj9rw1GYRA6E4BHa1zz28C82r3sKeH=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-p34gPMWwcy8y-KZEmE0BqK8j0v40s9NbWPxEjMygzdNAKNqA6nLdpJOxFNhPQrgqDxHNFRMtuSxRzTLQJgyhIviR2155NJurOKEFii2hj9rw1GYRA6E4BHa1zz28C82r3sKeH=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,100h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94WcBA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-p34gPMWwcy8y-KZEmE0BqK8j0v40s9NbWPxEjMygzdNAKNqA6nLdpJOxFNhPQrgqDxHNFRMtuSxRzTLQJgyhIviR2155NJurOKEFii2hj9rw1GYRA6E4BHa1zz28C82r3sKeH%3Dw900-h600-k-no-pi-20-ya100-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '典雅司令台與莊嚴旗桿，朝會升旗與校慶盛典的核心舞台。',
-    adjacentSpotIds: ["spot-11", "spot-42", "spot-18"]
-  },
-  {
-    id: 'spot-42',
-    num: 42,
-    name: '中央籃球場',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 250, py: 180,
-    x: -68.12, y: 2.2, z: -15.6,
-    pos: [-68.12, 2.2, -15.6],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SpP7j7WBkgdNugndzaAhWK5s6qduQz0t3CAlKabUTtxX1o-9yLc1vlLiNTH8tAVwNMYIuSR_xqYq0h7uzbo_Evy6QNt_W7ZnBMDYQq8ry3LX21_-QZAC-YvQWTHzekfGmDM8b-yg=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SpP7j7WBkgdNugndzaAhWK5s6qduQz0t3CAlKabUTtxX1o-9yLc1vlLiNTH8tAVwNMYIuSR_xqYq0h7uzbo_Evy6QNt_W7ZnBMDYQq8ry3LX21_-QZAC-YvQWTHzekfGmDM8b-yg=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,240h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94mpnwE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9SpP7j7WBkgdNugndzaAhWK5s6qduQz0t3CAlKabUTtxX1o-9yLc1vlLiNTH8tAVwNMYIuSR_xqYq0h7uzbo_Evy6QNt_W7ZnBMDYQq8ry3LX21_-QZAC-YvQWTHzekfGmDM8b-yg%3Dw900-h600-k-no-pi0-ya239-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '綠樹環抱下的活力籃球場，標準籃框與優質地面防滑塗層。',
-    adjacentSpotIds: ["spot-7", "spot-8", "spot-11"]
-  },
-  {
-    id: 'spot-11',
-    num: 11,
-    name: '綠草如茵大操場中央',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 180, py: 240,
-    x: -86.32, y: 2.2, z: 0.0,
-    pos: [-86.32, 2.2, 0.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SRcjd0GeTYzyQ_FXfgoQZAsWnQhFYeNCpYLgpAjSry4rbn2TLAAd6FgXAw7psLoOCf4yq9aerQieZy7dN6LdZ67iDvAh6rPPjPy9-2RiSXBHrGPZAxZ1Fp0ody6r-CtCusZ2_R=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SRcjd0GeTYzyQ_FXfgoQZAsWnQhFYeNCpYLgpAjSry4rbn2TLAAd6FgXAw7psLoOCf4yq9aerQieZy7dN6LdZ67iDvAh6rPPjPy9-2RiSXBHrGPZAxZ1Fp0ody6r-CtCusZ2_R=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XJYg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9SRcjd0GeTYzyQ_FXfgoQZAsWnQhFYeNCpYLgpAjSry4rbn2TLAAd6FgXAw7psLoOCf4yq9aerQieZy7dN6LdZ67iDvAh6rPPjPy9-2RiSXBHrGPZAxZ1Fp0ody6r-CtCusZ2_R%3Dw900-h600-k-no-pi-20-ya0-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '寬闊大操場草坪中央，360° 環視跑道、司令台與四棟宏偉校舍。',
-    adjacentSpotIds: ["spot-8", "spot-18", "spot-42", "spot-7"]
-  },
-  {
-    id: 'spot-18',
-    num: 18,
-    name: '操場田徑跑道直道',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 200, py: 300,
-    x: -81.12, y: 2.2, z: 15.6,
-    pos: [-81.12, 2.2, 15.6],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RkrRYRXvF4mRrhNUxS8E0OYmMXFPiK_GWalFw4GveqaZyEk35IjO3z70nkfKx_N-MDUtOO8L2bAFm7_ZrWq1LhtUE9DDNq2BJlODUVnWsGetw75V2TdiVwlHceGQC0eCCaork9NQ=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RkrRYRXvF4mRrhNUxS8E0OYmMXFPiK_GWalFw4GveqaZyEk35IjO3z70nkfKx_N-MDUtOO8L2bAFm7_ZrWq1LhtUE9DDNq2BJlODUVnWsGetw75V2TdiVwlHceGQC0eCCaork9NQ=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,40h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtK7g8QE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RkrRYRXvF4mRrhNUxS8E0OYmMXFPiK_GWalFw4GveqaZyEk35IjO3z70nkfKx_N-MDUtOO8L2bAFm7_ZrWq1LhtUE9DDNq2BJlODUVnWsGetw75V2TdiVwlHceGQC0eCCaork9NQ%3Dw900-h600-k-no-pi-10-ya39-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '標準 PU 彈性跑道，奔馳揮灑汗水與展現體育活力的賽道。',
-    adjacentSpotIds: ["spot-11", "spot-8", "spot-39", "spot-2"]
-  },
-  {
-    id: 'spot-25',
-    num: 25,
-    name: '兒童共融遊戲場・溜滑梯',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 350, py: 140,
-    x: -42.12, y: 2.2, z: -26.0,
-    pos: [-42.12, 2.2, -26.0],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U8hGJj5Ma8amrSFxPeUVXklM7ppZOpUDu3Fepywr4XT0ICIYksmUIrFRY6zEvxzii49hKiEiAUQN5n9nL32AM66RLWzhDp95ZSef26ILIe6mCN6sJjJ3dj7kacQ1wz2fP00F51S=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U8hGJj5Ma8amrSFxPeUVXklM7ppZOpUDu3Fepywr4XT0ICIYksmUIrFRY6zEvxzii49hKiEiAUQN5n9nL32AM66RLWzhDp95ZSef26ILIe6mCN6sJjJ3dj7kacQ1wz2fP00F51S=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH9_HTbg!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U8hGJj5Ma8amrSFxPeUVXklM7ppZOpUDu3Fepywr4XT0ICIYksmUIrFRY6zEvxzii49hKiEiAUQN5n9nL32AM66RLWzhDp95ZSef26ILIe6mCN6sJjJ3dj7kacQ1wz2fP00F51S%3Dw900-h600-k-no-pi0-ya359-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '深受小朋友喜愛的安全共融遊具、攀爬架與彩色溜滑梯園地。',
-    adjacentSpotIds: ["spot-7", "spot-26", "spot-2"]
-  },
-  {
-    id: 'spot-26',
-    num: 26,
-    name: '綠能自行車棚與生態園',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 320, py: 110,
-    x: -49.92, y: 2.2, z: -33.8,
-    pos: [-49.92, 2.2, -33.8],
-    thumb: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-SggcFQVr7pLGyaZY_dowp8h0jwuiMP8S2CIU55v8LYonUFP4XtWsmaQA8ipCkp51uQoBymxuVajk6As6_sh-8aDN--Wu4PC5y2H5AbYOelCywGEAayg26oSOBltrrf2Myz0a7dg=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gpms-cs-s/AM4Q-U-SggcFQVr7pLGyaZY_dowp8h0jwuiMP8S2CIU55v8LYonUFP4XtWsmaQA8ipCkp51uQoBymxuVajk6As6_sh-8aDN--Wu4PC5y2H5AbYOelCywGEAayg26oSOBltrrf2Myz0a7dg=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,300h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XJogE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgpms-cs-s%2FAM4Q-U-SggcFQVr7pLGyaZY_dowp8h0jwuiMP8S2CIU55v8LYonUFP4XtWsmaQA8ipCkp51uQoBymxuVajk6As6_sh-8aDN--Wu4PC5y2H5AbYOelCywGEAayg26oSOBltrrf2Myz0a7dg%3Dw900-h600-k-no-pi-10-ya300-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '北側綠能遮陽自行車停車棚與校園原生植物生態觀察區。',
-    adjacentSpotIds: ["spot-25", "spot-7"]
-  },
-  {
-    id: 'spot-19',
-    num: 19,
-    name: '西棟/南棟後方連鎖磚步道',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 370, py: 310,
-    x: -36.92, y: 2.2, z: 18.2,
-    pos: [-36.92, 2.2, 18.2],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9T5NrnJxXsZUIrjLLHsg2IdIaQ2lfcWdwzFjZGUU8spY-S8iVlai0huIFniteoM54jr-n3osXvgDZuNCRmFbmR0jHAbmlw_iXhrwJWfv3A3ESxJZPcICeRiD9CYL9k9DMVr9XrV=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9T5NrnJxXsZUIrjLLHsg2IdIaQ2lfcWdwzFjZGUU8spY-S8iVlai0huIFniteoM54jr-n3osXvgDZuNCRmFbmR0jHAbmlw_iXhrwJWfv3A3ESxJZPcICeRiD9CYL9k9DMVr9XrV=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,320h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDHtM75bw!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9T5NrnJxXsZUIrjLLHsg2IdIaQ2lfcWdwzFjZGUU8spY-S8iVlai0huIFniteoM54jr-n3osXvgDZuNCRmFbmR0jHAbmlw_iXhrwJWfv3A3ESxJZPcICeRiD9CYL9k9DMVr9XrV%3Dw900-h600-k-no-pi-10-ya319-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '連接各棟後側的林蔭連鎖磚步道，幽靜舒適。',
-    adjacentSpotIds: ["spot-2", "spot-5", "spot-46"]
-  },
-  {
-    id: 'spot-39',
-    num: 39,
-    name: '西側林蔭車道',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 310, py: 270,
-    x: -52.52, y: 2.2, z: 7.8,
-    pos: [-52.52, 2.2, 7.8],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RJFsMp4nsK94apmITdiEWsR9uu1dStwBkpzS1bPkA9dMY3CalyOpr4iKrFrw_dBu6WzdRRdJkLYnRFf-f27OFSlOnfA_s5lgvBfiF2V7H_2huVSz2wMeB81ITz0rL3tUl-JI8=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RJFsMp4nsK94apmITdiEWsR9uu1dStwBkpzS1bPkA9dMY3CalyOpr4iKrFrw_dBu6WzdRRdJkLYnRFf-f27OFSlOnfA_s5lgvBfiF2V7H_2huVSz2wMeB81ITz0rL3tUl-JI8=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,180h,110t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH94WcJA!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RJFsMp4nsK94apmITdiEWsR9uu1dStwBkpzS1bPkA9dMY3CalyOpr4iKrFrw_dBu6WzdRRdJkLYnRFf-f27OFSlOnfA_s5lgvBfiF2V7H_2huVSz2wMeB81ITz0rL3tUl-JI8%3Dw900-h600-k-no-pi-20-ya180-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '操場西側林蔭蔽天的小徑，空氣清新微風徐徐。',
-    adjacentSpotIds: ["spot-18", "spot-11", "spot-2"]
-  },
-  {
-    id: 'spot-40',
-    num: 40,
-    name: '南側圍牆綠蔭步道',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 520, py: 340,
-    x: 2.08, y: 2.2, z: 26.0,
-    pos: [2.08, 2.2, 26.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SM2VEweHAgcHRhJ9LcthqxzPMjGCLGU-AZ_9zJrbOt8bNJIEyYQmOmDm-Nr7hWLbW0QMgzwWygzTdrAPFxqMll8K0X3tyZkjyiqHfv8tVRxmaGSWfQDtFLecr1khLOUp0322pS=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9SM2VEweHAgcHRhJ9LcthqxzPMjGCLGU-AZ_9zJrbOt8bNJIEyYQmOmDm-Nr7hWLbW0QMgzwWygzTdrAPFxqMll8K0X3tyZkjyiqHfv8tVRxmaGSWfQDtFLecr1khLOUp0322pS=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,180h,90t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgIDH7YreowE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9SM2VEweHAgcHRhJ9LcthqxzPMjGCLGU-AZ_9zJrbOt8bNJIEyYQmOmDm-Nr7hWLbW0QMgzwWygzTdrAPFxqMll8K0X3tyZkjyiqHfv8tVRxmaGSWfQDtFLecr1khLOUp0322pS%3Dw900-h600-k-no-pi0-ya179-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '南側圍牆旁高大樹木形成的林蔭休閒步道。',
-    adjacentSpotIds: ["spot-24", "spot-46"]
-  },
-  {
-    id: 'spot-46',
-    num: 46,
-    name: '幼兒園庭院花園水池',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 440, py: 340,
-    x: -18.72, y: 2.2, z: 26.0,
-    pos: [-18.72, 2.2, 26.0],
-    thumb: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RRlGoljn_2lonvTL5ghcYQbOaS0wHbZtksVU1fhQw2SMjI7F9EtNOF22dKzF2DTQ69UPG1ZUt0JE-pIn-Z-AQb09o7YZdQ6712v2KQlFzSojayO1Upd4Q683Msh_DCOogNcG88Bg=w400-h250-k-no',
-    panoUrl: 'https://lh3.googleusercontent.com/gps-cs-s/ANWiy9RRlGoljn_2lonvTL5ghcYQbOaS0wHbZtksVU1fhQw2SMjI7F9EtNOF22dKzF2DTQ69UPG1ZUt0JE-pIn-Z-AQb09o7YZdQ6712v2KQlFzSojayO1Upd4Q683Msh_DCOogNcG88Bg=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594591,120.4870018,3a,75y,100h,100t/data=!3m8!1e1!3m6!1sCIHM0ogKEICAgICH98XgogE!2e10!3e11!6shttps:%2F%2Flh3.googleusercontent.com%2Fgps-cs-s%2FANWiy9RRlGoljn_2lonvTL5ghcYQbOaS0wHbZtksVU1fhQw2SMjI7F9EtNOF22dKzF2DTQ69UPG1ZUt0JE-pIn-Z-AQb09o7YZdQ6712v2KQlFzSojayO1Upd4Q683Msh_DCOogNcG88Bg%3Dw900-h600-k-no-pi-10-ya100-ro0-fo100!7i5504!8i2752!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '幼兒園專屬庭院綠地、花草步道與生態景觀小水池。',
-    adjacentSpotIds: ["spot-5", "spot-19", "spot-40"]
-  },
-  {
-    id: 'spot-44',
-    num: 44,
-    name: '復興路正門外街景',
-    group: '操場球場與遊戲區',
-    floor: '1F',
-    px: 960, py: 220,
-    x: 116.48, y: 2.2, z: -5.2,
-    pos: [116.48, 2.2, -5.2],
-    thumb: 'https://streetviewpixels-pa.clients6.google.com/v1/thumbnail?cb_client=w400-h250-k-no',
-    panoUrl: 'https://streetviewpixels-pa.clients6.google.com/v1/thumbnail?cb_client=w2048',
-    externalUrl: 'https://www.google.com/maps/place/%E5%B1%8F%E6%9D%B1%E7%B8%A3%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%BE%A9%E8%88%88%E5%9C%8B%E6%B0%91%E5%B0%8F%E5%AD%B8/@22.6594542,120.4871331,26a,75y,273.15h,90t/data=!3m7!1e1!3m5!1sgrRYLvc66ZAdibOqzoh3RA!2e0!6shttps:%2F%2Fstreetviewpixels-pa.clients6.google.com%2Fv1%2Fthumbnail%3Fcb_client%3Dmaps_sv.tactile%26w%3D900%26h%3D600%26pitch%3D0%26panoid%3DgrRYLvc66ZAdibOqzoh3RA%26yaw%3D273.15198!7i16384!8i8192!4m9!3m8!1s0x346e182bdb63a341:0x5634cd796a33119d!8m2!3d22.6594591!4d120.4870018!10e5!14m1!1BCgIgARICCAI!16s%2Fg%2F1ttdw5s9?entry=ttu&g_ep=EgoyMDI2MTEwOC4wIKXMDSoASAFQAw%3D%3D',
-    desc: '復興路正門前開闊馬路與屏東市區街景視角。',
-    adjacentSpotIds: ["spot-12", "spot-41"]
-  },
-];
+// 360° 景點資料已移至 data/spots.js（由 admin.html 管理頁維護）
+const CAMPUS_360_SPOTS = window.CAMPUS_360_SPOTS || [];
 window.CAMPUS_360_SPOTS = CAMPUS_360_SPOTS;
 
 const FEATURED_IDS = [

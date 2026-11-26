@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { batchStaticMeshes } from './campus-batch.js?v=2.12.99';
 
 // ============================================================================
 // 1. COORDINATE SYSTEM & 115學年度 CAMPUS DATASET
@@ -9,6 +10,11 @@ const X = (typeof window !== "undefined" && window.X) || (px => (px - OX) * S);
 const Z = (typeof window !== "undefined" && window.Z) || (py => (py - OY) * S);
 
 const LANDMARKS = (typeof window !== "undefined" && window.LANDMARKS) ? window.LANDMARKS : [];
+// v2.12.40 北棟／東棟／西棟定位轉換（定義於 campus-ui.js；局部座標 ⇄ 世界座標）
+const IDENT_XF = { th: 0, rotY: 0, toWorld: (x, z) => [x, z], toLocal: (x, z) => [x, z], apply: o => o };
+const NORTH_XF = window.NORTH_XF || IDENT_XF, EAST_XF = window.EAST_XF || IDENT_XF, WEST_XF = window.WEST_XF || IDENT_XF, NEW_XF = window.NEW_XF || IDENT_XF;
+const lmToWorld = window.lmToWorld || ((id, x, z) => [x, z]);
+const BUILDING_XF_ROT = id => (window.BUILDING_XF && window.BUILDING_XF[id]) ? window.BUILDING_XF[id].rotY : 0;
 
 const LAYER_CONFIG = [
   { key: 'labels', name: '地點名稱', desc: '在地圖上顯示 13 處精選地標浮動標註', icon: '🏷️' },
@@ -112,17 +118,28 @@ const getOptimalDpr = () => {
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.4, 1200);
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
-  logarithmicDepthBuffer: true,
-  preserveDrawingBuffer: true,
+  // 對數深度緩衝會讓每個 fragment 寫入 gl_FragDepth、關閉 early-Z；網址加 ?nolog 可關閉以比對效能與 z-fighting
+  logarithmicDepthBuffer: !new URLSearchParams(window.location.search).has('nolog'),
+  // preserveDrawingBuffer 已移除：PNG 匯出前會同步重繪一次，不需保留繪圖緩衝（省下每幀一次全螢幕複製）
   powerPreference: 'high-performance'
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(getOptimalDpr());
+// 全域預設各向異性過濾：地面、磁磚、跑道等程序式貼圖在斜視角不再變糊（之前 CanvasTexture 預設為 1）
+THREE.Texture.DEFAULT_ANISOTROPY = Math.min(isMobileDevice ? 4 : 8, renderer.capabilities.getMaxAnisotropy());
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// ?tm=agx 可改用 AgX 色調對應（高光更不易過曝、但整體飽和度較低），預設維持 ACES
+renderer.toneMapping = new URLSearchParams(window.location.search).get('tm') === 'agx' ? THREE.AgXToneMapping : THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// 陰影貼圖按需更新：校園是靜態場景，只有太陽位置、圖層顯示或模型結構改變時才重算陰影
+// （原本每一幀都要把上萬個物件再畫一次到 4096² 陰影貼圖）
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
+let shadowSignature = '';
+function markShadowsDirty() { shadowSignature = ''; }
+window.markShadowsDirty = markShadowsDirty;
 host.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -139,7 +156,8 @@ function requestRender(frames = 35) {
   renderDemandFrames = Math.max(renderDemandFrames, frames);
 }
 window.requestRender = requestRender;
-controls.addEventListener('change', () => requestRender(20));
+let lastMotionAt = 0;   // 最近一次「鏡頭移動」的時間，供動態解析度判斷是否正在操作
+controls.addEventListener('change', () => { lastMotionAt = performance.now(); requestRender(20); });
 window.addEventListener('pointerdown', () => requestRender(60), { passive: true });
 window.addEventListener('pointermove', e => { if (e.buttons > 0) requestRender(35); }, { passive: true });
 window.addEventListener('wheel', () => requestRender(35), { passive: true });
@@ -179,29 +197,98 @@ const layerGroups = {
   context: new THREE.Group()
 };
 Object.values(layerGroups).forEach(g => scene.add(g));
+window.__layerGroups = layerGroups;   // v2.12.64 供截圖比對時隱藏圖層
 
 // Selection Highlight Box Outline
 const selectionOutlineGroup = new THREE.Group();
 scene.add(selectionOutlineGroup);
 
 // Procedural Equirectangular Sky Generator (GXU sky.ts approach)
+// 天空只有 4 種預設：依預設名快取，拖曳時間滑桿不再每次新建貼圖（原本舊貼圖未釋放會持續佔用 GPU 記憶體）
+const _skyTexCache = {};
 function createSkyTexture(presetKey) {
+  if (_skyTexCache[presetKey]) return _skyTexCache[presetKey];
   const cfg = LIGHTING_PRESETS[presetKey];
+  const W = isMobileDevice ? 1024 : 2048, H = W / 2;
   const c = document.createElement('canvas');
-  c.width = 256; c.height = 128;
+  c.width = W; c.height = H;
   const ctx = c.getContext('2d');
-  const g = ctx.createLinearGradient(0, 0, 0, 128);
+  // 天頂 → 地平線 → 地面漸層（地平線附近停留較長，避免天際線一道硬邊）
+  const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0.0, cfg.zenith);
-  g.addColorStop(0.52, cfg.horizon);
-  g.addColorStop(0.62, cfg.horizon);
+  g.addColorStop(0.50, cfg.horizon);
+  g.addColorStop(0.56, cfg.horizon);
   g.addColorStop(1.0, cfg.lower);
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 256, 128);
+  ctx.fillRect(0, 0, W, H);
+  // 地平線薄霧帶：讓遠景與霧色平順銜接
+  const haze = ctx.createLinearGradient(0, H * 0.40, 0, H * 0.58);
+  haze.addColorStop(0, 'rgba(255,255,255,0)');
+  haze.addColorStop(0.7, 'rgba(255,255,255,0.22)');
+  haze.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = haze;
+  ctx.fillRect(0, H * 0.40, W, H * 0.18);
+  // 確定性亂數：每個預設的雲/星位置固定
+  let sd = 7 + presetKey.length * 131;
+  const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  if (presetKey === 'night') {
+    // 視野只涵蓋全天球約 1/8，星點需極小（廣角放大後才不會變成光斑）
+    for (let i = 0; i < 1400; i++) {
+      const y = rr() * H * 0.46, a = 0.2 + rr() * 0.75, r = (0.22 + rr() * rr() * 0.7) * (W / 2048 + 0.4);
+      ctx.fillStyle = `rgba(235,242,255,${a.toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(rr() * W, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  } else {
+    // 柔邊積雲：多顆放射漸層圓疊成雲團，集中於天頂到地平線之間的帶狀區域
+    const warm = presetKey === 'evening';
+    for (let k = 0; k < 16; k++) {
+      const cx = rr() * W, cy = H * (0.10 + rr() * 0.30), size = W * (0.025 + rr() * 0.03);
+      // 雲底陰影：略偏下、偏灰藍的低透明橢圓，讓雲有立體感
+      for (let j = 0; j < 4; j++) {
+        const px = cx + (rr() - 0.5) * size * 2.6, py = cy + size * 0.32, pr = size * (0.55 + rr() * 0.4);
+        const sg = ctx.createRadialGradient(px, py, 0, px, py, pr);
+        sg.addColorStop(0, warm ? 'rgba(170,120,110,0.16)' : 'rgba(110,135,170,0.16)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = sg; ctx.fillRect(px - pr, py - pr, pr * 2, pr * 2);
+      }
+      for (let j = 0; j < 9; j++) {
+        const px = cx + (rr() - 0.5) * size * 3.2, py = cy + (rr() - 0.5) * size * 0.8, pr = size * (0.5 + rr() * 0.7);
+        const rg = ctx.createRadialGradient(px, py, 0, px, py, pr);
+        const a = 0.38 + rr() * 0.26;
+        rg.addColorStop(0, warm ? `rgba(255,236,214,${a})` : `rgba(255,255,255,${a})`);
+        rg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = rg;
+        ctx.fillRect(px - pr, py - pr, pr * 2, pr * 2);
+      }
+    }
+  }
+  // 抖動雜訊：打散 8-bit 漸層色帶
+  const img = ctx.getImageData(0, 0, W, H), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (rr() - 0.5) * 3.2;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+  }
+  ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(c);
   tex.mapping = THREE.EquirectangularReflectionMapping;
   tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return (_skyTexCache[presetKey] = tex);
 }
+
+// 太陽（夜間為月）光暈：加法混合的柔邊精靈，隨太陽方向移動；不受霧影響
+const sunGlowSprite = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.06, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.14, 'rgba(255,255,255,0.35)'); g.addColorStop(0.45, 'rgba(255,255,255,0.08)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.SpriteMaterial({ map: t, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false, opacity: 0.9 });
+  const sp = new THREE.Sprite(m);
+  sp.scale.set(300, 300, 1); sp.renderOrder = -1;
+  return sp;
+})();
+scene.add(sunGlowSprite);
 
 // High-Resolution Procedural Ceramic Tile Texture & Bump Map (Square White School Exterior Tiles per p3.jpg/p10.jpg)
 let _tileNormalMap = null;
@@ -347,26 +434,41 @@ function makeCourtyardBrickTexture() {
   const c = document.createElement('canvas');
   c.width = 512; c.height = 512;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#dcd9d0';
+  ctx.fillStyle = '#5a5e63'; // 細砂深灰磚縫
   ctx.fillRect(0, 0, 512, 512);
 
-  // Replicate the exact 4-quadrant geometric paver block seen in p3.jpg
+  // 依實景照片 20261124_071645.jpg 忠實還原中庭同心方形連鎖磚圖樣：
+  //   由外至內：淺灰白外框 → 中深岩灰環 → 淺灰白中環 → 中深岩灰內環 → 實心淡磚紅方心（無中央黑點）
+  //   每格由獨立微變色波浪／連鎖混凝土小磚拼組，呈現真實日曬風化質感
+  const whitePal = ['#dad9d3', '#d2d1cb', '#e0dfda', '#cbc9c2', '#d7d6d0'];
+  const greyPal  = ['#666b70', '#5e6368', '#70757a', '#585d62', '#6a6f74'];
+  const redPal   = ['#ad6e66', '#a4655d', '#b5776f', '#9c5f58', '#b0726a'];
+  let sd = 59;
+  const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+
   const drawModule = (ox, oy, sz) => {
-    // Outer charcoal border
-    ctx.fillStyle = '#44484d';
-    ctx.fillRect(ox + 8, oy + 8, sz - 16, sz - 16);
-    // Middle pearl white ring
-    ctx.fillStyle = '#dedcd4';
-    ctx.fillRect(ox + 28, oy + 28, sz - 56, sz - 56);
-    // Inner charcoal ring
-    ctx.fillStyle = '#494d52';
-    ctx.fillRect(ox + 50, oy + 50, sz - 100, sz - 100);
-    // Center terracotta red medallion
-    ctx.fillStyle = '#b85440';
-    ctx.fillRect(ox + 72, oy + 72, sz - 144, sz - 144);
-    // Inner subtle cross pattern
-    ctx.fillStyle = '#44484d';
-    ctx.fillRect(ox + 104, oy + 104, sz - 208, sz - 208);
+    const N = 12; // 每模組 12×12 塊連鎖小磚（精確對應實景寬窄比例）
+    const bw = sz / N;
+    for (let r = 0; r < N; r++) {
+      for (let k = 0; k < N; k++) {
+        // 距離邊界之層數 d ∈ {0..5}
+        const d = Math.min(r, k, N - 1 - r, N - 1 - k);
+        let pal;
+        if (d === 0) pal = whitePal;          // 淺灰白外框
+        else if (d === 1) pal = greyPal;      // 外圈中深岩灰環
+        else if (d === 2) pal = whitePal;     // 中圈淺灰白環
+        else if (d === 3) pal = greyPal;      // 內圈中深岩灰環
+        else pal = redPal;                    // 中央 4×4 實心淡磚紅方心
+        const x0 = ox + k * bw, y0 = oy + r * bw;
+        const pad = 1.1;
+        ctx.fillStyle = pal[Math.floor(rr() * pal.length)];
+        // 連鎖磚微錯縫／細微圓角輪廓
+        ctx.fillRect(x0 + pad, y0 + pad, bw - pad * 2, bw - pad * 2);
+        // 磚面細微風化明暗紋理
+        ctx.fillStyle = rr() > 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+        ctx.fillRect(x0 + pad + 2, y0 + pad + 2, bw - pad * 2 - 4, bw - pad * 2 - 4);
+      }
+    }
   };
 
   drawModule(0, 0, 256);
@@ -374,18 +476,11 @@ function makeCourtyardBrickTexture() {
   drawModule(0, 256, 256);
   drawModule(256, 256, 256);
 
-  // Interlocking paving stone joint lines
-  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-  ctx.lineWidth = 1.5;
-  for (let i = 0; i <= 512; i += 32) {
-    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 512); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(512, i); ctx.stroke();
-  }
-
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(12, 8);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
   return tex;
 }
 
@@ -422,6 +517,110 @@ function makeCommuterWalkwayTexture() {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(12, 1);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// 建興南路42巷（新南側門至復興路轉角）人行道：灰褐色 30 cm 方形地磚（v2.12.3 依 2024 街景）
+function makeSquareTileSidewalkTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#6f6862';
+  ctx.fillRect(0, 0, 256, 256);
+  const pal = ['#8e857c', '#968c82', '#867d75', '#9c9187', '#7f776f', '#a0968b'];
+  let sd = 91;
+  const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  for (let y = 0; y < 256; y += 32) {
+    for (let x = 0; x < 256; x += 32) {
+      ctx.fillStyle = pal[Math.floor(r() * pal.length)];
+      ctx.fillRect(x + 1, y + 1, 30, 30);
+      for (let k = 0; k < 6; k++) {                 // 磚面細小斑點
+        ctx.fillStyle = r() > 0.5 ? 'rgba(60,55,50,0.25)' : 'rgba(200,190,180,0.2)';
+        ctx.fillRect(x + 2 + r() * 27, y + 2 + r() * 27, 2, 2);
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// 綠色菱形鐵絲網（透明底，供 alphaTest）
+function makeChainLinkTexture() {
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.strokeStyle = '#2d5a3a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, 32); ctx.lineTo(32, 0); ctx.lineTo(64, 32); ctx.lineTo(32, 64); ctx.closePath(); ctx.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+// 運動場圍牆招生布條（白底粉紅帶「選擇復興 家長安心」）
+const sportsBannerMat = (() => {
+  const c = document.createElement('canvas');
+  c.width = 760; c.height = 200;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f7f3ef'; ctx.fillRect(0, 0, 760, 200);
+  ctx.fillStyle = '#e9a3ad'; ctx.fillRect(0, 0, 120, 200);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 22px sans-serif'; ctx.save(); ctx.translate(70, 100); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText('Fu Shing Primary School', 0, 0); ctx.restore();
+  ctx.fillStyle = '#2a2a2a'; ctx.font = 'bold 64px "Noto Sans TC", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('選擇復興 家長安心', 440, 80);
+  ctx.font = '28px "Noto Sans TC", sans-serif'; ctx.fillStyle = '#555';
+  ctx.fillText('知識 | 品格 | 雙語 | 科技 | 多元能力', 440, 150);
+  ctx.fillStyle = '#d98a98'; ctx.fillRect(690, 10, 60, 180);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide });
+})();
+
+// 運動場圍牆白漆龜裂柱面（v2.12.4 依 2024 街景）
+function makeCrackedPaintTexture() {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#eceae4';
+  ctx.fillRect(0, 0, 128, 128);
+  let sd = 17;
+  const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  ctx.strokeStyle = 'rgba(120,115,105,0.55)';
+  ctx.lineWidth = 1;
+  for (let k = 0; k < 30; k++) {                    // 龜裂網紋
+    let x = r() * 128, y = r() * 128;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    for (let j = 0; j < 4; j++) { x += (r() - 0.5) * 30; y += (r() - 0.5) * 30; ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(150,140,125,0.25)';           // 下緣汙漬
+  ctx.fillRect(0, 108, 128, 20);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// 前庭花台用灰色斑點花崗石／洗石子紋理（v2.12.3 依 2024 街景：淺灰底密布深色與白色顆粒）
+function makeSpeckledGraniteTexture(base = '#a29d95', dark = '#4b4844', light = '#e2ddd3', blocks = true) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 256, 128);
+  let sd = 37;
+  const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  for (let k = 0; k < 2600; k++) {
+    const v = r();
+    ctx.fillStyle = v < 0.45 ? dark : (v < 0.75 ? light : 'rgba(120,110,100,0.8)');
+    const sz = 1 + Math.floor(r() * 2);
+    ctx.fillRect(r() * 256, r() * 128, sz, sz);
+  }
+  if (blocks) {                                     // 砌塊分縫
+    ctx.strokeStyle = 'rgba(40,38,35,0.45)';
+    ctx.lineWidth = 2;
+    for (let x = 0; x <= 256; x += 64) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 128); ctx.stroke(); }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
@@ -907,6 +1106,10 @@ const clickableGroups = [];
 const landmarkGroupMap = new Map();
 
 function addMesh(parent, geo, mat, x, y, z, cast = true, receive = true) {
+  // 葉團 / 灌木 / 岩石（二十面體、十二面體，半徑 ≥ 0.25 m）統一做輪廓擾動，不增加面數；微小的花、果、葉尖不處理
+  if ((geo.type === 'IcosahedronGeometry' || geo.type === 'DodecahedronGeometry') && !geo.userData.lumpy && (geo.parameters.radius || 0) >= 0.25) {
+    lumpyGeometry(geo, geo.parameters.detail ? 0.16 : 0.22);
+  }
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);
   m.castShadow = cast;
@@ -921,10 +1124,125 @@ function addBox(parent, w, h, d, mat, x, y, z, cast = true) {
 // ============================================================================
 // 3. BUILD GROUND, COMMUTER WALKWAY BUFFER, ROADS, COURTYARD, BOUNDARY & CONTEXT
 // ============================================================================
-// Base terrain
-addBox(layerGroups.roads, 980, 0.2, 980, new THREE.MeshStandardMaterial({ color: 0x8eb374, roughness: 0.92 }), 0, -0.14, 0, false);
+// 下沉中庭（v2.12.0）：中庭比東棟穿堂低約 0.9 m、比前庭低約 0.75 m（依現場：穿堂前僅一階，中庭低於穿堂約 1 m）
+// v2.12.40 下沉中庭改為四邊形：北緣沿北棟南側採光井外緣（北棟局部 z = −24.0），東緣沿東棟後走廊（東棟局部 x = 52.6），
+//   西緣 x = −17.2、南緣 z = 2.7 不變；x1..x2 / z1..z2 為外接矩形
+const COURTYARD_SINK = (() => {
+  const XW = -17.2, ZS = 2.7, ZN_LOCAL = -24.0, XE_LOCAL = 52.6;
+  const nA = NORTH_XF.toWorld(-60, ZN_LOCAL), nB = NORTH_XF.toWorld(80, ZN_LOCAL);
+  const eA = EAST_XF.toWorld(XE_LOCAL, -60), eB = EAST_XF.toWorld(XE_LOCAL, 40);
+  const zOn = (a, b, x) => a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]);
+  const xOn = (a, b, z) => a[0] + (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]);
+  const cross = (p1, p2, p3, p4) => {
+    const d = (p1[0] - p2[0]) * (p3[1] - p4[1]) - (p1[1] - p2[1]) * (p3[0] - p4[0]);
+    const a = p1[0] * p2[1] - p1[1] * p2[0], b = p3[0] * p4[1] - p3[1] * p4[0];
+    return [(a * (p3[0] - p4[0]) - (p1[0] - p2[0]) * b) / d, (a * (p3[1] - p4[1]) - (p1[1] - p2[1]) * b) / d];
+  };
+  const NW = [XW, zOn(nA, nB, XW)], NE = cross(nA, nB, eA, eB), SE = [xOn(eA, eB, ZS), ZS], SW = [XW, ZS];
+  const poly = [NW, NE, SE, SW];   // 順時針（俯視，z 向南）
+  return { poly, x1: XW, x2: Math.max(NE[0], SE[0]), z1: Math.min(NW[1], NE[1]), z2: ZS, D: 0.75 };
+})();
+window.COURTYARD_SINK = COURTYARD_SINK;
+// 凸四邊形內判斷；m > 0 外擴、m < 0 內縮
+const inCourtyardSink = (x, z, m = 0) => {
+  const P = COURTYARD_SINK.poly;
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length];
+    const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
+    // 順時針多邊形（x 向東、z 向南）：內側為邊向量之右手側 → 叉積 ≥ 0
+    if ((ex * (z - a[1]) - ez * (x - a[0])) / L < -m) return false;
+  }
+  return true;
+};
+window.inCourtyardSink = inCourtyardSink;
+
+const SOUTH_SHIFT = -6.0;   // v2.12.34 南棟依航照與普查樹木整體北移 6 m（南緣圍牆、人行道、道路同步）
+// 新棟「⑩–⑪ 黃框轉折棟（共用走廊）」北端（新棟群組局部 z）：北面牆須與南棟北牆（柱面）整面切齊。
+// 南棟北牆柱面世界 z = Z(318) + SOUTH_SHIFT − 11.50（南棟進深）− 0.24（柱半厚）；新棟群組 z 位移 = SOUTH_SHIFT + NEW_XF 位移，
+// 兩者相減後 SOUTH_SHIFT 抵銷。舊值 8.78 是新棟尚未北移時寫的，北移後走廊會比南棟北牆多突出約 3 m。
+const SHARED_CORRIDOR_ZG = Z(318) - 11.50 - 0.24 - NEW_XF.toWorld(0, 0)[1];
+// 新棟無障礙坡道（世界座標，v2.12.111 依實景照片 20261118_132826 / 081808 / 081632 / 081654 校正）：
+//   縱向坡段貼齊共用走廊西牆（x = −8.12..−6.72，寬 1.40 m），入口起於共用走廊北牆面（RZ0 = 2.54），不再突入前庭草坪；
+//   轉角後橫向坡段貼齊新棟 1F 北立面往西（z = 5.518..6.918，寬 1.40 m）直抵 ⑥ 軸（x = −19.81）。
+const NEW_RAMP = (() => {
+  const gz = SOUTH_SHIFT + NEW_XF.toWorld(0, 0)[1];     // 新棟群組 z 位移（−9.0 m）
+  const zE = 15.918 + gz;                                // 新棟北走廊外牆面（世界 z = 6.918）
+  const zF = zE - 1.40;                                  // 橫向坡段北緣（寬 1.40 m → 世界 z = 5.518）
+  return { RX1: -8.12, RX2: -6.72, RXW: -19.81, zF, zE, RZ0: 2.54, gz };
+})();
+// 新棟無障礙坡道所在區域的「地面開孔」多邊形（世界座標，x, z）
+const NEW_RAMP_HOLE = [[NEW_RAMP.RX1, NEW_RAMP.RZ0], [NEW_RAMP.RX2, NEW_RAMP.RZ0], [NEW_RAMP.RX2, NEW_RAMP.zE], [NEW_RAMP.RXW, NEW_RAMP.zE], [NEW_RAMP.RXW, NEW_RAMP.zF], [NEW_RAMP.RX1, NEW_RAMP.zF]];
+// 北棟大樓東側地下室下沉採光天井（軸線 ⑫–⑱，北棟局部 x = 16.05..43.00, z = −26.175..−23.00）
+// 將採光井北段併入中庭挖空北緣、南段自中庭鋪面與地基北緣內凹，確保零縫隙且無重疊孔洞
+const COURTYARD_BASE_HOLE = (() => {
+  const [NW, NE, SE, SW] = COURTYARD_SINK.poly;
+  return [
+    NW,
+    NORTH_XF.toWorld(16.05, -24.0),
+    NORTH_XF.toWorld(16.05, -26.60),
+    NORTH_XF.toWorld(43.00, -26.60),
+    NORTH_XF.toWorld(43.00, -24.0),
+    NE, SE, SW
+  ];
+})();
+const COURTYARD_PAVER_POLY = (() => {
+  const [NW, NE, SE, SW] = COURTYARD_SINK.poly;
+  return [
+    NW,
+    NORTH_XF.toWorld(16.05, -24.0),
+    NORTH_XF.toWorld(16.05, -23.00),
+    NORTH_XF.toWorld(43.00, -23.00),
+    NORTH_XF.toWorld(43.00, -24.0),
+    NE, SE, SW
+  ];
+})();
+// Base terrain（中庭範圍與北棟東側地下室採光井一併挖空，另以下沉中庭地基與擋土牆圍塑）
+{
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x8eb374, roughness: 0.92 });
+  registerLawnMat(baseMat);
+  const C = COURTYARD_SINK, E = 490;
+  // v2.12.40 中庭四邊形挖空（形狀座標 y = −世界 z）
+  const baseShape = new THREE.Shape([[-E, -E], [E, -E], [E, E], [-E, E]].map(([x, z]) => new THREE.Vector2(x, -z)));
+  baseShape.holes.push(new THREE.Path(COURTYARD_BASE_HOLE.map(([x, z]) => new THREE.Vector2(x, -z))));
+  baseShape.holes.push(new THREE.Path(NEW_RAMP_HOLE.map(([x, z]) => new THREE.Vector2(x, -z))));   // v2.12.99 坡道
+  const baseGeo = new THREE.ExtrudeGeometry(baseShape, { depth: 0.2, bevelEnabled: false });
+  baseGeo.rotateX(-Math.PI / 2); baseGeo.translate(0, -0.24, 0);
+  const baseMesh = new THREE.Mesh(baseGeo, baseMat); baseMesh.receiveShadow = true;
+  layerGroups.roads.add(baseMesh);
+  // 下沉中庭地基（頂面略低於中庭鋪面；北緣扣除北棟東側地下室採光井南段）
+  const fGeo = new THREE.ExtrudeGeometry(new THREE.Shape(COURTYARD_PAVER_POLY.map(([x, z]) => new THREE.Vector2(x, -z))), { depth: 0.3, bevelEnabled: false });
+  fGeo.rotateX(-Math.PI / 2); fGeo.translate(0, -C.D - 0.31, 0);
+  layerGroups.roads.add(new THREE.Mesh(fGeo, new THREE.MeshStandardMaterial({ color: 0x9a968c, roughness: 0.9 })));
+}
 
 // Procedural Campus Green Lawn Texture (`運動場與後圍牆間的校園草地緩衝區` 自然草皮紋理)
+// 前庭草坪（依 2026 俯拍照片：偏橄欖綠、無明顯割草條紋、局部黃褐色踩踏斑塊）
+function makeForecourtLawnTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#4f6a2c';
+  ctx.fillRect(0, 0, 512, 512);
+  let s = 77;
+  const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 26; i++) {               // 大塊色差
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    const x = r() * 512, y = r() * 512, rad = 30 + r() * 70;
+    ctx.save(); ctx.translate(x, y); ctx.scale(rad, rad * (0.6 + r() * 0.6));
+    g.addColorStop(0, i % 4 === 0 ? 'rgba(160,140,90,0.35)' : (i % 2 ? 'rgba(90,120,55,0.35)' : 'rgba(120,145,70,0.30)'));
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+  for (let i = 0; i < 4200; i++) {
+    ctx.fillStyle = ['#46602a', '#62803c', '#6f8746', '#435a2c'][i % 4];
+    ctx.fillRect(r() * 512, r() * 512, 2, 2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function makeCampusLawnTexture() {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 256;
@@ -950,20 +1268,74 @@ function makeCampusLawnTexture() {
   return tex;
 }
 
+// ============================================================================
+// 《學校前庭綠籬規劃平面圖》換算之世界座標曲線（v2.11.2）
+//  ・南側（建興南路42巷）邊界：自轉角圓弧花台西端起，向北內凹成 S 形曲線，至學校新南側門
+//  ・北側草坪臨復興路緣：自 FU-SHING 波浪矮牆北端起，向草坪內凹之大圓弧，經老榕樹後方至東側門南柱
+//  平面圖錨點：校門主立柱 (px 340) ↔ z 5.2、新南側門 (px 98) ↔ z 21、草坪北緣 (py 300) ↔ x 70.2、
+//  FU-SHING 北端 (px 488) ↔ z −12.6、東側門 (px 760) ↔ z −40；平面圖縱橫比例不一，故分段換算。
+// ============================================================================
+const FORECOURT_SOUTH_CURVE = [   // [x, z]，由東（花台）往西（新南側門）
+  // v2.12.72 依前庭平面圖完整描點：內凹最深處 x≈97（約 2.5 m）；兩翼外推至校界線內 0.15 m，補回大門側斜切所減少之草坪面積
+  [108.1, 22.01], [105.8, 21.85], [103.4, 21.15], [100.8, 20.25], [97.4, 19.65], [93.6, 19.75],
+  [89.6, 20.35], [85.6, 21.15], [81.0, 21.1], [75.5, 20.92], [70.2, 20.74]
+];
+const FORECOURT_NORTH_CURVE = [   // [x, z]，由南（FU-SHING 矮牆北端）往北（東側門南柱）
+  [113.8, -12.6], [112.9, -18.0], [111.6, -23.0], [110.4, -28.0], [109.9, -33.5], [111.0, -37.5], [113.9, -40.3]
+];
+function sampleXZCurve(pts, step = 0.5) {
+  const curve = new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'centripetal');
+  return curve.getSpacedPoints(Math.max(4, Math.ceil(curve.getLength() / step)));
+}
+function offsetXZ(points, dist, towardX, towardZ) {  // 沿法線偏移；toward 指定偏移的大致方向
+  return points.map((p, i) => {
+    const a = points[Math.max(0, i - 1)], b = points[Math.min(points.length - 1, i + 1)];
+    let nx = -(b.z - a.z), nz = b.x - a.x;
+    const l = Math.hypot(nx, nz) || 1; nx /= l; nz /= l;
+    if (nx * towardX + nz * towardZ < 0) { nx = -nx; nz = -nz; }
+    return new THREE.Vector3(p.x + nx * dist, 0, p.z + nz * dist);
+  });
+}
+function flatXZPoly(points, mat, y, parent, uvScale = 0.1) {
+  const sh = new THREE.Shape();
+  points.forEach((p, i) => { if (i === 0) sh.moveTo(p.x, -p.z); else sh.lineTo(p.x, -p.z); });
+  sh.closePath();
+  const geo = new THREE.ShapeGeometry(sh);
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * uvScale, uv.getY(i) * uvScale);
+  geo.rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(geo, mat);
+  m.position.y = y; m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+
 // Exact 7-Vertex Campus Perimeter Polygon (`V0..V6` in pixel coordinates)
 // The Rear Perimeter Wall (`V0 -> V6 -> V5 -> V4`) encloses 100% of the Sports Ground (`08`) & Ball Courts (`09`)
 // with a wide, continuous Campus Green Lawn Buffer Zone (`校園草地緩衝區域`) between the sports ground and the wall!
 const CAMPUS_PERIMETER_PX = [
-  [56, 22],   // V0: NW Rear Wall Corner (Xingan St & Jianxing S. Rd Lane 50)
+  [65.7, -67.6], // V0: NW 角（v2.12.24 依校園樹木分布衛星圖：北牆自東端往西漸偏北，西北角較原模型偏北約 23 m）
   [955, 22],  // V1: NE Corner (Xingan St & Fuxing Rd)
   [955, 326], // V2: SE Corner (Fuxing Rd & Jianxing S. Rd Lane 42)
   [772, 320], // V3: 學校新南側門 (建興南路42巷 · 東棟大樓右側)
-  [496, 318], // V4: 學校舊南側門 (建興南路42巷 · 南棟興學樓西端)
-  [438, 374], // V4b: 幼兒園大門東柱 / 南圍牆折角 (建興南路42巷)
+  [715, 294.9], // V3a: 南棟東端（v2.12.34 南棟北移後南緣折點）
+  [496, 294.9], // V4: 學校舊南側門 (建興南路42巷 · 南棟興學樓西端)
+  // v2.12.74 依衛星圖：幼兒園南側圍牆沿 42 巷為單一斜線，移除 V4b 折角
   [367, 374], // V5: 幼兒園西端 / 運動場南側圍牆交界
   [180, 480], // V6: 運動場西南尖端
-  [56, 328]   // V7: 運動場西角 (建興南路50巷)
+  [152.9, 437.2], [134.6, 381.8], [105.2, 308.8], [76.2, 245.3],   // 西牆斜段（依衛星圖）
+  [45, 193.7], [39.2, 158.8], [51.4, 149.4]                         // 西牆中段外凸與北段直牆南端
 ];
+
+// v2.12.24 依校園樹木分布衛星圖之圍牆線（平面圖像素座標）
+const WEST_WALL_PX = [[65.7, -67.6], [51.4, 149.4], [39.2, 158.8], [45, 193.7], [76.2, 245.3], [105.2, 308.8], [134.6, 381.8], [152.9, 437.2], [180, 480]];
+const NORTH_WALL_PX = [[65.7, -67.6], [955, 22]];
+const northWallZAt = x => { const [a, b] = NORTH_WALL_PX; const t = (x - X(a[0])) / (X(b[0]) - X(a[0])); return Z(a[1]) + t * (Z(b[1]) - Z(a[1])); };
+const WEST_ROAD_PTS = [[113.5, -45.0], [57.6, -51.8], [-29.5, -59.5], [-36.0, -61.5], [-50.5, -66.6], [-89.8, -72.7], [-102.8, -73.9], [-114.4, -67.5]];   // v2.12.117 北側車道（寬 5.1m 緊鄰北棟坡道與 5.1m 停車棚）：東側門→北棟北側→學校後門
+const NORTH_SPUR_PTS = [[-36.0, -61.5], [-36.0, -43.5]];   // 北棟西端往南支線   // v2.12.33 北棟西端以西：沿北牆內側步道通往學校後門（依航照）
+const TRACK_CFG = { cx: -58.15, cz: -9.5, rx: 19.5, straight: 52, th: 5.074 };   // v2.12.33 PU 跑道（依對位航照）；v2.12.54 依航照與西棟同轉 5.07°，東緣距西棟西牆 3.3 m（使用者實測）
+const trackToWorld = (lx, lz) => { const t = TRACK_CFG.th * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), dx = lx - TRACK_CFG.cx, dz = lz - TRACK_CFG.cz; return [TRACK_CFG.cx + dx * c - dz * s, TRACK_CFG.cz + dx * s + dz * c]; };
+const westWallXAtPy = py => { for (let i = 0; i < WEST_WALL_PX.length - 1; i++) { const [x1, y1] = WEST_WALL_PX[i], [x2, y2] = WEST_WALL_PX[i + 1]; if (py >= Math.min(y1, y2) && py <= Math.max(y1, y2)) return x1 + (x2 - x1) * (py - y1) / ((y2 - y1) || 1); } return WEST_WALL_PX[0][0]; };
 
 // 1) Campus Inner Ground Polygon Slab & Full Sports Ground Campus Lawn Buffer Zone (`校園草地緩衝區域`)
 {
@@ -974,6 +1346,18 @@ const CAMPUS_PERIMETER_PX = [
     else innerShape.lineTo(wx, wz);
   });
   innerShape.closePath();
+  {
+    // 坡道斜面在 z > 2.7（下沉中庭南緣以南）會低於地面，需在地面開 L 形孔（坡道實體由下往上填滿，不會露底）
+    const rh = new THREE.Path();
+    NEW_RAMP_HOLE.forEach(([x, z], i) => (i ? rh.lineTo(x, -z) : rh.moveTo(x, -z)));
+    rh.closePath();
+    innerShape.holes.push(rh);
+  }
+  {
+    const hole = new THREE.Path();   // 形狀座標：y = −世界 z（同步扣除北棟東側地下室採光井）
+    COURTYARD_BASE_HOLE.forEach(([x, z], i) => (i ? hole.lineTo(x, -z) : hole.moveTo(x, -z))); hole.closePath();
+    innerShape.holes.push(hole);
+  }
   const innerGroundMesh = new THREE.Mesh(
     new THREE.ShapeGeometry(innerShape),
     new THREE.MeshStandardMaterial({ color: 0xdad6ca, roughness: 0.88, side: THREE.DoubleSide })
@@ -986,12 +1370,14 @@ const CAMPUS_PERIMETER_PX = [
   // Full Campus Green Lawn Buffer Zone (`運動場與學校後圍牆之間的校園草地緩衝區域`)
   // Covers the entire western/rear campus inside the Rear Perimeter Wall (`V0 -> V6 -> V5 -> V4`) around the PU Track & Courts!
   const sportsTurfPts = [
-    [58, 24],   // NW corner inside North & West Rear Walls
-    [412, 24],  // North edge along rear of North Building (`愛悅樓`)
+    // v2.12.25 依衛星圖新圍牆線內縮約 0.5 m：西北角草地、排球場北側草地一併鋪設
+    [68, -64.5],  // NW corner
+    [412, -30],   // North edge along north wall
+    [412, 24],    // 北棟後方
     [412, 340], // East edge along West Building (`專科大樓`) & New Wing (`幼兒園`)
     [367, 372], // SE corner inside Sports Ground Rear Wall
     [180, 477], // SW tip inside Sports Ground Rear Wall
-    [58, 327]   // West corner inside West Rear Wall
+    [154, 434], [136.5, 380], [107.5, 306.5], [78.5, 243], [47.5, 193], [41.5, 159.5], [53.5, 149]
   ];
   const turfShape = new THREE.Shape();
   sportsTurfPts.forEach(([px, py], idx) => {
@@ -999,6 +1385,7 @@ const CAMPUS_PERIMETER_PX = [
     else turfShape.lineTo(X(px), -Z(py));
   });
   turfShape.closePath();
+  { const th = new THREE.Path(); NEW_RAMP_HOLE.forEach(([x, z], i) => (i ? th.lineTo(x, -z) : th.moveTo(x, -z))); th.closePath(); turfShape.holes.push(th); }   // v2.12.99 坡道
   const turfMesh = new THREE.Mesh(
     new THREE.ShapeGeometry(turfShape),
     new THREE.MeshStandardMaterial({ map: makeCampusLawnTexture(), roughness: 0.88, side: THREE.DoubleSide })
@@ -1023,7 +1410,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
 {
   // Helper: Build a Commuter Walkway Buffer Strip (`通學步道緩衝帶`) outside a perimeter wall segment `(x1,z1)->(x2,z2)`
   // `outSign` (+1 or -1) specifies which normal direction points OUTSIDE the campus toward the road.
-  function addCommuterWalkwayStrip(x1, z1, x2, z2, outSign = 1, walkW = 4.4, withPlanters = true, gateGaps = [], withBollards = true) {
+  function addCommuterWalkwayStrip(x1, z1, x2, z2, outSign = 1, walkW = 4.4, withPlanters = true, gateGaps = [], withBollards = true, opts = {}) {
     const dx = x2 - x1, dz = z2 - z1;
     const len = Math.hypot(dx, dz);
     if (len < 1.0) return;
@@ -1039,9 +1426,21 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     wGrp.rotation.y = ang;
 
     // Raised permeable interlocking brick sidewalk deck (`透水紅灰連鎖磚＋導盲磚通學步道`)
-    addBox(wGrp, len + 1.4, 0.14, walkW, walkwayBrickMat, 0, 0.07, 0, false);
+    let deckMat = walkwayBrickMat;
+    if (opts.tileTex) {                                  // 依實景改鋪方形地磚（貼圖依長度換算重複次數）
+      const t = opts.tileTex.clone();
+      t.repeat.set((len + 1.4) / (opts.tileRepeatM || 2.4), walkW / (opts.tileRepeatM || 2.4));
+      t.needsUpdate = true;
+      deckMat = new THREE.MeshStandardMaterial({ map: t, roughness: 0.86 });
+    }
+    addBox(wGrp, len + 1.4, 0.14, walkW, deckMat, 0, 0.07, 0, false);
     // Outer white/grey concrete roadside curb (`外側道路緣石`) bordering the asphalt road
     addBox(wGrp, len + 1.6, 0.21, 0.30, curbStoneMat, 0, 0.105, outSign * (walkW / 2 - 0.12), false);
+    if (opts.purpleCurb) {                               // 緣石頂面與臨路側面淡紫色油漆（街景特徵）
+      const pm = new THREE.MeshStandardMaterial({ color: 0xa996c8, roughness: 0.7 });
+      addBox(wGrp, len + 1.6, 0.012, 0.30, pm, 0, 0.216, outSign * (walkW / 2 - 0.12), false);
+      addBox(wGrp, len + 1.6, 0.19, 0.012, pm, 0, 0.105, outSign * (walkW / 2 + 0.035), false);
+    }
 
     // Green buffer planter beds along outer edge
     if (withPlanters && len > 12) {
@@ -1072,8 +1471,34 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     layerGroups.roads.add(wGrp);
   }
 
+  const roadRedLineMat = new THREE.MeshStandardMaterial({ color: 0xc8343a, roughness: 0.6 });
+  // 路邊停放轎車（簡化造型：車身、車艙、深色車窗、四輪、車燈），長軸沿區域 x
+  const carGlassMat = new THREE.MeshStandardMaterial({ color: 0x1f2a33, roughness: 0.15, metalness: 0.6 });
+  const carTyreMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.85 });
+  const carLightMat = new THREE.MeshStandardMaterial({ color: 0xf8f4e6, roughness: 0.3 });
+  const carTailMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.4 });
+  function buildParkedSedan(color, variant = 0) {
+    const g = new THREE.Group();
+    const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.32, metalness: 0.45 });
+    const L = 4.5 + (variant % 3) * 0.15, W = 1.78;
+    addBox(g, L, 0.62, W, paint, 0, 0.58, 0);                                      // 下車身
+    addBox(g, L * 0.94, 0.08, W * 0.98, paint, 0, 0.93, 0);                         // 腰線
+    addBox(g, L * 0.5, 0.5, W * 0.9, paint, -0.15, 1.2, 0);                        // 車艙
+    addBox(g, L * 0.52, 0.42, W * 0.92, carGlassMat, -0.15, 1.18, 0, false);         // 車窗帶
+    addBox(g, L * 0.46, 0.06, W * 0.86, paint, -0.15, 1.47, 0, false);               // 車頂
+    [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => {
+      const w = addMesh(g, new THREE.CylinderGeometry(0.33, 0.33, 0.24, 14), carTyreMat, sx * L * 0.32, 0.33, sz * (W / 2 - 0.08));
+      w.rotation.x = Math.PI / 2;
+    });
+    [-0.55, 0.55].forEach(z => {
+      addBox(g, 0.04, 0.12, 0.34, carLightMat, L / 2 + 0.01, 0.72, z, false);
+      addBox(g, 0.04, 0.12, 0.34, carTailMat, -L / 2 - 0.01, 0.74, z, false);
+    });
+    return g;
+  }
+
   // Helper: Build an Asphalt Road Segment (`周邊馬路`) positioned OUTSIDE the Commuter Walkway buffer zone
-  function addBufferedRoadSegment(x1, z1, x2, z2, outSign = 1, walkW = 4.4, roadW = 9.8, hasCenterLine = true, crosswalkTs = []) {
+  function addBufferedRoadSegment(x1, z1, x2, z2, outSign = 1, walkW = 4.4, roadW = 9.8, hasCenterLine = true, crosswalkTs = [], opts = {}) {
     const dx = x2 - x1, dz = z2 - z1;
     const len = Math.hypot(dx, dz);
     const ang = -Math.atan2(dz, dx);
@@ -1088,10 +1513,20 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     rGrp.rotation.y = ang;
 
     // Asphalt road bed (`柏油馬路`)
-    addBox(rGrp, len + 8.0, 0.10, roadW, asphaltMat, 0, 0.04, 0, false);
+    const ext = opts.ext !== undefined ? opts.ext : 8.0;   // v2.12.74 圓弧短段延伸量
+    addBox(rGrp, len + ext, 0.10, roadW, asphaltMat, 0, 0.04, 0, false);
     // White road edge lines (`道路雙側白邊線`)
-    addBox(rGrp, len + 7.6, 0.115, 0.18, lineWhiteMat, 0, 0.055, -roadW / 2 + 0.45, false);
-    addBox(rGrp, len + 7.6, 0.115, 0.18, lineWhiteMat, 0, 0.055, roadW / 2 - 0.45, false);
+    // 校園側（內側）邊線：opts.innerRed 依街景改為緊貼緣石之紅色禁止臨時停車線
+    if (opts.innerRed) addBox(rGrp, len + ext - 0.4, 0.115, 0.16, roadRedLineMat, 0, 0.055, -outSign * (roadW / 2 - 0.14), false);
+    else addBox(rGrp, len + ext - 0.4, 0.115, 0.18, lineWhiteMat, 0, 0.055, -outSign * (roadW / 2 - 0.45), false);
+    addBox(rGrp, len + ext - 0.4, 0.115, 0.18, lineWhiteMat, 0, 0.055, outSign * (roadW / 2 - 0.45), false);
+    // 沿校園側緣石路邊停車（opts.parked：沿路段位置 0..1 與車色）
+    (opts.parked || []).forEach(([t, color], i) => {
+      const car = buildParkedSedan(color, i);
+      car.position.set((t - 0.5) * len, 0.09, -outSign * (roadW / 2 - 1.1));
+      car.rotation.y = (i % 2 ? 0.02 : -0.015);
+      rGrp.add(car);
+    });
     // Dashed yellow center line (`中央黃虛線`)
     if (hasCenterLine) {
       const nDashes = Math.floor(len / 5.5);
@@ -1114,40 +1549,101 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     [X(955), Z(235), 9.5], // 復興路正門
     [X(955), Z(74),  5.0], // 東側門
     [X(772), Z(320), 4.5], // 學校新南側門 (東棟大樓右側)
-    [X(657), Z(318), 4.8], // 學校舊南側門 (南棟大樓東側 1F 興學樓大字下通道後面)
-    [X(429), Z(374), 4.5], // 幼兒園大門 (新棟大樓南側大門)
-    [X(56),  Z(90),  5.0], // 西側後門
-    [X(56),  Z(256), 4.2]  // 司令台後小門
+    [X(657), Z(294.9), 4.8], // 學校舊南側門 (南棟大樓東側 1F 興學樓大字下通道後面)
+    [X(367) + 16.1 / Math.hypot(1, (Z(294.9) - Z(374)) / (X(496) - X(367))), Z(374) + 16.1 * ((Z(294.9) - Z(374)) / (X(496) - X(367))) / Math.hypot(1, (Z(294.9) - Z(374)) / (X(496) - X(367))), 4.5], // 幼兒園大門（v2.12.74 隨圍牆斜線）
+    [X(62.44), Z(-18.1),  5.0], // 學校後門（v2.12.33 依使用者航照標示）
+    [X(79.4), Z(260.4), 4.2]  // 司令台後小門
   ];
 
   // (A) West Rear Wall Perimeter (`建興南路 50 巷` & `建興南路`):
-  addCommuterWalkwayStrip(X(56), Z(22), X(56), Z(328), 1, 3.2, true, gateExclusionZones);
-  addBufferedRoadSegment(X(56), Z(10), X(56), Z(332), 1, 3.2, 9.6, true, [0.25, 0.78]);
+  // v2.12.9：西側人行道為斑駁灰色水泥（牆外另有低矮花台，於圍牆建模中配置），無路邊花箱；沿圍牆側劃設路邊停車格
+  // v2.12.23：西牆改為「直段＋三段斜牆」（依校園樹木分布圖），人行道與道路沿新牆線分段配置
+  {
+    const tile = { tileTex: makeSpeckledGraniteTexture('#a4a29d', '#6d6b67', '#c3c0ba', false), tileRepeatM: 3.0 };
+    const WP = WEST_WALL_PX;
+    for (let i = 0; i < WP.length - 1; i++) {
+      const [ax1, ay1] = WP[i], [ax2, ay2] = WP[i + 1];
+      addCommuterWalkwayStrip(X(ax1), Z(ay1), X(ax2), Z(ay2), 1, 3.2, false, gateExclusionZones, false, tile);
+      addBufferedRoadSegment(X(ax1), Z(ay1 - (i === 0 ? 30 : 0)), X(ax2), Z(ay2), 1, 3.2, 9.6, true, i === 0 ? [0.55] : [], i === 0 ? { parked: [[0.62, 0x2b2d31], [0.7, 0xe5e7eb], [0.78, 0x8a8f96], [0.9, 0xc9c2a8]] } : {});
+    }
+  }
 
   // Segment 2: Along Southwest Rear Wall of Sports Ground (`V7(56,328) -> V6(180,480)`)
-  addCommuterWalkwayStrip(X(56), Z(328), X(180), Z(480), 1, 3.2, true, gateExclusionZones);
-  addBufferedRoadSegment(X(42), Z(310), X(196), Z(500), 1, 3.2, 10.0, true, [0.85]);
+  // （西南斜段已併入上方西牆分段）
 
   // (B) South/Southeast Rear Wall of Sports Ground (`建興南路 42 巷` 運動場後圍牆外通學步道與馬路, `V6(180,480) -> V5(367,374)`):
-  addCommuterWalkwayStrip(X(180), Z(480), X(367), Z(374), 1, 3.0, true, gateExclusionZones);
-  addBufferedRoadSegment(X(166), Z(486), X(374), Z(371), 1, 3.0, 9.0, true, [0.10, 0.90]);
+  // v2.12.4 依 2024 街景：灰褐方形地磚窄人行道、淡紫色緣石，無花箱與短柱；臨圍牆側路邊停車
+  addCommuterWalkwayStrip(X(180), Z(480), X(367), Z(374), 1, 2.2, false, gateExclusionZones, false, { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true });
+  addBufferedRoadSegment(X(166), Z(486), X(374), Z(371), 1, 2.2, 8.4, true, [0.10, 0.90], { parked: [[0.24, 0x2b2d31], [0.34, 0x8a8f96], [0.47, 0xe5e7eb], [0.66, 0x1f3a5f], [0.76, 0x9ca3af]] });
 
   // (C) Kindergarten & South Building Commuter Walkway (`建興南路 42 巷` 通學步道與馬路):
-  // Segment 4a: Along Kindergarten Front Wall & Main Gate (`V5(367,374) -> V4b(438,374)`)
-  addCommuterWalkwayStrip(X(367), Z(374), X(438), Z(374), 1, 3.0, false, gateExclusionZones);
-  addBufferedRoadSegment(X(367), Z(374), X(438), Z(374), 1, 3.0, 8.8, true, [0.87]);
-
-  // Segment 4b: Along Kindergarten East Stepped Wall to South Building West Corner (`V4b(438,374) -> V4(496,318)`)
-  addCommuterWalkwayStrip(X(438), Z(374), X(496), Z(318), 1, 3.0, false, gateExclusionZones);
-  addBufferedRoadSegment(X(438), Z(374), X(496), Z(318), 1, 3.0, 8.8, true, []);
+  // v2.12.74 依衛星圖：42 巷自運動場南側一路斜向東北，沿幼兒園南牆直抵南棟西端，再以約 R=22 m 圓弧轉為東西向
+  {
+    const A = [X(367), Z(374)], B = [X(496), Z(294.9)], C = [X(715), Z(294.9)];
+    const R = 22, d1 = [B[0] - A[0], B[1] - A[1]], L1 = Math.hypot(...d1), u1 = [d1[0] / L1, d1[1] / L1], u2 = [1, 0];
+    const th = Math.acos(u1[0] * u2[0] + u1[1] * u2[1]), T = R * Math.tan(th / 2);
+    const P1 = [B[0] - u1[0] * T, B[1] - u1[1] * T], P2 = [B[0] + T, B[1]];
+    const tile = { tileTex: makeSquareTileSidewalkTexture(), tileRepeatM: 2.4, purpleCurb: true };
+    window.__LANE42_ARC = { A, P1, B, P2, C, R };
+    addCommuterWalkwayStrip(A[0], A[1], P1[0], P1[1], 1, 3.0, false, gateExclusionZones, false, tile);
+    addBufferedRoadSegment(A[0], A[1], P1[0], P1[1], 1, 3.0, 6.0, false, [0.22], { innerRed: true });
+    // 圓弧段（以多段短直線組成；校界內側弧＝人行道內緣）
+    const cen = [P1[0] - u1[1] * R, P1[1] + u1[0] * R];   // 弧心位於道路外側（南），弧線自斜向轉為東西向
+    const a0 = Math.atan2(P1[1] - cen[1], P1[0] - cen[0]), a1 = Math.atan2(P2[1] - cen[1], P2[0] - cen[0]);
+    const N = 6;
+    for (let i = 0; i < N; i++) {
+      const t0 = a0 + (a1 - a0) * i / N, t1 = a0 + (a1 - a0) * (i + 1) / N;
+      const q0 = [cen[0] + R * Math.cos(t0), cen[1] + R * Math.sin(t0)], q1 = [cen[0] + R * Math.cos(t1), cen[1] + R * Math.sin(t1)];
+      addCommuterWalkwayStrip(q0[0], q0[1], q1[0], q1[1], 1, 3.6, false, gateExclusionZones, false, tile);
+      addBufferedRoadSegment(q0[0], q0[1], q1[0], q1[1], 1, 3.6, 6.0, false, [], { innerRed: true, ext: 0.6 });
+    }
+    window.__LANE42_ARC.P2 = P2;
+  }
 
   // Segment 5: Along South Building (南棟興學樓) & East Building South Facade to 學校新南側門 (`V4(496,318) -> V3(772,320)`)
-  addCommuterWalkwayStrip(X(496), Z(318), X(772), Z(320), 1, 3.0, false, gateExclusionZones);
-  addBufferedRoadSegment(X(496), Z(318), X(772), Z(320), 1, 3.0, 8.6, true, [0.08, 0.94]);
+  // v2.12.4 依 2024 街景：南棟前七彩欄杆外仍有約 2.4 m 淨寬人行道（含行道樹），人行道加寬至 4.8 m；
+  //          灰褐方形地磚、淡紫色緣石，校園側路緣為紅線
+  // v2.12.76 依衛星圖與街景（復興路口西望）：42 巷自南棟西端至復興路口為一條接近筆直之 6 m 道路（約 3.9° 斜向），
+  //   不再於新南側門前錯位；校界與道路間之人行道以多邊形鋪設（南棟前較寬、新南側門前約 2.3 m、復興路口約 3.8 m）
+  const L42 = { x1: -4.2, z1: 21.2, x2: 118.0, z2: 29.5 };   // 道路中心線
+  L42.at = x => L42.z1 + (x - L42.x1) * (L42.z2 - L42.z1) / (L42.x2 - L42.x1);
+  window.__L42 = L42;
+  {
+    const ref = (x, d) => [x, L42.at(x) - d];   // 中心線向校內側平移 d
+    const d = 2.0 + 0.35 + 3.0;
+    const [ax_, az_] = ref(L42.x1, d), [bx_, bz_] = ref(L42.x2, d);
+    addBufferedRoadSegment(ax_, az_, bx_, bz_, 1, 2.0, 6.0, false, [0.43, 0.58, 0.955], { innerRed: true, ext: 2.0 });
+    // 人行道多邊形：校界（南棟前→斜段→新南側門→復興路口）與道路內緣之間
+    const tileTex = makeSquareTileSidewalkTexture(); tileTex.wrapS = tileTex.wrapT = THREE.RepeatWrapping;
+    const swMat = new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.86 });
+    const edge = x => L42.at(x) - 3.0 - 0.15;
+    const bnd = [[L42.x1, Z(294.9)], [X(715), Z(294.9)], [X(772), Z(320)], [X(955), Z(326)]];
+    const poly = bnd.concat([[X(955), edge(X(955))], [X(772), edge(X(772))], [X(715), edge(X(715))], [L42.x1, edge(L42.x1)]]);
+    const sh = new THREE.Shape(poly.map(([x, z]) => new THREE.Vector2(x, -z)));
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.14, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
+    const uv = geo.attributes.uv, pos = geo.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) / 2.4, pos.getZ(i) / 2.4);
+    const sw = new THREE.Mesh(geo, swMat); sw.receiveShadow = true; layerGroups.roads.add(sw);
+    // 臨路緣石（淡紫色）
+    const purple = new THREE.MeshStandardMaterial({ color: 0xb59bc9, roughness: 0.7 });
+    const cg = new THREE.Group(), len = Math.hypot(L42.x2 - L42.x1, L42.z2 - L42.z1) + 1.0;
+    cg.position.set((L42.x1 + L42.x2) / 2, 0, (edge(L42.x1) + edge(L42.x2)) / 2); cg.rotation.y = -Math.atan2(L42.z2 - L42.z1, L42.x2 - L42.x1);
+    addBox(cg, len, 0.21, 0.30, curbStoneMat, 0, 0.105, 0, false); addBox(cg, len, 0.012, 0.30, purple, 0, 0.216, 0, false);
+    layerGroups.roads.add(cg);
+  }
 
-  // Segment 6: From 學校新南側門 (東棟大樓右側) to Southeast Corner (`V3(772,320) -> V2(955,326)`)
-  addCommuterWalkwayStrip(X(772), Z(320), X(955), Z(326), 1, 3.0, true, gateExclusionZones);
-  addBufferedRoadSegment(X(770), Z(321), X(960), Z(327), 1, 3.0, 8.6, true, [0.82]);
+  // v2.12.73 依街景（10、12 建興南路42巷）：巷口黃色網狀禁止臨停區
+  [[X(772) + 1.5, window.__L42.at(X(772) + 1.5), 6.0, 5.4], [X(367) + 18.5, Z(374) + 18.5 * (Z(294.9) - Z(374)) / (X(496) - X(367)) + 7.6, 6.0, 5.4]].forEach(([cx, cz, w, d]) => {
+    const yb = new THREE.Group(); yb.position.set(cx, 0.115, cz); if (cx > 0) yb.rotation.y = -Math.atan2(window.__L42.z2 - window.__L42.z1, window.__L42.x2 - window.__L42.x1);
+    const ym = new THREE.MeshBasicMaterial({ color: 0xe8c33a });
+    [[0, -d / 2, w, 0.15], [0, d / 2, w, 0.15], [-w / 2, 0, 0.15, d], [w / 2, 0, 0.15, d]].forEach(([x, z, a, b]) => addBox(yb, a, 0.01, b, ym, x, 0, z, false));
+    for (let k = -4; k <= 4; k++) for (const sg of [1, -1]) {
+      const L = Math.min(w, d) * 1.414 * (1 - Math.abs(k) / 5);
+      if (L < 0.6) continue;
+      const ln = addBox(yb, L, 0.01, 0.12, ym, k * 0.9 * 0.707 * sg, 0, k * 0.9 * 0.707, false); ln.rotation.y = sg * Math.PI / 4;
+    }
+    layerGroups.roads.add(yb);
+  });
 
   // (D) East Main Gate Frontage (`復興路 / 台27線` 東側通學步道與迎賓大道):
   // 依實景照片：正門口人行步道開闊暢通，不設黑黃防撞短柱與花箱障礙
@@ -1162,8 +1658,7 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   addBox(layerGroups.roads, 0.22, 0.13, 1200 * S, lineWhiteMat, X(978), 0.065, Z(220), false);
   // (實景校門正前方無斑馬線，已依指示精確移除原先 9 條枕木紋白色斑馬線)
 
-  // (E) North Rear Wall Commuter Walkway Buffer (`北側後圍牆外通學步道緩衝帶`, `V0(56,22) -> V1(955,22)`)
-  addCommuterWalkwayStrip(X(56), Z(22), X(955), Z(22), -1, 4.0, true, gateExclusionZones);
+  // (E) 北側圍牆：v2.12.6 依空拍圖，圍牆外直接為屏東高工校地（草地與運動場），並無通學步道，原步道移除
 }
 
 // Courtyard Geometric Brick Plaza (`06 幾何花磚中庭廣場`)
@@ -1172,37 +1667,421 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   cg.userData = { landmarkId: 'courtyard-plaza' };
   const cw = (712 - 445) * S, cd = (278 - 145) * S;
   const cx = X((445 + 712) / 2), cz = Z((145 + 278) / 2);
-  const brickMat = new THREE.MeshStandardMaterial({ map: makeCourtyardBrickTexture(), roughness: 0.82 });
-  addBox(cg, cw, 0.16, cd, brickMat, cx, 0.08, cz, false);
+  // v2.12.40 花磚鋪面改依下沉中庭四邊形鋪設（北棟北移後中庭向北延伸）；紋理沿用原尺度（每片 cw/12 × cd/8）
+  const brickTex = makeCourtyardBrickTexture();
+  brickTex.repeat.set(12 / cw, 8 / cd); brickTex.offset.set(-(cx - cw / 2) * 12 / cw, -(cz - cd / 2) * 8 / cd);
+  const brickMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.82 });
+  {
+    const bGeo = new THREE.ShapeGeometry(new THREE.Shape(COURTYARD_PAVER_POLY.map(([x, z]) => new THREE.Vector2(x, -z))));
+    bGeo.rotateX(-Math.PI / 2);
+    // ShapeGeometry 之 UV 為形狀座標 (x, −z)；改成 (x, z) 使紋理方向與原鋪面一致
+    const uv = bGeo.attributes.uv, pos = bGeo.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i), pos.getZ(i));
+    const bm = new THREE.Mesh(bGeo, brickMat); bm.position.y = 0.16; bm.receiveShadow = true;
+    cg.add(bm);
+  }
 
   // Courtyard Central Open Space (Curved mounds and authentic dinosaur are accurately integrated at South Building)
   const grassMoundMat = new THREE.MeshStandardMaterial({ color: 0x67a353, roughness: 0.85 });
+  registerLawnMat(grassMoundMat);
   const curbWhiteMat = new THREE.MeshStandardMaterial({ color: 0xeeede6, roughness: 0.72 });
 
-  // Raised White-Curbed Rectangular Green Lawn Planters in front of North Building (matching north_elevation.png & p3.jpg!)
-  addBox(cg, 17.5, 0.42, 4.2, curbWhiteMat, -9.8, 0.21, -21.2);
-  addBox(cg, 16.7, 0.46, 3.5, grassMoundMat, -9.8, 0.23, -21.2, false);
-  addBox(cg, 3.8, 0.42, 4.2, curbWhiteMat, 22.2, 0.21, -21.2);
-  addBox(cg, 3.2, 0.46, 3.5, grassMoundMat, 22.2, 0.23, -21.2, false);
-  const darkMatPad = new THREE.MeshStandardMaterial({ color: 0x35393e, roughness: 0.88 });
-  addBox(cg, 5.8, 0.20, 4.2, darkMatPad, 27.2, 0.10, -21.2, false);
-  addBox(cg, 9.6, 0.28, 0.45, curbWhiteMat, 25.3, 0.14, -23.4);
+  // ============================================================================
+  // 北棟大樓（愛悅樓）前庭草地植物區、安全橡膠地墊與景觀細節（依 2 張實景照片精緻重建）
+  //   ・西棟東側角隅小草坪（雙層修剪灌木＋綠蔭喬木與樹牌）
+  //   ・愛悅樓中央階梯西側長條形草地植物區（平緣灰水泥緣石、草坪內淺灰水泥分隔帶、自然修剪灌木、
+  //     東端橘紅花火焰木、南緣彩色小風車列）
+  //   ・愛悅樓中央階梯東側微丘草地植物區（自然多簇綠灌木＋紅彩木灌木＋高挑疏冠喬木）
+  //   ・東側黑紅格紋安全橡膠地墊、白色公園長椅與北側不鏽鋼格柵排水溝
+  // ============================================================================
+  const nfg = new THREE.Group(); cg.add(nfg);
+  {
+    const yBase = 0.16; // 中庭鋪面局部頂面標高（整組 cg 下沉 −COURTYARD_SINK.D）
+    const curbGreyMat = new THREE.MeshStandardMaterial({ color: 0xb5b8ba, roughness: 0.84 });
+    const concreteStripMat = new THREE.MeshStandardMaterial({ color: 0xc2c5c7, roughness: 0.86 });
+    const grateMat = new THREE.MeshStandardMaterial({ color: 0xd0d4d8, roughness: 0.35, metalness: 0.72 });
+    const trunkDarkMat = new THREE.MeshStandardMaterial({ color: 0x4f3e30, roughness: 0.90 });
 
-  // Manicured Round Shrubs & Red Foliage Bushes in front of North Building (修剪球形灌木與變葉木 per p3.jpg)
-  const shrubGreenMat = new THREE.MeshStandardMaterial({ color: 0x2d6824, roughness: 0.75 });
-  const shrubRedMat   = new THREE.MeshStandardMaterial({ color: 0x8a2b2b, roughness: 0.72 });
-  const shrubPositions = [
-    [-15.5, -21.2, 0.85, shrubGreenMat],
-    [-12.0, -21.0, 0.95, shrubGreenMat],
-    [-7.5,  -21.2, 0.78, shrubRedMat],
-    [-4.0,  -21.0, 0.88, shrubGreenMat],
-    [21.5,  -21.2, 0.92, shrubGreenMat],
-    [23.0,  -21.0, 0.82, shrubRedMat]
-  ];
-  shrubPositions.forEach(([sx, sz, r, m]) => {
-    const shMesh = addMesh(cg, new THREE.SphereGeometry(r, 16, 14), m, sx, 0.45 + r * 0.9, sz);
-    shMesh.scale.set(1.0, 1.15, 0.95);
-  });
+    // 1) 自然陽光草皮貼圖（微黃翠綠校園草地質感，貼合實景照片）
+    const makeNorthLawnTex = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#4e7b35'; ctx.fillRect(0, 0, 256, 256);
+      const cols = ['#45702d', '#57853b', '#638941', '#3f6729', '#6e8c48', '#527d36'];
+      let sd = 211; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let i = 0; i < 2400; i++) {
+        ctx.fillStyle = cols[Math.floor(rr() * cols.length)];
+        ctx.fillRect(rr() * 256, rr() * 256, 2 + rr() * 4, 2 + rr() * 5);
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    };
+    const northLawnTex = makeNorthLawnTex();
+    const makeLawnMat = (ru, rv) => {
+      const t = northLawnTex.clone(); t.needsUpdate = true;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(ru, rv);
+      return new THREE.MeshStandardMaterial({ map: t, roughness: 0.94 });
+    };
+
+    // 2) 黑紅格紋安全橡膠地墊貼圖（50 cm 方形地墊拼接＋外圍深黑收邊，貼合實景照片 2）
+    const makeRubberMatTex = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 512;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#181a1c'; ctx.fillRect(0, 0, 512, 512);
+      const nx = 10, ny = 9;
+      const bw = 512 / nx, bh = 512 / ny;
+      const blacks = ['#222528', '#26292d', '#1e2023', '#292c30'];
+      const maroons = ['#3b2525', '#442b2a', '#352223', '#4a2f2e'];
+      let sd = 73; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const isBorder = (ix === 0 || iy === 0 || ix === nx - 1 || iy === ny - 1);
+          const isMaroon = !isBorder && (((ix + iy) % 2 === 1) ? rr() < 0.72 : rr() < 0.18);
+          const pal = isMaroon ? maroons : blacks;
+          ctx.fillStyle = pal[Math.floor(rr() * pal.length)];
+          ctx.fillRect(ix * bw + 2, iy * bh + 2, bw - 4, bh - 4);
+          // 橡膠細顆粒反光
+          ctx.fillStyle = 'rgba(255,255,255,0.03)';
+          ctx.fillRect(ix * bw + 5, iy * bh + 5, bw - 10, bh - 10);
+        }
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      return tex;
+    };
+
+    // 輔助：平緣低矮灰水泥緣石草地花圃
+    const addLawnBed = (cx, cz, w, d, opts = {}) => {
+      const curbW = 0.14, curbH = 0.08;
+      const lawnH = opts.mound ? 0.10 : 0.05;
+      addBox(nfg, w, curbH, curbW, curbGreyMat, cx, yBase + curbH / 2, cz - d / 2 + curbW / 2, false);
+      addBox(nfg, w, curbH, curbW, curbGreyMat, cx, yBase + curbH / 2, cz + d / 2 - curbW / 2, false);
+      addBox(nfg, curbW, curbH, d, curbGreyMat, cx - w / 2 + curbW / 2, yBase + curbH / 2, cz, false);
+      addBox(nfg, curbW, curbH, d, curbGreyMat, cx + w / 2 - curbW / 2, yBase + curbH / 2, cz, false);
+      addBox(nfg, w - curbW * 2, lawnH, d - curbW * 2, makeLawnMat(w / 2.6, d / 2.6), cx, yBase + lawnH / 2, cz, false);
+      if (opts.mound) {
+        const mnd = addMesh(nfg, new THREE.SphereGeometry(1, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), makeLawnMat(2.2, 2.0), cx, yBase + 0.04, cz, false);
+        mnd.scale.set(w * 0.44, 0.32, d * 0.42);
+      }
+    };
+
+    // 輔助：自然多簇葉團灌木（取代平滑球體，採 5 階自然翠綠受光層次）
+    const shrubG0 = new THREE.MeshStandardMaterial({ color: 0x24561f, roughness: 0.85 });
+    const shrubG1 = new THREE.MeshStandardMaterial({ color: 0x306b26, roughness: 0.82 });
+    const shrubG2 = new THREE.MeshStandardMaterial({ color: 0x3f7f31, roughness: 0.80 });
+    const shrubG3 = new THREE.MeshStandardMaterial({ color: 0x528d39, roughness: 0.78 });
+    const shrubG4 = new THREE.MeshStandardMaterial({ color: 0x69a53f, roughness: 0.76 });
+    const shrubRed1 = new THREE.MeshStandardMaterial({ color: 0x7c2d2d, roughness: 0.80 });
+    const shrubRed2 = new THREE.MeshStandardMaterial({ color: 0x5a2328, roughness: 0.82 });
+    let sSeed = 47;
+    const srnd = () => ((sSeed = (sSeed * 16807) % 2147483647) / 2147483647);
+    const addNaturalShrub = (x, z, radius, height, isRed = false, yOff = 0) => {
+      const sg = new THREE.Group();
+      sg.position.set(x, yBase + 0.05 + yOff, z);
+      // 底部細枝幹
+      for (let b = 0; b < 3; b++) {
+        const st = addMesh(sg, new THREE.CylinderGeometry(0.02, 0.032, height * 0.45, 5), trunkDarkMat, (srnd() - 0.5) * 0.14, height * 0.22, (srnd() - 0.5) * 0.14, false);
+        st.rotation.z = (srnd() - 0.5) * 0.35;
+      }
+      const pals = isRed ? [shrubRed1, shrubRed2, shrubG1] : [shrubG0, shrubG1, shrubG2, shrubG3, shrubG4];
+      for (let k = 0; k < 8; k++) {
+        const ang = (k / 7) * Math.PI * 2 + srnd() * 0.4;
+        const dist = k === 0 ? 0 : radius * (0.26 + srnd() * 0.26);
+        const rSub = radius * (k === 0 ? 0.60 : 0.42 + srnd() * 0.16);
+        const py = height * (k === 0 ? 0.70 : 0.42 + srnd() * 0.38);
+        const geo = lumpyGeometry(new THREE.IcosahedronGeometry(rSub, 1), 0.16);
+        const m = addMesh(sg, geo, pals[(k + (py > height * 0.62 ? 2 : 0)) % pals.length], Math.cos(ang) * dist, py, Math.sin(ang) * dist);
+        m.scale.set(1.0 + (srnd() - 0.5) * 0.24, 0.85 + srnd() * 0.35, 1.0 + (srnd() - 0.5) * 0.24);
+      }
+      nfg.add(sg);
+    };
+
+    // 輔助：雙層修剪灌木（葫蘆／棒棒糖造型：下層扁圓灌木球＋清晰露出之中央細木幹＋上層渾圓修剪球冠）
+    const addTwoTierTopiary = (x, z) => {
+      const tg = new THREE.Group();
+      tg.position.set(x, yBase + 0.05, z);
+      // 中央直立木質細幹（貫穿下層並於兩層間清晰露出約 0.30 m）
+      addMesh(tg, new THREE.CylinderGeometry(0.036, 0.052, 1.15, 7), trunkDarkMat, 0, 0.58, 0);
+      // 下層修剪扁圓灌木球（y ≈ 0.14 ~ 0.66 m）
+      const lowerPals = [shrubG0, shrubG1, shrubG2, shrubG3];
+      for (let k = 0; k < 9; k++) {
+        const ang = (k / 8) * Math.PI * 2 + srnd() * 0.35;
+        const dist = k === 0 ? 0 : 0.22 + srnd() * 0.14;
+        const rSub = k === 0 ? 0.34 : 0.22 + srnd() * 0.08;
+        const py = k === 0 ? 0.38 : 0.26 + srnd() * 0.24;
+        const m = addMesh(tg, lumpyGeometry(new THREE.IcosahedronGeometry(rSub, 1), 0.14), lowerPals[k % lowerPals.length], Math.cos(ang) * dist, py, Math.sin(ang) * dist);
+        m.scale.set(1.12, 0.82, 1.12);
+      }
+      // 上層渾圓修剪球冠（中心 y ≈ 1.24 m，受光面偏亮翠綠）
+      const upperPals = [shrubG1, shrubG2, shrubG3, shrubG4];
+      for (let k = 0; k < 10; k++) {
+        const ang = (k / 9) * Math.PI * 2 + srnd() * 0.4;
+        const dist = k === 0 ? 0 : 0.18 + srnd() * 0.15;
+        const rSub = k === 0 ? 0.33 : 0.21 + srnd() * 0.08;
+        const py = 1.24 + (k === 0 ? 0.04 : (srnd() - 0.42) * 0.26);
+        const m = addMesh(tg, lumpyGeometry(new THREE.IcosahedronGeometry(rSub, 1), 0.14), upperPals[(k + (py > 1.28 ? 2 : 0)) % upperPals.length], Math.cos(ang) * dist, py, Math.sin(ang) * dist);
+        m.scale.set(1.06, 0.92, 1.06);
+      }
+      nfg.add(tg);
+    };
+
+    // 輔助：精緻多枝分層喬木（支援厚實樟樹冠層、開闊火焰木花簇與伴生細幹小喬木）
+    const blossomMat = new THREE.MeshStandardMaterial({ color: 0xd94b1f, roughness: 0.72 });
+    const barkLightMat = new THREE.MeshStandardMaterial({ color: 0x6c5e4e, roughness: 0.88 });
+    const addCourtyardTree = (x, z, trunkH, crownR, opts = {}) => {
+      const tg = new THREE.Group();
+      tg.position.set(x, yBase + 0.05, z);
+      const bMat = opts.lightBark ? barkLightMat : trunkDarkMat;
+      const rBot = opts.trunkR || 0.22;
+      const rTop = rBot * 0.68;
+      // 樹基根盤微張（大喬木更穩重自然）
+      if (rBot >= 0.24) {
+        for (let rt = 0; rt < 4; rt++) {
+          const ra = (rt / 4) * Math.PI * 2 + 0.4;
+          const flare = addMesh(tg, new THREE.CylinderGeometry(rBot * 0.32, rBot * 0.56, 0.55, 6), bMat, Math.cos(ra) * rBot * 0.55, 0.22, Math.sin(ra) * rBot * 0.55, false);
+          flare.rotation.z = -Math.cos(ra) * 0.42;
+          flare.rotation.x = Math.sin(ra) * 0.42;
+        }
+      }
+      const tr = addMesh(tg, new THREE.CylinderGeometry(rTop, rBot, trunkH, 9), bMat, 0, trunkH / 2, 0);
+      if (opts.lean) tr.rotation.z = opts.lean;
+      if (opts.leanX) tr.rotation.x = opts.leanX;
+      const topX = Math.sin(-(opts.lean || 0)) * trunkH * 0.5;
+      const topZ = Math.sin(opts.leanX || 0) * trunkH * 0.5;
+      if (opts.plaque) {
+        const pq = addBox(tg, 0.16, 0.09, 0.02, new THREE.MeshStandardMaterial({ color: 0xb7cfb0, roughness: 0.6 }), topX * 0.5 + 0.06, 1.38, rBot + 0.02, false);
+        pq.rotation.y = 0.35;
+      }
+      const nBr = opts.branches || 4;
+      const brSpread = opts.tallLush ? 0.82 : 0.72;
+      for (let b = 0; b < nBr; b++) {
+        const ang = (b / nBr) * Math.PI * 2 + 0.3;
+        const bLen = crownR * brSpread;
+        const bx = topX + Math.cos(ang) * bLen * 0.30;
+        const by = trunkH + bLen * (opts.tallLush ? 0.34 : 0.26);
+        const bz = topZ + Math.sin(ang) * bLen * 0.30;
+        const br = addMesh(tg, new THREE.CylinderGeometry(rTop * 0.38, rTop * 0.72, bLen, 6), bMat, bx, by, bz);
+        br.rotation.z = -Math.cos(ang) * (opts.tallLush ? 0.48 : 0.55);
+        br.rotation.x = Math.sin(ang) * (opts.tallLush ? 0.48 : 0.55);
+        // 高大茂密樹種補建次級向上分枝
+        if (opts.tallLush) {
+          const sLen = crownR * 0.62;
+          const sb = addMesh(tg, new THREE.CylinderGeometry(rTop * 0.22, rTop * 0.38, sLen, 5), bMat,
+            topX + Math.cos(ang + 0.22) * bLen * 0.58, trunkH + bLen * 0.72 + sLen * 0.28, topZ + Math.sin(ang + 0.22) * bLen * 0.58, false);
+          sb.rotation.z = -Math.cos(ang + 0.22) * 0.32;
+          sb.rotation.x = Math.sin(ang + 0.22) * 0.32;
+        }
+      }
+      const leafMats = [shrubG0, shrubG1, shrubG2, shrubG3, shrubG4];
+      const nClusters = opts.tallLush ? 52 : (opts.clusters || 18);
+      const heightMult = opts.tallLush ? 1.48 : (opts.heightMult || 1.0);
+      for (let c = 0; c < nClusters; c++) {
+        const tier = c / nClusters; // 0 = 下層開展冠, 0.5 = 中層主冠, 1 = 頂層受光冠峰
+        const ang = c * 2.39996 + srnd() * 0.45; // 黃金角自然分布
+        const radialBand = tier < 0.35 ? (0.45 + srnd() * 0.44) : (tier < 0.78 ? (0.24 + srnd() * 0.54) : (0.06 + srnd() * 0.36));
+        const dist = crownR * radialBand;
+        const cy = trunkH + crownR * (0.26 + tier * 1.08 * heightMult + (srnd() - 0.5) * 0.20);
+        const r = crownR * (opts.tallLush ? (0.17 + srnd() * 0.12) : (0.26 + srnd() * 0.14));
+        const matIdx = tier > 0.68 ? (3 + (c % 2)) : (tier > 0.32 ? (1 + (c % 3)) : (c % 3));
+        const lf = addMesh(tg, lumpyGeometry(new THREE.IcosahedronGeometry(r, 1), 0.20), leafMats[matIdx], topX + Math.cos(ang) * dist, cy, topZ + Math.sin(ang) * dist);
+        lf.scale.set(1.14 + (srnd() - 0.5) * 0.24, 0.76 + srnd() * 0.28, 1.14 + (srnd() - 0.5) * 0.24);
+        lf.rotation.y = srnd() * Math.PI * 2;
+      }
+      if (opts.blossoms) {
+        for (let f = 0; f < 14; f++) {
+          const ang = (f / 14) * Math.PI * 2 + 0.25;
+          const dist = crownR * (0.26 + srnd() * 0.54);
+          addMesh(tg, new THREE.IcosahedronGeometry(0.18 + srnd() * 0.08, 0), blossomMat, topX + Math.cos(ang) * dist, trunkH + crownR * (0.68 + srnd() * 0.52), topZ + Math.sin(ang) * dist, false);
+        }
+      }
+      nfg.add(tg);
+    };
+
+    // 3) 西棟北側紅磚鋪面貼圖（暖紅陶土長方磚平鋪，貼合實景照片 3 & 4 右下角）
+    const makeRedBrickTex = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#75665c'; ctx.fillRect(0, 0, 256, 256);
+      const rows = 12, cols = 6;
+      const bw = 256 / cols, bh = 256 / rows;
+      const bricks = ['#a65a48', '#b26450', '#964e3f', '#ba6d57', '#8f4b3d', '#a95f4b'];
+      let sd = 139; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let iy = 0; iy < rows; iy++) {
+        const off = (iy % 2) * (bw * 0.5);
+        for (let ix = -1; ix <= cols; ix++) {
+          ctx.fillStyle = bricks[Math.floor(rr() * bricks.length)];
+          ctx.fillRect(ix * bw + off + 1.5, iy * bh + 1.5, bw - 3, bh - 3);
+        }
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      return tex;
+    };
+
+    // ------------------------------------------------------------------------
+    // A. 西側長條形草地植物區（愛悅樓中央樓梯西側，實景照片 1、2、5 主體）
+    //    北側保留約 3.8 m 寬幾何磚步道（z = −24.0 ～ −20.2），草地坐落於 z = −20.2 ～ −15.0
+    // ------------------------------------------------------------------------
+    addLawnBed(-3.4, -17.6, 24.0, 5.2);
+    // 草坪內貫穿東西向之淺灰水泥分隔窄道（實景照片 2：北側約 1.2 m 窄草帶＋南側寬草坪）
+    addBox(nfg, 23.7, 0.06, 0.44, concreteStripMat, -3.4, yBase + 0.035, -18.85, false);
+    // 3 株自然修剪挺立綠灌木（沿分隔帶南緣西、中、東均勻分布，貼合實景照片 2 & 5）
+    addNaturalShrub(-10.8, -18.0, 0.68, 1.22, false);
+    addNaturalShrub(-4.2, -17.95, 0.74, 1.30, false);
+    addNaturalShrub(1.8, -17.9, 0.72, 1.28, false);
+    // 草地西中段伴生細幹小喬木（樹幹微向西南傾斜、枝葉輕盈舒展，實景照片 2 & 5 前景清晰可見）
+    addCourtyardTree(-1.2, -16.8, 1.85, 1.95, { trunkR: 0.11, lightBark: true, lean: 0.14, branches: 4, clusters: 16, heightMult: 0.92 });
+    // 草地東段開闊茂密火焰木大喬木（飽滿分層綠冠＋零星橘紅色花簇，實景照片 2 & 5 主樹）
+    addCourtyardTree(5.6, -17.3, 2.55, 3.35, { trunkR: 0.28, branches: 5, tallLush: true, blossoms: true });
+    // 南緣整齊排列之彩色小風車列（實景照片 1 特色景觀）
+    {
+      const pwColors = [0xe84855, 0xf4c430, 0x3a86ff, 0xff6b9d, 0x2ec4b6, 0xff9f1c];
+      const stickMat = new THREE.MeshStandardMaterial({ color: 0xc2b280, roughness: 0.85 });
+      for (let i = 0; i < 10; i++) {
+        const px = -11.8 + i * 2.15, pz = -15.42;
+        addMesh(nfg, new THREE.CylinderGeometry(0.012, 0.014, 0.68, 5), stickMat, px, yBase + 0.36, pz, false);
+        const head = new THREE.Group();
+        head.position.set(px, yBase + 0.68, pz + 0.03);
+        head.rotation.z = i * 0.5;
+        for (let b = 0; b < 4; b++) {
+          const blade = addMesh(head, new THREE.ConeGeometry(0.07, 0.16, 3), new THREE.MeshStandardMaterial({ color: pwColors[(i + b) % pwColors.length], roughness: 0.5, side: THREE.DoubleSide }), 0, 0, 0, false);
+          blade.rotation.z = (b * Math.PI) / 2;
+          blade.position.set(Math.cos(b * Math.PI / 2) * 0.07, Math.sin(b * Math.PI / 2) * 0.07, 0);
+        }
+        nfg.add(head);
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // B. 西棟北側前草地、樟樹大喬木、雙層修剪灌木、靠牆自然灌叢與紅磚鋪面（依實景照片 3 & 4 精緻重建）
+    //    ・v2.12.107 改為完整連續之「L 形一體草皮」（南段寬草坪＋北段 2.4 m 寬靠牆草皮延伸區無縫相連），
+    //      確保主景大樟樹、雙層修剪灌木與北側靠牆多幹灌叢／小喬木全數穩固生長於該區草皮之上！
+    //    ・東側暖紅磚鋪面區退讓至北段草皮以東（x = −19.7 ～ −17.6），不侵佔樹基與草皮。
+    // ------------------------------------------------------------------------
+    {
+      const curbW = 0.13, curbH = 0.07;
+      // 1) 南段寬草皮（x = −22.15 ～ −17.65，z = −18.0 ～ −13.2）
+      addBox(nfg, 4.50, 0.055, 4.80, makeLawnMat(4.5 / 2.4, 4.8 / 2.4), -19.90, yBase + 0.028, -15.60, false);
+      // 2) 北段靠牆草皮延伸區（x = −22.15 ～ −19.75，z = −21.2 ～ −17.95，與南段草皮無縫連成一體）
+      addBox(nfg, 2.40, 0.055, 3.25, makeLawnMat(2.4 / 2.4, 3.25 / 2.4), -20.95, yBase + 0.028, -19.575, false);
+      // 3) 連續 L 形外圍平緣灰水泥緣石（僅包圍草皮外側邊界，內部無隔斷）
+      addBox(nfg, 4.62, curbH, curbW, curbGreyMat, -19.90, yBase + curbH / 2, -13.20, false); // 南緣
+      addBox(nfg, curbW, curbH, 4.86, curbGreyMat, -17.65, yBase + curbH / 2, -15.60, false); // 南段東緣
+      addBox(nfg, 2.22, curbH, curbW, curbGreyMat, -18.70, yBase + curbH / 2, -18.00, false); // 內折南緣（草皮與紅磚交界）
+      addBox(nfg, curbW, curbH, 3.26, curbGreyMat, -19.75, yBase + curbH / 2, -19.60, false); // 北段東緣（草皮與紅磚交界）
+      addBox(nfg, 2.52, curbH, curbW, curbGreyMat, -20.95, yBase + curbH / 2, -21.20, false); // 北緣
+      addBox(nfg, curbW, curbH, 8.06, curbGreyMat, -22.15, yBase + curbH / 2, -17.20, false); // 西緣（沿擋土牆側）
+    }
+    // 樟樹樹基周圍自然陰影微土色草皮過渡斑（貼合照片 3 & 4 樹下草地質感）
+    {
+      const shadeSoilMat = new THREE.MeshStandardMaterial({ color: 0x5c5b3e, roughness: 0.96, transparent: true, opacity: 0.40 });
+      const sp = addMesh(nfg, new THREE.CircleGeometry(1.10, 16), shadeSoilMat, -20.15, yBase + 0.058, -15.55, false);
+      sp.rotation.x = -Math.PI / 2;
+    }
+    // 西棟北側主景大樟樹（完全植於南段草皮中央偏西，高約 10.6 m、細密多層翠綠樹冠，附淺綠植物名牌）
+    addCourtyardTree(-20.15, -15.55, 2.85, 3.55, { trunkR: 0.26, lean: 0.05, leanX: -0.04, branches: 6, tallLush: true, plaque: true });
+    // 草坪東南角標誌性「雙層圓球修剪灌木（葫蘆／棒棒糖造型）」（完全植於草皮內側）
+    addTwoTierTopiary(-18.30, -13.90);
+    // 樟樹西側（近西棟 1F 柱廊邊）低矮自然綠叢（完全植於草皮內側）
+    addNaturalShrub(-21.35, -14.80, 0.46, 0.70, false);
+
+    // 北段草皮上之靠牆茂密自然灌叢與多幹小喬木群（全數根植於 x = −21.55 ～ −20.55、z = −20.55 ～ −18.45 之綠色草皮上！）
+    {
+      const wg = new THREE.Group();
+      wg.position.set(0, yBase + 0.055, 0);
+      const wallStems = [
+        { x: -21.35, z: -18.55, h: 2.25, r: 0.062, leanX: 0.14, leanZ: 0.05, cR: 1.05, cH: 3.25 },
+        { x: -21.25, z: -19.35, h: 2.00, r: 0.056, leanX: 0.18, leanZ: -0.04, cR: 0.98, cH: 2.95 },
+        { x: -21.20, z: -20.15, h: 1.65, r: 0.048, leanX: 0.22, leanZ: -0.12, cR: 0.88, cH: 2.40 },
+        { x: -20.65, z: -19.05, h: 1.25, r: 0.038, leanX: 0.16, leanZ: 0.08, cR: 0.78, cH: 1.85 }
+      ];
+      const wLeafMats = [shrubG0, shrubG1, shrubG2, shrubG3, shrubG4];
+      wallStems.forEach((st, idx) => {
+        const stem = addMesh(wg, new THREE.CylinderGeometry(st.r * 0.55, st.r, st.h, 6), trunkDarkMat, st.x, st.h * 0.48, st.z);
+        stem.rotation.z = -st.leanX;
+        stem.rotation.x = st.leanZ;
+        // 細密多層自然葉團（縮小單顆葉球尺寸，呈現自然繁茂樹葉質感）
+        for (let k = 0; k < 14; k++) {
+          const ang = k * 2.39996 + idx * 0.8 + srnd() * 0.35;
+          const dist = st.cR * (0.14 + srnd() * 0.58);
+          const py = 0.52 + (k / 13) * (st.cH - 0.58) + (srnd() - 0.5) * 0.22;
+          const rSub = 0.24 + srnd() * 0.16;
+          const m = addMesh(wg, lumpyGeometry(new THREE.IcosahedronGeometry(rSub, 1), 0.20), wLeafMats[(k + idx + (py > 1.8 ? 2 : 0)) % wLeafMats.length],
+            st.x + Math.cos(ang) * dist + st.leanX * 0.55, py, st.z + Math.sin(ang) * dist);
+          m.scale.set(1.16, 0.82 + srnd() * 0.26, 1.14);
+        }
+      });
+      // 北段草皮東北角低矮鍍鋅金屬管護欄（位於草皮北緣內側，實景照片 4 右下角）
+      const railMat = new THREE.MeshStandardMaterial({ color: 0x8e959c, roughness: 0.42, metalness: 0.65 });
+      addBox(wg, 0.032, 0.80, 0.032, railMat, -19.95, 0.40, -21.02, false);
+      addBox(wg, 0.032, 0.80, 0.032, railMat, -21.45, 0.40, -21.02, false);
+      addBox(wg, 0.032, 0.80, 0.032, railMat, -19.95, 0.40, -20.25, false);
+      addBox(wg, 1.52, 0.032, 0.032, railMat, -20.70, 0.78, -21.02, false);
+      addBox(wg, 1.52, 0.028, 0.028, railMat, -20.70, 0.42, -21.02, false);
+      addBox(wg, 0.032, 0.032, 0.78, railMat, -19.95, 0.78, -20.64, false);
+      addBox(wg, 0.028, 0.028, 0.78, railMat, -19.95, 0.42, -20.64, false);
+      nfg.add(wg);
+    }
+
+    // 北段草皮東側之暖紅磚鋪面矩形區與薄型排水收邊（緊鄰草皮東緣，與幾何花磚平齊，不侵佔草皮）
+    {
+      const rbTex = makeRedBrickTex();
+      rbTex.repeat.set(2.2, 3.0);
+      const rbMat = new THREE.MeshStandardMaterial({ map: rbTex, roughness: 0.86 });
+      // 薄型淺灰水泥收邊（x = −19.68 ～ −17.65, z = −21.20 ～ −18.06）
+      addBox(nfg, 2.04, 0.024, 3.16, concreteStripMat, -18.66, yBase + 0.012, -19.63, false);
+      // 內嵌暖紅陶磚鋪面
+      addBox(nfg, 1.84, 0.030, 2.94, rbMat, -18.66, yBase + 0.016, -19.63, false);
+      // 東緣窄條不鏽鋼排水格柵
+      addBox(nfg, 0.20, 0.032, 3.16, grateMat, -17.54, yBase + 0.017, -19.63, false);
+    }
+
+    // ------------------------------------------------------------------------
+    // C. 東側微丘草地植物區（愛悅樓中央階梯東側，實景照片 2 中央）
+    // ------------------------------------------------------------------------
+    addLawnBed(21.6, -17.9, 6.2, 5.1, { mound: true });
+    // 高挑疏冠喬木（緊鄰白色公園長椅西側，實景照片 2 中央主樹）
+    addCourtyardTree(23.1, -16.4, 2.85, 2.65, { lean: -0.05, branches: 4 });
+    // 4 株自然多簇灌木（含 1 株深紅變葉／紅彩木灌木，貼合實景照片 2）
+    addNaturalShrub(22.1, -17.4, 0.70, 1.35, false, 0.14);
+    addNaturalShrub(20.6, -17.7, 0.78, 1.48, false, 0.16);
+    addNaturalShrub(19.6, -18.5, 0.74, 1.42, true,  0.12); // 紅彩木／變葉木
+    addNaturalShrub(20.9, -19.2, 0.65, 1.18, false, 0.10);
+
+    // ------------------------------------------------------------------------
+    // D. 黑紅格紋安全橡膠地墊、白色公園長椅與北側排水溝格柵（實景照片 2 前景）
+    // ------------------------------------------------------------------------
+    const rubberMat = new THREE.MeshStandardMaterial({ map: makeRubberMatTex(), roughness: 0.90 });
+    addBox(nfg, 5.8, 0.07, 5.1, rubberMat, 27.6, yBase + 0.035, -17.9, false);
+    // 地墊北緣灰水泥收邊與排水溝帶（附不鏽鋼方形排水格柵）
+    addBox(nfg, 12.2, 0.04, 0.85, concreteStripMat, 24.5, yBase + 0.02, -20.95, false);
+    for (let gIdx = 0; gIdx < 5; gIdx++) {
+      addBox(nfg, 0.42, 0.048, 0.42, grateMat, 19.6 + gIdx * 2.45, yBase + 0.024, -20.95, false);
+    }
+    // 白色雙人公園長椅（坐落於橡膠地墊西南角、面向中庭，實景照片 2 中左）
+    {
+      const wb = new THREE.Group();
+      wb.position.set(24.75, yBase + 0.04, -15.35);
+      const whitePaintMat = new THREE.MeshStandardMaterial({ color: 0xf2f3f0, roughness: 0.48 });
+      const legMat = new THREE.MeshStandardMaterial({ color: 0xcfd3d6, roughness: 0.4, metalness: 0.4 });
+      for (let s = 0; s < 3; s++) {
+        addBox(wb, 1.55, 0.04, 0.12, whitePaintMat, 0, 0.44, -0.14 + s * 0.14, false);
+        addBox(wb, 1.55, 0.11, 0.035, whitePaintMat, 0, 0.56 + s * 0.13, -0.22 - s * 0.02, false);
+      }
+      for (const sx of [-0.66, 0.66]) {
+        addBox(wb, 0.05, 0.44, 0.05, legMat, sx, 0.22, 0.14, false);
+        addBox(wb, 0.05, 0.86, 0.05, legMat, sx, 0.43, -0.22, false);
+        addBox(wb, 0.05, 0.04, 0.44, legMat, sx, 0.58, -0.02, false); // 扶手
+      }
+      nfg.add(wb);
+    }
+  }
+  NORTH_XF.apply(nfg);
 
 // (Legacy dinosaur removed in favor of high-fidelity South Building dinosaur)
 
@@ -1225,174 +2104,458 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   });
 
   cg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'courtyard-plaza'; });
+  cg.position.y = -COURTYARD_SINK.D;   // 下沉中庭
   layerGroups.roads.add(cg);
+
+  // 下沉中庭四周洗石子擋土牆、壓頂與出入台階（北、南、西三向；東側由東棟穿堂台階與無障礙坡道銜接）
+  {
+    const C = COURTYARD_SINK, yC = 0.16 - C.D, yT = 0.06, H = yT - yC, t = 0.30;
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xc9c5bb, roughness: 0.86 });
+    const capMat = new THREE.MeshStandardMaterial({ color: 0xe2ded4, roughness: 0.7 });
+    const stepMat = new THREE.MeshStandardMaterial({ color: 0xd5d2ca, roughness: 0.72 });
+    const noseMat = new THREE.MeshStandardMaterial({ color: 0x3a3c3e, roughness: 0.85 });
+    const grp = new THREE.Group();
+    // 依實景照片 20261124_071645.jpg：育樂樓前庭（z = −22.2 ～ −1.2）無高差擋土牆與 5 階白樓梯，
+    //   同心方形連鎖磚由中庭一路平順延伸至育樂樓前柱線；僅於北側（z < −22.2）與南側新棟花園（z > −1.2）保留側緣擋牆
+    const flights = { N: [], S: [[-1.5, 3.0], [31.0, 3.0]], W: [[-11.7, 21.0]] };
+    const n = Math.max(2, Math.round(H / 0.15)), r = H / n, tr = 0.32;
+    // 依開口切分牆段（北緣同步扣除北棟東側地下室採光井 x = 16.05..43.00）
+    const run = (side, a1, a2) => {
+      const gaps = (flights[side] || []).map(([c, w]) => [c - w / 2, c + w / 2]);
+      if (side === 'N') gaps.push([16.05, 43.00]);
+      gaps.sort((p, q) => p[0] - q[0]);
+      let cur = a1; const segs = [];
+      gaps.forEach(([g1, g2]) => { if (g1 > cur) segs.push([cur, g1]); cur = Math.max(cur, g2); });
+      if (cur < a2) segs.push([cur, a2]);
+      return segs;
+    };
+    // v2.12.40 北側擋土牆與台階改以北棟局部座標建置（局部 z = −24.0），整組隨北棟定位轉換
+    const ngrp = new THREE.Group(); grp.add(ngrp);
+    const ZN = -24.0;
+    const nwL = NORTH_XF.toLocal(C.poly[0][0], C.poly[0][1]), neL = NORTH_XF.toLocal(C.poly[1][0], C.poly[1][1]);
+    const wall = (side, b1, b2) => {
+      const L = b2 - b1, m = (b1 + b2) / 2;
+      if (side === 'N' || side === 'S') {
+        const z = side === 'N' ? ZN - t / 2 : C.z2 + t / 2;
+        const tg = side === 'N' ? ngrp : grp;
+        addBox(tg, L, H, t, wallMat, m, yC + H / 2, z);
+        addBox(tg, L, 0.06, t + 0.08, capMat, m, yT + 0.03, z);
+      } else {
+        const x = C.x1 - t / 2;
+        addBox(grp, t, H, L, wallMat, x, yC + H / 2, m);
+        addBox(grp, t + 0.08, 0.06, L, capMat, x, yT + 0.03, m);
+      }
+    };
+    run('N', nwL[0] - t, neL[0]).forEach(([a, b]) => wall('N', a, b));
+    run('S', C.x1 - t, C.poly[2][0]).forEach(([a, b]) => wall('S', a, b));
+    run('W', C.poly[0][1], C.z2).forEach(([a, b]) => wall('W', a, b));
+    // 台階：自中庭邊緣向內下行（西側育樂樓前改採平順連鎖磚斜坡前庭，不設階梯）
+    const flight = (side, c, w) => {
+      if (side === 'W') return;
+      for (let k = 0; k < n; k++) {
+        const top = yT - k * r, d = (k + 0.5) * tr;
+        const z = side === 'N' ? ZN + d : C.z2 - d;
+        const tg = side === 'N' ? ngrp : grp;
+        addBox(tg, w, top - yC, tr, stepMat, c, yC + (top - yC) / 2, z);
+        addBox(tg, w, 0.012, 0.04, noseMat, c, top + 0.006, z + (side === 'N' ? tr / 2 - 0.02 : -(tr / 2 - 0.02)), false);
+      }
+    };
+    Object.entries(flights).forEach(([side, list]) => list.forEach(([c, w]) => flight(side, c, w)));
+
+    // 西棟（育樂樓）前庭平順延續之同心方形連鎖磚鋪面與地貌細節（依實景照片 20261124_071645.jpg）
+    {
+      const zN_w = -22.2, zS_w = -1.2;
+      const wFaceN = WEST_XF.toWorld(-24.25, -14.2);
+      const wFaceS = WEST_XF.toWorld(-24.25, 6.8);
+      const xWAtZ = z => wFaceN[0] + (wFaceS[0] - wFaceN[0]) * ((z - wFaceN[1]) / ((wFaceS[1] - wFaceN[1]) || 1));
+      const xWN = xWAtZ(zN_w), xWS = xWAtZ(zS_w);
+      const xE0 = C.x1;          // 中庭西緣（-17.2）
+      const xE1 = C.x1 + 3.8;    // 平緩斜坡向東匯入下沉中庭處（-13.4）
+      const yWestTop = 0.085;    // 高於校園基地地坪（0.06），完全不露灰底並貼齊育樂樓 1F 柱基前緣
+
+      // (1) 平順延續之幾何連鎖磚前庭鋪面（西段平鋪至 x = -17.2 ＋ 東段緩坡平順匯入下沉中庭 yC，共用 brickMat 與世界座標 UV）
+      const apronGeo = new THREE.BufferGeometry();
+      const verts = new Float32Array([
+        // 西段平鋪區（育樂樓柱線 → C.x1，y = yWestTop）
+        xWN, yWestTop, zN_w,
+        xE0, yWestTop, zS_w,
+        xE0, yWestTop, zN_w,
+        xWN, yWestTop, zN_w,
+        xWS, yWestTop, zS_w,
+        xE0, yWestTop, zS_w,
+        // 東段緩坡銜接區（C.x1 yWestTop → C.x1+3.8 yC）
+        xE0, yWestTop, zN_w,
+        xE1, yC + 0.004, zS_w,
+        xE1, yC + 0.004, zN_w,
+        xE0, yWestTop, zN_w,
+        xE0, yWestTop, zS_w,
+        xE1, yC + 0.004, zS_w,
+      ]);
+      const uvs = new Float32Array([
+        xWN, zN_w,
+        xE0, zS_w,
+        xE0, zN_w,
+        xWN, zN_w,
+        xWS, zS_w,
+        xE0, zS_w,
+        xE0, zN_w,
+        xE1, zS_w,
+        xE1, zN_w,
+        xE0, zN_w,
+        xE0, zS_w,
+        xE1, zS_w,
+      ]);
+      apronGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+      apronGeo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+      apronGeo.computeVertexNormals();
+      const apronMesh = new THREE.Mesh(apronGeo, brickMat);
+      apronMesh.receiveShadow = true;
+      grp.add(apronMesh);
+
+      // (2) 育樂樓穿堂左側教室前之小型淺灰水泥緩坡（照片 20261124_071645.jpg 穿堂左側柱旁細節）
+      const rampC = WEST_XF.toWorld(-23.85, 1.35);
+      const miniRamp = addBox(grp, 0.95, 0.16, 1.85, stepMat, rampC[0], yWestTop + 0.06, rampC[1], false);
+      miniRamp.rotation.z = -0.14;
+
+      // (3) 西南側新棟花園北緣（照片 20261124_071645.jpg 左前景）：
+      //     淺灰水泥收邊條＋矮灌木圍護細柱＋ 5 面白色植物解說牌
+      const curbLen = 8.6, curbCx = xWS + 2.8, curbZ = zS_w + 0.15;
+      addBox(grp, curbLen, 0.14, 0.24, capMat, curbCx, yC + 0.07, curbZ, false);
+      const signWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf4f5f0, roughness: 0.65 });
+      const signTextMat = new THREE.MeshStandardMaterial({ color: 0x3b4a3e, roughness: 0.8 });
+      const stakeMat = new THREE.MeshStandardMaterial({ color: 0x5c5346, roughness: 0.85 });
+      for (let i = 0; i < 5; i++) {
+        const sx = xWS + 0.4 + i * 1.45;
+        const sy = sx <= xE0 ? yWestTop : (sx < xE1 ? yWestTop + (yC - yWestTop) * ((sx - xE0) / (xE1 - xE0)) : yC);
+        const sz = zS_w + 0.48;
+        // 細木／鐵護柱
+        addMesh(grp, new THREE.CylinderGeometry(0.015, 0.018, 0.72, 5), stakeMat, sx - 0.32, sy + 0.36, sz, false);
+        // 白色植物解說牌（略向中庭仰角）
+        addMesh(grp, new THREE.CylinderGeometry(0.012, 0.012, 0.50, 5), stakeMat, sx, sy + 0.25, sz + 0.02, false);
+        const plaque = addBox(grp, 0.30, 0.22, 0.018, signWhiteMat, sx, sy + 0.50, sz, false);
+        plaque.rotation.x = -0.22;
+        const txtLine = addBox(grp, 0.22, 0.10, 0.020, signTextMat, sx, sy + 0.50, sz - 0.003, false);
+        txtLine.rotation.x = -0.22;
+      }
+
+      // (4) 育樂樓東北角柱旁之雙層修剪灌木與低矮綠叢（照片 20261124_071645.jpg 右側穿堂旁）
+      const nwShrubPos = WEST_XF.toWorld(-23.65, -13.6);
+      const shG1 = new THREE.MeshStandardMaterial({ color: 0x306a26, roughness: 0.82 });
+      const shG2 = new THREE.MeshStandardMaterial({ color: 0x427f32, roughness: 0.80 });
+      addMesh(grp, new THREE.IcosahedronGeometry(0.42, 1), shG1, nwShrubPos[0], yWestTop + 0.38, nwShrubPos[1]);
+      addMesh(grp, new THREE.IcosahedronGeometry(0.46, 1), shG2, nwShrubPos[0], yWestTop + 1.02, nwShrubPos[1]);
+      addMesh(grp, new THREE.IcosahedronGeometry(0.36, 1), shG1, nwShrubPos[0] - 0.25, yWestTop + 0.32, nwShrubPos[1] + 0.55);
+    }
+
+    NORTH_XF.apply(ngrp);
+    grp.traverse(o => { o.userData.keepLevel = true; });
+    layerGroups.roads.add(grp);
+  }
   clickableGroups.push(cg);
   landmarkGroupMap.set('courtyard-plaza', cg);
 }
 
-// Playground Zone (`11 中庭共融遊戲器材區` 依 20261019_140245 等現場實景照片 1:1 準確建模)
+// Playground Zone（11 中庭共融遊戲器材區 — v2.11.6 依 2026 實景照片 5 張重建）
+// 由西至東：西側低平台（紅色圓窗板、綠色樹葉板、黃色波浪滑梯、蝸牛立柱、紅色圓盤攀爬柱）
+//          → 西塔（黃色階梯式四坡屋頂、橘色齒輪板、南側黑色樓梯＋黃色扶手）
+//          → 透明黃色鑽筒 → 東塔（紅色拱門、藍色 OX 井字板、棕櫚葉＋橘花飾柱、南側灰色攀岩板、紅色波浪滑梯）
 {
   const pg = new THREE.Group();
   pg.userData = { landmarkId: 'playground-zone' };
-  const px = 40.2, pz = -20.8;
+  // 位置：北棟前方採光天井外緣 (z ≈ −23.7) 以南約 6 m（照片 31 由北側約 6 m 處拍攝）；整組架於中庭鋪面 (0.16 m) 之上
+  const px = 40.2, pz = -17.8;
+  pg.position.y = 0.16 - COURTYARD_SINK.D;   // 中庭鋪面（已下沉）之上
 
-  // 材質庫：實景亮眼耐候粉體烤漆與橡膠地墊
-  const postGreen = new THREE.MeshStandardMaterial({ color: 0x228b4a, roughness: 0.35, metalness: 0.15 });
-  const playYellow = new THREE.MeshStandardMaterial({ color: 0xf5b81a, roughness: 0.32 });
-  const playRed = new THREE.MeshStandardMaterial({ color: 0xd93829, roughness: 0.32 });
-  const playBlue = new THREE.MeshStandardMaterial({ color: 0x1976d2, roughness: 0.35 });
-  const rockWallMat = new THREE.MeshStandardMaterial({ color: 0xbac0c5, roughness: 0.85 });
-  const snailPink = new THREE.MeshStandardMaterial({ color: 0xf06292, roughness: 0.3 });
-  const darkMetal = new THREE.MeshStandardMaterial({ color: 0x2c3437, roughness: 0.6 });
+  const postGreen = new THREE.MeshStandardMaterial({ color: 0x3aa346, roughness: 0.38, metalness: 0.1 });
+  const capDark = new THREE.MeshStandardMaterial({ color: 0x3a2f2c, roughness: 0.5 });
+  const yellow = new THREE.MeshStandardMaterial({ color: 0xf2c531, roughness: 0.35 });
+  const slideYellow = new THREE.MeshStandardMaterial({ color: 0xf1d36b, roughness: 0.4, side: THREE.DoubleSide });
+  const roofYellow = new THREE.MeshStandardMaterial({ color: 0xead58e, roughness: 0.5 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xd8262b, roughness: 0.33, side: THREE.DoubleSide });
+  const orange = new THREE.MeshStandardMaterial({ color: 0xf26a1f, roughness: 0.35 });
+  const blackDeck = new THREE.MeshStandardMaterial({ color: 0x26282a, roughness: 0.7 });
+  const leafGreen = new THREE.MeshStandardMaterial({ color: 0x5cc261, roughness: 0.4, side: THREE.DoubleSide });
+  const rockGrey = new THREE.MeshStandardMaterial({ color: 0x8e9396, roughness: 0.75 });
   const curbMat = new THREE.MeshStandardMaterial({ color: 0xd2d6dc, roughness: 0.8 });
+  const canvasMat = (w, h, draw, opts = {}) => {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    draw(c.getContext('2d'), w, h);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.4, side: THREE.DoubleSide, ...opts });
+  };
+  const P = (x, y, z) => [px + x, y, pz + z];
 
-  // 1) 複合幾何安全防墜地墊 (藍色、草綠、鵝黃色拼接，加混凝土安全收邊緣石)
+  // 1) 彩色 EPDM 安全地墊：青綠底、米色寬弧帶、彩繪小鳥／小魚（黑色尾尖）
   const matW = 14.2, matD = 9.2;
-  const matBlue = new THREE.MeshStandardMaterial({ color: 0x1f78a4, roughness: 0.7 });
-  const matGreen = new THREE.MeshStandardMaterial({ color: 0x33a02c, roughness: 0.7 });
-  const matYellow = new THREE.MeshStandardMaterial({ color: 0xffd92f, roughness: 0.7 });
-  addBox(pg, matW, 0.08, matD, matBlue, px, 0.04, pz, false);
-  addBox(pg, matW * 0.45, 0.09, matD * 0.55, matGreen, px - 2.8, 0.045, pz + 1.2, false);
-  addBox(pg, matW * 0.35, 0.095, matD * 0.45, matYellow, px + 3.2, 0.048, pz - 1.1, false);
-  // 周圍安全收邊緣石
-  addBox(pg, matW + 0.5, 0.14, 0.25, curbMat, px, 0.07, pz - matD / 2 - 0.12, false);
-  addBox(pg, matW + 0.5, 0.14, 0.25, curbMat, px, 0.07, pz + matD / 2 + 0.12, false);
-  addBox(pg, 0.25, 0.14, matD + 0.5, curbMat, px - matW / 2 - 0.12, 0.07, pz, false);
-  addBox(pg, 0.25, 0.14, matD + 0.5, curbMat, px + matW / 2 + 0.12, 0.07, pz, false);
-
-  // 2) 主結構立柱 (綠色金屬圓柱)
-  const postCoords = [
-    [-4.5, -1.2, 3.2], [-4.5, 1.2, 3.2], // 左側滑梯塔
-    [-2.2, -1.2, 3.6], [-2.2, 1.2, 3.6], // 小屋塔
-    [-0.2, -1.2, 3.0], [-0.2, 1.2, 3.0], // 空橋中柱
-    [1.9, -1.2, 3.6],  [1.9, 1.2, 3.6],  // 攀岩板與中右塔
-    [4.2, -1.2, 3.6],  [4.2, 1.2, 3.6]   // 右側紅滑梯塔
-  ];
-  postCoords.forEach(([ox, oz, ph]) => {
-    addMesh(pg, new THREE.CylinderGeometry(0.085, 0.085, ph, 12), postGreen, px + ox, ph / 2, pz + oz);
-  });
-
-  // 3) 左側遊戲塔：頂部「粉紅蝸牛造型立柱飾頭」與黃色波浪溜滑梯
-  // 粉紅蝸牛飾板 (左外側兩根柱頭)
-  [-1.2, 1.2].forEach(oz => {
-    const snail = addMesh(pg, new THREE.CylinderGeometry(0.24, 0.24, 0.04, 16), snailPink, px - 4.5, 3.32, pz + oz);
-    snail.rotation.x = Math.PI / 2;
-    addMesh(pg, new THREE.SphereGeometry(0.09, 8, 8), playYellow, px - 4.35, 3.48, pz + oz); // 蝸牛觸角
-    addMesh(pg, new THREE.SphereGeometry(0.09, 8, 8), playYellow, px - 4.55, 3.48, pz + oz);
-  });
-  // 左平台
-  addBox(pg, 1.8, 0.16, 2.2, playYellow, px - 4.5, 1.45, pz);
-  // 鮮黃色波浪溜滑梯 (向西滑降)
-  const slideSegments = [
-    { len: 1.5, angle: 0.52, y: 1.15, ox: -5.7 },
-    { len: 1.4, angle: 0.35, y: 0.55, ox: -6.9 },
-    { len: 0.8, angle: 0.08, y: 0.18, ox: -7.8 }
-  ];
-  slideSegments.forEach(seg => {
-    const sl = addBox(pg, seg.len, 0.14, 0.78, playYellow, px + seg.ox, seg.y, pz - 0.2);
-    sl.rotation.z = seg.angle;
-    // 兩側黃色安全滑槽邊緣
-    const flL = addBox(pg, seg.len, 0.32, 0.06, playYellow, px + seg.ox, seg.y + 0.12, pz - 0.2 + 0.38);
-    flL.rotation.z = seg.angle;
-    const flR = addBox(pg, seg.len, 0.32, 0.06, playYellow, px + seg.ox, seg.y + 0.12, pz - 0.2 - 0.38);
-    flR.rotation.z = seg.angle;
-  });
-  // 紅色圓環攀爬梯 (左側前緣)
-  for (let r = 0; r < 3; r++) {
-    const ring = addMesh(pg, new THREE.TorusGeometry(0.32, 0.04, 8, 20), playRed, px - 4.5, 0.45 + r * 0.48, pz + 1.22);
+  {
+    const m = canvasMat(1420, 920, (ctx, W, H) => {
+      ctx.fillStyle = '#3c7564'; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = '#c4b285'; ctx.lineCap = 'round';
+      [[0.15, 0.9, 0.6, 0.1, 120], [0.45, 1.0, 0.95, 0.25, 140], [-0.1, 0.55, 0.3, -0.05, 110]].forEach(([x1, y1, x2, y2, lw]) => {
+        ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x1 * W, y1 * H);
+        ctx.quadraticCurveTo((x1 + x2) / 2 * W + 120, (y1 + y2) / 2 * H, x2 * W, y2 * H); ctx.stroke();
+      });
+      let sd = 5; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      const cols = ['#5d9bd8', '#c58aa9', '#efece4', '#8d86c9', '#5d9bd8', '#c58aa9'];
+      for (let i = 0; i < 16; i++) {
+        const x = 80 + r() * (W - 160), y = 80 + r() * (H - 160);
+        if (Math.abs(x - W / 2) < 420 && Math.abs(y - H / 2) < 170) continue;    // 器材正下方不畫
+        ctx.save(); ctx.translate(x, y); ctx.rotate(r() * Math.PI * 2); ctx.scale(0.8 + r() * 0.5, 0.8 + r() * 0.5);
+        ctx.fillStyle = cols[i % cols.length];
+        ctx.beginPath(); ctx.moveTo(-80, 0); ctx.quadraticCurveTo(-20, -30, 60, -8); ctx.lineTo(95, -40); ctx.lineTo(80, 0); ctx.lineTo(95, 40); ctx.lineTo(60, 8); ctx.quadraticCurveTo(-20, 30, -80, 0); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-10, -12); ctx.lineTo(10, -60); ctx.lineTo(25, -12); ctx.fill();     // 翅膀
+        ctx.fillStyle = '#1b1b1b';
+        ctx.beginPath(); ctx.moveTo(80, 0); ctx.lineTo(95, -40); ctx.lineTo(118, -46); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(80, 0); ctx.lineTo(95, 40); ctx.lineTo(118, 46); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }, { side: THREE.FrontSide, roughness: 0.85 });
+    addBox(pg, matW, 0.08, matD, m, px, 0.04, pz, false);
+    [[0, -matD / 2 - 0.12, matW + 0.5, 0.25], [0, matD / 2 + 0.12, matW + 0.5, 0.25], [-matW / 2 - 0.12, 0, 0.25, matD + 0.5], [matW / 2 + 0.12, 0, 0.25, matD + 0.5]]
+      .forEach(([ox, oz, w, d]) => addBox(pg, w, 0.14, d, curbMat, px + ox, 0.07, pz + oz, false));
   }
 
-  // 4) 中央偏左：黃色斜屋頂小屋與紅色螺旋鑽筒滑梯
-  addBox(pg, 2.2, 0.18, 2.2, playYellow, px - 2.2, 1.62, pz);
-  // 黃色山形屋頂 (具波浪屋簷特色)
-  const roofH = 1.1, roofW = 2.4, roofD = 2.4;
-  const roofL = addBox(pg, 1.5, 0.14, roofD, playYellow, px - 2.2 - 0.55, 3.65, pz);
-  roofL.rotation.z = 0.45;
-  const roofR = addBox(pg, 1.5, 0.14, roofD, playYellow, px - 2.2 + 0.55, 3.65, pz);
-  roofR.rotation.z = -0.45;
-  addBox(pg, 0.16, 0.22, roofD + 0.1, playRed, px - 2.2, 4.02, pz); // 屋脊紅邊飾條
-  // 小屋四面安全柵欄與窗型護板
-  addBox(pg, 0.08, 0.85, 2.0, playBlue, px - 2.2 - 1.05, 2.12, pz);
-  addBox(pg, 2.0, 0.85, 0.08, playYellow, px - 2.2, 2.12, pz - 1.05);
-  // 紅色直筒旋轉滑梯 (向南伸展旋出)
-  for (let t = 0; t < 4; t++) {
-    const tubePiece = addMesh(pg, new THREE.CylinderGeometry(0.48, 0.48, 0.85, 16), playRed, px - 2.2 + t * 0.22, 1.45 - t * 0.35, pz + 1.35 + t * 0.55);
-    tubePiece.rotation.x = 0.75;
-    tubePiece.rotation.y = t * 0.25;
-    // 圓形透明透氣採光窗
-    addMesh(pg, new THREE.SphereGeometry(0.18, 8, 8), playYellow, px - 2.2 + t * 0.22, 1.45 - t * 0.35 + 0.32, pz + 1.35 + t * 0.55);
-  }
+  const post = (x, z, h) => {
+    addMesh(pg, new THREE.CylinderGeometry(0.057, 0.057, h, 14), postGreen, ...P(x, h / 2, z));
+    for (const yy of [0.35, h * 0.5, h - 0.25]) addMesh(pg, new THREE.CylinderGeometry(0.068, 0.068, 0.07, 14), postGreen, ...P(x, yy, z));   // 束環
+    addMesh(pg, new THREE.SphereGeometry(0.065, 10, 8), capDark, ...P(x, h + 0.02, z));
+  };
+  const deck = (x1, x2, y) => addBox(pg, x2 - x1, 0.06, 1.2, blackDeck, px + (x1 + x2) / 2, y, pz);
+  const yellowBars = (x1, x2, y, z, h = 0.85) => {
+    addBox(pg, x2 - x1, 0.04, 0.04, yellow, px + (x1 + x2) / 2, y + h, pz + z);
+    const n = Math.max(2, Math.round((x2 - x1) / 0.11));
+    for (let i = 1; i < n; i++) addBox(pg, 0.03, h, 0.03, yellow, px + x1 + (x2 - x1) * i / n, y + h / 2, pz + z);
+  };
 
-  // 5) 中央連接空橋 (紅藍拱形空橋)
-  const bridgeDeck = addBox(pg, 2.0, 0.14, 1.1, playYellow, px - 0.1, 1.62, pz);
-  // 空橋兩側拱形圓管防護欄杆
-  for (let b = 0; b < 2; b++) {
-    const bz = pz + (b === 0 ? -0.58 : 0.58);
-    const archMat = b === 0 ? playRed : playBlue;
-    const archRailing = addMesh(pg, new THREE.TorusGeometry(0.85, 0.045, 8, 20, Math.PI), archMat, px - 0.1, 2.05, bz);
-    for (let st = -3; st <= 3; st++) {
-      addMesh(pg, new THREE.CylinderGeometry(0.025, 0.025, 0.85, 8), archMat, px - 0.1 + st * 0.26, 2.05, bz);
+  // 2) 西側低平台 T0（x −3.4～−2.2，平台 0.9 m）
+  const yT0 = 0.9, yT = 1.2;
+  [[-3.4, -0.6], [-3.4, 0.6], [-2.2, -0.6], [-2.2, 0.6]].forEach(([x, z]) => post(x, z, 2.0));
+  deck(-3.4, -2.2, yT0);
+  {   // 北側紅色圓窗板（中央大圓孔）＋上方黃色欄杆
+    const sh = new THREE.Shape(); sh.moveTo(-0.55, 0); sh.lineTo(0.55, 0); sh.lineTo(0.55, 0.95); sh.quadraticCurveTo(0, 1.12, -0.55, 0.95); sh.closePath();
+    const hole = new THREE.Path(); hole.absarc(0, 0.5, 0.33, 0, Math.PI * 2, true); sh.holes.push(hole);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false, curveSegments: 24 });
+    addMesh(pg, geo, red, ...P(-2.8, yT0, -0.63));
+    addMesh(pg, new THREE.TorusGeometry(0.33, 0.04, 8, 32), red, ...P(-2.8, yT0 + 0.5, -0.66));
+  }
+  {   // 西側綠色樹葉造型板（兩個不規則鏤空）
+    const sh = new THREE.Shape(); sh.moveTo(-0.6, 0); sh.lineTo(0.6, 0); sh.lineTo(0.6, 0.9); sh.bezierCurveTo(0.3, 1.05, -0.3, 0.8, -0.6, 1.0); sh.closePath();
+    const h1 = new THREE.Path(); h1.absellipse(-0.25, 0.55, 0.16, 0.25, 0, Math.PI * 2, true); sh.holes.push(h1);
+    const h2 = new THREE.Path(); h2.absellipse(0.25, 0.4, 0.13, 0.2, 0, Math.PI * 2, true); sh.holes.push(h2);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false, curveSegments: 16 });
+    const lp = addMesh(pg, geo, leafGreen, ...P(-3.43, yT0 + 0.55, 0));
+    lp.rotation.y = Math.PI / 2;
+    lp.scale.set(1, 0.6, 1);
+  }
+  // 南側黃色欄杆
+  yellowBars(-3.35, -2.25, yT0, 0.6);
+
+  // 3) 西塔 T1（x −2.2～−1.0，平台 1.2 m）：黃色四坡階梯屋頂
+  [[-1.0, -0.6], [-1.0, 0.6]].forEach(([x, z]) => post(x, z, 2.55));
+  [[-2.2, -0.6], [-2.2, 0.6]].forEach(([x, z]) => addMesh(pg, new THREE.CylinderGeometry(0.057, 0.057, 0.6, 14), postGreen, ...P(x, 2.25, z)));
+  deck(-2.2, -1.0, yT);
+  {
+    const rx = -1.6;
+    addBox(pg, 1.55, 0.32, 1.55, roofYellow, ...P(rx, 2.62, 0));                  // 屋簷封板
+    for (let k = 0; k < 4; k++) {                                                    // 同心階梯屋面
+      const w = 1.55 - k * 0.32;
+      const lay = addMesh(pg, new THREE.CylinderGeometry(w * 0.52, w * 0.72, 0.13, 4, 1), roofYellow, ...P(rx, 2.84 + k * 0.12, 0));
+      lay.rotation.y = Math.PI / 4;
     }
+    addBox(pg, 1.3, 0.25, 0.04, yellow, ...P(rx, 2.38, -0.66));                     // 屋簷下黃色橫板
+  }
+  // 北側橘色齒輪板
+  addMesh(pg, new THREE.PlaneGeometry(1.0, 1.0), canvasMat(256, 256, (ctx) => {
+    ctx.fillStyle = '#f26a1f'; ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = '#ff8a3d'; ctx.fillRect(20, 30, 26, 190); ctx.fillRect(210, 30, 26, 190);
+    ctx.fillStyle = '#cfe7f5'; ctx.fillRect(80, 60, 96, 96);
+    const gear = (x, y, r, col) => { ctx.fillStyle = col; ctx.beginPath(); for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2, rr = i % 2 ? r : r * 0.78; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } ctx.fill(); };
+    gear(108, 90, 18, '#2a7de1'); gear(146, 104, 20, '#e0322b'); gear(118, 130, 17, '#3fae4a'); gear(150, 140, 12, '#f2c531');
+    ctx.fillStyle = '#ff8a3d'; ctx.beginPath(); ctx.arc(128, 205, 22, 0, Math.PI * 2); ctx.fill();
+  }), ...P(-1.6, yT + 0.55, -0.64)).rotation.y = Math.PI;
+  // 南側黑色樓梯＋黃色扶手（自平台向南下至地面）
+  {
+    const n = 6, run = 1.75, w = 0.62, sx = -1.6;
+    for (let i = 0; i < n; i++) {
+      const y = yT - (i + 1) * yT / (n + 1), z = 0.6 + (i + 0.5) * run / n;
+      addBox(pg, w, 0.05, run / n + 0.02, blackDeck, ...P(sx, y, z));
+    }
+    const len = Math.hypot(run, yT), ang = Math.atan2(yT, run);
+    [-1, 1].forEach(sd => {
+      const st = addBox(pg, 0.05, 0.2, len, blackDeck, ...P(sx + sd * w / 2, yT / 2 - 0.05, 0.6 + run / 2)); st.rotation.x = ang;
+      const hr = addBox(pg, 0.04, 0.04, len + 0.1, yellow, ...P(sx + sd * (w / 2 + 0.03), yT / 2 + 0.85, 0.6 + run / 2)); hr.rotation.x = ang;
+      for (let i = 0; i <= 8; i++) {
+        const f = i / 8, z = 0.6 + run * f, y = yT * (1 - f);
+        addBox(pg, 0.025, 0.85, 0.025, yellow, ...P(sx + sd * (w / 2 + 0.03), y + 0.425, z));
+      }
+    });
   }
 
-  // 6) 中央偏右：灰色大型穿透式攀岩板 (帶雙孔穿越圓洞與彩色抱石)
-  const boardX = px + 1.85, boardZ = pz + 1.15;
-  const rockBoard = addBox(pg, 1.9, 1.95, 0.14, rockWallMat, boardX, 1.35, boardZ);
-  rockBoard.rotation.x = 0.14; // 微傾斜增加攀爬樂趣
-  // 雙孔穿透圓形鑽洞 (深色洞口帶紅/藍保護邊框圈)
-  const holePositions = [[boardX - 0.45, 1.45, boardZ + 0.02, playRed], [boardX + 0.45, 1.05, boardZ - 0.02, playBlue]];
-  holePositions.forEach(([hx, hy, hz, hMat]) => {
-    const rim = addMesh(pg, new THREE.TorusGeometry(0.32, 0.05, 8, 20), hMat, hx, hy, hz);
-    rim.rotation.x = 0.14;
-    const holeInner = addMesh(pg, new THREE.CylinderGeometry(0.28, 0.28, 0.16, 16), darkMetal, hx, hy, hz);
-    holeInner.rotation.x = Math.PI / 2 + 0.14;
-  });
-  // 表面彩色攀岩石 (紅、黃、藍、綠抱石塊)
-  const gripColors = [playRed, playYellow, playBlue, postGreen];
-  const grips = [
-    [-0.7, 0.5], [-0.3, 0.75], [0.1, 0.45], [0.65, 0.6],
-    [-0.6, 1.1], [0.0, 1.25], [0.7, 1.4],
-    [-0.2, 1.7], [0.35, 1.8], [-0.55, 1.85]
-  ];
-  grips.forEach(([gx, gy], gIdx) => {
-    const grip = addMesh(pg, new THREE.DodecahedronGeometry(0.075), gripColors[gIdx % gripColors.length], boardX + gx, gy, boardZ + 0.09);
-    grip.rotation.set(gx * 2, gy * 3, gIdx);
-  });
+  // 4) 透明黃色鑽筒（T1 → T2）
+  {
+    const tubeMat = new THREE.MeshStandardMaterial({ color: 0xf3e3a0, roughness: 0.15, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false });
+    const tube = addMesh(pg, new THREE.CylinderGeometry(0.4, 0.4, 1.9, 24, 1, true), tubeMat, ...P(-0.05, yT + 0.42, 0), false);
+    tube.rotation.z = Math.PI / 2;
+    [-1.0, -0.05, 0.9].forEach(x => {
+      const rg = addMesh(pg, new THREE.TorusGeometry(0.42, 0.05, 8, 28), x === -0.05 ? slideYellow : yellow, ...P(x, yT + 0.42, 0));
+      rg.rotation.y = Math.PI / 2;
+    });
+  }
 
-  // 7) 右側遊戲塔：紅色大拱門門楣、熱帶棕櫚葉柱頭與紅色雙波浪滑梯
-  addBox(pg, 2.1, 0.18, 2.1, playYellow, px + 3.8, 1.62, pz);
-  // 頂部紅色大拱門
-  const topArch = addMesh(pg, new THREE.TorusGeometry(0.95, 0.07, 8, 20, Math.PI), playRed, px + 3.8, 3.45, pz);
-  // 熱帶棕櫚葉造型柱頭 (四角立柱頂部)
-  [-1.2, 1.2].forEach(oz => {
-    const leaf = addMesh(pg, new THREE.ConeGeometry(0.28, 0.42, 6), postGreen, px + 4.2, 3.75, pz + oz);
-    leaf.rotation.x = oz > 0 ? 0.35 : -0.35;
-  });
-  // 紅色雙波浪滑梯 (向東方雙軌滑下)
-  const rSegments = [
-    { len: 1.6, angle: -0.52, y: 1.15, ox: 5.0 },
-    { len: 1.5, angle: -0.36, y: 0.55, ox: 6.2 },
-    { len: 0.9, angle: -0.08, y: 0.18, ox: 7.2 }
-  ];
-  rSegments.forEach(seg => {
-    // 雙軌主體
-    const sl = addBox(pg, seg.len, 0.14, 1.25, playRed, px + seg.ox, seg.y, pz);
-    sl.rotation.z = seg.angle;
-    // 中央分隔島與兩側護欄
-    const flC = addBox(pg, seg.len, 0.28, 0.08, playYellow, px + seg.ox, seg.y + 0.11, pz);
-    flC.rotation.z = seg.angle;
-    const flL = addBox(pg, seg.len, 0.32, 0.08, playRed, px + seg.ox, seg.y + 0.12, pz + 0.62);
-    flL.rotation.z = seg.angle;
-    const flR = addBox(pg, seg.len, 0.32, 0.08, playRed, px + seg.ox, seg.y + 0.12, pz - 0.62);
-    flR.rotation.z = seg.angle;
-  });
+  // 5) 東塔 T2（x 0.9～2.1，平台 1.2 m）
+  [[0.9, -0.6], [0.9, 0.6], [2.1, -0.6], [2.1, 0.6]].forEach(([x, z]) => post(x, z, 2.35));
+  deck(0.9, 2.1, yT);
+  {   // 紅色大拱門（橫跨東西兩柱，柱頭紅色環飾）
+    addMesh(pg, new THREE.TorusGeometry(0.6, 0.09, 12, 32, Math.PI), red, ...P(1.5, 2.55, 0));
+    [0.9, 2.1].forEach(x => {
+      addMesh(pg, new THREE.CylinderGeometry(0.09, 0.09, 0.22, 14), red, ...P(x, 2.45, 0));
+      addMesh(pg, new THREE.CylinderGeometry(0.12, 0.12, 0.05, 14), red, ...P(x, 2.36, 0));
+    });
+    [0.9, 2.1].forEach(x => addMesh(pg, new THREE.CylinderGeometry(0.057, 0.057, 0.35, 14), postGreen, ...P(x, 2.17, 0)));
+  }
+  // 北側藍色 OX 井字遊戲板
+  addMesh(pg, new THREE.PlaneGeometry(1.05, 1.15), canvasMat(256, 280, (ctx) => {
+    ctx.fillStyle = '#1f5fbf'; ctx.fillRect(0, 0, 256, 280);
+    ctx.fillStyle = '#2f7ae0'; for (let i = 0; i < 9; i++) { ctx.beginPath(); ctx.arc(30 + i * 25, 30, 8, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = '#cfe7f5'; ctx.fillRect(40, 60, 176, 180);
+    const marks = ['X', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'X'];
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+      ctx.fillStyle = '#f2c531'; ctx.fillRect(48 + c * 56, 66 + r * 58, 50, 52);
+      ctx.fillStyle = '#111'; ctx.font = 'bold 34px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(marks[r * 3 + c], 73 + c * 56, 93 + r * 58);
+    }
+  }), ...P(1.5, yT + 0.58, -0.64)).rotation.y = Math.PI;
+  yellowBars(0.95, 2.05, yT, 0.6, 0.85);
+  // 東北角棕櫚葉＋橘色花朵飾柱
+  {
+    post(2.35, -0.85, 3.0);
+    const leaf = addMesh(pg, new THREE.SphereGeometry(0.42, 16, 10), leafGreen, ...P(2.1, 3.05, -0.85));
+    leaf.scale.set(1.1, 0.22, 0.6); leaf.rotation.z = 0.35;
+    const fl = addMesh(pg, new THREE.CylinderGeometry(0.3, 0.3, 0.06, 16), orange, ...P(2.55, 3.15, -0.85));
+    fl.rotation.x = Math.PI / 2;
+    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; addMesh(pg, new THREE.SphereGeometry(0.07, 6, 5), orange, ...P(2.55 + Math.cos(a) * 0.32, 3.15 + Math.sin(a) * 0.32, -0.85)); }
+    addMesh(pg, new THREE.SphereGeometry(0.08, 8, 6), red, ...P(2.55, 3.15, -0.89));
+  }
+  // 南側灰色攀岩板（兩個穿越大圓孔＋彩色抱石）
+  {
+    const sh = new THREE.Shape(); sh.moveTo(-0.62, 0); sh.lineTo(0.62, 0); sh.lineTo(0.55, 1.6); sh.lineTo(-0.55, 1.6); sh.closePath();
+    const h1 = new THREE.Path(); h1.absarc(-0.18, 0.95, 0.24, 0, Math.PI * 2, true); sh.holes.push(h1);
+    const h2 = new THREE.Path(); h2.absarc(0.22, 0.42, 0.26, 0, Math.PI * 2, true); sh.holes.push(h2);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.22, bevelEnabled: true, bevelSize: 0.07, bevelThickness: 0.08, bevelSegments: 3, curveSegments: 20 });
+    const wall = addMesh(pg, geo, rockGrey, ...P(1.5, 0, 0.6 + 1.0));
+    wall.rotation.x = -Math.atan2(1.0, yT);   // 底部在南側地面，向北斜靠至平台南緣
+    const holdCols = [0xd8262b, 0xf2c531, 0x3aa346, 0x2a7de1, 0xf26a1f];
+    [[-0.4, 0.3], [0.45, 0.85], [-0.35, 1.35], [0.3, 1.3], [0.0, 0.15], [-0.45, 0.8]].forEach(([u, v], i) => {
+      const hold = addMesh(pg, new THREE.SphereGeometry(0.055, 7, 6), new THREE.MeshStandardMaterial({ color: holdCols[i % 5], roughness: 0.5 }), 0, 0, 0);
+      hold.position.set(u, v, 0.15); hold.scale.set(1.3, 1, 0.7);
+      pg.remove(hold); wall.add(hold);
+    });
+  }
 
-  // 後方直通階梯
-  for (let s = 0; s < 5; s++) {
-    addBox(pg, 0.95, 0.08, 0.32, darkMetal, px + 3.8, 0.3 + s * 0.28, pz - 1.2 - s * 0.3);
+  // 6) 波浪溜滑梯：黃色向西（自 T0），紅色向東（自 T2）
+  // 平滑 U 形槽溜滑梯：沿中心線取 40 個剖面組成連續曲面（起點短平台 → 波浪下滑 → 出口平滑段）
+  const wavySlide = (x0, y0, dir, mat, run) => {
+    const N = 40, w = 0.56, wallH = 0.2, exitY = 0.28;
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const f = i / N, x = f * run;
+      let y;
+      if (f < 0.08) y = y0;                                                    // 頂端平台
+      else if (f > 0.85) y = exitY;                                            // 出口段
+      else {
+        const g = (f - 0.08) / 0.77;
+        const sm = g * g * (3 - 2 * g);                                        // 平順進出
+        y = y0 - (y0 - exitY) * Math.min(1, Math.max(0, sm + 0.045 * Math.sin(g * Math.PI * 4)));   // 兩道波浪
+      }
+      pts.push([x, y]);
+    }
+    const prof = [[-w / 2, wallH], [-w / 2, 0], [w / 2, 0], [w / 2, wallH]];   // [橫向 z, 法向偏移]
+    const pos = [], idx = [];
+    pts.forEach(([x, y], i) => {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(N, i + 1)];
+      let tx = b[0] - a[0], ty = b[1] - a[1]; const l = Math.hypot(tx, ty); tx /= l; ty /= l;
+      const nx = -ty, ny = tx;                                                // 坡面法線（朝上）
+      prof.forEach(([lz, off]) => pos.push(px + x0 + dir * (x + nx * off), y + ny * off, pz + lz));
+    });
+    for (let i = 0; i < N; i++) for (let k = 0; k < 3; k++) {
+      const a = i * 4 + k, b = a + 1, c = a + 4, d = a + 5;
+      idx.push(a, c, b, b, c, d);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true;
+    pg.add(m);
+    // 槽緣捲邊（沿兩側上緣的圓管）
+    [-1, 1].forEach(sd => {
+      const curve = new THREE.CatmullRomCurve3(pts.map(([x, y], i) => {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(N, i + 1)];
+        let tx = b[0] - a[0], ty = b[1] - a[1]; const l = Math.hypot(tx, ty); tx /= l; ty /= l;
+        return new THREE.Vector3(px + x0 + dir * (x - ty * wallH), y + tx * wallH, pz + sd * w / 2);
+      }));
+      const lip = new THREE.Mesh(new THREE.TubeGeometry(curve, 60, 0.035, 6, false), mat);
+      lip.castShadow = true; pg.add(lip);
+    });
+    addBox(pg, 0.1, exitY, w, mat, px + x0 + dir * (run - 0.05), exitY / 2, pz);   // 出口支撐
+  };
+  wavySlide(-3.4, yT0, -1, slideYellow, 2.4);
+  wavySlide(2.1, yT, 1, red, 3.2);
+
+  // 7) T0 北側紅色圓盤攀爬柱（3 片紅色圓盤）
+  {
+    addMesh(pg, new THREE.CylinderGeometry(0.035, 0.035, 1.25, 10), yellow, ...P(-2.8, 0.62, -1.05));
+    [0.3, 0.6, 0.9].forEach(y => {
+      addMesh(pg, new THREE.CylinderGeometry(0.2, 0.2, 0.04, 20), red, ...P(-2.8, y, -1.05));
+      addMesh(pg, new THREE.TorusGeometry(0.2, 0.02, 6, 20), red, ...P(-2.8, y + 0.02, -1.05)).rotation.x = Math.PI / 2;
+    });
+    addBox(pg, 0.04, 0.04, 0.45, yellow, ...P(-2.8, 1.23, -0.82));
+  }
+  // 8) 西北角蝸牛造型立柱（綠色彎柱頂端：粉橘螺旋殼＋黃色身體）
+  {
+    post(-3.65, -0.75, 2.6);
+    const bend = addMesh(pg, new THREE.TorusGeometry(0.25, 0.057, 10, 16, Math.PI / 2), postGreen, ...P(-3.4, 2.6, -0.75));
+    bend.rotation.z = Math.PI / 2;
+    const shellMat = canvasMat(128, 128, (ctx) => {
+      ctx.fillStyle = '#f6b08a'; ctx.fillRect(0, 0, 128, 128);
+      ctx.strokeStyle = '#e07a52'; ctx.lineWidth = 5; ctx.beginPath();
+      for (let t = 0; t < 18; t += 0.1) { const r = 3 + t * 3.2; ctx.lineTo(64 + Math.cos(t) * r, 64 + Math.sin(t) * r); }
+      ctx.stroke();
+    });
+    const shell = addMesh(pg, new THREE.CylinderGeometry(0.27, 0.27, 0.16, 24), [new THREE.MeshStandardMaterial({ color: 0xf6b08a, roughness: 0.4 }), shellMat, shellMat], ...P(-3.25, 3.05, -0.75));
+    shell.rotation.x = Math.PI / 2;
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf3d77a, roughness: 0.4 });
+    const body = addMesh(pg, new THREE.CapsuleGeometry(0.08, 0.32, 6, 10), bodyMat, ...P(-3.05, 2.85, -0.75));
+    body.rotation.z = Math.PI / 2;
+    addMesh(pg, new THREE.SphereGeometry(0.1, 10, 8), bodyMat, ...P(-2.88, 3.12, -0.75));
+    addMesh(pg, new THREE.CylinderGeometry(0.06, 0.08, 0.3, 8), bodyMat, ...P(-2.88, 2.98, -0.75));
+    [-0.04, 0.04].forEach(dz => {
+      addMesh(pg, new THREE.CylinderGeometry(0.012, 0.012, 0.18, 6), bodyMat, ...P(-2.84, 3.28, -0.75 + dz)).rotation.z = -0.3;
+      addMesh(pg, new THREE.SphereGeometry(0.025, 6, 5), bodyMat, ...P(-2.8, 3.37, -0.75 + dz));
+    });
+  }
+
+  // 9) 周邊：白色公園長椅、6–12 歲遊具使用告示牌
+  {
+    const benchWhite = new THREE.MeshStandardMaterial({ color: 0xf2f2ef, roughness: 0.45 });
+    const bx = px + 5.6, bz = pz + matD / 2 - 0.9;
+    for (let i = 0; i < 4; i++) addBox(pg, 1.5, 0.035, 0.09, benchWhite, bx, 0.45, bz - 0.15 + i * 0.11);
+    for (let i = 0; i < 3; i++) addBox(pg, 1.5, 0.09, 0.03, benchWhite, bx, 0.6 + i * 0.12, bz + 0.27);
+    [-0.68, 0.68].forEach(o => { addBox(pg, 0.05, 0.45, 0.5, benchWhite, bx + o, 0.225, bz + 0.05); addBox(pg, 0.05, 0.25, 0.05, benchWhite, bx + o, 0.68, bz - 0.15); });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5b3b26, roughness: 0.8 });
+    const sx = px + 3.5, sz = pz + matD / 2 - 0.3;
+    [-0.42, 0.42].forEach(o => addBox(pg, 0.08, 1.6, 0.08, wood, sx + o, 0.8, sz));
+    addBox(pg, 0.9, 0.85, 0.05, wood, sx, 1.15, sz);
+    addMesh(pg, new THREE.PlaneGeometry(0.76, 0.72), canvasMat(152, 144, (ctx) => {
+      ctx.fillStyle = '#f2d98c'; ctx.fillRect(0, 0, 152, 144);
+      ctx.fillStyle = '#7a3b12'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('遊戲場使用須知', 76, 22);
+      ctx.font = 'bold 34px sans-serif'; ctx.fillStyle = '#c0392b'; ctx.fillText('6-12', 76, 66); ctx.font = 'bold 14px sans-serif'; ctx.fillText('歲適用', 76, 84);
+      ctx.fillStyle = '#7a3b12'; for (let i = 0; i < 4; i++) ctx.fillRect(18, 96 + i * 11, 116, 4);
+    }), sx, 1.15, sz - 0.03).rotation.y = Math.PI;
   }
 
   pg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'playground-zone'; });
+  NORTH_XF.apply(pg);   // v2.12.40 遊戲區位於北棟前採光井外緣以南約 6 m，隨北棟定位轉換
   layerGroups.sports.add(pg);
   clickableGroups.push(pg);
   landmarkGroupMap.set('playground-zone', pg);
@@ -1895,10 +3058,30 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   }
 
   // 1) North Perimeter Wall (`V0(56,22) -> V1(955,22)`)
-  addMasonryWallRun(X(56), Z(22), X(955), Z(22), wallBodyMat, true, 1, false);
+  // v2.12.7 依實景照片（北棟西側往後門）：與屏東高工相隔之北側圍牆為清水紅磚牆，高約 2.1 m，每約 3.2 m 一道凸出磚柱，無壓頂石與綠籬
+  {
+    const p1 = new THREE.Vector3(X(NORTH_WALL_PX[0][0]), 0, Z(NORTH_WALL_PX[0][1])), p2 = new THREE.Vector3(X(NORTH_WALL_PX[1][0]), 0, Z(NORTH_WALL_PX[1][1]));
+    const len = p1.distanceTo(p2);
+    const brickTex = makeTaiwaneseRedBrickTexture();
+    brickTex.wrapS = brickTex.wrapT = THREE.RepeatWrapping;
+    brickTex.repeat.set(len / 3, 1);
+    const nbMat = new THREE.MeshStandardMaterial({ map: brickTex, color: 0x9a7268, roughness: 0.92 });
+    const pierTex = makeTaiwaneseRedBrickTexture(); pierTex.wrapS = pierTex.wrapT = THREE.RepeatWrapping; pierTex.repeat.set(0.2, 1);
+    const nbPierMat = new THREE.MeshStandardMaterial({ map: pierTex, color: 0x8c665c, roughness: 0.92 });
+    const g = new THREE.Group();                         // 沿斜向北牆線建置（v2.12.24）
+    g.position.set((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
+    g.rotation.y = -Math.atan2(p2.z - p1.z, p2.x - p1.x);
+    addBox(g, len, 0.18, 0.34, wallBaseMat, 0, 0.09, 0);
+    addBox(g, len, 2.0, 0.24, nbMat, 0, 1.1, 0);
+    addBox(g, len, 0.06, 0.28, nbPierMat, 0, 2.13, 0);
+    const nP = Math.round(len / 3.2);
+    for (let k = 0; k <= nP; k++) addBox(g, 0.36, 2.22, 0.42, nbPierMat, -len / 2 + k * len / nP, 1.11, 0);
+    layerGroups.boundary.add(g);
+  }
 
   // 2) School West Rear Perimeter Wall (`V0(56,22) -> V6(56,328)`, enclosing the West Campus Lawn Buffer, Ball Courts & Command Stage)
-  addMasonryWallRun(X(56), Z(22), X(56), Z(73), wallSportsMat, true, -1, true);
+  addMasonryWallRun(X(65.7), Z(-67.6), X(63.23), Z(-30.1), wallSportsMat, true, -1, true);
+  addMasonryWallRun(X(61.65), Z(-6.1), X(54.19), Z(107), wallSportsMat, true, -1, true);   // v2.12.33 學校後門位於西牆北段（依航照標示）
 
   // ==========================================================================
   // 西側學校後門 (`學校西側的後門_可以看到西棟大樓與北棟大樓.jpg` 1:1 實景精準建模)
@@ -2292,15 +3475,32 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     landmarkGroupMap.set('west-sports-gate', swg);
   }
 
-  buildWestBackGate(X(56), Z(90)); // 西側學校後門 (建興南路50巷)
-  addMasonryWallRun(X(56), Z(107), X(56), Z(244), wallSportsMat, true, -1, true);
-  buildAthleticSouthwestGate(X(56), Z(256)); // 運動場西側門/西南門 (實景照片 135447.jpg 不銹鋼電動伸縮門)
-  addMasonryWallRun(X(56), Z(268), X(56), Z(328), wallSportsMat, true, -1, true);
+  buildWestBackGate(X(62.44), Z(-18.1)); // 學校後門（v2.12.33 依使用者航照標示，接沿北牆步道）
+  // v2.12.9 依 2024 街景與實景照片（建興南路 35 號前、司令台後小門）：運動場西側圍牆與南側同款——
+  //   寬白漆龜裂柱墩＋玫瑰紅多層線腳柱頭、其間白色直條欄杆（局部鏽蝕），球場段牆頂加綠色菱形鐵絲網；
+  //   牆外為低矮水泥花台（灌木與雜草），司令台後為單扇白色直條小門
+  // v2.12.24 依衛星圖：北段直牆（球場段加鐵絲網）→ 中段外凸 → 三段斜牆至西南尖角；司令台後小門位於第一段斜牆、司令台正後方
+  const backGateHalf = 0.95;
+  addSportsSouthWallRun(X(54.9), Z(107), X(51.4), Z(149.4), -1, { upperMesh: true, planter: true });
+  addSportsSouthWallRun(X(51.4), Z(149.4), X(39.2), Z(158.8), -1, { planter: true });
+  addSportsSouthWallRun(X(39.2), Z(158.8), X(45), Z(193.7), -1, { planter: true });
+  addSportsSouthWallRun(X(45), Z(193.7), X(76.2), Z(245.3), -1, { planter: true });
+  {
+    const a = new THREE.Vector3(X(76.2), 0, Z(245.3)), b = new THREE.Vector3(X(105.2), 0, Z(308.8));
+    const L = a.distanceTo(b), dir = b.clone().sub(a).normalize();
+    const gc = a.clone().addScaledVector(dir, (5.3 - a.z) / dir.z);      // v2.12.33 依使用者航照標示
+    const ga = gc.clone().addScaledVector(dir, -(backGateHalf + 0.3)), gb = gc.clone().addScaledVector(dir, backGateHalf + 0.3);
+    addSportsSouthWallRun(a.x, a.z, ga.x, ga.z, -1, { planter: true });
+    buildCommandStageBackGate(gc.x, gc.z, backGateHalf, Math.atan2(dir.x, dir.z));
+    addSportsSouthWallRun(gb.x, gb.z, b.x, b.z, -1, { planter: true });
+  }
+  addSportsSouthWallRun(X(105.2), Z(308.8), X(134.6), Z(381.8), -1, { planter: true });
+  addSportsSouthWallRun(X(134.6), Z(381.8), X(152.9), Z(437.2), -1, { planter: true });
 
   // 3) School Southwest & South Sports Ground Perimeter Walls (`運動場四週_南側圍牆.jpg`:
   //    Wide white-painted masonry piers + terracotta-rose multi-tiered molded classical capitals +
   //    low stone plinth + white vertical metal picket grille panels + interior row of columnar trees & gooseneck street lamps)
-  function addSportsSouthWallRun(x1, z1, x2, z2, inwardSign = -1) {
+  function addSportsSouthWallRun(x1, z1, x2, z2, inwardSign = -1, opts = {}) {
     const len = Math.hypot(x2 - x1, z2 - z1);
     if (len < 1.0) return;
     const ang = -Math.atan2(z2 - z1, x2 - x1);
@@ -2314,9 +3514,17 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
     const plinthMat    = new THREE.MeshStandardMaterial({ color: 0x8d8c84, roughness: 0.88 });
     const whiteGrille  = new THREE.MeshStandardMaterial({ color: 0xf5f7f8, roughness: 0.38, metalness: 0.35 });
     const trunkMat     = new THREE.MeshStandardMaterial({ color: 0x5a4634, roughness: 0.9 });
-    const treeFoliage1 = new THREE.MeshStandardMaterial({ color: 0x3b6e38, roughness: 0.82 });
-    const treeFoliage2 = new THREE.MeshStandardMaterial({ color: 0x4d8444, roughness: 0.80 });
+    const treeFoliage1 = new THREE.MeshStandardMaterial({ color: 0x2d5a2c, roughness: 0.78 });
+    const treeFoliage2 = new THREE.MeshStandardMaterial({ color: 0x3c6f36, roughness: 0.76 });
     const lampPoleMat  = new THREE.MeshStandardMaterial({ color: 0xe8ecee, roughness: 0.4, metalness: 0.45 });
+    const rustGrille   = new THREE.MeshStandardMaterial({ color: 0xc9a58a, roughness: 0.6, metalness: 0.2 });
+    const meshPostMat  = new THREE.MeshStandardMaterial({ color: 0x23402c, roughness: 0.5, metalness: 0.4 });
+    const chainMeshMat = new THREE.MeshStandardMaterial({ map: makeChainLinkTexture(), transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, roughness: 0.6 });
+    const planterCurbMat = new THREE.MeshStandardMaterial({ color: 0x6b6a66, roughness: 0.95 });
+    const planterSoilMat = new THREE.MeshStandardMaterial({ color: 0x6f8a45, roughness: 0.95 });
+    const planterShrubA = new THREE.MeshStandardMaterial({ color: 0x3f7a34, roughness: 0.8 });
+    const planterShrubB = new THREE.MeshStandardMaterial({ color: 0x55903e, roughness: 0.8 });
+    const pierCrackMat = new THREE.MeshStandardMaterial({ map: makeCrackedPaintTexture(), roughness: 0.8 });
 
     const nBays = Math.max(2, Math.round(len / 4.4));
     const bayLen = len / nBays;
@@ -2327,35 +3535,42 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
 
     for (let i = 0; i <= nBays; i++) {
       const px = -len / 2 + i * bayLen;
-      // Wide white stucco masonry pier (`運動場四週_南側圍牆.jpg`)
-      addBox(grp, 0.86, 1.68, 0.56, pierWhiteMat, px, 0.84, 0);
-      // Recessed vertical panel detail on front of white pier
-      addBox(grp, 0.52, 1.12, 0.58, new THREE.MeshStandardMaterial({ color: 0xe9e7e0, roughness: 0.76 }), px, 0.92, 0);
-      // Terracotta-pink / rose multi-tiered molded capital (`玫瑰陶紅多層線腳壓頂柱頭`)
-      addBox(grp, 0.96, 0.09, 0.64, capRoseMat, px, 1.725, 0);
-      addBox(grp, 1.06, 0.12, 0.72, capDarkRose, px, 1.83, 0);
-      addBox(grp, 1.14, 0.10, 0.78, capRoseMat, px, 1.94, 0);
-      addBox(grp, 0.92, 0.08, 0.60, capRoseMat, px, 2.03, 0);
+      // Wide white stucco masonry pier (v2.12.4 依 2024 街景：寬約 1.0 m、柱身高約 1.2 m、白漆龜裂；玫瑰陶紅多層線腳柱頭，總高約 1.65 m)
+      addBox(grp, 1.0, 1.22, 0.6, pierCrackMat, px, 0.61, 0);
+      addBox(grp, 1.06, 0.07, 0.66, capRoseMat, px, 1.255, 0);
+      addBox(grp, 1.14, 0.12, 0.74, capDarkRose, px, 1.35, 0);
+      addBox(grp, 1.20, 0.06, 0.80, capRoseMat, px, 1.44, 0);
+      addBox(grp, 1.10, 0.12, 0.72, capRoseMat, px, 1.53, 0);
+      addBox(grp, 1.16, 0.05, 0.78, capDarkRose, px, 1.615, 0);
 
       if (i < nBays) {
         const bx = px + bayLen / 2;
         const clearW = bayLen - 0.88;
         // Upper & lower horizontal white steel rails
-        addBox(grp, clearW, 0.045, 0.05, whiteGrille, bx, 0.66, 0);
-        addBox(grp, clearW, 0.045, 0.05, whiteGrille, bx, 1.56, 0);
-        addBox(grp, clearW, 0.035, 0.04, whiteGrille, bx, 1.44, 0);
-        // Vertical white picket bars
-        const nBars = Math.max(6, Math.floor(clearW / 0.16));
+        addBox(grp, clearW + 0.1, 0.045, 0.05, whiteGrille, bx, 0.64, 0);
+        addBox(grp, clearW + 0.1, 0.045, 0.05, whiteGrille, bx, 1.36, 0);
+        addBox(grp, clearW + 0.1, 0.035, 0.04, whiteGrille, bx, 1.24, 0);
+        // Vertical white picket bars（略帶鏽斑：每隔數根改用鏽橘色）
+        const nBars = Math.max(6, Math.floor(clearW / 0.15));
         for (let b = 1; b < nBars; b++) {
           const barX = bx - clearW / 2 + (b / nBars) * clearW;
-          addBox(grp, 0.026, 0.98, 0.026, whiteGrille, barX, 1.12, 0, false);
+          addBox(grp, 0.026, 0.74, 0.026, (b * 7 + i) % 9 === 0 ? rustGrille : whiteGrille, barX, 1.0, 0, false);
         }
         // Interior columnar evergreen tree behind each bay (`牆內成排高聳常綠樹列`)
         const tx = bx;
         const tz = inwardSign * 1.35;
-        addBox(grp, 0.22, 2.4, 0.22, trunkMat, tx, 1.2, tz, false);
-        const cr1 = addMesh(grp, new THREE.ConeGeometry(0.95, 3.6, 9), (i % 2 === 0) ? treeFoliage1 : treeFoliage2, tx, 3.4, tz);
-        const cr2 = addMesh(grp, new THREE.ConeGeometry(0.75, 2.8, 9), (i % 2 === 0) ? treeFoliage2 : treeFoliage1, tx, 4.9, tz);
+        // v2.12.16：牆內福木列改由樹木普查登錄資料依實際座標建置
+      }
+
+      // 牆頂綠色菱形鐵絲網（球場段）
+      if (opts.upperMesh) {
+        addBox(grp, 0.06, 2.0, 0.06, meshPostMat, px, 1.65 + 1.0, 0, false);
+        if (i < nBays) {
+          const mw = bayLen;
+          const panel = addMesh(grp, new THREE.PlaneGeometry(mw, 1.9), chainMeshMat, px + bayLen / 2, 2.65, 0, false);
+          panel.material.map.repeat.set(mw / 0.5, 1.9 / 0.5);
+          addBox(grp, mw, 0.05, 0.05, meshPostMat, px + bayLen / 2, 3.62, 0, false);
+        }
       }
 
       // Street lamp every 3 piers along the perimeter road
@@ -2365,11 +3580,82 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
         addBox(grp, 0.06, 0.06, 0.95, lampPoleMat, lx, 5.15, lz - inwardSign * 0.42, false);
       }
     }
+    // 牆外低矮水泥花台（高約 0.45 m、寬約 1.2 m，深灰汙漬混凝土緣，內植灌木與雜草）
+    if (opts.planter) {
+      const pz = -inwardSign * 1.0, pw = 1.2;
+      addBox(grp, len, 0.45, 0.14, planterCurbMat, 0, 0.225, pz - inwardSign * (pw / 2 - 0.07), true);
+      addBox(grp, len, 0.36, pw - 0.14, planterSoilMat, 0, 0.18, pz, false);
+      for (let k = 0; k < Math.floor(len / 1.6); k++) {
+        const bx = -len / 2 + 0.8 + k * 1.6 + ((k * 37) % 5) * 0.12;
+        if (k % 3 === 2) continue;
+        const sh = addMesh(grp, new THREE.IcosahedronGeometry(0.38 + (k % 3) * 0.1, 1), k % 2 ? planterShrubA : planterShrubB, bx, 0.62 + (k % 2) * 0.1, pz + ((k % 2) - 0.5) * 0.25);
+        sh.scale.set(1.1, 0.95, 0.9);
+      }
+    }
+    // 招生布條「選擇復興 家長安心」（掛於欄杆外側）
+    if (opts.banner !== undefined) {
+      const bx = (opts.banner - 0.5) * len + 2.4;
+      addMesh(grp, new THREE.PlaneGeometry(3.6, 0.95), sportsBannerMat, bx, 1.05, -inwardSign * 0.06, false).rotation.y = inwardSign > 0 ? Math.PI : 0;
+    }
     layerGroups.boundary.add(grp);
   }
 
-  addSportsSouthWallRun(X(56), Z(328), X(180), Z(480), -1);
-  addSportsSouthWallRun(X(180), Z(480), X(367), Z(374), -1);
+  // 司令台後小門：兩側白漆柱墩之間單扇白色直條鐵門（高約 1.6 m），門旁公告牌，門外為水泥坡道，
+  //   南側花台轉角立黑黃斑紋桿之橘框凸面鏡（v2.12.9 依實景照片）
+  function buildCommandStageBackGate(gx, gz, half, rotY = 0) {
+    const gg = new THREE.Group();
+    gg.userData = { landmarkId: 'west-sports-gate' };
+    const white = new THREE.MeshStandardMaterial({ color: 0xf4f5f2, roughness: 0.45, metalness: 0.3 });
+    const pierMat = new THREE.MeshStandardMaterial({ map: makeCrackedPaintTexture(), roughness: 0.8 });
+    const rose = new THREE.MeshStandardMaterial({ color: 0xc97a76, roughness: 0.62 });
+    [-1, 1].forEach(sd => {
+      const z = gz + sd * (half + 0.0);
+      addBox(gg, 0.6, 1.22, 1.0, pierMat, gx, 0.61, z);
+      addBox(gg, 0.66, 0.12, 1.08, rose, gx, 1.28, z);
+      addBox(gg, 0.72, 0.18, 1.14, rose, gx, 1.43, z);
+      addBox(gg, 0.66, 0.08, 1.08, rose, gx, 1.56, z);
+    });
+    // 門扇（略向內開）
+    const leaf = new THREE.Group();
+    leaf.position.set(gx, 0, gz - half + 0.5);
+    leaf.rotation.y = -0.18;
+    const lw = 2 * half - 1.05;
+    addBox(leaf, 0.05, 0.05, lw, white, 0, 1.6, lw / 2);
+    addBox(leaf, 0.05, 0.05, lw, white, 0, 0.12, lw / 2);
+    addBox(leaf, 0.05, 1.55, 0.05, white, 0, 0.85, 0);
+    addBox(leaf, 0.05, 1.55, 0.05, white, 0, 0.85, lw);
+    for (let k = 1; k < 7; k++) addBox(leaf, 0.035, 1.45, 0.035, white, 0, 0.85, (k / 7) * lw, false);
+    gg.add(leaf);
+    // 公告牌（綠框）與門外水泥坡道
+    addBox(gg, 0.02, 0.32, 0.46, new THREE.MeshStandardMaterial({ color: 0x9fd18b, roughness: 0.6 }), gx - 0.33, 1.15, gz + half + 0.35, false);
+    addBox(gg, 1.6, 0.16, 2 * half - 0.4, new THREE.MeshStandardMaterial({ color: 0xa9a7a0, roughness: 0.9 }), gx - 1.0, 0.08, gz, false);
+    // 凸面鏡
+    const mx = gx - 1.75, mz = gz + half + 0.5;
+    const steel = new THREE.MeshStandardMaterial({ color: 0xa8adb2, roughness: 0.35, metalness: 0.7 });
+    addMesh(gg, new THREE.CylinderGeometry(0.04, 0.045, 2.6, 10), steel, mx, 1.3, mz);
+    for (let k = 0; k < 4; k++) addMesh(gg, new THREE.CylinderGeometry(0.046, 0.046, 0.12, 10), k % 2 ? new THREE.MeshStandardMaterial({ color: 0x1b1b1b }) : new THREE.MeshStandardMaterial({ color: 0xf2c418 }), mx, 0.75 + k * 0.12, mz, false);
+    const mg = new THREE.Group();
+    mg.position.set(mx, 2.75, mz);
+    mg.rotation.y = -Math.PI / 2 - 0.5;
+    const mirror = new THREE.Mesh(new THREE.SphereGeometry(0.8, 20, 6, 0, Math.PI * 2, 0, 0.5), new THREE.MeshStandardMaterial({ color: 0xcfd8e0, roughness: 0.06, metalness: 0.95 }));
+    mirror.rotation.x = Math.PI / 2; mirror.position.z = 0.05 - 0.8 * Math.cos(0.5);
+    mg.add(mirror);
+    mg.add(new THREE.Mesh(new THREE.TorusGeometry(0.39, 0.04, 8, 24), new THREE.MeshStandardMaterial({ color: 0xb4532a, roughness: 0.5 })));
+    gg.add(mg);
+    gg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'west-sports-gate'; });
+    if (rotY) {                                          // 斜向牆段：以門中心為軸旋轉
+      const pivot = new THREE.Group();
+      pivot.position.set(gx, 0, gz); pivot.rotation.y = rotY;
+      pivot.userData = { landmarkId: 'west-sports-gate' };
+      gg.position.set(-gx, 0, -gz); pivot.add(gg);
+      layerGroups.boundary.add(pivot);
+    } else layerGroups.boundary.add(gg);
+    clickableGroups.push(gg);
+    landmarkGroupMap.set('west-sports-gate', gg);
+  }
+
+  addSportsSouthWallRun(X(152.9), Z(437.2), X(180), Z(480), -1, { planter: true, banner: 0.06 });
+  addSportsSouthWallRun(X(180), Z(480), X(367), Z(374), -1, { planter: true });
 
   // 5) East Perimeter Wall (`V1(955,22) -> V2(955,326)`)
   // 依最新復興路 Google 街景與前庭實拍照片：
@@ -2378,101 +3664,332 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
   // - 正門左側臨復興路段 (Z(265)..Z(326)) 為開放式通學步道與弧形綠籬花台。
 
   // 6) South Perimeter Wall & Authentic South Gates (`建興南路42巷`)
-  // Segment A: 東南轉角至學校新南側門 (依據街景照片與《綠籬植栽平面圖》區域二：常綠修剪綠籬矮花台，徹底移除突兀之淡綠色隔離板)
+  // Segment A: 轉角圓弧花台至學校新南側門 — 依《學校前庭綠籬規劃平面圖》向北內凹之 S 形花台矮牆
+  //   v2.12.3 依 2024 街景（建興南路42巷東望、轉角西北望）精緻化：
+  //   ・矮牆為淺灰斑點洗石子砌塊，高約 0.45 m，頂部壓頂略寬
+  //   ・牆內花台為修剪綠籬帶，間植較高之常綠灌木與黃綠新葉灌木，非整齊圓球
+  //   ・牆外內凹處人行道鋪灰褐方形地磚，置兩組磨石子圓石桌椅、加蓋停放機車，新南側門旁設道路反射鏡
+  //   ・花台內側林蔭樹：近轉角一株枝葉開展的羽葉大喬木，中、西段兩株層狀分枝的欖仁（冬末部分紅葉）
   {
-    const segAX1 = X(955), segAZ1 = Z(326);
-    const segAX2 = X(772) + 2.0, segAZ2 = Z(320);
-    const segALen = Math.hypot(segAX2 - segAX1, segAZ2 - segAZ1);
-    const segAAng = Math.atan2(segAX2 - segAX1, segAZ2 - segAZ1);
-    const segACx = (segAX1 + segAX2) / 2, segACz = (segAZ1 + segAZ2) / 2;
+    const segBg = layerGroups.boundary;
+    let sd = 23;
+    const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    const up = new THREE.Vector3(0, 1, 0);
+    const limb = (parent, a, b, r0, r1, mat, seg = 7) => {
+      const dir = new THREE.Vector3().subVectors(b, a);
+      const m = addMesh(parent, new THREE.CylinderGeometry(r1, r0, dir.length(), seg), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+      m.quaternion.setFromUnitVectors(up, dir.normalize());
+      return m;
+    };
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
-    const segAGrp = new THREE.Group();
-    segAGrp.position.set(segACx, 0, segACz);
-    segAGrp.rotation.y = segAAng - Math.PI / 2;
-
-    // A. 抿石子低矮基座 (高 0.30m，平整素雅，無任何突兀隔離板)
-    addBox(segAGrp, segALen, 0.30, 0.38, curbStoneMat, 0, 0.15, 0);
-    layerGroups.boundary.add(segAGrp);
-
-    // C. 圍籬外側沿通學步道連續栽植《2023_0604 區域二》楓港柿與桂花樹常綠綠籬 (高約 0.85m)
-    const nHedgesA = Math.max(12, Math.floor(segALen / 1.0));
-    const fenggangMat = new THREE.MeshStandardMaterial({ color: 0x214f24, roughness: 0.65 }); // 屏東原生常綠楓港柿
-    const osmanthusFlowerMat = new THREE.MeshStandardMaterial({ color: 0xfff6ad, roughness: 0.55 }); // 芬芳桂花花簇
-    // 左側東南轉角退縮防突出：依指示移除轉角突出綠籬，從 h = 3 開始栽植
-    for (let h = 3; h <= nHedgesA; h++) {
-      const ratio = h / nHedgesA;
-      const hx = segAX1 + ratio * (segAX2 - segAX1);
-      const hz = segAZ1 + ratio * (segAZ2 - segAZ1);
-      // 綠籬沿通學步道側稍微外推 0.55m
-      const normX = Math.cos(segAAng) * 0.55;
-      const normZ = -Math.sin(segAAng) * 0.55;
-      const hMesh = addMesh(layerGroups.boundary, new THREE.SphereGeometry(0.50, 10, 8), fenggangMat, hx + normX, 0.52, hz + normZ);
-      hMesh.scale.set(1.15, 0.95, 1.1);
-      // 每間隔數株點綴桂花盛開芬芳金黃小白花
-      if (h % 3 === 1) {
-        const fl = addMesh(layerGroups.boundary, new THREE.SphereGeometry(0.18, 6, 6), osmanthusFlowerMat, hx + normX + 0.1, 0.78, hz + normZ + 0.1);
-        fl.scale.set(1.3, 0.85, 1.1);
+    const wallTex = makeSpeckledGraniteTexture('#a39e96', '#4f4b46', '#e4dfd5', true);
+    const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.86 });
+    const capTex = makeSpeckledGraniteTexture('#b4afa7', '#5a5651', '#ece8df', false);
+    const capMat = new THREE.MeshStandardMaterial({ map: capTex, roughness: 0.8 });
+    const wallPts = sampleXZCurve(FORECOURT_SOUTH_CURVE, 0.5);
+    for (let i = 0; i < wallPts.length - 1; i++) {
+      const a = wallPts[i], b = wallPts[i + 1];
+      const len = a.distanceTo(b);
+      const wg = new THREE.Group();
+      wg.position.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
+      wg.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+      addBox(wg, len + 0.04, 0.40, 0.34, wallMat, 0, 0.20, 0);
+      addBox(wg, len + 0.06, 0.06, 0.42, capMat, 0, 0.43, 0);
+      segBg.add(wg);
+    }
+    // 牆內花台：土面 + 連續修剪綠籬帶（楓港柿／桂花）+ 間植較高灌木
+    const fenggangMat = new THREE.MeshStandardMaterial({ color: 0x23522a, roughness: 0.7 });
+    const fenggangMat2 = new THREE.MeshStandardMaterial({ color: 0x2f6a2e, roughness: 0.72 });
+    const brightShrubMat = new THREE.MeshStandardMaterial({ color: 0x7fb547, roughness: 0.76 });
+    const osmanthusFlowerMat = new THREE.MeshStandardMaterial({ color: 0xfff6ad, roughness: 0.55 });
+    const hedgeLine = offsetXZ(sampleXZCurve(FORECOURT_SOUTH_CURVE, 0.6), 0.75, 0, -1);
+    for (let i = 0; i < hedgeLine.length - 1; i++) {
+      const a = hedgeLine[i], b = hedgeLine[i + 1];
+      const hg = new THREE.Group();
+      hg.position.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
+      hg.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+      const h = 0.78 + Math.sin(i * 0.9) * 0.08;
+      addBox(hg, a.distanceTo(b) + 0.08, h, 0.95, i % 2 ? fenggangMat : fenggangMat2, 0, h / 2, 0);
+      const puff = addMesh(hg, new THREE.SphereGeometry(0.5, 8, 6), fenggangMat2, 0, h, 0);
+      puff.scale.set(1.3, 0.35, 0.95);
+      if (i % 6 === 1) addMesh(hg, new THREE.SphereGeometry(0.055, 5, 4), osmanthusFlowerMat, 0.1, h + 0.1, -0.3, false);
+      segBg.add(hg);
+    }
+    const tallShrubLine = offsetXZ(sampleXZCurve(FORECOURT_SOUTH_CURVE, 3.4), 1.7, 0, -1);
+    tallShrubLine.forEach((p, k) => {
+      if (k === 0 || k === tallShrubLine.length - 1) return;
+      const big = k % 3 === 1;
+      const n = big ? 5 : 3;
+      for (let j = 0; j < n; j++) {
+        const cr = (big ? 0.62 : 0.45) + r() * 0.2;
+        const cl = addMesh(segBg, new THREE.IcosahedronGeometry(cr, 1), k % 4 === 2 ? brightShrubMat : (j % 2 ? fenggangMat : fenggangMat2),
+          p.x + (r() - 0.5) * 1.1, cr * 0.9 + (big ? 0.5 + r() * 0.6 : 0.2), p.z + (r() - 0.5) * 0.8);
+        cl.scale.set(1.15, 0.9, 1.1);
       }
-      // 綠籬底座覆土微地形
-      addBox(layerGroups.boundary, segALen / nHedgesA + 0.12, 0.10, 0.85, mats.soil, hx + normX, 0.05, hz + normZ, false);
+    });
+    // 牆外內凹處：人行道同款灰褐方形地磚（至原直線邊界 z ≈ 21.75）
+    {
+      const outer = wallPts.map(p => new THREE.Vector3(p.x, 0, p.z + 0.2));              // 由東往西
+      const tileTex = makeSquareTileSidewalkTexture(); tileTex.repeat.set(1 / 2.4, 1 / 2.4);
+      const pavMat = new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.86, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      flatXZPoly(outer.concat([new THREE.Vector3(70.2, 0, 21.85), new THREE.Vector3(108.1, 0, 21.85)]), pavMat, 0.145, segBg, 1);   // 與人行道面齊平
     }
 
-    // D. 圍籬內側校園林蔭大喬木群 (樟樹、蒲葵)
-    const nCanopy = 3;
-    for (let t = 0; t < nCanopy; t++) {
-      const tx = segAX1 + ((t + 0.5) / nCanopy) * (segAX2 - segAX1);
-      const tz = segAZ1 + ((t + 0.5) / nCanopy) * (segAZ2 - segAZ1) - 2.8;
-      addMesh(layerGroups.boundary, new THREE.CylinderGeometry(0.22, 0.30, 4.2, 8), mats.slab, tx, 2.1, tz);
-      const trCrown = addMesh(layerGroups.boundary, new THREE.SphereGeometry(2.4, 12, 10), new THREE.MeshStandardMaterial({ color: 0x245422, roughness: 0.85 }), tx, 4.8, tz);
-      trCrown.scale.set(1.3, 0.92, 1.25);
+    // 花台內側林蔭樹
+    const treeLine = offsetXZ(sampleXZCurve(FORECOURT_SOUTH_CURVE, 0.5), 1.9, 0, -1);
+    const at = f => treeLine[Math.floor(f * (treeLine.length - 1))];
+    const barkMat = new THREE.MeshStandardMaterial({ color: 0x5a4a3c, roughness: 0.9 });
+    // (1) 欖仁：直幹、輪生水平分枝成數層塔狀樹冠，大葉；冬末部分葉片轉紅
+    const almondG = new THREE.MeshStandardMaterial({ color: 0x3f7a34, roughness: 0.8 });
+    const almondG2 = new THREE.MeshStandardMaterial({ color: 0x5a8f3a, roughness: 0.8 });
+    const almondRed = new THREE.MeshStandardMaterial({ color: 0x9a5a34, roughness: 0.82 });
+    registerPhenoMats('欖仁樹', { core: [almondG], outer: [almondG2, almondRed] });
+    const tropicalAlmond = (p, h, rot, sc = 1) => {
+      const g = new THREE.Group();
+      g.position.set(p.x, 0, p.z);
+      g.rotation.y = rot;
+      g.scale.setScalar(sc);
+      g.position.y = p.y || 0;
+      limb(g, V(0, 0, 0), V(0.1, h, 0), 0.26, 0.12, barkMat, 9);
+      [[0.42, 3.0, 5], [0.6, 2.4, 5], [0.78, 1.7, 4], [0.92, 1.0, 4]].forEach(([fy, reach, nb], tier) => {
+        for (let b = 0; b < nb; b++) {
+          const a = (b / nb) * Math.PI * 2 + tier * 0.6;
+          const s0 = V(0.1 * fy, h * fy, 0);
+          const e = V(Math.cos(a) * reach, h * fy + 0.35, Math.sin(a) * reach);
+          limb(g, s0, e, 0.09, 0.04, barkMat, 5);
+          for (let k = 0; k < 3; k++) {
+            const m = r() < 0.06 ? almondRed : (k % 2 ? almondG : almondG2);
+            const cl = addMesh(g, new THREE.IcosahedronGeometry(0.75 + r() * 0.35, 0), m,
+              e.x * (0.65 + k * 0.2) + (r() - 0.5) * 0.4, e.y + 0.15 + (r() - 0.5) * 0.25, e.z * (0.65 + k * 0.2) + (r() - 0.5) * 0.4);
+            cl.scale.set(1.5, 0.42, 1.5);
+          }
+        }
+      });
+      segBg.add(g);
+    };
+    // v2.12.12 依使用者標註之 2024 街景：近復興路轉角（電線桿旁）高大者為【大葉欖仁】，
+    //   西側圓石桌旁為【小葉欖仁】；最西一株維持大葉欖仁
+    // v2.12.14 依使用者說明：大葉欖仁與小葉欖仁皆生長於矮牆外之通學步道上（非校園內），樹下設樹穴；
+    //   小葉欖仁樹下即人行道石桌椅區
+    const outLine = offsetXZ(sampleXZCurve(FORECOURT_SOUTH_CURVE, 0.5), 1.7, 0, 1);
+    const outAtX = x => outLine.reduce((b, q) => Math.abs(q.x - x) < Math.abs(b.x - x) ? q : b, outLine[0]);
+    const treePit = q => {
+      addBox(segBg, 1.3, 0.03, 1.3, new THREE.MeshStandardMaterial({ color: 0x4a3f33, roughness: 0.95 }), q.x, 0.16, q.z, false);
+      addBox(segBg, 1.42, 0.06, 0.08, curbStoneMat, q.x, 0.17, q.z - 0.67, false); addBox(segBg, 1.42, 0.06, 0.08, curbStoneMat, q.x, 0.17, q.z + 0.67, false);
+      addBox(segBg, 0.08, 0.06, 1.42, curbStoneMat, q.x - 0.67, 0.17, q.z, false); addBox(segBg, 0.08, 0.06, 1.42, curbStoneMat, q.x + 0.67, 0.17, q.z, false);
+    };
+    const bigAlmondP = outAtX(95.0);      // 街景：緊鄰第二組石桌東側
+    treePit(bigAlmondP);
+    tropicalAlmond(V(bigAlmondP.x, 0.14, bigAlmondP.z), 8.4, 0.6, 1.45);
+    addPhenoGround(segBg, '欖仁樹', bigAlmondP.x, 0.16, bigAlmondP.z, 5.5);   // 轉角大葉欖仁：高約 12 m、冠幅約 11 m
+    // 小葉欖仁：通直灰褐主幹，枝條水平輪生成 5～6 層明顯分層的塔狀樹冠，細碎小葉平鋪於枝上、淺綠通透
+    const smallLeafTerminalia = (p, h) => {
+      const g = new THREE.Group();
+      g.position.set(p.x, p.y || 0, p.z);
+      const greyBark = new THREE.MeshStandardMaterial({ color: 0x77706a, roughness: 0.88 });
+      const leafA = new THREE.MeshStandardMaterial({ color: 0x6fa84a, roughness: 0.8 });
+      const leafB = new THREE.MeshStandardMaterial({ color: 0x86b95a, roughness: 0.8 });
+      registerPhenoMats('小葉欖仁', { core: [leafA], outer: [leafB] });
+      limb(g, V(0, 0, 0), V(0, h, 0), 0.2, 0.06, greyBark, 9);
+      const tiers = 6;
+      for (let t = 0; t < tiers; t++) {
+        const fy = 0.32 + t * (0.62 / (tiers - 1));
+        const reach = 2.8 * (1 - t / tiers) + 0.6;
+        const nb = 5;
+        for (let b = 0; b < nb; b++) {
+          const a = (b / nb) * Math.PI * 2 + t * 0.55;
+          const y = h * fy;
+          const e = V(Math.cos(a) * reach, y + 0.15, Math.sin(a) * reach);
+          limb(g, V(0, y, 0), e, 0.05, 0.02, greyBark, 5);
+          for (let k = 0; k < 4; k++) {                 // 沿枝條平鋪之細葉層片
+            const tt = 0.35 + k * 0.2;
+            const pad = addMesh(g, new THREE.CylinderGeometry(0.55 * (1 - t / (tiers + 2)), 0.6 * (1 - t / (tiers + 2)), 0.12, 7), (k + t) % 2 ? leafA : leafB,
+              e.x * tt + (r() - 0.5) * 0.3, y + 0.15 + tt * 0.12, e.z * tt + (r() - 0.5) * 0.3);
+            pad.rotation.y = r() * Math.PI;
+          }
+        }
+      }
+      segBg.add(g);
+    };
+    const smallTermP = outAtX(85.6);
+    treePit(smallTermP);
+    smallLeafTerminalia(V(smallTermP.x, 0.14, smallTermP.z), 9.0);
+    addPhenoGround(segBg, '小葉欖仁', smallTermP.x, 0.16, smallTermP.z, 3.2);
+    // 轉角大葉欖仁前之水泥電線桿（街景：立於花台矮牆外鋪面上，頂部路燈挑臂伸向 42 巷）
+    {
+      const poleMat = new THREE.MeshStandardMaterial({ color: 0x8f8a82, roughness: 0.85 });
+      const px = bigAlmondP.x + 1.3, pz = bigAlmondP.z + 1.1;     // 大葉欖仁東南側（近車道）
+      addMesh(segBg, new THREE.CylinderGeometry(0.13, 0.18, 9.5, 12), poleMat, px, 4.9, pz);
+      addBox(segBg, 1.6, 0.1, 0.1, poleMat, px, 9.0, pz);
+      const steel = new THREE.MeshStandardMaterial({ color: 0xa8adb2, roughness: 0.35, metalness: 0.6 });
+      addBox(segBg, 0.07, 0.07, 1.6, steel, px, 7.6, pz + 0.8);
+      addMesh(segBg, new THREE.ConeGeometry(0.2, 0.15, 12), steel, px, 7.5, pz + 1.55, false);
+      for (let k = 0; k < 3; k++) addMesh(segBg, new THREE.CylinderGeometry(0.19, 0.19, 0.18, 12), new THREE.MeshStandardMaterial({ color: k % 2 ? 0x1b1b1b : 0xf2c418 }), px, 0.35 + k * 0.18, pz, false);
+    }
+
+    // 牆外人行道設施（照片：新南側門東側、欖仁樹下）
+    {
+      // 磨石子圓石桌 ×2，各配 6 張圓柱石凳
+      const terrazzoMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#bdb7ad', '#6b665f', '#f0ece4', false), roughness: 0.6 });
+      const stoolMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#9c968d', '#55514b', '#dcd7cd', false), roughness: 0.75 });
+      [[smallTermP.x + 2.6, smallTermP.z + 0.9], [smallTermP.x + 5.9, smallTermP.z + 0.75]].forEach(([tx, tz], ti) => {
+        addMesh(segBg, new THREE.CylinderGeometry(0.62, 0.62, 0.07, 28), terrazzoMat, tx, 0.82, tz);
+        addMesh(segBg, new THREE.CylinderGeometry(0.2, 0.26, 0.68, 14), stoolMat, tx, 0.46, tz);
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2 + ti * 0.3;
+          addMesh(segBg, new THREE.CylinderGeometry(0.17, 0.19, 0.42, 12), stoolMat, tx + Math.cos(a) * 0.98, 0.33, tz + Math.sin(a) * 0.98);
+        }
+      });
+      // 加蓋停放機車（灰色、綠色車罩）與一輛黑色機車
+      const coverGrey = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.7 });
+      const coverGreen = new THREE.MeshStandardMaterial({ color: 0x1f8a64, roughness: 0.6 });
+      const scooterBlack = new THREE.MeshStandardMaterial({ color: 0x24272c, roughness: 0.4, metalness: 0.4 });
+      // 機車車身沿南北向（與緣石垂直）停放，直接以世界座標建立
+      // 街景：加蓋機車（灰、綠）與兩輛黑色機車並排停靠於石桌北側花台矮牆前
+      const y0 = 0.14, wz = x => outAtX(x).z - 0.75;
+      [[smallTermP.x + 2.4, coverGrey], [smallTermP.x + 3.3, coverGreen]].forEach(([sx, m]) => {
+        const zc = wz(sx);
+        const body = addMesh(segBg, new THREE.SphereGeometry(0.5, 12, 8), m, sx, y0 + 0.55, zc);
+        body.scale.set(0.48, 1.0, 1.45);
+        addBox(segBg, 0.42, 0.3, 1.35, m, sx, y0 + 0.2, zc);
+      });
+      [smallTermP.x + 4.4, smallTermP.x + 5.1].forEach(sx => {
+        const zc = wz(sx);
+        [-0.62, 0.62].forEach(wz => {
+          const w = addMesh(segBg, new THREE.TorusGeometry(0.2, 0.06, 6, 14), scooterBlack, sx, y0 + 0.24, zc + wz);
+          w.rotation.y = Math.PI / 2;
+        });
+        addBox(segBg, 0.36, 0.35, 1.3, scooterBlack, sx, y0 + 0.5, zc);
+        addBox(segBg, 0.34, 0.12, 0.6, scooterBlack, sx, y0 + 0.74, zc + 0.2);
+        addBox(segBg, 0.3, 0.55, 0.22, scooterBlack, sx, y0 + 0.85, zc - 0.5);
+      });
+      // 道路反射鏡（橘框凸面鏡、黑白斑馬紋立桿）
+      const mg2 = new THREE.Group();
+      mg2.position.set(smallTermP.x - 1.4, 0.14, smallTermP.z + 2.2);   // 小葉欖仁西側人行道緣
+      mg2.rotation.y = -0.6;
+      const poleW = new THREE.MeshStandardMaterial({ color: 0xf3f4f6, roughness: 0.5 });
+      const poleK = new THREE.MeshStandardMaterial({ color: 0x1f2125, roughness: 0.5 });
+      addMesh(mg2, new THREE.CylinderGeometry(0.045, 0.05, 2.5, 10), poleW, 0, 1.25, 0);
+      for (let k = 0; k < 4; k++) addMesh(mg2, new THREE.CylinderGeometry(0.052, 0.052, 0.18, 10), poleK, 0, 0.25 + k * 0.36, 0, false);
+      addMesh(mg2, new THREE.TorusGeometry(0.4, 0.045, 8, 24), new THREE.MeshStandardMaterial({ color: 0xe8732b, roughness: 0.5 }), 0, 2.55, 0.08);
+      const mirror = addMesh(mg2, new THREE.SphereGeometry(0.8, 20, 6, 0, Math.PI * 2, 0, 0.52), new THREE.MeshStandardMaterial({ color: 0xc9d3db, roughness: 0.08, metalness: 0.95 }), 0, 2.55, 0.08 - 0.8 * Math.cos(0.52));
+      mirror.rotation.x = Math.PI / 2;
+      segBg.add(mg2);
     }
   }
 
   // 學校新南側門 (座落於東棟大樓右側，建興南路42巷與復興路378巷交會處，依實景照片4 1:1 精確重建)
   buildNewSouthGate(X(772), Z(320));
 
-  // Segment B: 東棟大樓南向彩繪立面前景花台至南棟銜接段
-  // (依據《2023_0604_綠籬植栽平面圖》標示【區域一(東棟外牆) 楓港柿、羅漢松、台灣海桐 12M長】精確還原)
+  // Segment B: 東棟大樓南端前（新南側門左側）通學步道花台
+  // v2.12.75 依使用者實景照片（115／116）重做：原「白色緣石＋球形灌木＋直立羅漢松」移除，
+  //   改為臨人行道之灰色洗石子矮牆花台（高約 0.5 m、深約 1.9 m），台內為高約 1.3～1.7 m 之濃密修剪綠籬（雜植深淺綠），
+  //   東棟轉角立白色球形路燈與黃色「騎車不車禍」直式旗幟，花台東端銜接新南側門西柱
   {
-    const planX1 = X(715), planX2 = X(772) - 1.8;
-    const planLen = Math.abs(planX2 - planX1);
-    const planCx = (planX1 + planX2) / 2;
-    const planCz = (Z(318) + Z(320)) / 2;
-    addBox(layerGroups.boundary, planLen, 0.48, 0.65, curbStoneMat, planCx, 0.24, planCz);
-    addBox(layerGroups.boundary, planLen - 0.2, 0.50, 0.52, mats.soil, planCx, 0.25, planCz, false);
-
-    // 區域一專屬植栽：楓港柿、羅漢松 (Podocarpus)、台灣海桐 (Pittosporum pentandrum)
-    const nPlants = Math.max(4, Math.floor(planLen / 1.5));
-    const fenggangMat = new THREE.MeshStandardMaterial({ color: 0x214f24, roughness: 0.65 }); // 楓港柿
-    const podocarpusMat = new THREE.MeshStandardMaterial({ color: 0x1d4620, roughness: 0.75 }); // 羅漢松針狀深綠
-    const pittosporumFlowerMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55 }); // 台灣海桐芳香小白花
-
-    for (let b = 0; b < nPlants; b++) {
-      const bx = planX1 + (b + 0.5) * (planLen / nPlants);
-      if (b % 3 === 0) {
-        // 楓港柿球形修剪綠籬
-        const sh = addMesh(layerGroups.boundary, new THREE.SphereGeometry(0.55, 10, 8), fenggangMat, bx, 0.62, planCz);
-        sh.scale.set(1.1, 0.95, 0.9);
-      } else if (b % 3 === 1) {
-        // 羅漢松直立優雅常綠灌木
-        const pod = addMesh(layerGroups.boundary, new THREE.CylinderGeometry(0.28, 0.42, 1.25, 8), podocarpusMat, bx, 0.85, planCz);
-        pod.scale.set(1.0, 1.0, 0.85);
-      } else {
-        // 台灣海桐開花灌木
-        const pit = addMesh(layerGroups.boundary, new THREE.SphereGeometry(0.52, 10, 8), mats.hedge, bx, 0.64, planCz);
-        pit.scale.set(1.15, 0.9, 1.0);
-        const fl = addMesh(layerGroups.boundary, new THREE.SphereGeometry(0.20, 6, 6), pittosporumFlowerMat, bx + 0.12, 0.88, planCz + 0.12);
-        fl.scale.set(1.3, 0.8, 1.1);
+    const x1 = 52.9, x2 = X(772) - 2.15, zFront = 20.55, depth = 1.9, zBack = zFront - depth;
+    const len = x2 - x1, cx = (x1 + x2) / 2, cz = (zFront + zBack) / 2;
+    const wallMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#9c988f', '#55524d', '#d8d3c9', true), roughness: 0.86 });
+    const capMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#b4afa7', '#5c5853', '#ece8df', false), roughness: 0.78 });
+    const pg = new THREE.Group(); pg.userData = { landmarkId: 'east-south-mosaic' };
+    addBox(pg, len, 0.50, 0.30, wallMat, cx, 0.25, zFront - 0.15);                // 臨人行道矮牆
+    addBox(pg, len + 0.06, 0.06, 0.38, capMat, cx, 0.53, zFront - 0.15);
+    [x1 + 0.15, x2 - 0.15].forEach(ex => { addBox(pg, 0.30, 0.50, depth, wallMat, ex, 0.25, cz); addBox(pg, 0.38, 0.06, depth + 0.06, capMat, ex, 0.53, cz); });
+    addBox(pg, len - 0.5, 0.42, depth - 0.4, mats.soil, cx, 0.21, cz, false);
+    const hg = [0x2a5a28, 0x356b2f, 0x417a35, 0x2f6430, 0x4f8a3b].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.82 }));
+    let sd = 23; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    for (let x = x1 + 0.55; x < x2 - 0.4; x += 0.55) {
+      const h = 1.25 + r() * 0.45;
+      for (let k = 0; k < 3; k++) {
+        const cr = 0.42 + r() * 0.22, zz = zBack + 0.45 + r() * (depth - 0.9);
+        const cl = addMesh(pg, new THREE.IcosahedronGeometry(cr, 1), hg[Math.floor(r() * hg.length)], x + (r() - 0.5) * 0.4, 0.42 + (h - 0.42) * (0.45 + 0.55 * r()), zz);
+        cl.scale.set(1.25, 1.05, 1.15);
       }
+      const top = addMesh(pg, new THREE.IcosahedronGeometry(0.5, 1), hg[Math.floor(r() * hg.length)], x, h, cz); top.scale.set(1.3, 0.7, 1.6);
     }
+    // 白色球形庭園路燈（東棟西南轉角）
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0xf2f4f6, roughness: 0.35, metalness: 0.4 });
+    addMesh(pg, new THREE.CylinderGeometry(0.06, 0.08, 3.6, 10), lampMat, x1 + 0.6, 1.8, zBack - 0.35);
+    addBox(pg, 0.5, 0.04, 0.04, lampMat, x1 + 0.6 + 0.22, 3.55, zBack - 0.35);
+    addMesh(pg, new THREE.SphereGeometry(0.22, 14, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff6dd, emissiveIntensity: 0.3 }), x1 + 0.6 + 0.45, 3.35, zBack - 0.35, false);
+    // 黃色直式旗幟「騎車不車禍」
+    {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 512; const ctx = c.getContext('2d');
+      ctx.fillStyle = '#f7d531'; ctx.fillRect(0, 0, 128, 512); ctx.fillStyle = '#1f4fa0'; ctx.fillRect(0, 0, 16, 512);
+      ctx.fillStyle = '#1b2a6b'; ctx.font = 'bold 76px sans-serif'; ctx.textAlign = 'center';
+      ['騎', '車', '不', '車', '禍'].forEach((ch, i) => ctx.fillText(ch, 70, 90 + i * 92));
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      const fx = x1 + 1.6, fz = zFront + 0.35;
+      addMesh(pg, new THREE.CylinderGeometry(0.025, 0.025, 2.4, 8), lampMat, fx, 1.2, fz);
+      const fl = addMesh(pg, new THREE.PlaneGeometry(0.42, 1.65), new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide }), fx + 0.23, 1.45, fz, false);
+      fl.rotation.y = Math.PI;
+    }
+    layerGroups.boundary.add(pg);
   }
 
   // 學校舊南側門 (興安街 / 建興南路34巷 · 南棟興學樓西端後方穿堂，依照片精準重建)
-  buildOldSouthGate(X(657), Z(318));
+  buildOldSouthGate(X(657), Z(294.9));
 }
 
-// Context Neighbor Buildings (`context` layer - Pingtung Townhouses positioned cleanly outside the Buffered Roads)
+// 北鄰國立屏東高工校地（v2.12.6 依 Google 空拍：復興國小北側圍牆外即屏工運動場，牆外為草地，無步道與民宅）
+//   ・圍牆外草地自圍牆延伸至屏工校區，沿牆一排屏工側喬木
+//   ・屏工 PU 跑道運動場：橢圓跑道（直道約 92 m、彎道半徑約 30 m），內場草皮，位於本校運動場與北棟正北方
 {
+  const pg = new THREE.Group();
+  pg.userData = { landmarkId: 'ptivs-grounds' };
+  // v2.12.24：北牆依衛星圖改為斜線（西端偏北），屏工草地與跑道隨之北移
+  const x1 = X(40), x2 = X(972), zN = Z(22) - 150;
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x7fa452, roughness: 0.92 });
+  flatXZPoly([new THREE.Vector3(x1, 0, northWallZAt(x1) - 0.4), new THREE.Vector3(x2, 0, northWallZAt(x2) - 0.4), new THREE.Vector3(x2, 0, zN), new THREE.Vector3(x1, 0, zN)], grassMat, 0.03, pg, 0.1);
+  // 跑道
+  const tcx = -28, tcz = northWallZAt(-28) - 44, straight = 92, R = 30, laneW = 7.2;
+  const stadium = (r) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-straight / 2, -r);
+    sh.lineTo(straight / 2, -r);
+    sh.absarc(straight / 2, 0, r, -Math.PI / 2, Math.PI / 2, false);
+    sh.lineTo(-straight / 2, r);
+    sh.absarc(-straight / 2, 0, r, Math.PI / 2, Math.PI * 1.5, false);
+    return sh;
+  };
+  const ring = stadium(R + laneW);
+  ring.holes.push(new THREE.Path(stadium(R).getPoints(64).reverse()));
+  const trackMesh = new THREE.Mesh(new THREE.ShapeGeometry(ring, 48), new THREE.MeshStandardMaterial({ color: 0xb4513f, roughness: 0.85 }));
+  trackMesh.rotation.x = -Math.PI / 2; trackMesh.position.set(tcx, 0.045, tcz); trackMesh.receiveShadow = true;
+  pg.add(trackMesh);
+  const infield = new THREE.Mesh(new THREE.ShapeGeometry(stadium(R - 0.05), 48), new THREE.MeshStandardMaterial({ color: 0x8d9a5a, roughness: 0.92 }));
+  infield.rotation.x = -Math.PI / 2; infield.position.set(tcx, 0.04, tcz);
+  pg.add(infield);
+  // 分道白線
+  const laneLineMat = new THREE.MeshBasicMaterial({ color: 0xf1ede4 });
+  for (let k = 1; k < 6; k++) {
+    const r = R + k * (laneW / 6);
+    const pts = stadium(r).getPoints(80);
+    const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, 0, -p.y))), laneLineMat);
+    line.position.set(tcx, 0.06, tcz);
+    pg.add(line);
+  }
+  // 沿本校北牆外側之屏工喬木列
+  const trunkM = new THREE.MeshStandardMaterial({ color: 0x5a4634, roughness: 0.9 });
+  const leafA = new THREE.MeshStandardMaterial({ color: 0x3d6e35, roughness: 0.82 });
+  const leafB = new THREE.MeshStandardMaterial({ color: 0x4f8540, roughness: 0.8 });
+  for (let tx = x1 + 6; tx < x2 - 4; tx += 11) {
+    const tz = northWallZAt(tx) - 3.2 - ((tx * 7) % 3);
+    const sc = 0.85 + (((tx * 13) % 10) / 30);
+    addMesh(pg, new THREE.CylinderGeometry(0.2 * sc, 0.3 * sc, 3.4 * sc, 8), trunkM, tx, 1.7 * sc, tz);
+    [[0, 4.6, 0, 2.2], [1.4, 4.0, 0.6, 1.7], [-1.3, 4.1, -0.5, 1.8], [0.2, 5.4, -0.3, 1.6]].forEach(([ox, oy, oz, r], k) => {
+      const c = addMesh(pg, new THREE.DodecahedronGeometry(r * sc, 1), k % 2 ? leafA : leafB, tx + ox * sc, oy * sc, tz + oz * sc);
+      c.scale.set(1.2, 0.78, 1.15);
+    });
+  }
+  layerGroups.context.add(pg);
+}
+
+// v2.12.86 依使用者指示：移除學校四周民房（復興路對側透天、西南高層住宅、各巷道對側連棟街屋）；設 true 可恢復
+const SHOW_NEIGHBOR_HOUSES = false;
+
+// Context Neighbor Buildings (`context` layer - Pingtung Townhouses positioned cleanly outside the Buffered Roads)
+if (SHOW_NEIGHBOR_HOUSES) {
   const ctxMat1 = new THREE.MeshStandardMaterial({ color: 0xd7d4ca, roughness: 0.86 });
   const ctxMat2 = new THREE.MeshStandardMaterial({ color: 0xcbc7bc, roughness: 0.86 });
   const ctxMat3 = new THREE.MeshStandardMaterial({ color: 0xdfd8cc, roughness: 0.84 });
@@ -2483,19 +4000,14 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
 
   const contextBlocks = [
     // South of Jianxing S. Rd Lane 42 (shifted south of the Commuter Walkway + Road buffer!)
-    [540, 438, 595, 502, 10.5], [602, 438, 655, 502, 12.0], [662, 438, 725, 502, 10.5],
-    [735, 436, 785, 500, 11.0], [805, 434, 865, 498, 13.5], [872, 434, 935, 498, 10.5],
-    [345, 482, 435, 542, 9.5],  [445, 460, 515, 520, 11.5], [235, 522, 325, 578, 10.0],
     // West of Jianxing S. Rd Lane 50 & Jianxing S. Rd (shifted west of the Commuter Walkway + Road buffer!)
-    [-75, 85, -16, 160, 10.0], [-75, 175, -16, 250, 12.5], [-75, 265, -16, 345, 9.5], [-55, 365, 12, 440, 10.5],
     // East across Fuxing Rd
     [1180, 80, 1260, 175, 14.0], [1180, 195, 1260, 295, 11.5], [1180, 315, 1260, 405, 15.0],
     // Southwest/South High-Rise Residential Apartment Towers (實景照片 135447.jpg & 135708.jpg 西南側外圍 10~12 層紅磚瓷磚高層住宅大樓)
     [-85, 450, -5, 545, 34.0],   // 西南高樓 A (10層高樓)
     [25, 510, 115, 600, 36.5],   // 西南高樓 B (11層高樓)
     [125, 520, 215, 610, 38.0],  // 南側高樓 C (12層高樓)
-    // North across North Buffer
-    [220, -68, 340, -12, 10.5], [360, -68, 485, -12, 12.0], [510, -68, 640, -12, 11.0], [665, -68, 810, -12, 13.0]
+    // v2.12.6：北側圍牆外為國立屏東高工運動場與草地（非民宅），原 4 棟北側住宅量體移除，改於下方建置屏工運動場
   ];
   contextBlocks.forEach(([x1, y1, x2, y2, h], idx) => {
     const w = (x2 - x1) * S, d = (y2 - y1) * S, cx = X((x1 + x2) / 2), cz = Z((y1 + y2) / 2);
@@ -2513,6 +4025,59 @@ const planterHedgeMat = new THREE.MeshStandardMaterial({ color: 0x4b8546, roughn
       addBox(layerGroups.context, w * 0.65, 2.2, d * 0.65, ctxTerracottaRoof, cx, h + 1.25, cz);
     } else {
       addMesh(layerGroups.context, new THREE.CylinderGeometry(0.65, 0.65, 1.5, 10), steelTankMat, cx + w * 0.22, h + 1.05, cz - d * 0.18);
+    }
+  });
+}
+
+// v2.12.70 依 Google 衛星圖：建興南路50巷、建興南路（西側斜段）與建興南路42巷（運動場南側）對面連棟街屋
+//   沿各路段外側（人行道＋車道＋對側騎樓 1.6 m 之外）依面寬 4～7 m 分割透天厝，進深 11～15 m、2～4 層，
+//   避開既有高樓量體；屋頂部分加設鐵皮斜頂或水塔
+if (SHOW_NEIGHBOR_HOUSES) {
+  const rowMats = [0xe2ddd1, 0xd3cfc6, 0xe6e1d8, 0xcfc9bd, 0xe8d8cf, 0xd6dde0, 0xdcd3c1].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.84 }));
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x8c9399, roughness: 0.8 });
+  const sheetMats = [0x6f8fa6, 0xa95c4a, 0x9aa3a8].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.55, metalness: 0.35, side: THREE.DoubleSide }));
+  const winMat = new THREE.MeshStandardMaterial({ color: 0x55636b, roughness: 0.45 });
+  const shutterMat = new THREE.MeshStandardMaterial({ color: 0xb9bec2, roughness: 0.5, metalness: 0.4 });
+  const tankMat = new THREE.MeshStandardMaterial({ color: 0xc4cacd, roughness: 0.35, metalness: 0.65 });
+  const avoid = [[-85, 450, -5, 545], [25, 510, 115, 600], [125, 520, 215, 610]].map(([a, b, c, d]) => [X(a), Z(b), X(c), Z(d)]);
+  const WP = WEST_WALL_PX;
+  // 西牆短折段合併為兩直段（50巷南北段、建興南路斜段），街屋列較連續
+  const segs = [
+    [X(WP[0][0]), Z(WP[0][1]), X(WP[2][0]), Z(WP[2][1]), 3.2 + 0.35 + 9.6],
+    [X(WP[2][0]), Z(WP[2][1]), X(WP[8][0]), Z(WP[8][1]), 3.2 + 0.35 + 9.6]
+  ];
+  segs.push([X(166), Z(486), X(374), Z(371), 2.2 + 0.35 + 8.4]);
+  // v2.12.73 依街景：42巷東段（幼兒園、南棟、前庭對面）同為連棟透天街屋，臨 6 m 窄巷
+  segs.push([X(367), Z(374), X(496) - 8, Z(294.9) + 8 * (Z(374) - Z(294.9)) / (X(496) - X(367)), 3.0 + 0.35 + 6.0]);   // v2.12.74 沿斜向 42 巷
+  segs.push([window.__L42.x1, window.__L42.at(window.__L42.x1) - 5.35, window.__L42.x2 - 4, window.__L42.at(window.__L42.x2 - 4) - 5.35, 2.0 + 0.35 + 6.0]);   // v2.12.76 筆直 42 巷
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const placed = [];
+  segs.forEach(([x1, z1, x2, z2, off], si) => {
+    const dx = x2 - x1, dz = z2 - z1, L = Math.hypot(dx, dz); if (L < 6) return;
+    const ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
+    let t = 2.5;
+    while (t < L - 3) {
+      const fw = 4 + rnd() * 3, dp = 11 + rnd() * 4, fl = 2 + Math.floor(rnd() * 3), h = fl * 3.3 + 0.6;
+      if (t + fw > L - 1.5) break;
+      const front = off + 1.6, cx = x1 + ux * (t + fw / 2) + nx * (front + dp / 2), cz = z1 + uz * (t + fw / 2) + nz * (front + dp / 2);
+      const r = Math.hypot(fw, dp) / 2;
+      const hit = avoid.some(([a, b, c, d]) => cx > a - r && cx < c + r && cz > b - r && cz < d + r) || placed.some(([px, pz, pr, ps]) => ps !== si && Math.hypot(px - cx, pz - cz) < (pr + r) * 0.6);
+      if (!hit) {
+        placed.push([cx, cz, r, si]);
+        const grp = new THREE.Group(); grp.position.set(cx, 0, cz); grp.rotation.y = -Math.atan2(uz, ux);
+        const mat = rowMats[Math.floor(rnd() * rowMats.length)];
+        addBox(grp, fw - 0.12, h, dp, mat, 0, h / 2, 0);
+        addBox(grp, fw + 0.1, 0.22, dp + 0.2, roofMat, 0, h + 0.11, 0);
+        const fz = -dp / 2 - 0.03;   // 臨路立面（局部 −z 朝道路）
+        addBox(grp, fw * 0.82, 2.6, 0.06, shutterMat, 0, 1.3, fz, false);   // 1F 鐵捲門
+        for (let k = 1; k < fl; k++) addBox(grp, fw * 0.7, 1.2, 0.06, winMat, 0, k * 3.3 + 1.7, fz, false);
+        addBox(grp, fw - 0.12, 0.18, 1.0, mat, 0, 3.15, -dp / 2 - 0.5);   // 2F 雨遮
+        if (rnd() < 0.55) { const sm = sheetMats[Math.floor(rnd() * 3)], sh = addBox(grp, fw + 0.2, 0.06, dp * 0.6, sm, 0, h + 1.1, dp * 0.15); sh.rotation.x = 0.12; addBox(grp, fw - 0.4, 1.0, dp * 0.55, mat, 0, h + 0.6, dp * 0.15); }
+        else addMesh(grp, new THREE.CylinderGeometry(0.6, 0.6, 1.4, 10), tankMat, fw * 0.2, h + 0.9, dp * 0.25);
+        grp.traverse(o => { if (o.isMesh) { o.castShadow = false; } });
+        layerGroups.context.add(grp);
+      }
+      t += fw;
     }
   });
 }
@@ -2673,7 +4238,7 @@ function buildNorthBuilding() {
   const northDetailGroup = new THREE.Group();
   northDetailGroup.name = 'north-detail-group';
   g.add(northDetailGroup);
-  registerLOD('north-building', [14.5, 6, -30], northDetailGroup, 68);
+  registerLOD('north-building', ((c) => [c[0], 6, c[1]])(NORTH_XF.toWorld(14.5, -30)), northDetailGroup, 68);   // v2.12.40 LOD 中心換算世界座標
 
   // ==========================================================================
   // EXACT 19-AXIS CAD STRUCTURAL GRID (`軸線 ① ~ ⑲`, Total Span = 8980 cm):
@@ -2817,6 +4382,7 @@ function buildNorthBuilding() {
 
   // Poly Haven CC0 PBR maps (embedded as data-URIs in tex/pbr_data.js so WebGL never hits file:// CORS limits)
   function applyPBR(mat, base, rx, ry) {
+    mat.userData.noDedupe = true;   // 之後會被延遲換上貼圖，不可與其他同色材質合併
     const doApply = data => {
       if (!data) return;
       const loader = new THREE.TextureLoader();
@@ -2866,8 +4432,9 @@ function buildNorthBuilding() {
   const shelterSignMat = new THREE.MeshStandardMaterial({ map: makeShelterSignTexture('防空避難設備'), roughness: 0.45 });
 
   // A. 1F 地面以上外圍基座牆（Y = 0 至 baseH = 1.25m）
-  // 1F 南正面外飾基座牆 (Axis B / zf)
-  addBox(g, mainSpanW, baseH, 0.25, whiteTileFine, mainCenterX, baseH / 2, zf - 0.125);
+  // 1F 南正面外飾基座牆 (Axis B / zf)：西翼至中央川堂（③–⑫）維持白磁磚基座；東翼（⑫–⑱）改由實景灰綠磁磚與白百葉地下室外牆構成
+  const westPlinthW = ax(12) - mainWestX;
+  addBox(g, westPlinthW, baseH, 0.25, whiteTileFine, mainWestX + westPlinthW / 2, baseH / 2, zf - 0.125);
   // 1F 北後走廊外飾基座牆 (Axis E / zb)
   addBox(g, mainSpanW, baseH, 0.25, whiteTileFine, mainCenterX, baseH / 2, zb + 0.125);
   // 1F 西端軸線 ③ 與東端軸線 ⑱ 基座山牆
@@ -3242,14 +4809,14 @@ function buildNorthBuilding() {
     // 依 CAD 建築平面圖：北牆對齊 F 軸 (zb - 1.30 ~ -40.00，與西側後走廊樓梯北外牆齊平且共壁！)
     // 南牆對齊 C1 軸 (深 7.80m = 280+220+280cm)，南側緊鄰西側電梯高塔
     const wcD = 7.80;
-    const zWcNorth = zb - 1.30;                    // F 軸 (~ -45.205m，與西側後走廊樓梯齊平共壁)
+    const zWcNorth = zb - 2.80;                    // F 軸：v2.12.40 依平面圖 F–D2 280 cm（D2 ≈ E 軸），與西側後走廊樓梯方盒北緣 (zb − 2.90) 約略齊平
     const zWcSouth = zWcNorth + wcD;               // C1 軸 (~ -37.405m)
     const wcCz = (zWcNorth + zWcSouth) / 2;        // 幾何中心 Z (~ -41.305m)
     const towerWallH = baseH + 3 * FH;             // 12.35m
     const archRise = 2.80;                         // 半圓拱頂拱高 +280cm (峰頂 ~ +15.15m)
 
     const toiletStuccoMat  = new THREE.MeshStandardMaterial({ color: 0xdedcd7, roughness: 0.82, side: THREE.DoubleSide });
-    const toiletRoofRedMat = new THREE.MeshStandardMaterial({ color: 0x41769d, roughness: 0.62, side: THREE.DoubleSide }); // 相片1 拱形藍色屋頂 (Barrel-Vault Blue Metal Roof)
+    const toiletRoofRedMat = new THREE.MeshStandardMaterial({ color: 0x7a3329, roughness: 0.62, side: THREE.DoubleSide }); // v2.12.43 依操場實景照片 5375：拱形屋面為暗紅褐色
     const toiletBlueMat    = new THREE.MeshStandardMaterial({ color: 0x144aa2, roughness: 0.48 });
     const toiletYellowMat  = new THREE.MeshStandardMaterial({ color: 0xf5c914, roughness: 0.50 });
     const toiletRedMat     = new THREE.MeshStandardMaterial({ color: 0xd81c42, roughness: 0.50 });
@@ -3342,17 +4909,15 @@ function buildNorthBuilding() {
       const blueW_z = 2.20, blueH = 3.40;
       const blueZ = zWcSouth - blueW_z / 2 - 0.22;
       const blueY = baseH + 1.85 + blueH / 2;
-      addBox(g, 0.06, blueH, blueW_z, toiletBlueMat, wcL - 0.03, blueY, blueZ);
+      // v2.12.43 依操場實景照片 5375：西立面為素面白牆，無藍、紅色塊（色塊位於南立面）
 
       // B. 3F 鮮紅色大矩形塊 (#d81c42，正疊在寶藍色塊上方)
       const redW_z = 1.70, redH = 1.05;
       const redZ = blueZ + (blueW_z - redW_z) / 2;
       const redY = baseH + 2 * FH + redH / 2 + 0.35;
-      addBox(g, 0.06, redH, redW_z, toiletRedMat, wcL - 0.03, redY, redZ);
 
       // C. 1F 內凹門洞上方水平深寶藍色楣樑色塊 (#144aa2) 與白色下緣飾條
       const doorBlueW = doorW_z + 0.08, doorBlueH = 0.50;
-      addBox(g, 0.06, doorBlueH, doorBlueW, toiletBlueMat, wcL - 0.03, baseH + doorH + doorBlueH / 2 + 0.08, doorZ);
       addBox(g, 0.08, 0.08, doorBlueW, alcoveWhiteMat, wcL - 0.03, baseH + doorH + 0.04, doorZ);
 
       // D. 1F 西側內凹白牆玄關門洞 (`內凹玄關門洞`, `crop_toilet_stairs.jpg` 1:1)
@@ -3452,20 +5017,17 @@ function buildNorthBuilding() {
     {
       const stainlessMat = stainlessRailMat;
 
-      // A. 鮮黃色垂直色塊 (1F~2F 西南立面)
-      const yelW = 1.95, yelH = 4.35;
-      const yelX = wcL + 0.35 + yelW / 2;
-      const yelY = baseH + 1.15 + yelH / 2;
-      addBox(g, yelW, yelH, 0.06, toiletYellowMat, yelX, yelY, zWcSouth + 0.03);
-      // 黃色塊邊界深色分割線
+      // v2.12.46 依實景照片（西南方仰拍）：南立面西側由上而下為 3F 小紅塊、2F～3F 高藍塊、1F 黃塊、地面紅色踢腳帶
+      const yelW = 1.30, yelH = baseH + FH - 0.55;                  // 1F 黃塊（壁燈定位沿用）
+      const blkX = wcL + 0.35 + yelW / 2, zF = zWcSouth + 0.03;
+      addBox(g, yelW, 0.55, 0.06, toiletRedMat, blkX, 0.275, zF);                                   // 地面紅色踢腳帶
+      addBox(g, yelW, yelH, 0.06, toiletYellowMat, blkX, 0.55 + yelH / 2, zF);                     // 1F 黃塊
+      const blueY1 = baseH + FH + 0.35, blueY2 = baseH + 2 * FH + 0.85;
+      addBox(g, yelW, blueY2 - blueY1, 0.06, toiletBlueMat, blkX, (blueY1 + blueY2) / 2, zF);       // 2F～3F 高藍塊
+      addBox(g, yelW, 0.75, 0.06, toiletRedMat, blkX, blueY2 + 0.55, zF + 0.005);                    // 3F 小紅塊
+      // 色塊邊界深色分割線
       addBox(g, 0.035, towerWallH, 0.04, ironGrilleMat, wcL + 0.35 + yelW, towerWallH / 2, zWcSouth + 0.02);
       addBox(g, 0.035, towerWallH, 0.04, ironGrilleMat, wcL + 0.35, towerWallH / 2, zWcSouth + 0.02);
-
-      // B. 3F 左上方鮮紅色矩形色塊 (#d81c42)
-      const redW = 1.65, redH = 1.95;
-      const redX = wcL + 0.35 + redW / 2;
-      const redY = baseH + 2 * FH + 1.45 + redH / 2;
-      addBox(g, redW, redH, 0.06, toiletRedMat, redX, redY, zWcSouth + 0.035);
 
       // C. 太陽能 LED 戶外壁燈 (Photo 1 實景 · 黃色塊壁面斜臂固定支架)
       const lampX = wcL + 0.35 + yelW * 0.58;
@@ -3642,12 +5204,13 @@ function buildNorthBuilding() {
 
       const nbW = 1.65;
       const nbX = wcR - nbW / 2 - 0.05;
-      const nbH1 = 2.85;
-      addBox(g, nbW, nbH1, 0.06, toiletBlueMat, nbX, baseH + nbH1 / 2, zWcNorth - 0.03);
-      const nyH = 2.80;
-      addBox(g, nbW, nyH, 0.06, toiletYellowMat, nbX, baseH + FH + nyH / 2, zWcNorth - 0.03);
-      const nrH = 1.85;
-      addBox(g, nbW, nrH, 0.06, toiletRedMat, nbX, baseH + 2 * FH + nrH / 2, zWcNorth - 0.03);
+      // v2.12.47 依照片 80：東側 1F 上半～2F 藍塊，其上 2F～3F 黃塊；下方 1F 為素白牆
+      const nbY1 = baseH + 1.3, nbY2 = baseH + FH + 1.2;
+      addBox(g, nbW, nbY2 - nbY1, 0.06, toiletBlueMat, nbX, (nbY1 + nbY2) / 2, zWcNorth - 0.03);
+      addBox(g, nbW, towerWallH - 0.3 - nbY2, 0.06, toiletYellowMat, nbX, (nbY2 + towerWallH - 0.3) / 2, zWcNorth - 0.03);
+      // 藍塊右側（西）2F 長條橫窗與白色窗台飾板
+      addBox(g, wcW - nbW - 1.4, 0.62, 0.08, ironGrilleMat, wcL + 0.5 + (wcW - nbW - 1.4) / 2, nbY2 - 0.10, zWcNorth - 0.04);
+      addBox(g, wcW - nbW - 1.4, 0.48, 0.03, doorGlassMat, wcL + 0.5 + (wcW - nbW - 1.4) / 2, nbY2 - 0.10, zWcNorth - 0.08);
 
       addBox(g, 0.08, towerWallH, 0.08, pipePvcMat, wcR - 0.06, towerWallH / 2, zWcNorth - 0.06);
       addBox(g, 0.12, 0.08, 0.24, pipePvcMat, wcR - 0.12, baseH + 2.70, zWcNorth - 0.14);
@@ -3693,47 +5256,53 @@ function buildNorthBuilding() {
     const stTreadMat    = new THREE.MeshStandardMaterial({ color: 0xb5b3ad, roughness: 0.85 });
     const cabinetMat    = new THREE.MeshStandardMaterial({ color: 0x8a929a, roughness: 0.50, metalness: 0.45 });
 
-    const zWcNorth = zb - 1.30;                    // F 軸 (-40.005m)
+    const zWcNorth = zb - 2.80;                    // F 軸 (v2.12.40 依平面圖)
     const zWcSouth = zWcNorth + 7.80;              // C1 軸 (-32.205m)
 
     // -------------------------------------------------------------
-    // A. 北棟西側電梯高塔 (Elevator Tower · 精準坐落於 Bay ②–③ 軸線)
-    //    依 CAD 1F 平面圖：位於軸線 ② 與 ③ 之間，緊鄰教室群西側，自前走廊南外牆向南凸出
+    // A. 北棟西側電梯高塔 (Elevator Tower · 跨 Bay ①–③ 南側)
+    //    依 CAD 1F 平面圖與航照：位於廁所大樓以南、前走廊西端外側，緊鄰教室群西側
     // -------------------------------------------------------------
-    const elevWestX = b2L + 1.25;                          // ~ -29.66m (Bay ②–③ 靠東側，留出西側通道)
+    // v2.12.41 依 1F 平面圖（電梯框約 ①+2.8 m～③、E 軸以南 8.9～13.6 m）與使用者航照標示（北棟前走廊西端外側）：
+    //   電梯塔寬約 7.4 m（①+3.0 m 至 ③ 前）、北緣在教室前牆（C 軸）以北 1.7 m、南緣超出前走廊外緣約 0.4 m
+    const elevWestX = ax(1) + 3.00;                        // ~ -33.91m
     const elevEastX = b2R - 0.12;                          // ~ -26.54m
-    const elevW = elevEastX - elevWestX;                   // ~ 3.12m
-    const elevCx = (elevWestX + elevEastX) / 2;            // ~ -28.10m
-    const elevNorthZ = zf - 0.25;                          // ~ -26.425m (緊貼前走廊)
-    const elevSouthZ = -23.90;                             // 向南延伸至 -23.90m (深度 2.525m，與西棟廚房增建保持 3.90m 適當天井庭院棟距！)
+    const elevW = elevEastX - elevWestX;                   // ~ 7.37m
+    const elevCx = (elevWestX + elevEastX) / 2;            // ~ -30.23m
+    const elevNorthZ = zCoreFront - 1.70;                  // ~ -30.375m
+    const elevSouthZ = zf + 0.40;                          // ~ -25.775m (深度約 4.6m)
     const elevD = Math.abs(elevSouthZ - elevNorthZ);       // 2.525m
     const elevCz = (elevNorthZ + elevSouthZ) / 2;
     const elevMainH = baseH + 3 * FH + 0.95;               // ~ 13.00m (三層主井體)
     const elevPentH = baseH + 3 * FH + 2.75;               // ~ 14.80m (頂部挑高機房)
 
     // 主體白色二丁掛井體 (包含機房頂部女兒牆壓頂)
-    addBox(g, elevW, elevMainH, elevD, whiteTileFine, elevCx, elevMainH / 2, elevCz);
-    addBox(g, elevW - 0.20, elevPentH - elevMainH, elevD * 0.75, whiteTileFine, elevCx, elevMainH + (elevPentH - elevMainH) / 2, elevCz - elevD * 0.10);
-    addBox(g, elevW + 0.10, 0.14, elevD * 0.75 + 0.10, columnTileFine, elevCx, elevPentH + 0.07, elevCz - elevD * 0.10);
+    // v2.12.43 依操場實景照片 5375：北半部為細高電梯井塔，南半部梯廳量體較低（約 3F 女兒牆高）
+    // v2.12.44 依實景照片 5141／5143／5147：北側為較低之 3 層開敞梯廳（西面每層方形開口），南側為細高電梯井塔（頂部通風小窗、1F 西面電梯門）
+    const elevLowH = baseH + 3 * FH;
+    const loggiaD = 2.0, shaftD = elevD - loggiaD;
+    const loggiaCz = elevNorthZ + loggiaD / 2, shaftCz = elevNorthZ + loggiaD + shaftD / 2;
+    // v2.12.47 依照片 78／5375：梯廳西面較電梯井西面退縮約 1.2 m（自西南方被井塔遮住，僅見米黃山牆凹口）
+    const loggiaX1 = elevWestX + 0.3,   /* v2.12.50 照片 84：梯廳西面幾乎與電梯井齊平 */ loggiaW = elevEastX - loggiaX1, loggiaCx = (loggiaX1 + elevEastX) / 2;
+    addBox(g, loggiaW, elevLowH, loggiaD, whiteTileFine, loggiaCx, elevLowH / 2, loggiaCz);
+    addBox(g, loggiaW + 0.12, 0.14, loggiaD + 0.08, columnTileFine, loggiaCx, elevLowH + 0.07, loggiaCz);
+    addBox(g, elevW, elevMainH, shaftD, whiteTileFine, elevCx, elevMainH / 2, shaftCz);
+    const shaftW = 3.6, shaftCx = elevWestX + shaftW / 2;
+    addBox(g, shaftW, elevPentH - elevMainH, shaftD, whiteTileFine, shaftCx, elevMainH + (elevPentH - elevMainH) / 2, shaftCz);
+    addBox(g, shaftW + 0.10, 0.14, shaftD + 0.10, columnTileFine, shaftCx, elevPentH + 0.07, shaftCz);
+    // 頂部機房通風小窗 (西立面與南立面)
+    addBox(g, 0.85, 0.75, 0.10, ironGrilleMat, shaftCx, elevPentH - 0.75, elevNorthZ + elevD + 0.05);
+    addBox(g, 0.10, 0.75, 0.85, ironGrilleMat, elevWestX - 0.04, elevPentH - 0.75, shaftCz);
 
-    // 頂部機房百葉窗 (南立面與西立面)
-    addBox(g, 0.85, 0.75, 0.10, ironGrilleMat, elevCx, elevPentH - 0.75, elevCz - elevD * 0.10 + elevD * 0.375 + 0.05);
-    addBox(g, 0.10, 0.75, 0.85, ironGrilleMat, elevWestX - 0.04, elevPentH - 0.75, elevCz - elevD * 0.10);
-
-    // 2F 與 3F 西側連通採光通風開敞洞口 (Loggia Openings per Photos 1, 2, 3)
-    // 實景特徵：白磁磚矮牆欄杆 (高0.95m) + 不銹鋼防墜扶手 + 寬1.15m 挑高2.15m 開敞洞口，內部透出梯廳進深
-    for (let fl = 1; fl <= 2; fl++) {
-      const fy = baseH + fl * FH;
-      const portalW = 1.15, portalH = 2.15;
-      const parapetH = 0.95;
-      const lintelH = FH - parapetH - portalH; // ~0.50m
-      // 下方白色二丁掛矮牆與不銹鋼扶手
-      addBox(g, 0.24, parapetH, portalW, whiteTileFine, elevWestX + 0.10, fy + parapetH / 2, elevCz);
-      addBox(g, 0.05, 0.05, portalW, stainlessRailMat, elevWestX + 0.10, fy + parapetH + 0.025, elevCz);
-      // 上方白色二丁掛過樑
-      addBox(g, 0.24, lintelH, portalW, whiteTileFine, elevWestX + 0.10, fy + FH - lintelH / 2, elevCz);
-      // 洞口內部深色背景格柵 (微退縮 0.20m，保留梯廳空間感)
-      addBox(g, 0.04, portalH - 0.10, portalW - 0.06, ironGrilleMat, elevWestX + 0.25, fy + parapetH + portalH / 2, elevCz);
+    // 北側梯廳西面 1F～3F 方形開敞洞口（內部深色梯廳、下緣白磁磚矮牆）
+    {
+      const openMat = new THREE.MeshStandardMaterial({ color: 0x5d5f5c, roughness: 0.9 });
+      for (let fl = 0; fl <= 2; fl++) {
+        const fy = baseH + fl * FH;
+        const oW = loggiaD - 0.70, oH = 2.25, sill = fl === 0 ? 0.45 : 0.95;
+        addBox(g, 0.06, oH, oW, openMat, loggiaX1 - 0.02, fy + sill + oH / 2 - 0.2, loggiaCz);
+        addBox(g, 0.08, 0.06, oW + 0.06, columnTileFine, loggiaX1 - 0.05, fy + sill - 0.23, loggiaCz);
+      }
     }
 
     // 1F 電梯門廳 (西牆面向遮雨棚觀景平台通道 · Photo 2 & Image 4 實景)
@@ -3741,15 +5310,15 @@ function buildNorthBuilding() {
       const doorW_z = 1.35, doorH = 2.25;
       const doorX = elevWestX - 0.02;
       // 西向門扇與門套
-      addBox(g, 0.08, doorH + 0.12, doorW_z + 0.24, steelPostMat, doorX + 0.02, (doorH + 0.12) / 2, elevCz);
-      addBox(g, 0.04, doorH, doorW_z, stainlessMat, doorX - 0.01, doorH / 2, elevCz);
-      addBox(g, 0.05, doorH, 0.02, ironGrilleMat, doorX - 0.02, doorH / 2, elevCz);
+      addBox(g, 0.08, doorH + 0.12, doorW_z + 0.24, steelPostMat, doorX + 0.02, (doorH + 0.12) / 2, shaftCz);
+      addBox(g, 0.04, doorH, doorW_z, stainlessMat, doorX - 0.01, doorH / 2, shaftCz);
+      addBox(g, 0.05, doorH, 0.02, ironGrilleMat, doorX - 0.02, doorH / 2, shaftCz);
       // 電梯樓層標牌「1」（黃底黑字 per Photo 2 / Image 4）
-      const signZ = elevCz + doorW_z / 2 + 0.28;
+      const signZ = shaftCz + doorW_z / 2 + 0.28;
       addBox(g, 0.03, 0.32, 0.26, new THREE.MeshStandardMaterial({ color: 0xf5c914, roughness: 0.35 }), doorX - 0.02, 1.72, signZ);
       addBox(g, 0.035, 0.20, 0.06, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 }), doorX - 0.025, 1.72, signZ);
       // 電梯外召按鈕盒
-      addBox(g, 0.03, 0.22, 0.10, stainlessMat, doorX - 0.02, 1.35, elevCz - doorW_z / 2 - 0.22);
+      addBox(g, 0.03, 0.22, 0.10, stainlessMat, doorX - 0.02, 1.35, shaftCz - doorW_z / 2 - 0.22);
 
       // 南立面備用門扇
       const sDoorZ = elevSouthZ - 0.02;
@@ -3767,6 +5336,7 @@ function buildNorthBuilding() {
     //       緊貼主廚房北外牆向東延伸至中庭，頂覆青綠色半透明採光罩（北緣圓弧下垂收邊、北側一列方鋼立柱），
     //       牆側配置兩座圓弧形不銹鋼排油煙罩、不銹鋼防鼠儲物櫃與垂直排煙方管。
     // -------------------------------------------------------------
+    const _kcStart = g.children.length;
     {
       const sageGreenCanopyMat = new THREE.MeshStandardMaterial({
         color: 0x62967a,
@@ -4024,6 +5594,8 @@ function buildNorthBuilding() {
       const wellX = -27.20, wellZ = -24.60;
       addBox(g, 2.20, 1.15, 0.24, new THREE.MeshStandardMaterial({ color: 0x7c7870, roughness: 0.88 }), wellX, 0.575, wellZ);
     }
+    // v2.12.40 北棟依航照北移後，廚房增建改建於西棟群組（擴建至航照 ③ 範圍），原掛於北棟的廚房北面／東面遮雨棚已被擴建量體包覆，故移除
+    g.remove(...g.children.slice(_kcStart));
 
     // (已依 1102001 截圖指示移除北棟西側外牆多餘之梯廳外露量體與樓地板)
     // -------------------------------------------------------------
@@ -4148,443 +5720,375 @@ function buildNorthBuilding() {
     }
 
     // ==========================================================================
-    // 3) 北棟西側後走廊通往 3F 造型樓梯（CAD 1F 平面圖 & 實景照片 1~5 完美 1:1 復原）：
-    //    【雙跑剪刀梯真實結構 · 南北雙梯段 1:1 精確構建】：
-    //    - 北跑 (Outer Flight, 靠車道)：地面 9 階水泥戶外階梯 (東往西上) + 梯段 2 (1.5F->2F) + 梯段 4 (2.5F->3F)
-    //      配階梯狀平整白水泥護牆 + 墨綠色雙橫桿鋼管扶手 (實景照片 1「方位東往西」100% 還原！)
-    //    - 南跑 (Inner Flight, 靠後走廊)：梯段 1 (1F->1.5F, 西往東上) + 梯段 3 (2F->2.5F) + 梯段 5 (3F->屋頂)
-    //      面向後走廊配方形採光通風開口洞與起步倒角白磚墩 (實景照片 4 還原！)
-    //    - 兩跑分界中牆：梯底設有標誌性白色矮台與「梯下三角形穿透開口」(實景照片 1)
-    //    - 西端懸挑方盒平台 (2F/3F/屋頂)：滿貼白二丁掛瓷磚、北向大敞開通風開口洞、頂部過樑與天花日光燈
-    //    - 中央造型主柱：貫穿全樓層，配雙階外凸柱基、建物銘牌、雙鏡頭監控、投光燈與避雷天線針
+    // 3) 北棟西側後走廊 1F→3F→屋頂 戶外直梯（v2.12.118 依 5 張實景照片與平面圖 1:1 精確重建）
+    //    - 梯段與東端平台：緊貼後走廊北牆（E 軸 zb），北緣對齊採光天井外緣（zb - 1.70 m）；
+    //      三段平行直梯（1F→2F、2F→3F、3F→屋頂）皆自西向東爬升；外側護牆白方格磁磚、內側鵝黃粉刷、梯底鵝黃色。
+    //    - 西端（靠翠綠色／蒙德里安廁所大樓）：
+    //      * 1F：無外凸白磚方盒，改為開放式 1F 入口平台，由中央主柱西側 8 階戶外水泥階梯（東往西上）直達，
+    //        北側配平整淺灰階梯狀水泥側牆與墨綠色雙橫桿鋼管扶手（延伸至 1F 平台頂端）。
+    //      * 2F／3F：兩座外凸懸挑白方格磁磚方盒平台（北緣對齊廁所大樓 F 軸 zb - 2.80 m），
+    //        底面鵝黃色天花配嵌入日光燈；3F 方盒上方敞開對天，無第 4 層方盒，綠牆上設淺綠鋼製直爬梯通往廁所屋頂。
+    //      * 廁所大樓東牆（軸線 ②）：自地面至屋頂全面翠綠色塗裝，1F 設紅色消防栓箱，東北轉角配灰 PVC 落水管（3F 紅彎頭）與雙監視器。
+    //    - 中央造型主柱（軸線 ③）：貫穿 1F～屋頂（頂端齊平 3F→屋頂梯段護牆），南緣貼齊梯段護牆內側、向北微凸約 47 cm，
+    //      柱底配加寬白磚台座，2F/3F/屋頂與建築間設橫樑，1F 柱北面設建物銘牌、紅色緊急按鈕、監視器與投光燈。
+    //    - 東端抵達平台（2F／3F／屋頂）：北緣與梯段齊平（zb - 1.70 m），東北角設細長白方格磁磚立柱（36×36 cm）貫穿地面至屋頂；
+    //      1F 梯下為開放通道，東緣設 1.05 m 白磚矮牆隔開採光天井；屋頂層東端平台設高 1.35 m 白方格磁磚女兒牆（向南敞開通往屋頂）。
     // ==========================================================================
-{
-      // 1. 基本跨度與幾何基準 (CAD 1F 平面圖 & 實景照片 1~5 精準對位)
-      const b2L = ax(2), b2R = ax(3), b2W = b2R - b2L;     // Bay ②–③ 淨跨 ~4.494m
-      const boxW = 1.35;                                   // 西端方盒平台淨寬 1.35m
-      const boxEastX = b2L + boxW;                         // ~ -29.567m (懸挑方盒東緣 / 1F 門廊交界)
-      const colW = 0.80, colD = 0.85;                      // 中央主柱尺寸 0.80m × 0.85m
-      const centerColX = b2R - colW / 2;                   // ~ -26.823m (軸線 ③ 主柱中心)
-      const colLeftX = centerColX - colW / 2;              // ~ -27.223m (梯段東端起訖點)
-      const colRightX = centerColX + colW / 2;             // ~ -26.423m (軸線 ③)
-      const runW = colLeftX - boxEastX;                    // 梯段淨水平跨度 ~ 2.344m
-      const eastSpanW = Math.max(0.01, b2R - colRightX);   // 東側靠軸線 ③ 柱之結構縫隙
-      const halfH = FH / 2;                                // 半層樓高 1.80m
-      const stWallH = baseH + 3 * FH + 1.25;               // 中央主柱全高 13.30m (齊平女兒牆壓頂)
+    {
+      // 1. 幾何基準（依 115 學年度北棟壹／貳／參層平面圖與 5 張實景照片）
+      const b2L = ax(2), b2R = ax(3);                      // 軸線 ② -30.92 m、軸線 ③ -26.42 m
+      const boxW = 1.40;                                   // 西端平台寬 1.40 m
+      const xs = b2L + boxW;                               // 梯段起點（西）≈ -29.52 m
+      const nRise = 20, rise = FH / nRise, tread = 0.255;  // 每層 20 級：級高 18 cm、級深 25.5 cm
+      const runL = nRise * tread;                          // 梯段水平長 5.10 m
+      const xe = xs + runL;                                // 梯段終點（東）≈ -24.42 m
+      const xEastBoxEnd = ax(4) - 1.05;                    // 東端平台緊接軸線 ④ 圓洞牆板西緣 ≈ -22.97 m
+      const slopeAng = Math.atan2(rise, tread);            // 坡度 ≈ 35.2°
+      const slopeLen = Math.hypot(runL, FH);
 
-      const slopeAngW = Math.atan2(halfH, runW);           // 梯段坡度角 ~ 37.55°
-      const slopeLenW = Math.hypot(runW, halfH);           // 梯段斜邊長 ~ 2.955m
-      const balH = 1.05;                                   // 女兒牆高度 1.05m
-      const balThick = 0.16;                               // 女兒牆厚度 0.16m
-      const nSteps = 9;                                    // 梯級數 9 階
+      const wallT = 0.15;                                  // 護牆厚 15 cm
+      const balH = 1.05;                                   // 2F/3F 護牆高度
+      const zFlightS = zb;                                 // 梯段緊貼後走廊北外牆（E 軸）
+      const zEastNorth = zb - 1.70;                        // 梯段與東端平台北外緣（對齊 1F 採光天井外緣 nLwD = 1.70 m）
+      const zFlightN = zEastNorth + wallT;                 // 梯段北側護牆內面（淨寬 1.55 m）
+      const flightW = zFlightS - zFlightN;                 // 踏步淨寬 1.55 m
+      const flightCz = (zFlightS + zFlightN) / 2;
+      const eastBoxD = zb - zEastNorth;                    // 東端平台總深 1.70 m
+      const eastBoxCz = (zb + zEastNorth) / 2;
 
-      // 2. 南北雙跑梯段進深分割 (Z-axis Cross-Section):
-      //    南跑 (Inner Flight): 緊鄰 1F 後走廊外牆 (zb)，東向上行 (+X)
-      //    中隔牆 (Mid Divider Wall): 兩跑間之白瓷磚分界矮牆，含梯下三角形穿透洞口 (Photo 1)
-      //    北跑 (Outer Flight): 緊鄰北側車道，西向上行 (-X)，含地面 9 階水泥戶外踏步
-      //    北外護牆 (North Cheek Wall): 階梯狀平整白護牆 + 墨綠鋼管扶手 (Photo 1 & 5)
-      const flightInnerW = 1.20;                           // 南跑寬度 1.20m
-      const flightInnerCz = zb - 0.65;                     // 南跑踏步中心 Z (~ -39.36m)
-      const midWallZ = zb - 1.25;                          // 兩跑分界中牆中心 Z (~ -39.96m)
-      const flightOuterW = 1.25;                           // 北跑寬度 1.25m
-      const flightOuterCz = zb - 1.925;                    // 北跑踏步中心 Z (~ -40.63m)
-      const railZ = zb - 2.55;                             // 北側護牆/扶手中心 Z (~ -41.26m)
-      const zBoxNorth = railZ - 0.15;                      // 2F/3F 懸挑方盒北外外緣 (~ -41.41m)
-      const boxD = Math.abs(zBoxNorth - zb);               // 方盒總進深 ~ 2.70m
-      const boxCz = (zb + zBoxNorth) / 2;                  // 方盒中心 Z
+      const zBoxNorth = zb - 2.80;                         // 西端 2F/3F 方盒北外緣（對齊廁所大樓 F 軸 zWcNorth = zb - 2.80 m）
+      const boxD = zb - zBoxNorth;                         // 西端方盒總深 2.80 m
+      const boxCz = (zb + zBoxNorth) / 2;
 
-      // -----------------------------------------------------------
-      // A. 中央垂直結構造型主柱 (Central Monumental Column Pier, CAD C6)
-      // -----------------------------------------------------------
-      // 1) 主柱柱身 (全貼白色二丁掛瓷磚)
-      addBox(g, colW, stWallH, colD, whiteTileFine, centerColX, stWallH / 2, midWallZ);
-      // 2) 柱基座雙階外凸基石 (Plinth Base per Photo 2 & 3)
-      addBox(g, colW + 0.18, 0.16, colD + 0.18, whiteTileFine, centerColX, 0.08, midWallZ);
-      addBox(g, colW + 0.10, 0.10, colD + 0.10, warmCreamMat, centerColX, 0.21, midWallZ);
-      // 3) 柱頂暖白石材收邊 (頂部齊平女兒牆壓頂，依紅框指示無避雷針天線刺針)
-      addBox(g, colW + 0.08, 0.14, colD + 0.08, warmCreamMat, centerColX, stWallH + 0.07, midWallZ);
-      // 4) 柱面實景專屬設施 (建物標示牌、攝影機、投光燈)
-      addBox(g, 0.28, 0.38, 0.04, panelPureWhite, centerColX, baseH + 0.35, railZ + 0.30);
-      addBox(g, 0.22, 0.30, 0.045, ironGrilleMat, centerColX, baseH + 0.35, railZ + 0.295);
-      addBox(g, 0.18, 0.14, 0.12, panelPureWhite, centerColX, baseH + 0.85, railZ + 0.26);
-      addBox(g, 0.06, 0.08, 0.13, new THREE.MeshStandardMaterial({ color: 0xe65100, roughness: 0.3 }), centerColX, baseH + 0.80, railZ + 0.25);
-      addBox(g, 0.26, 0.18, 0.16, steelPostMat, centerColX, baseH + 1.68, railZ + 0.24);
-      addBox(g, 0.22, 0.14, 0.02, new THREE.MeshBasicMaterial({ color: 0xfffaea }), centerColX, baseH + 1.68, railZ + 0.15);
+      const colW = 0.88, colD = 0.62;                      // 中央主柱寬 88 cm（約 9 格磚）、深 62 cm（約 6 格磚）
+      const centerColX = b2R;                              // 中央主柱：軸線 ③
+      const colCz = zFlightN - colD / 2;                   // 南面貼齊護牆內側，向北凸出梯段外緣約 47 cm
+      const stWallH = baseH + 3 * FH + 1.05;               // 主柱全高（齊平 3F→屋頂梯段護牆頂緣 ≈ 13.10 m）
 
-      // -----------------------------------------------------------
-      // B. 1F 地面戶外過渡階梯與墨綠色安全扶手 (Photo 1「方位東往西」實景 100% 重現！)
-      //    9 階踏步自地面東側 (colLeftX) 向西緩步上行至 1F 門廊平台 (boxEastX)
-      //    北側設階梯狀平整白水泥護牆 + 墨綠色雙橫桿鋼管扶手 (端部圓弧向下收頭、5 根立柱)
-      // -----------------------------------------------------------
-      {
-        const gStCount = 9;
-        const gTread = runW / gStCount;                      // 每階深 ~0.242m
-        const gRise = baseH / gStCount;                      // 每階高 ~0.1389m
-
-        // 1) 9 階水泥踏步本體與洗石子防滑踏面 (在北跑 flightOuterCz 上，自東向西上升)
-        for (let s = 0; s < gStCount; s++) {
-          const sx = colLeftX - (s + 0.5) * gTread;
-          const stepH = (s + 1) * gRise;
-          addBox(g, gTread + 0.02, stepH, flightOuterW, mats.slab, sx, stepH / 2, flightOuterCz);
-          addBox(g, gTread + 0.02, 0.025, flightOuterW, stTreadMat, sx, stepH - 0.0125, flightOuterCz);
-
-          // 北側階梯狀平整白水泥護牆 (Stepped White Cheek Wall per Photo 1 & 5)
-          const cheekH = stepH + 0.32;
-          addBox(g, gTread + 0.02, cheekH, 0.14, alcoveWhiteMat, sx, cheekH / 2, railZ);
+      // 2. 材質：白色 10 cm 小口馬賽克方格磁磚＋鵝黃色梯底與內牆＋淺灰水泥牆＋翠綠廁所背牆
+      const mosaicTex = (() => {
+        const c = document.createElement('canvas'); c.width = c.height = 512;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#52504c'; ctx.fillRect(0, 0, 512, 512);              // 深灰清晰勾縫
+        let sd = 31; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+        for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+          const v = 243 + Math.floor(rnd() * 9);
+          ctx.fillStyle = `rgb(${v},${v},${v - 3})`;
+          ctx.fillRect(i * 64 + 3, j * 64 + 3, 58, 58);
+          ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(i * 64 + 5, j * 64 + 5, 30, 3);
         }
-
-        // 2) 墨綠色鋼管雙橫桿安全扶手 (Weathered Dark Green Tubular Handrails per Photo 1 & 5)
-        const railStartX = colLeftX;
-        const railEndX   = boxEastX;
-        const railSpanX  = railStartX - railEndX;
-        const railLen    = Math.hypot(railSpanX, baseH);
-        const railAng    = Math.atan2(baseH, railSpanX);
-        const railMidX   = (railStartX + railEndX) / 2;
-        const railMidY   = baseH / 2 + 0.32 + 0.52;
-
-        // 傾斜主扶手管 (西高東低)
-        const mainRail = addBox(g, railLen + 0.08, 0.045, 0.045, appleGreenMat, railMidX, railMidY, railZ);
-        mainRail.rotation.z = -railAng;
-        // 起步端向下彎垂圓管收頭 (Downward curl terminal at bottom step)
-        addBox(g, 0.045, 0.18, 0.045, appleGreenMat, railStartX + 0.04, 0.32 + 0.44, railZ);
-
-        // 中層平行副扶手管 (Mid Rail)
-        const subRail  = addBox(g, railLen + 0.08, 0.032, 0.032, appleGreenMat, railMidX, railMidY - 0.26, railZ);
-        subRail.rotation.z = -railAng;
-
-        // 豎向墨綠色鋼管支撐立柱 (5 根立柱均勻錨固於白護牆)
-        const nPosts = 5;
-        for (let p = 0; p <= nPosts; p++) {
-          const px = railStartX - p * (railSpanX / nPosts);
-          const py = (p / nPosts) * baseH + 0.32;
-          const pLen = 0.52;
-          addBox(g, 0.032, pLen, 0.032, appleGreenMat, px, py + pLen / 2, railZ);
+        const t = new THREE.CanvasTexture(c);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 8;
+        return t;
+      })();
+      const mosaicMat = new THREE.MeshStandardMaterial({ map: mosaicTex, roughness: 0.38, metalness: 0.04 });
+      const soffitYellowMat = new THREE.MeshStandardMaterial({ color: 0xefe2bc, roughness: 0.85 });    // 梯底與平台天花淡鵝黃
+      const innerYellowMat  = new THREE.MeshStandardMaterial({ color: 0xdccaa0, roughness: 0.88 });    // 1F~3F 梯段護牆內側暖黃粉刷（照片 2）
+      const stairLimeGreenMat = new THREE.MeshStandardMaterial({ color: 0x5c9436, roughness: 0.78 });  // 3F→屋頂護牆內側與女兒牆草綠色粉刷（實景照片 1、4）
+      const stairGreenWallMat = new THREE.MeshStandardMaterial({ color: 0x3b6e28, roughness: 0.72 });  // 廁所大樓東牆翠綠
+      const entryConcreteMat  = new THREE.MeshStandardMaterial({ color: 0xc8cacb, roughness: 0.85 });  // 1F 入口階梯淺灰平整水泥牆
+      const alumLadderMat     = new THREE.MeshStandardMaterial({ color: 0xb8bec2, roughness: 0.42, metalness: 0.55 }); // 3F→屋頂金屬直爬梯（實景照片 2、4）
+      const roofCopingMat     = new THREE.MeshStandardMaterial({ color: 0x5d6b42, roughness: 0.94 });  // 屋頂女兒牆帶青苔深綠壓頂（實景照片 2、4）
+      const rustIronGateMat   = new THREE.MeshStandardMaterial({ color: 0x5c3c2a, roughness: 0.72, metalness: 0.48 }); // 3F→屋頂生鏽防盜鐵柵門（實景照片 1、3、4）
+      const treadNosingMat    = new THREE.MeshStandardMaterial({ color: 0x9c9990, roughness: 0.45, metalness: 0.40 }); // 踏步前緣金屬防滑條（實景照片 1）
+      const TEX_M = 0.80;                                  // 貼圖一張 = 8 片 × 10 cm
+      function tileBox(w, h, d, mat, x, y, z, rotZ = 0) {
+        const geo = new THREE.BoxGeometry(w, h, d);
+        const uv = geo.attributes.uv;
+        const faceDims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+        for (let f = 0; f < 6; f++) {
+          for (let v = 0; v < 4; v++) {
+            const i = f * 4 + v;
+            uv.setXY(i, uv.getX(i) * faceDims[f][0] / TEX_M, uv.getY(i) * faceDims[f][1] / TEX_M);
+          }
         }
-
-        // 1F 門廊西平台北緣水平雙橫桿安全欄杆 (Horizontal Return Balustrade at 1F Landing)
-        const pRailH = 0.88;
-        const pRailW = boxW;
-        const pRailCx = b2L + boxW / 2;
-        addBox(g, pRailW, 0.045, 0.045, appleGreenMat, pRailCx, baseH + pRailH, railZ);
-        addBox(g, pRailW, 0.032, 0.032, appleGreenMat, pRailCx, baseH + pRailH * 0.52, railZ);
-        addBox(g, 0.04, pRailH, 0.04, appleGreenMat, boxEastX - 0.04, baseH + pRailH / 2, railZ);
-        addBox(g, 0.04, pRailH, 0.04, appleGreenMat, b2L + 0.04, baseH + pRailH / 2, railZ);
+        const m = addMesh(g, geo, mat, x, y, z);
+        if (rotZ) m.rotation.z = rotZ;
+        return m;
       }
-
-      // -----------------------------------------------------------
-      // C. 1F 西端門廊平台與設施 (1F West Landing Portal per Photo 1 & 5)
-      //    Y = baseH = 1.25m，跨越 [b2L, boxEastX]，進深覆蓋南北兩跑 [zb, railZ]
-      // -----------------------------------------------------------
-      {
-        const land1FW = boxW;
-        const land1FCx = b2L + boxW / 2;
-        // 磨石子地坪與支撐基座
-        addBox(g, land1FW, 0.22, boxD, corridorFloorMat, land1FCx, baseH - 0.11, boxCz);
-        addBox(g, land1FW, baseH - 0.22, boxD, warmCreamMat, land1FCx, (baseH - 0.22) / 2, boxCz);
-
-        // 通向 1F 後走廊之開敞門洞通道與過樑
-        const portalH = 2.55;
-        addBox(g, boxW, FH - portalH, 0.22, whiteTileFine, land1FCx, baseH + portalH + (FH - portalH) / 2, zb + 0.11);
-
-        // 西側迎面廁所大樓翠綠色背牆、深藍色踢腳飾帶 (Photo 1 & 5 實景！)
-        const greenW = 0.24, greenH = FH, greenD = boxD;
-        const greenX = b2L + greenW / 2;
-        addBox(g, greenW, greenH, greenD, appleGreenMat, greenX, baseH + greenH / 2, boxCz);
-        // 底部深藍色踢腳飾帶
-        addBox(g, greenW + 0.02, 0.32, greenD + 0.02, featureBlueMat, greenX, baseH + 0.16, boxCz);
-        // 綠牆檢修蓋板 (Access panel per Photo 5)
-        addBox(g, 0.02, 0.45, 0.38, new THREE.MeshStandardMaterial({ color: 0x336b3f, roughness: 0.6 }), greenX + greenW / 2 + 0.01, baseH + 0.75, flightOuterCz);
-
-        // 鮮紅色壁掛「消防栓/滅火器箱」(Red Fire Cabinet per Photo 2 & 5)
-        const fireW = 0.18, fireH = 0.75, fireD = 0.50;
-        addBox(g, fireW, fireH, fireD, fireHydrantMat, greenX + greenW / 2 + fireW / 2, baseH + 1.25, flightInnerCz);
-        addBox(g, 0.02, fireH * 0.45, fireD * 0.75, panelPureWhite, greenX + greenW / 2 + fireW + 0.01, baseH + 1.25, flightInnerCz);
-
-        // 建築接縫垂直白色 PVC 落水管 (Vertical White Downpipe per Photo 1 & 5)
-        addBox(g, 0.09, stWallH, 0.09, pipePvcMat, b2L + 0.18, stWallH / 2, railZ + 0.18);
-        addBox(g, 0.10, 0.18, 0.10, pipePvcMat, b2L + 0.18, baseH + 0.20, railZ + 0.25);
-      }
-
-      // -----------------------------------------------------------
-      // D. 南北雙跑分界中隔牆與「梯下透空穿透開口」(Photo 1 實景 1:1 重現！)
-      //    位於 Z = midWallZ，隔開南跑與北跑
-      //    在 9 階踏步左側，梯段 1 底座設有標誌性白色矮台與「三角形/長方形透空開口洞」
-      // -----------------------------------------------------------
-      {
-        const voidW = runW - 0.20;
-        const voidSillY = 0.38;                              // 矮台窗台高 0.38m
-        const voidCx = (boxEastX + colLeftX) / 2;
-        // 窗台基座與暖白壓頂
-        addBox(g, voidW, voidSillY, 0.16, whiteTileFine, voidCx, voidSillY / 2, midWallZ);
-        addBox(g, voidW + 0.06, 0.04, 0.20, warmCreamMat, voidCx, voidSillY + 0.02, midWallZ);
-        // 西端與東端支撐垂直白瓷磚門墩
-        addBox(g, 0.20, baseH - voidSillY, 0.16, whiteTileFine, boxEastX + 0.10, voidSillY + (baseH - voidSillY) / 2, midWallZ);
-        addBox(g, 0.20, baseH - voidSillY, 0.16, whiteTileFine, colLeftX - 0.10, voidSillY + (baseH - voidSillY) / 2, midWallZ);
-      }
-
-      // -----------------------------------------------------------
-      // E. 1F 後走廊內側斜向白磚隔牆與方形採光通風開孔洞 (Photo 4 實景 1:1 還原！)
-      //    位於梯段 1 南側 (Z = zb + 0.09)，面向 1F 後走廊
-      // -----------------------------------------------------------
-      {
-        const corrWallZ = zb + 0.09;                         // 後走廊北緣分界線
-        const pierW = 0.34, pierH = 1.08;
-        // 起步倒角白磚墩 (Starting chamfered newel pier at west landing per Photo 4)
-        addBox(g, pierW, pierH, 0.22, whiteTileFine, boxEastX + pierW / 2, baseH + pierH / 2, corrWallZ);
-        addBox(g, pierW + 0.04, 0.05, 0.26, warmCreamMat, boxEastX + pierW / 2, baseH + pierH + 0.025, corrWallZ);
-
-        // 隨階梯向上傾斜之白瓷磚斜護牆 (Sloped Inner Balustrade Wall along 1F corridor)
-        const inSlopeLen = slopeLenW - pierW * 0.8;
-        const inSlopeMidX = (boxEastX + pierW + colLeftX) / 2;
-        const inSlopeMidY = baseH + halfH / 2 + 0.45;
-        const inBalMesh = addBox(g, inSlopeLen, 0.92, 0.16, whiteTileFine, inSlopeMidX, inSlopeMidY, corrWallZ);
-        inBalMesh.rotation.z = slopeAngW;
-        const inCopMesh = addBox(g, inSlopeLen + 0.06, 0.045, 0.20, warmCreamMat, inSlopeMidX, inSlopeMidY + 0.48, corrWallZ);
-        inCopMesh.rotation.z = slopeAngW;
-
-        // 護牆中央「方形採光通風開口洞」(Rectangular Cutout Window per Photo 4)
-        const cutW = 0.82, cutH = 0.62;
-        const cutX = inSlopeMidX;
-        const cutY = inSlopeMidY;
-        addBox(g, cutW + 0.06, 0.04, 0.20, warmCreamMat, cutX, cutY - cutH / 2, corrWallZ);
-        addBox(g, cutW + 0.06, 0.04, 0.20, warmCreamMat, cutX, cutY + cutH / 2, corrWallZ);
-        addBox(g, 0.04, cutH, 0.20, warmCreamMat, cutX - cutW / 2, cutY, corrWallZ);
-        addBox(g, 0.04, cutH, 0.20, warmCreamMat, cutX + cutW / 2, cutY, corrWallZ);
-      }
-
-      // -----------------------------------------------------------
-      // F. 雙跑剪刀梯梯段 (Double-Flight Scissor Flights per CAD 1F Plan & Photos 1~3)
-      // -----------------------------------------------------------
-      const midW = (boxEastX + colLeftX) / 2;
-
-      // --- 梯段 1 (1F -> 1.5F 南跑，自西向東上升 +X) ---
-      {
-        const fyStart = baseH;                               // 1.25m
-        const fyEnd   = baseH + halfH;                       // 3.05m
-        const stepDX  = runW / nSteps;
-        const stepDY  = halfH / nSteps;
-        const midY1   = (fyStart + fyEnd) / 2;
-
-        for (let s = 0; s < nSteps; s++) {
-          const sx = boxEastX + (s + 0.5) * stepDX;
-          const sy = fyStart + (s + 0.5) * stepDY;
-          addBox(g, stepDX + 0.02, 0.18, flightInnerW, mats.slab, sx, sy, flightInnerCz);
-          addBox(g, stepDX + 0.02, 0.025, flightInnerW, stTreadMat, sx, sy + 0.09 + 0.0125, flightInnerCz);
+      // 沿梯段坡度之平行四邊形構件（左右兩端垂直收邊，與東西端平台無縫銜接、絕不突刺；磁磚貼圖沿坡向排列還原實景）
+      function slopedBand(mat, zc, depth, below, above, alignTileToSlope = true) {
+        const shape = new THREE.Shape();
+        shape.moveTo(0, -below);
+        shape.lineTo(runL, FH - below);
+        shape.lineTo(runL, FH + above);
+        shape.lineTo(0, above);
+        shape.closePath();
+        const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+        const pos = geo.attributes.position, uv = geo.attributes.uv;
+        const cosA = Math.cos(slopeAng), sinA = Math.sin(slopeAng);
+        for (let i = 0; i < pos.count; i++) {
+          const px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
+          if (alignTileToSlope) {
+            const u = (px * cosA + py * sinA) / TEX_M;
+            const v = (-px * sinA + py * cosA) / TEX_M;
+            uv.setXY(i, u, v);
+          } else {
+            uv.setXY(i, px / TEX_M, (py + pz) / TEX_M);
+          }
         }
-        // 梯段鵝黃色斜底板
-        const soffit1 = addBox(g, slopeLenW, 0.14, flightInnerW, warmCreamMat, midW, midY1 - 0.16, flightInnerCz);
-        soffit1.rotation.z = slopeAngW;
-
-        // 北側隔牆女兒牆 (Z = midWallZ)
-        const balMesh1 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY1 + balH / 2, midWallZ);
-        balMesh1.rotation.z = slopeAngW;
-        const cop1 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY1 + balH + 0.025, midWallZ);
-        cop1.rotation.z = slopeAngW;
-      }
-
-      // --- 1.5F 中央柱西側轉向休息平台 (West 1.5F Mid-Landing at Y = 3.05m) ---
-      {
-        const fyMid1 = baseH + halfH;                        // 3.05m
-        const landW = 1.15;
-        const landCx = colLeftX - landW / 2 + 0.12;
-        // 跨越南北兩跑，方便 180° 轉折
-        const landD = Math.abs(railZ - zb);
-        const landCz = (zb + railZ) / 2;
-        addBox(g, landW, 0.22, landD, corridorFloorMat, landCx, fyMid1 - 0.11, landCz);
-        addBox(g, landW, balH, balThick, whiteTileFine, landCx, fyMid1 + balH / 2, railZ);
-        addBox(g, landW + 0.04, 0.05, balThick + 0.04, warmCreamMat, landCx, fyMid1 + balH + 0.025, railZ);
-      }
-
-      // --- 梯段 2 (1.5F -> 2F 北跑，自東向西上升 -X，位於 9 階踏步正上方！Photo 1 實景！) ---
-      {
-        const fyStart = baseH + halfH;                       // 3.05m
-        const fyEnd   = baseH + FH;                          // 4.85m
-        const stepDX  = runW / nSteps;
-        const stepDY  = halfH / nSteps;
-        const midY2   = (fyStart + fyEnd) / 2;
-
-        for (let s = 0; s < nSteps; s++) {
-          const sx = colLeftX - (s + 0.5) * stepDX;
-          const sy = fyStart + (s + 0.5) * stepDY;
-          addBox(g, stepDX + 0.02, 0.18, flightOuterW, mats.slab, sx, sy, flightOuterCz);
-          addBox(g, stepDX + 0.02, 0.025, flightOuterW, stTreadMat, sx, sy + 0.09 + 0.0125, flightOuterCz);
-        }
-        // 梯段鵝黃色斜底板 (Photo 1 仰視清晰可見此天花底板)
-        const soffit2 = addBox(g, slopeLenW, 0.16, flightOuterW, warmCreamMat, midW, midY2 - 0.16, flightOuterCz);
-        soffit2.rotation.z = -slopeAngW;
-
-        // 北側實心白色瓷磚斜女兒牆 (Photo 2 實景)
-        const balMesh2 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY2 + balH / 2, railZ);
-        balMesh2.rotation.z = -slopeAngW;
-        const cop2 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY2 + balH + 0.025, railZ);
-        cop2.rotation.z = -slopeAngW;
-      }
-
-      // --- 梯段 3 (2F -> 2.5F 南跑，自西向東上升 +X) ---
-      {
-        const fyStart = baseH + FH;                          // 4.85m
-        const fyEnd   = baseH + FH + halfH;                  // 6.65m
-        const stepDX  = runW / nSteps;
-        const stepDY  = halfH / nSteps;
-        const midY3   = (fyStart + fyEnd) / 2;
-
-        for (let s = 0; s < nSteps; s++) {
-          const sx = boxEastX + (s + 0.5) * stepDX;
-          const sy = fyStart + (s + 0.5) * stepDY;
-          addBox(g, stepDX + 0.02, 0.18, flightInnerW, mats.slab, sx, sy, flightInnerCz);
-          addBox(g, stepDX + 0.02, 0.025, flightInnerW, stTreadMat, sx, sy + 0.09 + 0.0125, flightInnerCz);
-        }
-        const soffit3 = addBox(g, slopeLenW, 0.14, flightInnerW, warmCreamMat, midW, midY3 - 0.16, flightInnerCz);
-        soffit3.rotation.z = slopeAngW;
-
-        const balMesh3 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY3 + balH / 2, midWallZ);
-        balMesh3.rotation.z = slopeAngW;
-        const cop3 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY3 + balH + 0.025, midWallZ);
-        cop3.rotation.z = slopeAngW;
-      }
-
-      // --- 2.5F 中央柱西側轉向休息平台 (West 2.5F Mid-Landing at Y = 6.65m) ---
-      {
-        const fyMid2 = baseH + FH + halfH;                   // 6.65m
-        const landW = 1.15;
-        const landCx = colLeftX - landW / 2 + 0.12;
-        const landD = Math.abs(railZ - zb);
-        const landCz = (zb + railZ) / 2;
-        addBox(g, landW, 0.22, landD, corridorFloorMat, landCx, fyMid2 - 0.11, landCz);
-        addBox(g, landW, balH, balThick, whiteTileFine, landCx, fyMid2 + balH / 2, railZ);
-        addBox(g, landW + 0.04, 0.05, balThick + 0.04, warmCreamMat, landCx, fyMid2 + balH + 0.025, railZ);
-      }
-
-      // --- 梯段 4 (2.5F -> 3F 北跑，自東向西上升 -X) ---
-      {
-        const fyStart = baseH + FH + halfH;                  // 6.65m
-        const fyEnd   = baseH + 2 * FH;                      // 8.45m
-        const stepDX  = runW / nSteps;
-        const stepDY  = halfH / nSteps;
-        const midY4   = (fyStart + fyEnd) / 2;
-
-        for (let s = 0; s < nSteps; s++) {
-          const sx = colLeftX - (s + 0.5) * stepDX;
-          const sy = fyStart + (s + 0.5) * stepDY;
-          addBox(g, stepDX + 0.02, 0.18, flightOuterW, mats.slab, sx, sy, flightOuterCz);
-          addBox(g, stepDX + 0.02, 0.025, flightOuterW, stTreadMat, sx, sy + 0.09 + 0.0125, flightOuterCz);
-        }
-        const soffit4 = addBox(g, slopeLenW, 0.16, flightOuterW, warmCreamMat, midW, midY4 - 0.16, flightOuterCz);
-        soffit4.rotation.z = -slopeAngW;
-
-        const balMesh4 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY4 + balH / 2, railZ);
-        balMesh4.rotation.z = -slopeAngW;
-        const cop4 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY4 + balH + 0.025, railZ);
-        cop4.rotation.z = -slopeAngW;
-      }
-
-      // --- 梯段 5 (3F -> 屋頂層女兒牆 南跑，自西向東上升 +X) ---
-      {
-        const fyStart = baseH + 2 * FH;                      // 8.45m
-        const fyEnd   = baseH + 3 * FH;                      // 12.05m
-        const stepDX  = runW / nSteps;
-        const stepDY  = halfH / nSteps;
-        const midY5   = (fyStart + fyEnd) / 2;
-
-        for (let s = 0; s < nSteps; s++) {
-          const sx = boxEastX + (s + 0.5) * stepDX;
-          const sy = fyStart + (s + 0.5) * stepDY;
-          addBox(g, stepDX + 0.02, 0.18, flightInnerW, mats.slab, sx, sy, flightInnerCz);
-          addBox(g, stepDX + 0.02, 0.025, flightInnerW, stTreadMat, sx, sy + 0.09 + 0.0125, flightInnerCz);
-        }
-        const soffit5 = addBox(g, slopeLenW, 0.14, flightInnerW, warmCreamMat, midW, midY5 - 0.16, flightInnerCz);
-        soffit5.rotation.z = slopeAngW;
-
-        const balMesh5 = addBox(g, slopeLenW + 0.08, balH, balThick, whiteTileFine, midW, midY5 + balH / 2, midWallZ);
-        balMesh5.rotation.z = slopeAngW;
-        const cop5 = addBox(g, slopeLenW + 0.12, 0.05, balThick + 0.04, warmCreamMat, midW, midY5 + balH + 0.025, midWallZ);
-        cop5.rotation.z = slopeAngW;
+        return (y0) => addMesh(g, geo, mat, xs, y0, zc - depth / 2);
       }
 
       // -----------------------------------------------------------
-      // G. 經典三層垂直齊平「懸挑式方盒開放式平台」(Photo 1, 2, 3 實景！)
-      //    2F、3F 與屋頂西側平台緊貼廁所大樓，向北懸挑超出北外牆！
-      //    北向設全開敞通風採光洞口、頂部白瓷磚過樑、天花日光燈照明
+      // A. 中央造型主柱（軸線 ③，貫通 1F～屋頂，柱底加寬台座＋各層橫樑＋柱面設施）
+      // -----------------------------------------------------------
+      tileBox(colW, stWallH, colD, mosaicMat, centerColX, stWallH / 2, colCz);
+      tileBox(colW + 0.28, 0.56, colD + 0.14, mosaicMat, centerColX, 0.28, colCz);              // 柱底加寬白磚台座
+      tileBox(colW + 0.04, 0.06, colD + 0.04, roofCopingMat, centerColX, stWallH + 0.03, colCz);// 柱頂壓頂收邊
+      // 主柱與後走廊外牆間結構橫樑（2F／3F 底緣；3F→屋頂上方敞開對天不設橫樑）
+      for (let lv = 1; lv <= 2; lv++) {
+        const beamY = baseH + lv * FH - 0.22;
+        addBox(g, 0.34, 0.36, flightW + 0.10, soffitYellowMat, centerColX, beamY, flightCz);
+      }
+      // 柱北面 1F 設施（建物標示牌、小電箱、紅色緊急按鈕、白色監視器、黑色 LED 投光燈）
+      const colNorthZ = colCz - colD / 2;
+      addBox(g, 0.26, 0.36, 0.03, panelPureWhite, centerColX, 1.55, colNorthZ - 0.02);
+      addBox(g, 0.18, 0.24, 0.035, ironGrilleMat, centerColX, 1.55, colNorthZ - 0.028);
+      addBox(g, 0.16, 0.22, 0.04, panelPureWhite, centerColX, 1.15, colNorthZ - 0.02);
+      addBox(g, 0.10, 0.13, 0.05, fireHydrantMat, centerColX - 0.14, 2.38, colNorthZ - 0.03);
+      addBox(g, 0.18, 0.09, 0.16, panelPureWhite, centerColX - 0.08, 2.68, colNorthZ - 0.09);   // 監視器
+      addBox(g, 0.28, 0.18, 0.09, steelPostMat, centerColX - 0.04, 3.08, colNorthZ - 0.06);     // LED 投光燈
+      addBox(g, 0.24, 0.14, 0.02, new THREE.MeshBasicMaterial({ color: 0xfffaea }), centerColX - 0.04, 3.08, colNorthZ - 0.11);
+
+      // -----------------------------------------------------------
+      // B. 三段平行直梯（1F→2F、2F→3F、3F→屋頂），皆自西向東上升
+      //    v2.12.121 依實景照片 1、2、3、4 精修 3F→屋頂段：
+      //    - 北側護牆內面改為草綠色粉刷＋頂緣青苔深綠壓頂
+      //    - 南側增設白方格磁磚斜護牆（下緣貼合 3F 走廊地坪，斜頂緣與西端立面草綠色收邊）
+      //    - 梯段中段增設生鏽直條防盜鐵柵門（含鎖扣與北側捲花鐵飾，高出護牆於車道與屋頂皆清晰可見）
+      // -----------------------------------------------------------
+      const outerParapetTile       = slopedBand(mosaicMat, zEastNorth + (wallT - 0.02) / 2, wallT - 0.02, 0.38, balH, true);    // 北側白方格磁磚外護牆
+      const outerParapetInner      = slopedBand(innerYellowMat, zFlightN - 0.015, 0.03, 0.10, balH - 0.02, false);              // 1F~3F 護牆內側暖黃粉刷
+      const outerParapetInnerGreen = slopedBand(stairLimeGreenMat, zFlightN - 0.015, 0.03, 0.10, balH - 0.02, false);           // 3F→屋頂護牆內側草綠色粉刷（照片 1、4）
+      const outerParapetRoofCoping = slopedBand(roofCopingMat, zEastNorth + wallT / 2, wallT + 0.03, -balH, balH + 0.05, false);// 3F→屋頂北側護牆頂緣青苔壓頂（照片 4）
+      const soffitSlab             = slopedBand(soffitYellowMat, flightCz, flightW, 0.38, -0.22, false);                        // 鵝黃色梯底板
+      const soffitEdgeBeamN        = slopedBand(soffitYellowMat, zFlightN - 0.09, 0.18, 0.46, -0.22, false);                    // 梯底北側斜邊樑
+      for (let k = 0; k < 3; k++) {
+        const y0 = baseH + k * FH;
+        for (let s = 0; s < nRise; s++) {
+          const sx = xs + (s + 0.5) * tread;
+          const top = y0 + (s + 1) * rise;
+          addBox(g, tread + 0.005, 0.28, flightW, mats.slab, sx, top - 0.14, flightCz);
+          addBox(g, tread + 0.005, 0.022, flightW, stTreadMat, sx, top - 0.011, flightCz);
+          if (k === 2) {
+            // 3F→屋頂洗石子踏步前緣金屬防滑條（照片 1）
+            addBox(g, 0.032, 0.008, flightW - 0.04, treadNosingMat, sx - tread / 2 + 0.025, top + 0.004, flightCz, false);
+          }
+        }
+        soffitSlab(y0);
+        soffitEdgeBeamN(y0);
+        outerParapetTile(y0);
+        if (k === 2) {
+          outerParapetInnerGreen(y0);
+          outerParapetRoofCoping(y0);
+        } else {
+          outerParapetInner(y0);
+        }
+      }
+
+      // 3F→屋頂南側（走廊側）白方格磁磚斜護牆＋草綠色斜頂與端面收邊（照片 1 右側）
+      {
+        const y3 = baseH + 2 * FH;
+        const sWallShape = new THREE.Shape();
+        sWallShape.moveTo(0, 0);
+        sWallShape.lineTo(runL, 0);
+        sWallShape.lineTo(runL, FH + balH);
+        sWallShape.lineTo(0, balH);
+        sWallShape.closePath();
+        const sWallGeo = new THREE.ExtrudeGeometry(sWallShape, { depth: wallT, bevelEnabled: false });
+        const sPos = sWallGeo.attributes.position, sUv = sWallGeo.attributes.uv;
+        for (let i = 0; i < sPos.count; i++) {
+          sUv.setXY(i, sPos.getX(i) / TEX_M, sPos.getY(i) / TEX_M);
+        }
+        addMesh(g, sWallGeo, mosaicMat, xs, y3, zFlightS);
+        // 梯側（北面）內襯草綠邊條與頂緣草綠壓頂（照片 1）
+        const sTopCoping = slopedBand(stairLimeGreenMat, zFlightS + wallT / 2, wallT + 0.02, -balH, balH + 0.055, false);
+        sTopCoping(y3);
+        // 西端起跑處垂直草綠立面收邊（照片 1 右下角前景）
+        addBox(g, 0.03, balH + 0.05, wallT + 0.02, stairLimeGreenMat, xs - 0.01, y3 + (balH + 0.05) / 2, zFlightS + wallT / 2);
+
+        // 3F→屋頂梯段生鏽直條防盜鐵柵門（照片 1、3 紅箭頭、4）
+        const gateStep = 8;
+        const gateX = xs + gateStep * tread;
+        const gateY0 = y3 + gateStep * rise;
+        const gateH = 1.88;
+        const gateZ1 = zFlightN + 0.04, gateZ2 = zFlightS - 0.04;
+        const gateW = gateZ2 - gateZ1, gateCz = (gateZ1 + gateZ2) / 2;
+        // 左右門框立柱
+        addBox(g, 0.055, gateH, 0.055, rustIronGateMat, gateX, gateY0 + gateH / 2, gateZ1);
+        addBox(g, 0.055, gateH, 0.055, rustIronGateMat, gateX, gateY0 + gateH / 2, gateZ2);
+        // 上、中鎖桿、下三道橫框
+        addBox(g, 0.042, 0.045, gateW, rustIronGateMat, gateX, gateY0 + gateH - 0.03, gateCz);
+        addBox(g, 0.045, 0.045, gateW, rustIronGateMat, gateX, gateY0 + gateH * 0.62, gateCz);
+        addBox(g, 0.042, 0.045, gateW, rustIronGateMat, gateX, gateY0 + 0.08, gateCz);
+        // 9 根垂直鐵柵條
+        const nBars = 9;
+        for (let b = 1; b <= nBars; b++) {
+          const bz = gateZ1 + (b / (nBars + 1)) * gateW;
+          addBox(g, 0.024, gateH - 0.12, 0.024, rustIronGateMat, gateX, gateY0 + gateH / 2 + 0.02, bz);
+        }
+        // 中央鎖頭（掛鎖細節）
+        addBox(g, 0.04, 0.075, 0.055, treadNosingMat, gateX - 0.03, gateY0 + gateH * 0.62 - 0.04, gateZ1 + 0.22, false);
+        // 北側門柱上方半圓形鐵藝捲飾（照片 1 與照片 4 皆清晰可見）
+        const scrollMesh = addMesh(g, new THREE.TorusGeometry(0.18, 0.014, 6, 14, Math.PI), rustIronGateMat, gateX, gateY0 + gateH - 0.36, gateZ1 - 0.02, false);
+        scrollMesh.rotation.y = Math.PI / 2;
+        scrollMesh.rotation.z = Math.PI / 2;
+      }
+
+      // -----------------------------------------------------------
+      // C. 西端平台：1F 開放入口平台 ＋ 2F／3F 外凸懸挑白磚方盒平台（無 1F 方盒、無屋頂第 4 層方盒）
       // -----------------------------------------------------------
       const boxCx = b2L + boxW / 2;
-
-      [
-        { fl: 1, fy: baseH + FH, isRoof: false },            // 2F 方盒平台 (Y = 4.85m)
-        { fl: 2, fy: baseH + 2 * FH, isRoof: false },        // 3F 方盒平台 (Y = 8.45m)
-        { fl: 3, fy: baseH + 3 * FH, isRoof: true }          // 屋頂層方盒平台 (Y = 12.05m)
-      ].forEach(({ fl, fy, isRoof }) => {
-        const hBal = isRoof ? 1.35 : balH;
-
-        // 1) 方盒磨石子樓地板與懸挑底板
-        addBox(g, boxW + 0.06, 0.24, boxD + 0.06, corridorFloorMat, boxCx, fy - 0.12, boxCz);
-        addBox(g, boxW, 0.10, boxD, warmCreamMat, boxCx, fy - 0.20, boxCz);
-        // 懸挑結構托樑
-        addBox(g, 0.24, 0.32, boxD - 0.25, warmCreamMat, boxEastX - 0.14, fy - 0.36, boxCz);
-
-        // 2) 懸挑天花板底部實景設施
-        if (fl === 1) {
-          addBox(g, 0.18, 0.06, 1.15, lightFixtureMat, boxCx, fy - 0.26, flightOuterCz);
-          addBox(g, 0.04, 0.04, boxD - 0.30, pipePvcMat, b2L + 0.12, fy - 0.25, boxCz);
-          addBox(g, 0.12, 0.10, 0.12, panelPureWhite, b2L + 0.18, fy - 0.30, zBoxNorth + 0.25);
-        } else if (fl === 2) {
-          addBox(g, boxW, 0.08, boxD, warmCreamMat, boxCx, fy - 0.20, boxCz);
-          addBox(g, 0.18, 0.06, 1.15, lightFixtureMat, boxCx, fy - 0.26, flightOuterCz);
-          addBox(g, 0.035, 0.035, boxD - 0.30, pipePvcMat, b2L + 0.12, fy - 0.25, boxCz);
-        } else {
-          addBox(g, boxW, 0.08, boxD, warmCreamMat, boxCx, fy - 0.20, boxCz);
-          addBox(g, 0.18, 0.06, 1.15, lightFixtureMat, boxCx, fy - 0.26, flightOuterCz);
-        }
-
-        // 3) 北正面滿貼白色瓷磚實心女兒牆 (0 ~ hBal)
-        addBox(g, boxW, hBal, balThick, whiteTileFine, boxCx, fy + hBal / 2, zBoxNorth + balThick / 2);
-        addBox(g, boxW + 0.04, 0.05, balThick + 0.04, warmCreamMat, boxCx, fy + hBal + 0.025, zBoxNorth + balThick / 2);
-
-        // 4) 2F/3F 方盒上層「全開敞式矩形通風採光大洞口」與頂部過樑 (Photo 1 實景！)
-        if (!isRoof) {
-          const lintelH = 0.45;
-          const lintelY = fy + FH - lintelH / 2;
-          addBox(g, boxW, lintelH, balThick, whiteTileFine, boxCx, lintelY, zBoxNorth + balThick / 2);
-          addBox(g, boxW + 0.04, 0.04, balThick + 0.04, warmCreamMat, boxCx, fy + FH - lintelH - 0.02, zBoxNorth + balThick / 2);
-
-          const pierW_box = 0.18;
-          const openH = FH - hBal - lintelH;
-          const openMidY = fy + hBal + openH / 2;
-          addBox(g, pierW_box, openH, balThick, whiteTileFine, b2L + pierW_box / 2, openMidY, zBoxNorth + balThick / 2);
-          addBox(g, pierW_box, openH, balThick, whiteTileFine, boxEastX - pierW_box / 2, openMidY, zBoxNorth + balThick / 2);
-
-          addBox(g, boxW + 0.06, 0.22, boxD + 0.06, warmCreamMat, boxCx, fy + FH - 0.11, boxCz);
-        }
-
-        // 5) 東側面懸挑白瓷磚女兒牆 (East Cantilever Parapet: 精確銜接西側斜梯段 railZ)
-        const cheekD = Math.abs(zBoxNorth - railZ);
-        const cheekCz = (zBoxNorth + railZ) / 2;
-        addBox(g, balThick, hBal, cheekD, whiteTileFine, boxEastX - balThick / 2, fy + hBal / 2, cheekCz);
-        addBox(g, balThick + 0.04, 0.05, cheekD + 0.04, warmCreamMat, boxEastX - balThick / 2, fy + hBal + 0.025, cheekCz);
-
-        // 6) 西側白瓷磚端牆（結合廁所大樓）
-        addBox(g, balThick, hBal, boxD, whiteTileFine, b2L + balThick / 2, fy + hBal / 2, boxCz);
-
-      });
-
-      // -----------------------------------------------------------
-      // H. 軸線 ③ 走廊結構銜接 (平整無遮擋後走廊，依截圖橘框指示全面移除穿越教室窗戶之假斜樑與斜撐)
-      //    確保 Bay ③–④ 教室後窗、採光天井與後走廊 100% 視野通透開闊，完全符合 CAD 平面圖與立面圖！
-      // -----------------------------------------------------------
-      [1, 2].forEach(fl => {
-        const fy = baseH + fl * FH;
-        // 2F 與 3F 梯廳至後走廊之水平地面磨石子平整銜接板
-        addBox(g, colW + 0.10, 0.22, flightInnerW, corridorFloorMat, centerColX, fy - 0.11, flightInnerCz);
-        // 北側平整白瓷磚女兒牆與石材壓頂 (銜接至後走廊)
-        addBox(g, colW, balH, balThick, whiteTileFine, centerColX, fy + balH / 2, railZ);
-        addBox(g, colW + 0.04, 0.05, balThick + 0.04, warmCreamMat, centerColX, fy + balH + 0.025, railZ);
-      });
-      // 屋頂女兒牆銜接 (白色瓷磚實心女兒牆配暖白石材壓頂，依紅框指示無防攀爬鐵絲網與刺針)
-      {
-        const rfY = baseH + 3 * FH;
-        const rfH = 1.25;
-        addBox(g, colW + 0.10, rfH, balThick, whiteTileFine, centerColX, rfY + rfH / 2, railZ);
-        addBox(g, colW + 0.14, 0.06, balThick + 0.04, warmCreamMat, centerColX, rfY + rfH + 0.03, railZ);
+      // 1F 西端開放入口平台（對齊地面 8 階入口階梯頂端，北緣為平整淺灰水泥牆＋墨綠水平扶手）
+      addBox(g, boxW, 0.24, boxD, corridorFloorMat, boxCx, baseH - 0.12, boxCz);
+      addBox(g, boxW, baseH - 0.24, boxD - 0.16, entryConcreteMat, boxCx, (baseH - 0.24) / 2, boxCz + 0.08);
+      addBox(g, boxW + 0.04, baseH + 0.04, 0.16, entryConcreteMat, boxCx, (baseH + 0.04) / 2, zBoxNorth + 0.08);
+      // 1F 平台北緣墨綠雙橫桿水平扶手（銜接入口階梯斜扶手至廁所大樓牆面）
+      for (const [hOff, th] of [[0.92, 0.042], [0.54, 0.032]]) {
+        addBox(g, boxW + 0.06, th, th, appleGreenMat, boxCx, baseH + hOff, zBoxNorth + 0.08);
       }
+      addBox(g, 0.036, 0.94, 0.036, appleGreenMat, b2L + 0.08, baseH + 0.47, zBoxNorth + 0.08);
+      addBox(g, 0.036, 0.94, 0.036, appleGreenMat, xs, baseH + 0.47, zBoxNorth + 0.08);
+
+      // 2F（lv=1）與 3F（lv=2）西端懸挑外凸白方格磁磚方盒平台（3F 內側護牆為草綠色粉刷，照片 1）
+      for (let lv = 1; lv <= 2; lv++) {
+        const fy = baseH + lv * FH;
+        const hBal = 1.08;
+        const innerMatLv = lv === 2 ? stairLimeGreenMat : innerYellowMat;
+        addBox(g, boxW, 0.24, boxD, corridorFloorMat, boxCx, fy - 0.12, boxCz);                           // 磨石子地坪
+        addBox(g, boxW - 0.04, 0.12, boxD - 0.04, soffitYellowMat, boxCx, fy - 0.30, boxCz);              // 鵝黃色天花底板
+        // 天花板嵌入式日光燈具
+        addBox(g, 0.65, 0.04, 0.16, lightFixtureMat, boxCx, fy - 0.37, boxCz - 0.35);
+        // 北面實心白方格磁磚護牆（涵蓋樓板厚；2F 內側暖黃、3F 內側草綠）
+        tileBox(boxW, hBal + 0.38, wallT, mosaicMat, boxCx, fy + (hBal - 0.38) / 2, zBoxNorth + wallT / 2);
+        addBox(g, boxW - wallT, hBal - 0.04, 0.025, innerMatLv, boxCx - wallT / 2, fy + hBal / 2, zBoxNorth + wallT + 0.012);
+        // 東面實心白方格磁磚護牆（僅外側懸挑段 zBoxNorth ~ zEastNorth；南側敞開作為梯段起跑口）
+        const cheekD = zEastNorth - zBoxNorth;
+        tileBox(wallT, hBal + 0.38, cheekD + wallT, mosaicMat, xs - wallT / 2, fy + (hBal - 0.38) / 2, zBoxNorth + (cheekD + wallT) / 2);
+        addBox(g, 0.025, hBal - 0.04, cheekD, innerMatLv, xs - wallT - 0.012, fy + hBal / 2, zBoxNorth + wallT + cheekD / 2);
+        if (lv === 2) {
+          // 3F 西端平台護牆頂緣草綠色壓頂收邊（照片 1 左下）
+          addBox(g, boxW + 0.02, 0.045, wallT + 0.03, stairLimeGreenMat, boxCx, fy + hBal + 0.022, zBoxNorth + wallT / 2);
+          addBox(g, wallT + 0.03, 0.045, cheekD + wallT + 0.02, stairLimeGreenMat, xs - wallT / 2, fy + hBal + 0.022, zBoxNorth + (cheekD + wallT) / 2);
+        }
+      }
+
+      // 廁所大樓東牆（軸線 ②，自地面至屋頂全高翠綠塗裝）＋1F／3F 紅色消防栓箱＋落水管／監視器＋屋頂金屬直爬梯
+      {
+        const greenWallH = baseH + 3 * FH + 1.25;
+        const greenX = b2L + 0.08;
+        addBox(g, 0.16, greenWallH, boxD, stairGreenWallMat, greenX, greenWallH / 2, boxCz);              // 1F～屋頂全高翠綠牆
+        // 1F 紅色消防栓箱
+        addBox(g, 0.14, 0.78, 0.50, fireHydrantMat, greenX + 0.14, baseH + 1.15, boxCz - 0.45);
+        addBox(g, 0.02, 0.30, 0.34, panelPureWhite, greenX + 0.22, baseH + 1.15, boxCz - 0.45);
+        // 3F 西端平台紅色消防栓箱（照片 4 鐵門後方清晰可見）
+        const y3F = baseH + 2 * FH;
+        addBox(g, 0.14, 0.76, 0.50, fireHydrantMat, greenX + 0.14, y3F + 1.15, flightCz + 0.10);
+        addBox(g, 0.02, 0.28, 0.32, panelPureWhite, greenX + 0.22, y3F + 1.15, flightCz + 0.10);
+        // 東北轉角灰 PVC 落水管＋3F 紅彎頭＋1F/2F 雙監視器
+        const pipeX = b2L + 0.06, pipeZ = zBoxNorth - 0.04;
+        addBox(g, 0.085, baseH + 2 * FH - 0.45, 0.085, pipePvcMat, pipeX, (baseH + 2 * FH - 0.45) / 2, pipeZ);
+        addBox(g, 0.09, 0.55, 0.09, fireHydrantMat, pipeX, baseH + 2 * FH - 0.18, pipeZ);                 // 3F 轉折紅管段
+        addBox(g, 0.24, 0.09, 0.10, panelPureWhite, pipeX + 0.06, baseH + FH - 0.55, pipeZ - 0.12);       // 雙監視器組
+        addBox(g, 0.20, 0.09, 0.10, panelPureWhite, pipeX - 0.08, baseH + FH - 0.58, pipeZ - 0.10);
+        // 3F 西端平台通往廁所大樓屋頂金屬直爬梯（照片 2、4 鐵門後方鋁色直爬梯）
+        const ladX = greenX + 0.24, ladZ1 = flightCz - 0.16, ladZ2 = ladZ1 + 0.46;
+        const ladY0 = y3F + 0.40, ladH = 3.65;
+        addBox(g, 0.04, ladH, 0.04, alumLadderMat, ladX, ladY0 + ladH / 2, ladZ1);
+        addBox(g, 0.04, ladH, 0.04, alumLadderMat, ladX, ladY0 + ladH / 2, ladZ2);
+        for (let r = 0; r < 11; r++) {
+          addBox(g, 0.028, 0.028, ladZ2 - ladZ1, alumLadderMat, ladX, ladY0 + 0.28 + r * 0.31, (ladZ1 + ladZ2) / 2);
+        }
+        // 屋頂層北緣草綠色女兒牆（軸線 ②～梯口西側）＋白色屋頂監視器（照片 2、4 清晰可見）
+        const rfY = baseH + 3 * FH;
+        const rfParaW = (xe - b2L) - 0.10;
+        const rfParaCx = b2L + rfParaW / 2;
+        addBox(g, rfParaW, topFasciaH, 0.24, stairLimeGreenMat, rfParaCx, rfY + topFasciaH / 2, zb + 0.12);
+        addBox(g, rfParaW + 0.02, 0.05, 0.28, roofCopingMat, rfParaCx, rfY + topFasciaH + 0.025, zb + 0.12);
+        // 白色壁掛屋頂監視器（裝設於近廁所端女兒牆北側轉角，朝東監看樓梯出入口，照片 2、4）
+        const camX = b2L + 0.65, camY = rfY + topFasciaH - 0.14, camZ = zb - 0.06;
+        addBox(g, 0.10, 0.14, 0.08, panelPureWhite, camX, camY, camZ + 0.05);
+        addBox(g, 0.14, 0.04, 0.04, panelPureWhite, camX + 0.08, camY, camZ - 0.02);
+        const camBody = addMesh(g, new THREE.CylinderGeometry(0.055, 0.055, 0.18, 12), panelPureWhite, camX + 0.16, camY - 0.02, camZ - 0.06);
+        camBody.rotation.z = Math.PI / 2;
+        camBody.rotation.y = 0.25;
+      }
+
+      // -----------------------------------------------------------
+      // D. 東端抵達平台（2F／3F／屋頂）— 北緣與梯段齊平（zb - 1.70 m）＋東北角細長貫通立柱＋1F 梯下通道與矮牆
+      // -----------------------------------------------------------
+      const eBoxW = xEastBoxEnd - xe, eBoxCx = (xe + xEastBoxEnd) / 2;
+      const neColW = 0.36, neColD = 0.36;
+      const neColX = xEastBoxEnd - neColW / 2;
+      const neColZ = zEastNorth + neColD / 2;
+      // 東北角細長白方格磁磚貫通立柱（自地面直通屋頂東端平台底緣）
+      const neColH = baseH + 3 * FH;
+      tileBox(neColW, neColH, neColD, mosaicMat, neColX, neColH / 2, neColZ);
+
+      // 1F 東端梯下地面混凝土鋪面＋東緣 1.05 m 白磚矮牆（隔開採光天井與梯下開放空間）
+      addBox(g, xEastBoxEnd - centerColX, 0.08, eastBoxD, concreteFloorMat, (centerColX + xEastBoxEnd) / 2, 0.04, eastBoxCz);
+      tileBox(wallT, 1.05, eastBoxD, mosaicMat, xEastBoxEnd - wallT / 2, 0.525, eastBoxCz);
+      tileBox(neColW + 0.55, 1.05, wallT, mosaicMat, xEastBoxEnd - (neColW + 0.55) / 2, 0.525, zEastNorth + wallT / 2);
+      // 1F 主柱東側地面三根灰色 PVC 豎管與牆面小電箱
+      for (let i = 0; i < 3; i++) {
+        addMesh(g, new THREE.CylinderGeometry(0.055, 0.055, 0.65 - i * 0.04, 12), pipePvcMat, centerColX + 0.72 + i * 0.14, 0.34, zb - 0.14);
+      }
+      addBox(g, 0.24, 0.34, 0.10, panelPureWhite, centerColX + 0.62, 1.12, zb - 0.06);
+
+      // 2F／3F／屋頂東端抵達平台（屋頂層內側為草綠色粉刷＋深綠青苔壓頂，照片 2、4）
+      for (let lv = 1; lv <= 3; lv++) {
+        const fy = baseH + lv * FH;
+        const hBal = lv === 3 ? topFasciaH : balH;                                                        // 屋頂層與北棟屋頂女兒牆齊平
+        const eInnerMat = lv === 3 ? stairLimeGreenMat : innerYellowMat;
+        addBox(g, eBoxW, 0.24, eastBoxD, corridorFloorMat, eBoxCx, fy - 0.12, eastBoxCz);
+        addBox(g, eBoxW - 0.04, 0.12, eastBoxD - 0.04, soffitYellowMat, eBoxCx, fy - 0.30, eastBoxCz);
+        // 北面護牆（白方格磁磚外飾＋內側 2F/3F 暖黃、屋頂草綠）
+        tileBox(eBoxW, hBal + 0.38, wallT, mosaicMat, eBoxCx, fy + (hBal - 0.38) / 2, zEastNorth + wallT / 2);
+        addBox(g, eBoxW - wallT, hBal - 0.04, 0.025, eInnerMat, eBoxCx - wallT / 2, fy + hBal / 2, zEastNorth + wallT + 0.012);
+        // 東面護牆（白方格磁磚外飾＋內側 2F/3F 暖黃、屋頂草綠）
+        tileBox(wallT, hBal + 0.38, eastBoxD, mosaicMat, xEastBoxEnd - wallT / 2, fy + (hBal - 0.38) / 2, eastBoxCz);
+        addBox(g, 0.025, hBal - 0.04, eastBoxD - wallT, eInnerMat, xEastBoxEnd - wallT - 0.012, fy + hBal / 2, eastBoxCz + wallT / 2);
+        if (lv === 3) {
+          // 屋頂層女兒牆青苔深綠壓頂收邊（照片 2、4）
+          addBox(g, eBoxW + 0.02, 0.055, wallT + 0.04, roofCopingMat, eBoxCx, fy + hBal + 0.027, zEastNorth + wallT / 2);
+          addBox(g, wallT + 0.04, 0.055, eastBoxD + 0.02, roofCopingMat, xEastBoxEnd - wallT / 2, fy + hBal + 0.027, eastBoxCz);
+        }
+      }
+
+      // -----------------------------------------------------------
+      // E. 1F 地面 8 階戶外水泥入口踏步（主柱西側 → 1F 西端平台，東往西上）＋平整淺灰階梯側牆＋墨綠雙橫桿扶手（照片 2、5）
+      // -----------------------------------------------------------
+      {
+        const eX0 = centerColX - colW / 2, eX1 = xs;      // 東端起步（主柱西側）、西端抵達 1F 平台
+        const eRun = eX0 - eX1, n = 8, eT = eRun / n, eR = baseH / n;
+        const laneS = zEastNorth, laneN = zBoxNorth + 0.16;
+        const laneW = laneS - laneN, laneCz = (laneS + laneN) / 2;
+        for (let s = 0; s < n; s++) {
+          const sx = eX0 - (s + 0.5) * eT, h = (s + 1) * eR;
+          addBox(g, eT + 0.005, h, laneW, mats.slab, sx, h / 2, laneCz);
+          addBox(g, eT + 0.005, 0.022, laneW, stTreadMat, sx, h - 0.011, laneCz);
+          // 北側平整淺灰水泥階梯側牆（照片 2、5）
+          addBox(g, eT + 0.008, h + 0.06, 0.16, entryConcreteMat, sx, (h + 0.06) / 2, zBoxNorth + 0.08);
+        }
+        // 墨綠色雙橫桿鋼管扶手（斜段，頂端無縫銜接 1F 平台水平扶手）
+        const railZ = zBoxNorth + 0.08;
+        const rLen = Math.hypot(eRun, baseH), rAng = Math.atan2(baseH, eRun), rMidX = (eX0 + eX1) / 2;
+        for (const [hOff, th] of [[0.92, 0.042], [0.54, 0.032]]) {
+          const r = addBox(g, rLen + 0.08, th, th, appleGreenMat, rMidX, baseH / 2 + hOff, railZ);
+          r.rotation.z = -rAng;
+        }
+        for (let p = 0; p <= 3; p++) {
+          const px = eX0 - p * eRun / 3, py = (p / 3) * baseH;
+          addBox(g, 0.036, 0.94, 0.036, appleGreenMat, px, py + 0.47, railZ);
+        }
+      }
+
+      // 供步行模式自動爬梯使用
+      window.NORTH_REAR_STAIR = { xs, xe, xEastBoxEnd, b2L, eX0: centerColX - colW / 2, zb, zFlightS, zFlightN, zEastNorth, zBoxNorth, baseH, FH };
+      window.NORTH_REAR_STAIR_OPENING = [xe + 0.10, xEastBoxEnd];
 
       // -----------------------------------------------------------
       // H. 軸線 ③ 教室後牆分離式冷氣室外機組 (Outdoor AC Units per Photo 2 & 4)
@@ -4623,7 +6127,7 @@ function buildNorthBuilding() {
         const nPitDepth = baseH - nLwFloorY;                 // 坑深 3.85m
 
         const northRuns = [
-          { x1: ax(3), x2: ax(11), label: 'west' },          // 西翼 36.0m
+          { x1: ax(4), x2: ax(11), label: 'west' },          // 西翼（軸線 ③–④ 為西側後走廊戶外直梯，依壹層平面圖天井自 ④ 起）
           { x1: ax(12), x2: ax(18), label: 'east' }          // 東翼 27.0m
         ];
 
@@ -4633,11 +6137,13 @@ function buildNorthBuilding() {
 
           // A. 沉降天井坑體地坪與四周 RC 擋土矮牆
           addBox(g, rW, 0.20, nLwD, concreteFloorMat, rCx, nLwFloorY + 0.10, nLwCz);
-          // 北外側擋土牆 (外緣 Y=-2.60m 至 地面 +0.20m 截水緣石)
-          addBox(g, rW, nPitDepth + 0.20, 0.20, outdoorConcreteMat, rCx, (nLwFloorY + baseH + 0.20) / 2, nLwZ1 - 0.10);
+          // 北外側擋土牆：v2.12.8 依實景照片，牆頂僅高出室外地面約 0.4 m（原誤高至 1F 樓板 +0.2 m，遮住欄杆）
+          const lwTopY = 0.40;
+          addBox(g, rW, lwTopY - nLwFloorY, 0.20, outdoorConcreteMat, rCx, (nLwFloorY + lwTopY) / 2, nLwZ1 - 0.10);
+          addBox(g, rW + 0.06, 0.05, 0.26, outdoorConcreteMat, rCx, lwTopY + 0.025, nLwZ1 - 0.10);
           // 兩端封頭牆
-          addBox(g, 0.20, nPitDepth + 0.20, nLwD, outdoorConcreteMat, run.x1 + 0.10, (nLwFloorY + baseH + 0.20) / 2, nLwCz);
-          addBox(g, 0.20, nPitDepth + 0.20, nLwD, outdoorConcreteMat, run.x2 - 0.10, (nLwFloorY + baseH + 0.20) / 2, nLwCz);
+          addBox(g, 0.20, lwTopY - nLwFloorY, nLwD, outdoorConcreteMat, run.x1 + 0.10, (nLwFloorY + lwTopY) / 2, nLwCz);
+          addBox(g, 0.20, lwTopY - nLwFloorY, nLwD, outdoorConcreteMat, run.x2 - 0.10, (nLwFloorY + lwTopY) / 2, nLwCz);
 
           // B. 地面邊緣水泥截水台與排水溝
           const curbH = 0.18, curbThick = 0.22;
@@ -4658,18 +6164,27 @@ function buildNorthBuilding() {
             rib.rotation.x = -canopySlopeAng;
           }
 
-          // D. 外緣墨綠色金屬圓鋼管防護欄杆 (Dark Green Metal Handrail & Balusters per Photo 6 & 7)
-          const railH = 0.96;
-          addBox(g, rW, 0.045, 0.045, appleGreenMat, rCx, railH, nLwZ1 - 0.04);
-          addBox(g, rW, 0.035, 0.035, appleGreenMat, rCx, railH * 0.52, nLwZ1 - 0.04);
-          const nPosts = Math.max(4, Math.round(rW / 1.5));
-          for (let p = 0; p <= nPosts; p++) {
-            const px = run.x1 + p * (rW / nPosts);
-            addBox(g, 0.04, railH, 0.04, appleGreenMat, px, railH / 2, nLwZ1 - 0.04);
-          }
-          // 兩端回折欄杆
-          addBox(g, 0.045, 0.045, nLwD, appleGreenMat, run.x1 + 0.04, railH, nLwCz);
-          addBox(g, 0.045, 0.045, nLwD, appleGreenMat, run.x2 - 0.04, railH, nLwCz);
+          // D. 外緣墨綠色金屬欄杆（v2.12.8 依實景照片：立於 0.4 m 矮牆頂，高約 1.0 m；方管上下橫桿、
+          //    約 1.5 m 一支主柱、其間密排細直條；兩端沿天井回折至建築外牆）
+          const rail0 = lwTopY + 0.05, railTop = rail0 + 1.0, rz = nLwZ1 - 0.10;
+          const lwRailMat = new THREE.MeshStandardMaterial({ color: 0x2f6a45, roughness: 0.5, metalness: 0.35 });
+          const railRun = (ax1, az1, ax2, az2) => {
+            const len = Math.hypot(ax2 - ax1, az2 - az1), cx = (ax1 + ax2) / 2, cz = (az1 + az2) / 2;
+            const alongX = Math.abs(ax2 - ax1) > Math.abs(az2 - az1);
+            const bar = (w, h, y) => addBox(g, alongX ? len : w, h, alongX ? w : len, lwRailMat, cx, y, cz, false);
+            bar(0.05, 0.05, railTop);
+            bar(0.04, 0.04, railTop - 0.12);
+            bar(0.04, 0.04, rail0 + 0.08);
+            const nP = Math.max(2, Math.round(len / 1.5)), nB = Math.max(4, Math.round(len / 0.12));
+            for (let k = 0; k <= nB; k++) {
+              const t = k / nB, px = ax1 + (ax2 - ax1) * t, pz = az1 + (az2 - az1) * t;
+              const main = k % Math.round(nB / nP) === 0;
+              addBox(g, main ? 0.05 : 0.018, railTop - rail0, main ? 0.05 : 0.018, lwRailMat, px, (rail0 + railTop) / 2, pz, false);
+            }
+          };
+          railRun(run.x1 + 0.1, rz, run.x2 - 0.1, rz);
+          railRun(run.x1 + 0.1, rz, run.x1 + 0.1, nLwZ2);
+          railRun(run.x2 - 0.1, rz, run.x2 - 0.1, nLwZ2);
         });
 
         // 2) 南側前走廊沉降採光天井與「階梯花台」(South Front Lightwells & Stepped Planters, Axis A–B)
@@ -4679,8 +6194,7 @@ function buildNorthBuilding() {
         const sLwCz = (sLwZ1 + sLwZ2) / 2;
 
         const southRuns = [
-          { x1: ax(5), x2: ax(11) },                         // 西翼中庭採光段
-          { x1: ax(12), x2: ax(16) }                         // 東翼中庭採光段
+          { x1: ax(5), x2: ax(11) }                          // 西翼中庭採光段（東翼 ⑫–⑱ 改由下方 1:1 實景精細地下室建構）
         ];
         southRuns.forEach(run => {
           const rW = run.x2 - run.x1;
@@ -4694,10 +6208,9 @@ function buildNorthBuilding() {
           sCanopyMesh.rotation.x = sCanopySlope;
         });
 
-        // 3) 南側「階梯花台」(Stepped Garden Planters per CAD Page 1 & 2: 位於 Axis ③–⑤ 與 ⑯–⑱)
+        // 3) 南側西翼「階梯花台」(Stepped Garden Planter per CAD: 位於 Axis ③–⑤；東翼 ⑯–⑱ 實景為連續雙階斜坡與東端樓梯)
         const planterRuns = [
-          { x1: ax(3), x2: ax(5), cx: (ax(3) + ax(5)) / 2, w: ax(5) - ax(3) },
-          { x1: ax(16), x2: ax(18), cx: (ax(16) + ax(18)) / 2, w: ax(18) - ax(16) }
+          { x1: ax(3), x2: ax(5), cx: (ax(3) + ax(5)) / 2, w: ax(5) - ax(3) }
         ];
         const nStepsPl = 10;
         const pStepH = Math.abs(nLwFloorY) / nStepsPl;       // 每級高約 0.26m
@@ -4717,6 +6230,526 @@ function buildNorthBuilding() {
             }
           }
         });
+
+        // 4) 北棟大樓東側地下室外觀與建築結構（軸線 ⑫–⑱，依 5 張實景照片與地下層/壹層平面圖 1:1 精準重建）
+        //    ・地下室外牆：灰綠色小方磚柱牆與矮壁＋白色水平百葉窗＋中央雙開門與古銅鋁合金防水閘門（附斜撐桿）
+        //    ・下沉廊道與排水系統：水泥廊道地坪＋連續條狀金屬排水溝格柵＋弧形金屬採光雨遮（不銹鋼圓柱支撐＋排水槽落水管）
+        //    ・開放式雙階水泥斜坡擋土護岸：下段斜坡＋中段水平洗石子折台＋上段斜坡（取代原平頂採光罩與假草坪花台）
+        //    ・地面層圍護：深灰褐二丁掛磚矮牆＋洗石子壓頂＋單橫桿不銹鋼圓管安全欄杆
+        //    ・雙座下沉出入口樓梯（西端緊鄰中央大階梯、東端緊鄰 ⑱ 軸）：米白方磚入口踏台、防水閘門、11 階防滑踏步、
+        //      弧形不銹鋼骨架白板雨棚、橘色安全交通錐，以及東端深色陶板手印馬賽克擋土矮牆
+        {
+          const ePitX1 = ax(12);                             // 16.025m (中央川堂東柱線)
+          const ePitX2 = ax(18);                             // 42.992m (北棟主體東端)
+          const stAX1 = 16.52, stAX2 = 18.58;                // 西座下地下室樓梯（緊貼中央大階梯東側護牆外緣，寬 2.06m）
+          const stBX1 = ePitX2 - 2.06, stBX2 = ePitX2;       // 東座下地下室樓梯（緊貼東端陶板手印矮牆，寬 2.06m）
+          const ePitZ1 = zf;                                 // -26.175m (軸線 B 地下室外牆面)
+          const ePitZ2 = -23.00;                             // -23.00m (採光井南外緣，與中庭鋪面內凹線完全切齊)
+          const ePitFloorY = -2.60;                          // 地下室天井廊道地坪標高
+          const eGroundY = 0.16 - COURTYARD_SINK.D;          // -0.59m (相鄰中庭連鎖磚鋪面標高)
+          const walkD = 1.48;                                // 地下室有頂廊道淨寬
+          const zWalkOuter = ePitZ1 + walkD;                 // -24.695m (廊道外緣 / 排水溝與斜坡腳線)
+          const slopeZ1 = zWalkOuter;
+          const slopeZ2 = ePitZ2 - 0.24;                     // -23.24m (斜坡頂端緊接地面矮牆背面)
+
+          // 專屬程序化材質（灰綠小方磚、白水平百葉、深灰褐二丁掛矮牆、洗石子、排水格柵、陶板手印馬賽克）
+          const makeGridTex = (w, h, bg, line, gx, gy, jitter = 0) => {
+            const c = document.createElement('canvas'); c.width = w; c.height = h;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+            if (jitter > 0) {
+              let sd = 37; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+              for (let y = 0; y < h; y += gy) {
+                for (let x = 0; x < w; x += gx) {
+                  const v = Math.round((rr() - 0.5) * jitter);
+                  ctx.fillStyle = v > 0 ? `rgba(255,255,255,${v / 255})` : `rgba(0,0,0,${-v / 255})`;
+                  ctx.fillRect(x, y, gx, gy);
+                }
+              }
+            }
+            ctx.strokeStyle = line; ctx.lineWidth = 1.5;
+            for (let x = 0; x <= w; x += gx) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+            for (let y = 0; y <= h; y += gy) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+          };
+
+          // 灰綠色方塊磁磚（地下室柱牆與下半部壁面 per Photos 3, 4, 5）
+          const bfTileTex = makeGridTex(256, 256, '#6e7a76', '#98a29d', 16, 16, 18);
+          bfTileTex.repeat.set(2.5, 2.0);
+          const bfTileMat = new THREE.MeshStandardMaterial({ map: bfTileTex, roughness: 0.62, metalness: 0.06 });
+
+          // 白色水平百葉窗（地下室上半部通風百葉門窗 per Photos 3, 4, 5）
+          const bfLouverTex = (() => {
+            const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#e6e7e3'; ctx.fillRect(0, 0, 256, 256);
+            for (let y = 0; y < 256; y += 10) {
+              ctx.fillStyle = '#f2f3ef'; ctx.fillRect(0, y, 256, 6);
+              ctx.fillStyle = '#b4b7b2'; ctx.fillRect(0, y + 6, 256, 2.5);
+              ctx.fillStyle = '#7e8380'; ctx.fillRect(0, y + 8.5, 256, 1.5);
+            }
+            ctx.strokeStyle = '#c8cbc6'; ctx.lineWidth = 4;
+            ctx.strokeRect(2, 2, 252, 252);
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+          })();
+          const bfLouverMat = new THREE.MeshStandardMaterial({ map: bfLouverTex, roughness: 0.48, metalness: 0.12 });
+
+          // 深灰褐色長條二丁掛磚（中庭地面矮牆與樓梯護牆 per Photos 2, 3, 4, 5）
+          const bfBrickTex = (() => {
+            const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#c4c0b8'; ctx.fillRect(0, 0, 256, 128);
+            const rows = 8, cols = 4, rh = 128 / rows, cw = 256 / cols;
+            const tones = ['#5e5853', '#67605a', '#55504b', '#6d665f', '#605a54'];
+            let sd = 19; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+            for (let r = 0; r < rows; r++) {
+              const off = (r % 2) * (cw / 2);
+              for (let cl = -1; cl <= cols; cl++) {
+                ctx.fillStyle = tones[Math.floor(rr() * tones.length)];
+                ctx.fillRect(cl * cw + off + 1.5, r * rh + 1.5, cw - 3, rh - 3);
+              }
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(14, 0.8);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+          })();
+          const bfBrickWallMat = new THREE.MeshStandardMaterial({ map: bfBrickTex, roughness: 0.72 });
+          const bfBrickShortTex = bfBrickTex.clone(); bfBrickShortTex.needsUpdate = true; bfBrickShortTex.repeat.set(2.2, 1.4);
+          const bfBrickShortMat = new THREE.MeshStandardMaterial({ map: bfBrickShortTex, roughness: 0.72 });
+
+          // 洗石子壓頂與中段折台（Pebble-wash terrazzo coping per Photos 3, 4, 5）
+          const pebbleTex = (() => {
+            const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#cfc9be'; ctx.fillRect(0, 0, 128, 128);
+            const cols = ['#8d877e', '#e8e4dc', '#a9a296', '#6b655d', '#dfd8cb'];
+            let sd = 91; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+            for (let i = 0; i < 1400; i++) {
+              ctx.fillStyle = cols[Math.floor(rr() * cols.length)];
+              ctx.fillRect(rr() * 128, rr() * 128, 2, 2);
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(18, 1);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+          })();
+          const bfPebbleMat = new THREE.MeshStandardMaterial({ map: pebbleTex, roughness: 0.88 });
+
+          // 排水溝條狀格柵貼圖（Slatted trench grate per Photos 3, 4, 5）
+          const grateTex = (() => {
+            const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#2a2724'; ctx.fillRect(0, 0, 128, 128);
+            ctx.fillStyle = '#6f6559';
+            for (let x = 4; x < 128; x += 14) ctx.fillRect(x, 4, 7, 120);
+            ctx.fillRect(0, 0, 128, 6); ctx.fillRect(0, 122, 128, 6);
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(42, 1);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+          })();
+          const bfGrateMat = new THREE.MeshStandardMaterial({ map: grateTex, roughness: 0.72, metalness: 0.35 });
+
+          // 東端深色陶板手印馬賽克矮牆紋理（Ceramic handprint mosaic wall per Photo 1 & north_east.jpg）
+          const handprintTex = (() => {
+            const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#2d1e19'; ctx.fillRect(0, 0, 512, 256);
+            const cols = 16, rows = 8, tw = 512 / cols, th = 256 / rows;
+            const tileColors = ['#3d2b24', '#263848', '#4c382c', '#2b4d5a', '#684e34', '#312622', '#4a3028', '#3c4d3e', '#745d42', '#232c38'];
+            const handColors = ['#8fb7c8', '#d4b483', '#a6c29b', '#c99375', '#688ea8', '#e0d6c2', '#b57b5b'];
+            let sd = 131; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+            for (let r = 0; r < rows; r++) {
+              for (let cl = 0; cl < cols; cl++) {
+                const x = cl * tw, y = r * th;
+                ctx.fillStyle = tileColors[Math.floor(rr() * tileColors.length)];
+                ctx.fillRect(x + 2, y + 2, tw - 4, th - 4);
+                if (rr() < 0.58) {
+                  // 手掌陶印圖案
+                  ctx.fillStyle = handColors[Math.floor(rr() * handColors.length)];
+                  ctx.globalAlpha = 0.72;
+                  const hx = x + tw * 0.5, hy = y + th * 0.62;
+                  ctx.beginPath(); ctx.arc(hx, hy, 5.2, 0, Math.PI * 2); ctx.fill();
+                  for (let f = -2; f <= 2; f++) {
+                    ctx.beginPath(); ctx.ellipse(hx + f * 2.6, hy - 6.5 + Math.abs(f) * 1.1, 1.3, 4.0, f * 0.12, 0, Math.PI * 2); ctx.fill();
+                  }
+                  ctx.globalAlpha = 1.0;
+                }
+              }
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.anisotropy = 4;
+            return tex;
+          })();
+          const handprintWallMat = new THREE.MeshStandardMaterial({ map: handprintTex, roughness: 0.52, metalness: 0.14 });
+          const handprintCapMat = new THREE.MeshStandardMaterial({ color: 0x382822, roughness: 0.65 });
+
+          // 通用金屬與混凝土材質
+          const bfWalkFloorMat = new THREE.MeshStandardMaterial({ color: 0xbcb5a6, roughness: 0.92 });
+          const bfSlopeConcreteMat = new THREE.MeshStandardMaterial({ color: 0xb8b7b0, roughness: 0.90 });
+          const bfAwningMat = new THREE.MeshStandardMaterial({ color: 0xdce0e4, roughness: 0.30, metalness: 0.25, side: THREE.DoubleSide });
+          const bfStairCanopyMat = new THREE.MeshStandardMaterial({ color: 0xeaeae6, roughness: 0.38, metalness: 0.12, side: THREE.DoubleSide });
+          const bfFloodgateMat = new THREE.MeshStandardMaterial({ color: 0x9b9286, roughness: 0.40, metalness: 0.55 });
+          const bfBronzeGateMat = new THREE.MeshStandardMaterial({ color: 0x7a6c5d, roughness: 0.46, metalness: 0.45 });
+          const bfDarkVoidMat = new THREE.MeshStandardMaterial({ color: 0x1c1f22, roughness: 0.95 });
+          const bfLandingTileTex = makeGridTex(128, 128, '#ddd4c0', '#aca392', 32, 32, 10);
+          bfLandingTileTex.repeat.set(2.2, 1.2);
+          const bfLandingTileMat = new THREE.MeshStandardMaterial({ map: bfLandingTileTex, roughness: 0.65 });
+          const bfStepTreadMat = new THREE.MeshStandardMaterial({ color: 0xd5cfc2, roughness: 0.72 });
+          const bfStepNosingMat = new THREE.MeshStandardMaterial({ color: 0x7d8084, roughness: 0.38, metalness: 0.65 });
+          const bfNoticeMat = new THREE.MeshStandardMaterial({ color: 0xf4f2ec, roughness: 0.55 });
+          const bfRedSignMat = new THREE.MeshStandardMaterial({ color: 0xc83228, roughness: 0.5 });
+
+          // ---------------------------------------------------------
+          // (4.1) 地下室北側建築外牆立面（軸線 ⑫–⑱，z = ePitZ1，y = -2.60 至 1.25m）
+          // ---------------------------------------------------------
+          const bfWallH = baseH - ePitFloorY;                // 3.85m
+          const bfWallCy = (ePitFloorY + baseH) / 2;         // -0.675m
+          const dadoH = 1.08;                                // 下段灰綠磁磚牆高 1.08m
+          const headerH = 0.42;                              // 上段過樑高 0.42m
+          const louverY0 = ePitFloorY + dadoH;               // -1.52m
+          const louverY1 = baseH - headerH;                  // +0.83m
+          const louverH = louverY1 - louverY0;               // 2.35m
+
+          // 結構柱（軸線 ⑫ ~ ⑱，灰綠色小方磚包覆，對齊上方 1F–3F 白磚柱）
+          for (let idx = 12; idx <= 18; idx++) {
+            addBox(g, 0.56, bfWallH, 0.46, bfTileMat, ax(idx), bfWallCy, ePitZ1 - 0.14);
+          }
+
+          // 各開間地下室外牆（百葉窗、灰綠磚實牆、雙開門防水閘門 per Photos 3, 4, 5 & CAD 地下層平面圖）
+          for (let b = 12; b < 18; b++) {
+            const bx1 = ax(b) + 0.28, bx2 = ax(b + 1) - 0.28, bw = bx2 - bx1, bcx = (bx1 + bx2) / 2;
+            // 上方灰綠磁磚過樑
+            addBox(g, bw + 0.04, headerH, 0.30, bfTileMat, bcx, baseH - headerH / 2, ePitZ1 - 0.15);
+            // 牆腳水泥踢腳台階（Photo 3 牆底水泥踏沿）
+            addBox(g, bw + 0.04, 0.10, 0.24, bfWalkFloorMat, bcx, ePitFloorY + 0.05, ePitZ1 + 0.08);
+
+            if (b === 14) {
+              // ⑭–⑮：地下室主要雙開出入口＋古銅色防水閘門與雙斜撐桿（Photos 4, 5 & CAD 地下層平面圖）
+              addBox(g, bw, bfWallH - headerH, 0.10, bfDarkVoidMat, bcx, (ePitFloorY + louverY1) / 2, ePitZ1 - 0.26);
+              // 兩側開啟之白色百葉門扇
+              const leafW = bw * 0.26;
+              addBox(g, leafW, louverH + dadoH - 0.10, 0.06, bfLouverMat, bx1 + leafW / 2 + 0.05, (ePitFloorY + 0.10 + louverY1) / 2, ePitZ1 - 0.18);
+              addBox(g, leafW, louverH + dadoH - 0.10, 0.06, bfLouverMat, bx2 - leafW / 2 - 0.05, (ePitFloorY + 0.10 + louverY1) / 2, ePitZ1 - 0.18);
+              // 門洞下半部古銅色防水閘門（高 0.98m）與兩道對角固定斜撐桿
+              const fgH = 0.98;
+              addBox(g, bw - 0.08, fgH, 0.06, bfBronzeGateMat, bcx, ePitFloorY + fgH / 2, ePitZ1 - 0.05);
+              addBox(g, bw - 0.06, 0.05, 0.08, ironGrilleMat, bcx, ePitFloorY + fgH, ePitZ1 - 0.05);
+              for (const sx of [-0.55, 0.55]) {
+                const brace = addBox(g, 0.035, 0.035, 0.82, ironGrilleMat, bcx + sx, ePitFloorY + 0.36, ePitZ1 + 0.24);
+                brace.rotation.x = 0.72;
+              }
+            } else {
+              // 下半部灰綠方磚實牆
+              addBox(g, bw, dadoH, 0.28, bfTileMat, bcx, ePitFloorY + dadoH / 2, ePitZ1 - 0.14);
+              // Bay ⑫–⑬ 右半段為整面灰綠磚實牆（Photo 4 左側）；其餘皆為三格白色水平百葉窗
+              if (b === 12) {
+                const lw = bw * 0.56, rw = bw - lw;
+                addBox(g, lw, louverH, 0.10, bfLouverMat, bx1 + lw / 2, louverY0 + louverH / 2, ePitZ1 - 0.22);
+                addBox(g, 0.05, louverH, 0.12, panelPureWhite, bx1 + lw * 0.33, louverY0 + louverH / 2, ePitZ1 - 0.20);
+                addBox(g, 0.05, louverH, 0.12, panelPureWhite, bx1 + lw * 0.67, louverY0 + louverH / 2, ePitZ1 - 0.20);
+                addBox(g, rw, louverH, 0.28, bfTileMat, bx2 - rw / 2, louverY0 + louverH / 2, ePitZ1 - 0.14);
+                // 牆面小型白色宣導告示牌（Photo 3）
+                addBox(g, 0.32, 0.22, 0.015, bfNoticeMat, bx1 + lw * 0.28, ePitFloorY + 0.85, ePitZ1 + 0.01, false);
+                addBox(g, 0.32, 0.22, 0.015, bfNoticeMat, bx1 + lw * 0.82, ePitFloorY + 0.85, ePitZ1 + 0.01, false);
+              } else {
+                addBox(g, bw, louverH, 0.10, bfLouverMat, bcx, louverY0 + louverH / 2, ePitZ1 - 0.22);
+                // 3 格白鋁框立梃
+                for (let m = 1; m <= 2; m++) {
+                  addBox(g, 0.055, louverH, 0.12, panelPureWhite, bx1 + bw * (m / 3), louverY0 + louverH / 2, ePitZ1 - 0.20);
+                }
+              }
+            }
+          }
+
+          // ---------------------------------------------------------
+          // (4.2) 地下室天井廊道地坪與連續排水溝格柵（z = ePitZ1..zWalkOuter, y = -2.60m）
+          // ---------------------------------------------------------
+          const fullPitW = ePitX2 - stAX1;
+          const fullPitCx = (stAX1 + ePitX2) / 2;
+          addBox(g, fullPitW, 0.22, walkD + 0.10, bfWalkFloorMat, fullPitCx, ePitFloorY - 0.11, ePitZ1 + walkD / 2);
+          // 連續條狀排水溝格柵（緊貼斜坡腳，貫穿整段東側地下室廊道 per Photos 3, 4, 5）
+          addBox(g, fullPitW - 0.10, 0.03, 0.30, bfGrateMat, fullPitCx, ePitFloorY + 0.015, zWalkOuter - 0.18, false);
+          // 中央大階梯東側護牆延伸至坑底之封堵白牆（x = ePitX1..stAX1，避免縫隙外露）
+          addBox(g, stAX1 - ePitX1 + 0.06, (eGroundY + 1.20) - ePitFloorY, ePitZ2 - ePitZ1, alcoveWhiteMat, (ePitX1 + stAX1) / 2, (ePitFloorY + eGroundY + 1.20) / 2, (ePitZ1 + ePitZ2) / 2);
+
+          // ---------------------------------------------------------
+          // (4.3) 連續弧形金屬採光雨遮與不銹鋼立柱（貫穿軸線 ⑫–⑱ 地下室廊道上方 per Photos 1, 2, 4, 5）
+          // ---------------------------------------------------------
+          {
+            const awnX1 = stAX1 + 0.02, awnX2 = stBX2 - 0.02, awnLen = awnX2 - awnX1;
+            const awnShape = new THREE.Shape();
+            const pts = [
+              [0.00, 1.06], [-0.40, 1.03], [-0.85, 0.99], [-1.14, 0.95],
+              [-1.28, 0.90], [-1.39, 0.82], [-1.46, 0.71], [-1.50, 0.58]
+            ];
+            const thick = 0.055;
+            awnShape.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) awnShape.lineTo(pts[i][0], pts[i][1]);
+            for (let i = pts.length - 1; i >= 0; i--) awnShape.lineTo(pts[i][0] + (i > 4 ? thick : 0), pts[i][1] - thick);
+            awnShape.closePath();
+            const awnGeo = new THREE.ExtrudeGeometry(awnShape, { depth: awnLen, bevelEnabled: false });
+            awnGeo.rotateY(Math.PI / 2);
+            const awnMesh = new THREE.Mesh(awnGeo, bfAwningMat);
+            awnMesh.position.set(awnX1, 0, ePitZ1);
+            awnMesh.castShadow = true; awnMesh.receiveShadow = true;
+            g.add(awnMesh);
+
+            // 雨遮表面橫向拼接壓條（每 ~1.35m 一道，呈現照片中分片金屬質感）
+            const nRibs = Math.round(awnLen / 1.35);
+            for (let r = 0; r <= nRibs; r++) {
+              const rx = awnX1 + r * (awnLen / nRibs);
+              addBox(g, 0.025, 0.02, 1.18, stainlessRailMat, rx, 1.02, ePitZ1 + 0.58, false);
+            }
+            // 外緣水平不銹鋼連繫樑與排水槽（y = 0.58m）
+            addBox(g, awnLen, 0.06, 0.06, stainlessRailMat, (awnX1 + awnX2) / 2, 0.56, ePitZ1 + 1.44);
+            // 不銹鋼圓管支撐立柱（自地下室地坪 y=-2.60 直抵雨遮底緣 y=0.58，立於排水溝內側 per Photos 4, 5）
+            const colXs = [stAX2 + 0.15, ax(13), ax(14), ax(15), ax(16), ax(17), stBX1 - 0.15];
+            const colH = 0.58 - ePitFloorY;
+            colXs.forEach(cxPos => {
+              addMesh(g, new THREE.CylinderGeometry(0.042, 0.042, colH, 12), stainlessRailMat, cxPos, ePitFloorY + colH / 2, zWalkOuter - 0.06);
+            });
+            // 落水管（貼於 ⑮ 軸立柱旁 per Photo 4 & 5）
+            addMesh(g, new THREE.CylinderGeometry(0.028, 0.028, colH - 0.08, 10), pipePvcMat, ax(15) + 0.08, ePitFloorY + colH / 2, zWalkOuter - 0.06, false);
+          }
+
+          // ---------------------------------------------------------
+          // (4.4) 開放式雙階水泥斜坡擋土護岸（介於西、東兩座樓梯之間 per Photos 1, 4, 5）
+          // ---------------------------------------------------------
+          {
+            const slX1 = stAX2, slX2 = stBX1, slW = slX2 - slX1;
+            const zMid1 = slopeZ1 + 0.62, zMid2 = slopeZ1 + 0.88; // 中段水平折台寬 0.26m
+            const yMid = (ePitFloorY + eGroundY) / 2 - 0.04;      // -1.635m (斜坡半高折台)
+            // 使用 ExtrudeGeometry 沿 X 軸擠出實心雙階斜坡斷面（零破面、零縫隙）
+            const slShape = new THREE.Shape();
+            const uOf = zVal => ePitZ1 - zVal;
+            slShape.moveTo(uOf(slopeZ1), ePitFloorY);
+            slShape.lineTo(uOf(zMid1), yMid);
+            slShape.lineTo(uOf(zMid2), yMid);
+            slShape.lineTo(uOf(slopeZ2), eGroundY);
+            slShape.lineTo(uOf(slopeZ2), ePitFloorY - 0.20);
+            slShape.lineTo(uOf(slopeZ1), ePitFloorY - 0.20);
+            slShape.closePath();
+            const slGeo = new THREE.ExtrudeGeometry(slShape, { depth: slW, bevelEnabled: false });
+            slGeo.rotateY(Math.PI / 2);
+            const slMesh = new THREE.Mesh(slGeo, bfSlopeConcreteMat);
+            slMesh.position.set(slX1, 0, ePitZ1);
+            slMesh.receiveShadow = true;
+            g.add(slMesh);
+
+            // 中段水平洗石子分隔折帶（Photos 1, 4, 5 中清晰可見之雙段斜坡中線折台）
+            addBox(g, slW, 0.04, zMid2 - zMid1 + 0.02, bfPebbleMat, (slX1 + slX2) / 2, yMid + 0.01, (zMid1 + zMid2) / 2, false);
+
+            // -------------------------------------------------------
+            // (4.5) 中庭邊緣深灰褐二丁掛磚矮牆、洗石子壓頂與不銹鋼單橫桿欄杆（Photos 1, 2, 4, 5）
+            // -------------------------------------------------------
+            const dwThick = 0.26, dwH = 0.42;
+            const dwZ = ePitZ2 - dwThick / 2;                // -23.13m
+            const dwTopY = eGroundY + dwH;                   // -0.17m
+            const slCx = (slX1 + slX2) / 2;
+            // 深灰褐二丁掛磚矮牆（底延伸至斜坡背以防透縫）
+            addBox(g, slW + 0.04, dwH + 0.30, dwThick, bfBrickWallMat, slCx, dwTopY - (dwH + 0.30) / 2, dwZ);
+            // 洗石子壓頂蓋板
+            addBox(g, slW + 0.08, 0.06, dwThick + 0.05, bfPebbleMat, slCx, dwTopY + 0.03, dwZ);
+            // 頂部單橫桿不銹鋼圓管欄杆（高出壓頂 0.42m，總高約 0.90m）
+            const rBaseY = dwTopY + 0.06, rTopY = rBaseY + 0.42;
+            const topBar = addMesh(g, new THREE.CylinderGeometry(0.024, 0.024, slW, 12), stainlessRailMat, slCx, rTopY, dwZ, false);
+            topBar.rotation.z = Math.PI / 2;
+            const nRailPosts = Math.max(8, Math.round(slW / 1.15));
+            for (let p = 0; p <= nRailPosts; p++) {
+              const px = slX1 + 0.08 + p * ((slW - 0.16) / nRailPosts);
+              addMesh(g, new THREE.CylinderGeometry(0.018, 0.018, 0.42, 10), stainlessRailMat, px, rBaseY + 0.21, dwZ, false);
+              addMesh(g, new THREE.CylinderGeometry(0.038, 0.038, 0.016, 10), stainlessRailMat, px, rBaseY + 0.008, dwZ, false);
+            }
+          }
+
+          // ---------------------------------------------------------
+          // (4.6) 雙座下沉出入口樓梯建構函式（西座緊貼中央大階梯、東座緊貼陶板手印牆 per Photos 1~5 & north_east.jpg）
+          // ---------------------------------------------------------
+          const buildEastBasementStair = (sx1, sx2, isWestEnd) => {
+            const stW = sx2 - sx1, stCx = (sx1 + sx2) / 2;
+            const landD = isWestEnd ? 0.85 : 0.48;           // 東座靠近遊具地墊，踏台深度精準收斂不碰撞
+            const landH = 0.14;
+            // A. 南側入口米白方磚踏台
+            addBox(g, stW + 0.12, landH, landD, bfLandingTileMat, stCx, eGroundY + landH / 2, ePitZ2 + landD / 2);
+            // B. 樓梯頂部鋁合金防水閘門（Photo 3 & north_east.jpg）
+            const fgZ = ePitZ2 - 0.05;
+            const fgTopY = eGroundY + 0.56;
+            addBox(g, stW - 0.16, 0.54, 0.035, bfFloodgateMat, stCx, eGroundY + 0.27, fgZ);
+            addBox(g, stW - 0.14, 0.05, 0.045, ironGrilleMat, stCx, eGroundY + 0.03, fgZ);
+            // 兩側防水閘門固定槽柱
+            addBox(g, 0.07, 0.66, 0.08, stainlessRailMat, sx1 + 0.06, eGroundY + 0.33, fgZ);
+            addBox(g, 0.07, 0.66, 0.08, stainlessRailMat, sx2 - 0.06, eGroundY + 0.33, fgZ);
+            if (!isWestEnd) {
+              // 東座閘門中央小型紅白警示牌（north_east.jpg）
+              addBox(g, 0.26, 0.20, 0.015, bfRedSignMat, stCx, eGroundY + 0.34, fgZ + 0.025, false);
+            }
+
+            // C. 11 階下沉踏步（由南向北自 y = -0.59m 降至地下室廊道 y = -2.60m，每階帶金屬防滑條 per Photo 3）
+            const stStartZ = ePitZ2 - 0.10;                  // -23.10m
+            const stEndZ = ePitZ1 + 1.02;                    // -25.155m（留 1.02m 寬地下室梯腳緩衝廊道）
+            const stRunZ = stStartZ - stEndZ;                // 2.055m
+            const nSteps = 11;
+            const sRise = (eGroundY - ePitFloorY) / nSteps;  // 0.183m
+            const sTread = stRunZ / nSteps;                  // 0.187m
+            const stepW = stW - 0.26;
+            for (let s = 0; s < nSteps; s++) {
+              const sy = eGroundY - (s + 1) * sRise;
+              const sz = stStartZ - (s + 0.5) * sTread;
+              const hBelow = Math.max(0.08, sy - ePitFloorY);
+              addBox(g, stepW, hBelow, sTread + 0.02, outdoorConcreteMat, stCx, ePitFloorY + hBelow / 2, sz);
+              addBox(g, stepW, 0.025, sTread + 0.02, bfStepTreadMat, stCx, sy + 0.012, sz);
+              addBox(g, stepW - 0.04, 0.016, 0.032, bfStepNosingMat, stCx, sy + 0.024, sz - sTread / 2 + 0.02, false);
+            }
+            // 樓梯底部橫向排水格柵（Photo 3 梯腳排水溝）
+            addBox(g, stepW, 0.03, 0.28, bfGrateMat, stCx, ePitFloorY + 0.015, stEndZ - 0.16, false);
+
+            // D. 內側（靠斜坡側）深灰褐二丁掛斜護牆＋洗石子壓頂＋不銹鋼斜扶手（Photo 3 右側）
+            const innerX = isWestEnd ? (sx2 - 0.11) : (sx1 + 0.11);
+            const stAng = Math.atan2(eGroundY - ePitFloorY, stRunZ); // ~0.774 rad
+            const stSlopeLen = Math.hypot(stRunZ, eGroundY - ePitFloorY);
+            const stMidY = (eGroundY + ePitFloorY) / 2;
+            const stMidZ = (stStartZ + stEndZ) / 2;
+            // 內側實體磚矮牆（高於踏步約 0.45m）
+            const cheekShape = new THREE.Shape();
+            const uS = zV => ePitZ1 - zV;
+            cheekShape.moveTo(uS(ePitZ2), ePitFloorY);
+            cheekShape.lineTo(uS(ePitZ2), eGroundY + 0.42);
+            cheekShape.lineTo(uS(stEndZ), ePitFloorY + 0.58);
+            cheekShape.lineTo(uS(stEndZ), ePitFloorY);
+            cheekShape.closePath();
+            const cheekGeo = new THREE.ExtrudeGeometry(cheekShape, { depth: 0.22, bevelEnabled: false });
+            cheekGeo.rotateY(Math.PI / 2);
+            const cheekMesh = new THREE.Mesh(cheekGeo, bfBrickShortMat);
+            cheekMesh.position.set(innerX - 0.11, 0, ePitZ1);
+            cheekMesh.castShadow = true; cheekMesh.receiveShadow = true;
+            g.add(cheekMesh);
+            // 洗石子斜壓頂
+            const capSlope = addBox(g, 0.26, 0.055, stSlopeLen + 0.12, bfPebbleMat, innerX, stMidY + 0.52, stMidZ);
+            capSlope.rotation.x = -stAng;
+            // 不銹鋼斜扶手與立柱
+            const sRail = addBox(g, 0.042, 0.042, stSlopeLen + 0.16, stainlessRailMat, innerX, stMidY + 0.94, stMidZ);
+            sRail.rotation.x = -stAng;
+            for (let p = 0; p <= 4; p++) {
+              const t = p / 4;
+              const pz = stStartZ - t * stRunZ;
+              const py = (eGroundY + 0.52) - t * (eGroundY - ePitFloorY - 0.08);
+              addMesh(g, new THREE.CylinderGeometry(0.018, 0.018, 0.42, 8), stainlessRailMat, innerX, py + 0.21, pz, false);
+            }
+
+            // E. 外側壁掛不銹鋼扶手（西座貼白牆 per Photo 3 左側；東座貼陶板手印牆內側）
+            const outerX = isWestEnd ? (sx1 + 0.08) : (sx2 - 0.08);
+            const wRail = addBox(g, 0.04, 0.04, stSlopeLen + 0.10, stainlessRailMat, outerX, stMidY + 0.88, stMidZ);
+            wRail.rotation.x = -stAng;
+
+            // F. 弧形不銹鋼骨架白板採光雨棚（水平弧形前簷＋斜向下沉雨棚＋不銹鋼格柵骨架＋圓柱支撐 per Photos 1~5 & north_east.jpg）
+            const canW = stW + 0.16;
+            const hoodTopY = eGroundY + 2.18;                // +1.59m（高出入口踏台約 2.04m，通透好走）
+            const hoodSouthZ = ePitZ2 + (isWestEnd ? 0.65 : 0.45);
+            const hoodBendZ = ePitZ2 - 0.12;
+            const canEndZ = zWalkOuter - 0.04;
+            const canEndY = 0.68;                            // 與水平弧形廊道雨遮無縫銜接
+            const canRunZ = hoodBendZ - canEndZ;
+            const canDropY = hoodTopY - canEndY;
+            const canAng = Math.atan2(canDropY, canRunZ);
+            const canSlopeL = Math.hypot(canRunZ, canDropY);
+
+            // 1) 雨棚頂板斷面擠出（南端弧形下彎前簷 + 水平入口頂 + 斜降樓梯段）
+            const canShape = new THREE.Shape();
+            const uC = zV => ePitZ1 - zV;
+            const cPts = [
+              [uC(hoodSouthZ + 0.26), hoodTopY - 0.34],
+              [uC(hoodSouthZ + 0.20), hoodTopY - 0.16],
+              [uC(hoodSouthZ + 0.08), hoodTopY - 0.04],
+              [uC(hoodSouthZ - 0.08), hoodTopY],
+              [uC(hoodBendZ), hoodTopY],
+              [uC(canEndZ), canEndY]
+            ];
+            const cT = 0.045;
+            canShape.moveTo(cPts[0][0], cPts[0][1]);
+            for (let i = 1; i < cPts.length; i++) canShape.lineTo(cPts[i][0], cPts[i][1]);
+            for (let i = cPts.length - 1; i >= 0; i--) canShape.lineTo(cPts[i][0], cPts[i][1] - cT);
+            canShape.closePath();
+            const canGeo = new THREE.ExtrudeGeometry(canShape, { depth: canW, bevelEnabled: false });
+            canGeo.rotateY(Math.PI / 2);
+            const canMesh = new THREE.Mesh(canGeo, bfStairCanopyMat);
+            canMesh.position.set(stCx - canW / 2, 0, ePitZ1);
+            canMesh.castShadow = true; canMesh.receiveShadow = true;
+            g.add(canMesh);
+
+            // 2) 不銹鋼縱向與橫向骨架肋條（呈現 Photo 2 & 3 棚底精細金屬網格）
+            for (const fx of [-canW / 2 + 0.03, -canW * 0.18, canW * 0.18, canW / 2 - 0.03]) {
+              const rib = addBox(g, 0.045, 0.055, canSlopeL + 0.04, stainlessRailMat, stCx + fx, (hoodTopY + canEndY) / 2 - 0.04, (hoodBendZ + canEndZ) / 2);
+              rib.rotation.x = -canAng;
+              // 入口水平段骨架
+              const hoodLen = hoodSouthZ - hoodBendZ;
+              addBox(g, 0.045, 0.055, hoodLen, stainlessRailMat, stCx + fx, hoodTopY - 0.04, (hoodSouthZ + hoodBendZ) / 2);
+            }
+            for (let tr = 0; tr <= 4; tr++) {
+              const t = tr / 4;
+              const tz = hoodBendZ - t * canRunZ;
+              const ty = hoodTopY - t * canDropY - 0.04;
+              addBox(g, canW, 0.045, 0.045, stainlessRailMat, stCx, ty, tz);
+            }
+            // 前緣彎弧底緣收邊橫桿
+            addBox(g, canW, 0.05, 0.05, stainlessRailMat, stCx, hoodTopY - 0.34, hoodSouthZ + 0.26);
+
+            // 3) 不銹鋼圓管支撐立柱（南側入口前角雙柱 + 中段斜牆支撐柱）
+            const frontColH = (hoodTopY - 0.04) - (eGroundY + landH);
+            const fColZ = hoodBendZ + 0.25;
+            addMesh(g, new THREE.CylinderGeometry(0.042, 0.042, frontColH, 12), stainlessRailMat, sx1 + 0.06, eGroundY + landH + frontColH / 2, fColZ);
+            addMesh(g, new THREE.CylinderGeometry(0.042, 0.042, frontColH, 12), stainlessRailMat, sx2 - 0.06, eGroundY + landH + frontColH / 2, fColZ);
+            // 中段與下端立柱
+            for (const t of [0.48, 0.96]) {
+              const pz = hoodBendZ - t * canRunZ;
+              const topY = hoodTopY - t * canDropY - 0.04;
+              const botY = ePitFloorY;
+              addMesh(g, new THREE.CylinderGeometry(0.038, 0.038, topY - botY, 10), stainlessRailMat, innerX, (topY + botY) / 2, pz);
+            }
+          };
+
+          // 建構西座（中央大階梯東側）與東座（北棟東端 ⑱ 軸）雙座地下室樓梯
+          buildEastBasementStair(stAX1, stAX2, true);
+          buildEastBasementStair(stBX1, stBX2, false);
+
+          // ---------------------------------------------------------
+          // (4.7) 西座入口旁兩支橘色安全交通錐（Photos 1, 2, 5 實景細節）
+          // ---------------------------------------------------------
+          const coneOrangeMat = new THREE.MeshStandardMaterial({ color: 0xf25218, roughness: 0.42 });
+          const coneFadedMat = new THREE.MeshStandardMaterial({ color: 0xc97b4b, roughness: 0.58 });
+          const coneBaseMat = new THREE.MeshStandardMaterial({ color: 0x252729, roughness: 0.85 });
+          [
+            [stAX1 + 0.35, ePitZ2 + 0.72, coneOrangeMat],
+            [stAX2 + 0.32, ePitZ2 + 0.32, coneFadedMat]
+          ].forEach(([cxP, czP, cMat]) => {
+            addBox(g, 0.34, 0.04, 0.34, coneBaseMat, cxP, eGroundY + 0.02, czP, false);
+            addMesh(g, new THREE.ConeGeometry(0.13, 0.62, 14), cMat, cxP, eGroundY + 0.35, czP);
+          });
+
+          // ---------------------------------------------------------
+          // (4.8) 東端深色陶板手印馬賽克擋土矮牆（軸線 ⑱，分隔地下室東梯與東側連廊平台 per Photo 1 & north_east.jpg）
+          // ---------------------------------------------------------
+          {
+            const hwTopY = 0.88;                             // 略低於 1F 黃色陽台底緣 (1.25m)，與 north_east.jpg 比例一致
+            const hwH = hwTopY - ePitFloorY;                 // 3.48m
+            const hwD = (ePitZ2 + 0.16) - ePitZ1;            // 3.335m
+            const hwCz = (ePitZ1 + ePitZ2 + 0.16) / 2;
+            const hwX = ePitX2 + 0.14;
+            addBox(g, 0.28, hwH, hwD, handprintWallMat, hwX, ePitFloorY + hwH / 2, hwCz);
+            addBox(g, 0.32, 0.06, hwD + 0.04, handprintCapMat, hwX, hwTopY + 0.03, hwCz);
+          }
+        }
 
         // 5) 教室外牆轉角垂直落水管 (Vertical Cream Rainwater Downpipe per Photo 6)
         // 實景照片 6 中，103 教室後牆轉角處有一根筆直貫通至地面的垂直落水管
@@ -5368,23 +7401,34 @@ function buildNorthBuilding() {
 
     // 1F Central Front Entrance Grand Staircase (`正向立面圖 & 壹層平面圖 ⑪–⑫ 前側中央大階梯 +150`)
     const grandStW = hallW + 0.4;
-    for (let s = 0; s < 8; s++) {
-      addBox(g, grandStW, 0.14, 0.42, mats.slab, hcx, 0.07 + s * 0.145, zf + 3.3 - s * 0.38);
+    const gsGroundY = 0.16 - COURTYARD_SINK.D;               // -0.59m (與中庭鋪面及東側地下室西梯入口切齊)
+    const gsSteps = 10, gsRise = (baseH - gsGroundY) / gsSteps, gsRun = 3.10, gsTread = gsRun / gsSteps;
+    for (let s = 0; s < gsSteps; s++) {
+      const topY = gsGroundY + (s + 1) * gsRise;
+      const sz = zf + gsRun - (s + 0.5) * gsTread;
+      const h = topY - gsGroundY;
+      addBox(g, grandStW, h, gsTread + 0.02, mats.slab, hcx, gsGroundY + h / 2, sz);
     }
+    const gsAng = Math.atan2(baseH - gsGroundY, gsRun);
+    const gsSlopeL = Math.hypot(gsRun, baseH - gsGroundY);
+    const gsRailMat = new THREE.MeshStandardMaterial({ color: 0x7c9bb2, roughness: 0.45, metalness: 0.25 }); // 淺藍灰金屬階梯扶手 (Photos 2, 3)
     for (const side of [-1, 1]) {
-      const cheek = addBox(g, 0.32, 0.85, 3.3, columnTileFine, hcx + side * (grandStW / 2 + 0.14), 0.58, zf + 1.80);
-      cheek.rotation.x = 0.32;
+      const chX = hcx + side * (grandStW / 2 + 0.14);
+      const cheek = addBox(g, 0.30, 0.90, gsSlopeL, outdoorConcreteMat, chX, (gsGroundY + baseH) / 2 + 0.08, zf + gsRun / 2);
+      cheek.rotation.x = gsAng;
+      // 兩側淺藍灰金屬階梯扶手（雙橫桿＋立柱，緊鄰東側地下室西梯 per Photos 2, 3）
+      const rTop = addBox(g, 0.045, 0.045, gsSlopeL, gsRailMat, chX, (gsGroundY + baseH) / 2 + 0.92, zf + gsRun / 2);
+      rTop.rotation.x = gsAng;
+      const rMid = addBox(g, 0.032, 0.032, gsSlopeL, gsRailMat, chX, (gsGroundY + baseH) / 2 + 0.56, zf + gsRun / 2);
+      rMid.rotation.x = gsAng;
+      for (let p = 0; p <= 4; p++) {
+        const t = p / 4;
+        const pz = zf + gsRun - t * gsRun;
+        const py = gsGroundY + t * (baseH - gsGroundY) + 0.46;
+        addBox(g, 0.04, 0.92, 0.04, gsRailMat, chX, py, pz);
+      }
     }
-
-    // Right (East) of Grand Stair: Sloped Translucent Canopy for Basement Stair (下地下室採光雨棚 per p3.jpg)
-    const bsCanopyX = hcx + grandStW / 2 + 1.65;
-    addBox(g, 2.2, 0.95, 3.2, whiteTileFine, bsCanopyX, 0.48, zf + 1.80);
-    const bsGlassCanopy = addBox(g, 2.35, 0.08, 3.4, skylightBlueMat, bsCanopyX, 1.35, zf + 1.80);
-    bsGlassCanopy.rotation.x = 0.26; // sloped downwards away from building
-    // Orange/White Safety Cones (安全防撞椎 per p3.jpg)
-    const coneMat = new THREE.MeshStandardMaterial({ color: 0xff5500, roughness: 0.4 });
-    const cone1 = addMesh(g, new THREE.ConeGeometry(0.16, 0.55, 16), coneMat, bsCanopyX - 0.8, 0.28, zf + 3.6);
-    const cone2 = addMesh(g, new THREE.ConeGeometry(0.16, 0.55, 16), coneMat, bsCanopyX + 0.6, 0.28, zf + 3.6);
+    // （原 bsCanopyX 簡化雨棚與交通錐已於上方 4) 東側地下室 1:1 實景重建區塊以完整弧形雨棚、防水閘門與下沉樓梯取代）
   }
 
   // Bay `⑫–⑬`: 1F/2F/3F Yellow U-Notched Balcony Boxes
@@ -5806,195 +7850,7 @@ function buildNorthBuilding() {
     });
 
     // =========================================================================
-    // C. 東棟大樓北端銜接部與特色山牆實景特徵 (East Building North Facade Features per New Photos)
-    //    依據現場實拍照片 (media_1793717974907 ~ media_1793717975659 1:1 精確還原)：
-    //    1) 西側外挑走廊 (x ≈ ebWestX - 1.45m 至 ebWestX)：
-    //       - 1F：白色方格二丁掛實心圍牆 (帶紅色細條紋腰線)、圓拱頂門洞出入口 (黑色門套)、內部斜坡階梯
-    //       - 2F / 3F：白色方格二丁掛護牆 (高度 1.05m，上緣與下緣帶紅色裝飾細線條)、頂部金屬圓管安全護欄
-    //       - 西側外挑護板：各樓層西向轉角外包鮮豔粉紅色造型護板
-    //       - 屋頂層：頂部向北傾斜之瓦紅小斜屋頂雨遮 (帶金屬支撐與天藍色收邊)
-    //    2) 樓梯間 / 電梯井鍍鋅鋼構外掛籠架 (外包鋼絲網防護網罩，貫穿 1F～2F～3F，Photo 2 顯著特徵)
-    //    3) 東側北向主山牆面 (x ≈ ebWestX 至 xE，寬約 12.2m)：
-    //       - 銀灰色水平彩色鋼板外牆，貫穿全寬之水平鮮紅色寬飾帶
-    //       - 1F/2F 間、2F/3F 間具有深寶藍色金屬斜屋簷造型雨遮 (Blue Metal Sloped Canopies)
-    //       - 各層配置連續水平條狀黑色窗列 (Dark Ribbon Windows with Blue Frames)
-    //       - 3F 東北轉角彩繪：頂部外牆彩繪藍天白雲、白色菱形框幾何壁畫圖騰
-    //       - 西南側白色百葉小門與排水落水管
-    // =========================================================================
-    const ebWestX = e2R;                                        // 52.78m (東棟西走廊外緣 X(715))
-    const ebEastX = ebWestX + 12.22;                            // ~65.00m (東棟東走廊外緣，全寬 12.22m)
-    const northWallZ = Z(88);                                   // -39.52m (東棟北外牆線 z1 = Z(88))
-    const corridorSpanZ = Math.abs(brNorthZ - northWallZ);      // ~10.84m (連廊北緣至東棟北外牆)
-    const corridorCz = (brNorthZ + northWallZ) / 2;             // -34.0975m
-
-    const blueTrimMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.38, metalness: 0.25 }); // 亮天藍色金屬收邊/窗框
-    const deepBlueRoofMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.35, metalness: 0.35 }); // 寶藍色金屬斜雨遮
-    const skyMuralBlueMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.65 }); // 藍天白雲彩繪底色
-    const cageMeshMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.45, metalness: 0.75, wireframe: false }); // 鍍鋅防護鐵絲網籠
-    const tileRedLineMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.5 }); // 白磁磚護牆上的紅色細條紋
-
-    // -------------------------------------------------------------------------
-    // C.1 西側外挑走廊 (1F～3F 西向與北向立面，對照 Photo 1、2、3)
-    // -------------------------------------------------------------------------
-    const balW = 1.65;
-    const balX = ebWestX - balW / 2;                            // ~51.955m
-    const balWestEdgeX = ebWestX - balW;                        // ~51.13m
-
-    // 1F 出入口外牆、圓拱門洞與洗石子地坪 (Photo 1 & 3 特寫)
-    const archH = 2.45, archW = 1.45;
-    addBox(g, balW + 0.10, 3.20, 0.28, whiteTileFine, balX, 1.60, northWallZ + 0.14);
-    // 1F 北向外牆紅色水平細腰線 (Photo 1)
-    addBox(g, balW + 0.12, 0.06, 0.30, tileRedLineMat, balX, 0.95, northWallZ + 0.14);
-    // 圓拱頂門洞出入口 (黑色金屬深框拱門，通往 1F 廊道，Photo 1)
-    const archDoorway = addBox(g, archW, archH, 0.34, darkMetalMat, balX, archH / 2, northWallZ + 0.14);
-    addBox(g, archW - 0.16, archH - 0.16, 0.38, corridorFloorMat, balX, (archH - 0.16) / 2, northWallZ + 0.14); // 穿透門洞內部
-    // 1F 西側轉角白磁磚擋土牆延伸至中庭
-    addBox(g, 0.24, 1.35, 3.80, whiteTileFine, balWestEdgeX + 0.12, 0.675, northWallZ + 1.90);
-    addBox(g, 0.26, 0.06, 3.84, tileRedLineMat, balWestEdgeX + 0.12, 0.95, northWallZ + 1.90);
-
-    // 2F 與 3F 西走廊樓板、白磁磚護牆與粉紅色造型轉角外包盒 (Photo 1, 2, 3)
-    for (let fl = 1; fl <= 2; fl++) {
-      const flY = eastTargetY[fl];                              // 2FL=4.41m, 3FL=7.93m
-      const pWallH = 1.15;
-
-      // 走廊樓板 (自連廊北緣延伸至北山牆)
-      addBox(g, balW + 0.20, 0.24, corridorSpanZ, corridorFloorMat, balX, flY - 0.12, corridorCz);
-
-      // 北端面白色方格二丁掛實心護牆 (高 1.15m，帶紅色裝飾細線條與不銹鋼頂部扶手，Photo 1)
-      addBox(g, balW, pWallH, 0.24, whiteTileFine, balX, flY + pWallH / 2, northWallZ + 0.12);
-      addBox(g, balW + 0.04, 0.05, 0.26, tileRedLineMat, balX, flY + 0.88, northWallZ + 0.12); // 下方紅色細線
-      addBox(g, balW + 0.04, 0.05, 0.26, tileRedLineMat, balX, flY + pWallH - 0.05, northWallZ + 0.12); // 上方紅色細線
-      // 護牆頂部不銹鋼圓管安全護欄
-      addBox(g, balW + 0.02, 0.05, 0.05, stainlessRailMat, balX, flY + pWallH + 0.08, northWallZ + 0.12, false);
-      for (let st = 0; st <= 3; st++) {
-        const sx = (balWestEdgeX + 0.25) + st * ((balW - 0.50) / 3);
-        addBox(g, 0.04, 0.14, 0.04, stainlessRailMat, sx, flY + pWallH + 0.04, northWallZ + 0.12, false);
-      }
-
-      // 西向面走廊護牆 (北段長約 4.2m，外貼白色方格磁磚)
-      addBox(g, 0.22, pWallH, 4.20, whiteTileFine, balWestEdgeX + 0.11, flY + pWallH / 2, northWallZ + 2.10);
-      addBox(g, 0.24, 0.05, 4.20, tileRedLineMat, balWestEdgeX + 0.11, flY + 0.88, northWallZ + 2.10);
-      addBox(g, 0.05, 0.05, 4.20, stainlessRailMat, balWestEdgeX + 0.11, flY + pWallH + 0.08, northWallZ + 2.10, false);
-
-      // 西向轉角鮮豔粉紅色造型飾板 (Pink Balcony Accent Box per Photo 2 & 3)
-      addBox(g, 0.12, pWallH + 0.05, 2.40, pinkBalconyMat, balWestEdgeX - 0.06, flY + pWallH / 2, northWallZ + 1.30);
-    }
-
-    // 頂樓西側向北傾斜之瓦紅小斜屋頂雨遮 (帶天藍色收邊，Photo 1, 2, 3)
-    {
-      const rfY = eastTargetY[3] + 0.15;                        // ~11.60m
-      const hoodW = balW + 0.45, hoodD = 3.20;
-      const hoodMesh = addBox(g, hoodW, 0.10, hoodD, stripeRedMat, balX, rfY, northWallZ + hoodD / 2 - 0.20);
-      hoodMesh.rotation.x = -0.15;                              // 向北微傾斜排水
-      addBox(g, hoodW + 0.04, 0.14, 0.12, blueTrimMat, balX, rfY - 0.22, northWallZ - 0.12); // 北端藍色天溝封簷
-      // 支撐角鋼支架
-      addBox(g, 0.06, 0.85, 0.06, steelPostMat, balWestEdgeX + 0.10, rfY - 0.55, northWallZ + 0.25);
-      addBox(g, 0.06, 0.85, 0.06, steelPostMat, ebWestX - 0.10, rfY - 0.55, northWallZ + 0.25);
-    }
-
-    // -------------------------------------------------------------------------
-    // C.2 垂直鍍鋅鋼構外掛防護電梯/樓梯籠架 (Exterior Wire-Mesh Cage Enclosure per Photo 2)
-    // 坐落於西走廊與北山牆交界 (x ≈ ebWestX - 0.1m 至 ebWestX + 1.8m, 緊貼北外牆向北突出)
-    // -------------------------------------------------------------------------
-    const cageW = 1.95, cageD = 1.65, cageH = H - 0.80;
-    const cageX = ebWestX + cageW / 2 - 0.25;                   // ~53.50m
-    const cageZ = northWallZ - cageD / 2 + 0.10;                // 突出於北山牆外
-    // 四角鍍鋅鋼構主立柱
-    for (const cx of [cageX - cageW / 2 + 0.06, cageX + cageW / 2 - 0.06]) {
-      for (const cz of [cageZ - cageD / 2 + 0.06, cageZ + cageD / 2 - 0.06]) {
-        addBox(g, 0.11, cageH, 0.11, steelPostMat, cx, cageH / 2, cz);
-      }
-    }
-    // 水平鋼構圈樑 (各層樓板標高)
-    for (let k = 0; k <= 3; k++) {
-      const cy = eastTargetY[k];
-      addBox(g, cageW, 0.12, 0.12, steelPostMat, cageX, cy, cageZ - cageD / 2 + 0.06);
-      addBox(g, 0.12, 0.12, cageD, steelPostMat, cageX - cageW / 2 + 0.06, cy, cageZ);
-      addBox(g, 0.12, 0.12, cageD, steelPostMat, cageX + cageW / 2 - 0.06, cy, cageZ);
-    }
-    // 外圍金屬菱形防護網面 (Perforated Wire Mesh Screen per Photo 2)
-    addBox(g, cageW - 0.10, cageH, 0.04, cageMeshMat, cageX, cageH / 2, cageZ - cageD / 2 + 0.04);
-    addBox(g, 0.04, cageH, cageD - 0.10, cageMeshMat, cageX - cageW / 2 + 0.04, cageH / 2, cageZ);
-    addBox(g, 0.04, cageH, cageD - 0.10, cageMeshMat, cageX + cageW / 2 - 0.04, cageH / 2, cageZ);
-
-    // -------------------------------------------------------------------------
-    // C.3 東棟北向主山牆 (North Gable Facade, x = ebWestX to ebEastX, 寬約 12.2m)
-    // -------------------------------------------------------------------------
-    const mainWallW = ebEastX - ebWestX;                        // ~12.22m
-    const mainWallCx = (ebWestX + ebEastX) / 2;                 // ~58.89m
-    const mainWallH = H - 0.20;
-
-    // 1) 銀灰色水平浪板外牆底面 (Silver Corrugated Cladding Wall)
-    addBox(g, mainWallW, mainWallH, 0.32, silverCladMat, mainWallCx, mainWallH / 2, northWallZ);
-
-    // 2) 鮮紅色水平裝飾寬帶 (Three Bold Horizontal Red Bands across North Facade per Photo 2, 3, 4)
-    // 分佈於 1F 頂部、2F 窗下、3F 窗下全寬延伸
-    const redBandY = [2.25, 5.65, 9.15];
-    redBandY.forEach(ry => {
-      addBox(g, mainWallW + 0.06, 0.72, 0.36, stripeRedMat, mainWallCx, ry, northWallZ);
-    });
-
-    // 3) 深寶藍色雙坡向金屬雨遮簷 (Deep Blue Metal Canopies per Photo 2, 3, 4)
-    // 位於 1F/2F 之間 (y ≈ 4.15m) 與 2F/3F 之間 (y ≈ 7.65m)，帶左右不對稱高低階梯式錯落簷板
-    const canopY1 = 4.15, canopY2 = 7.65;
-    // 下層寶藍色雨遮 (高低兩段錯落)
-    const can1W_L = mainWallW * 0.48, can1W_R = mainWallW * 0.54;
-    const can1MeshL = addBox(g, can1W_L, 0.10, 0.85, deepBlueRoofMat, mainWallCx - mainWallW * 0.25, canopY1, northWallZ - 0.38);
-    can1MeshL.rotation.x = -0.18;
-    const can1MeshR = addBox(g, can1W_R, 0.10, 0.95, deepBlueRoofMat, mainWallCx + mainWallW * 0.24, canopY1 + 0.32, northWallZ - 0.42);
-    can1MeshR.rotation.x = -0.22;
-    addBox(g, can1W_L + 0.04, 0.12, 0.08, blueTrimMat, mainWallCx - mainWallW * 0.25, canopY1 - 0.06, northWallZ - 0.76);
-    addBox(g, can1W_R + 0.04, 0.12, 0.08, blueTrimMat, mainWallCx + mainWallW * 0.24, canopY1 + 0.24, northWallZ - 0.85);
-
-    // 上層寶藍色雨遮 (y ≈ 7.65m)
-    const can2Mesh = addBox(g, mainWallW * 0.72, 0.10, 0.85, deepBlueRoofMat, mainWallCx + mainWallW * 0.12, canopY2, northWallZ - 0.38);
-    can2Mesh.rotation.x = -0.20;
-    addBox(g, mainWallW * 0.72 + 0.04, 0.12, 0.08, blueTrimMat, mainWallCx + mainWallW * 0.12, canopY2 - 0.07, northWallZ - 0.76);
-
-    // 4) 水平連續黑色採光條窗與天藍色外框 (Black Ribbon Windows with Blue Frames per Photo 2, 3, 4)
-    // 1F、2F、3F 均配置水平長條黑色窗帶
-    const winConfig = [
-      { y: 1.45, w: mainWallW * 0.78, cx: mainWallCx + 0.40, h: 0.85 }, // 1F
-      { y: 4.85, w: mainWallW * 0.82, cx: mainWallCx + 0.20, h: 0.85 }, // 2F
-      { y: 8.35, w: mainWallW * 0.75, cx: mainWallCx + 0.10, h: 0.85 }  // 3F
-    ];
-    winConfig.forEach(wc => {
-      // 藍色外窗框
-      addBox(g, wc.w + 0.10, wc.h + 0.10, 0.08, blueTrimMat, wc.cx, wc.y, northWallZ - 0.16);
-      // 深色窗玻璃
-      addBox(g, wc.w, wc.h, 0.04, mats.glassDark, wc.cx, wc.y, northWallZ - 0.18);
-      // 黑色垂直窗櫺分隔桿
-      const nPanes = 7;
-      for (let p = 0; p <= nPanes; p++) {
-        const px = (wc.cx - wc.w / 2) + p * (wc.w / nPanes);
-        addBox(g, 0.04, wc.h, 0.06, darkMetalMat, px, wc.y, northWallZ - 0.19);
-      }
-    });
-
-    // 5) 3F 東北頂部彩繪壁畫特徵：藍天白雲與幾何白色菱形圖騰 (Sky Mural & Diamond Icon per Photo 2, 4)
-    // 位於 3F 最上方北立面 (y ≈ 10.5m 至 12.4m)，彩繪有天藍色藍天與白色菱形幾何方塊
-    const muralW = mainWallW * 0.38, muralH = 1.95;
-    const muralCx = ebEastX - muralW / 2 - 0.15, muralY = H - muralH / 2 - 0.10;
-    addBox(g, muralW, muralH, 0.04, skyMuralBlueMat, muralCx, muralY, northWallZ - 0.17);
-    // 白色幾何菱形框飾牌
-    const diaMesh = addMesh(g, new THREE.PlaneGeometry(0.85, 0.85), panelPureWhite, muralCx, muralY + 0.20, northWallZ - 0.20, false);
-    diaMesh.rotation.z = Math.PI / 4;                           // 45 度旋轉為菱形
-    addMesh(g, new THREE.PlaneGeometry(0.65, 0.65), skyMuralBlueMat, muralCx, muralY + 0.20, northWallZ - 0.21, false).rotation.z = Math.PI / 4;
-
-    // 6) 1F 西南轉角白色百葉小門與直通地面之白色 PVC 排水管 (Photo 1, 3, 4)
-    addBox(g, 0.82, 1.95, 0.08, panelPureWhite, ebWestX + 0.55, 1.05, northWallZ - 0.18);
-    addBox(g, 0.10, 0.04, 0.05, darkMetalMat, ebWestX + 0.85, 1.05, northWallZ - 0.22); // 門把
-    // 兩根垂直銀藍色落水管 (自 3F 屋簷筆直通至 1F 地面，Photo 2 & 4 顯著特徵)
-    addMesh(g, new THREE.CylinderGeometry(0.045, 0.045, mainWallH, 12), blueTrimMat, ebWestX + 1.65, mainWallH / 2, northWallZ - 0.20);
-    addMesh(g, new THREE.CylinderGeometry(0.045, 0.045, mainWallH, 12), blueTrimMat, ebEastX - 0.35, mainWallH / 2, northWallZ - 0.20);
-
-    // 7) 1F 斜向紅磚壓頂階梯擋土矮牆 (Retaining Wall with Red Brick Cap connecting to Courtyard, Photo 3)
-    const swLenZ = 2.85, swCz = northWallZ + 5.20, swX = ebWestX - 1.15;
-    const swWall = addBox(g, 0.24, 0.85, swLenZ, whiteTileFine, swX, 0.62, swCz);
-    swWall.rotation.x = -0.22;
-    const swCap = addBox(g, 0.28, 0.09, swLenZ + 0.06, brickDadoMat, swX, 1.06, swCz);
-    swCap.rotation.x = -0.22;
-    addBox(g, 0.28, 0.62, 0.28, brickDadoMat, swX, 0.31, swCz - swLenZ / 2 - 0.10);
+    // （v2.12.102 移除原置於 buildNorthBuilding 內之「C. 東棟大樓北端銜接部與特色山牆」：因 NORTH_XF 與 EAST_XF 位移不同，該組構件在東棟北側形成獨立懸空牆壁與紅雨遮）
 
     // =========================================================================
     // D. 北側中庭挺拔景觀大樹 (Courtyard Shade Tree on NORTH side of Bridge per Photo 1 & 3)
@@ -6026,6 +7882,9 @@ function buildNorthBuilding() {
       const sp = addMesh(g, new THREE.SphereGeometry(1.0, 14, 12), courtyardTreeLeafMat, ts.x, ts.y, ts.z);
       sp.scale.set(ts.rx, ts.ry, ts.rz);
     });
+    // v2.12.113 對應普查登錄 441975 印度紫檀：以世界座標登錄花況清單（原普查轉換座標落於北側路面已停用）
+    const [tWx, tWz] = NORTH_XF.toWorld(treeX, treeZ);
+    phenoTreeAt('印度紫檀', tWx, tWz, true);
   }// ==========================================================================
   // 7) NORTH REAR ELEVATION (`背向立面圖` `north_rear_elevation.jpg` 1:1 Precision):
   //    - 7 WHITE VERTICAL CIRCULAR-WINDOW PIERS AT AXES `④, ⑥, ⑧, ⑩, ⑬, ⑮, ⑰`
@@ -6119,9 +7978,16 @@ function buildNorthBuilding() {
           const y0 = baseH + k * FH;
 
           // A. 走廊白色二丁掛實心欄杆牆 (Solid White-Tile Balustrade, 高 1.05m)
-          addBox(g, bayW, 1.05, 0.20, whiteTileFine, bayCx, y0 + 0.525, zb);
-          // 欄杆頂部圓滑米白壓頂收邊
-          addBox(g, bayW + 0.02, 0.045, 0.24, warmCreamMat, bayCx, y0 + 1.05 + 0.0225, zb);
+          //    軸線 ③–④ 的 2F／3F：東段為西側後走廊戶外直梯「東端抵達平台」入口，欄杆牆在此開口
+          const stairOpen = (aIdx === 3 && k >= 1 && window.NORTH_REAR_STAIR_OPENING) ? window.NORTH_REAR_STAIR_OPENING : null;
+          const segs = stairOpen ? [[bayStartX, Math.max(bayStartX, stairOpen[0])]] : [[bayStartX, bayEndX]];
+          segs.forEach(([sx1, sx2]) => {
+            const sw = sx2 - sx1, scx = (sx1 + sx2) / 2;
+            if (sw < 0.05) return;
+            addBox(g, sw, 1.05, 0.20, whiteTileFine, scx, y0 + 0.525, zb);
+            // 欄杆頂部圓滑米白壓頂收邊
+            addBox(g, sw + 0.02, 0.045, 0.24, warmCreamMat, scx, y0 + 1.05 + 0.0225, zb);
+          });
 
           // B. 走廊天花頂部白磁磚橫樑 (Ceiling Lintel Beam, 高 0.65m)
           addBox(g, bayW, 0.65, 0.26, whiteTileFine, bayCx, y0 + 2.95 + 0.325, zb);
@@ -6140,8 +8006,14 @@ function buildNorthBuilding() {
             addBox(g, 0.90, 0.04, 0.34, ironGrilleMat, acX, acY - 0.30, acZ);
           }
         }
-        // 頂樓女兒牆壓樑
-        addBox(g, bayW + 0.02, topFasciaH, 0.28, warmCreamMat, bayCx, H - topFasciaH / 2, zb);
+        // 頂樓女兒牆壓樑（軸線 ③–④ 東段保留屋頂東端抵達平台出入口開口）
+        const roofOpen = (aIdx === 3 && window.NORTH_REAR_STAIR_OPENING) ? window.NORTH_REAR_STAIR_OPENING : null;
+        const roofSegs = roofOpen ? [[bayStartX, Math.max(bayStartX, roofOpen[0])]] : [[bayStartX, bayEndX]];
+        roofSegs.forEach(([rx1, rx2]) => {
+          const rw = rx2 - rx1, rcx = (rx1 + rx2) / 2;
+          if (rw < 0.05) return;
+          addBox(g, rw + 0.02, topFasciaH, 0.28, warmCreamMat, rcx, H - topFasciaH / 2, zb);
+        });
       }
     }
 
@@ -6168,9 +8040,8 @@ function buildNorthBuilding() {
     };
 
     // 西翼採光井護欄 (③–⑪)
-    addNorthGreenFenceSpan(ax(3), ax(11));
-    // 東翼採光井護欄 (⑫–⑱，坡道外側)
-    addNorthGreenFenceSpan(ax(12), ax(18));
+    addNorthGreenFenceSpan(ax(4), ax(11));
+    // (東翼 ⑫–⑱ 採光井與無障礙坡道全段改由下方天藍色圓管欄杆與混凝土斜坡主體依實景照片 1:1 精準建構)
 
     // Central North Moon-Gate Portal at `⑪–⑫` (`背向立面圖 ⑫–⑪` & site photo `北棟大樓1F樓梯後面後走廊出入口.jpg`)
     const nhL = ax(11), nhR = ax(12), nhW = nhR - nhL, nhCx = (nhL + nhR) / 2;
@@ -6261,18 +8132,98 @@ function buildNorthBuilding() {
     const stairRail = addBox(g, 0.045, 0.045, 2.85, railAzureMat, stCx + stW / 2 + 0.04, 0.95, zb - 1.55);
     stairRail.rotation.x = -0.45;
 
-    // Long Sloped Accessible Ramp (`背向立面圖 ⑰–⑫ 行動不便坡道` rising from East `⑰` to Central Portal `⑫`)
-    const rampL = ax(12), rampR = ax(17), rampW = rampR - rampL, rampCx = (rampL + rampR) / 2;
-    const rampBase = addBox(g, rampW, 0.65, 1.25, mats.slab, rampCx, 0.42, zb - 2.10);
-    rampBase.rotation.z = 0.045;
-    for (let bar = 0; bar < 3; bar++) {
-      const rBar = addBox(g, rampW, 0.05, 0.08, mats.railBlue, rampCx, 0.85 + bar * 0.22, zb - 2.68);
-      rBar.rotation.z = 0.045;
-    }
-    for (let p = 0; p <= 12; p++) {
-      const px = rampL + p * (rampW / 12);
-      const py = 0.95 - (p / 12) * 0.55;
-      addBox(g, 0.06, 0.72, 0.08, mats.railBlue, px, py, zb - 2.68);
+    // 4) 北棟東側後面無障礙坡道與採光井（軸線 ⑫–⑱，v2.12.117 依實景照片 20261125_093249 / 093258 1:1 精緻重建）
+    //    - 結構配置：靠建築側 (zb 至 zb-1.35m) 為下凹採光排水溝，東段 (⑯+0.9 至 ⑱) 設水平天藍色圓管護欄並於 ⑱ 轉角收頭；
+    //    - 坡道本體 (zb-1.35m 至 zb-2.68m，寬 1.33m)：由東端地面 (x=ax(16)+0.9, y=0.06m) 順接 5.1m 車道起步，
+    //      向西緩升至 ⑫ 軸中央後門高台 (y=1.25m)，兩側配置對稱四橫桿天藍色圓管扶手，北側為實心混凝土梯形擋土牆。
+    {
+      const rampAzureMat = new THREE.MeshStandardMaterial({ color: 0x1b82d8, roughness: 0.40, metalness: 0.25 });
+      const rampDeckMat  = new THREE.MeshStandardMaterial({ color: 0x6c6e70, roughness: 0.92 });
+      const rampSideMat  = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.88 });
+      const trenchMat    = new THREE.MeshStandardMaterial({ color: 0x4b4e50, roughness: 0.95 });
+      const apronMat     = new THREE.MeshStandardMaterial({ color: 0xc2c0ba, roughness: 0.88 });
+      const manholeMat   = new THREE.MeshStandardMaterial({ color: 0x3b3d40, roughness: 0.65, metalness: 0.55 });
+
+      const rampTopX   = ax(12) - 0.15;
+      const rampLandX  = ax(12) + 0.55;
+      const rampStartX = ax(16) + 0.90;
+      const eastEndX   = ax(18);
+      const zInner     = zb - 1.35;
+      const zOuter     = zb - 2.68;
+      const rampD      = zInner - zOuter;
+      const yBot       = 0.06;
+      const yTop       = baseH;
+
+      // (a) 靠建築側採光排水溝槽與低矮混凝土護緣 (⑫–⑱, zb 至 zInner)
+      const trenchLen = eastEndX - rampTopX;
+      const trenchCx  = (eastEndX + rampTopX) / 2;
+      addBox(g, trenchLen, 0.06, 1.30, trenchMat, trenchCx, 0.02, (zb + zInner) / 2, false);
+      addBox(g, eastEndX - rampStartX + 0.15, 0.14, 0.16, rampSideMat, (eastEndX + rampStartX) / 2, 0.07, zInner, false);
+      // 坡道東入口前方順接車道之深灰混凝土平緩過渡區 (⑯+0.9 至 ⑱, zInner 至 zb-2.82)
+      addBox(g, eastEndX - rampStartX + 0.35, 0.06, rampD + 0.16, rampDeckMat, (eastEndX + rampStartX) / 2, 0.03, (zInner + zOuter) / 2 - 0.06, false);
+
+      // (b) 實心梯形混凝土坡道主體（ExtrudeGeometry 精準貼地，無懸空）
+      const rShape = new THREE.Shape();
+      rShape.moveTo(rampTopX, 0);
+      rShape.lineTo(rampStartX, 0);
+      rShape.lineTo(rampStartX, yBot);
+      rShape.lineTo(rampLandX, yTop);
+      rShape.lineTo(rampTopX, yTop);
+      rShape.closePath();
+      const rGeo = new THREE.ExtrudeGeometry(rShape, { depth: rampD, bevelEnabled: false });
+      addMesh(g, rGeo, rampSideMat, 0, 0, zOuter);
+
+      // 坡道頂面深灰防滑混凝土鋪面（斜段＋頂部平臺）
+      const slopeRun = rampStartX - rampLandX;
+      const slopeRise = yTop - yBot;
+      const slopeLen = Math.hypot(slopeRun, slopeRise);
+      const slopeAng = Math.atan2(slopeRise, slopeRun);
+      const deckSlope = addBox(g, slopeLen + 0.08, 0.045, rampD - 0.06, rampDeckMat, (rampLandX + rampStartX) / 2, (yTop + yBot) / 2 + 0.015, (zInner + zOuter) / 2, false);
+      deckSlope.rotation.z = -slopeAng;
+      addBox(g, rampLandX - rampTopX + 0.10, 0.045, rampD - 0.06, rampDeckMat, (rampTopX + rampLandX) / 2, yTop + 0.015, (zInner + zOuter) / 2, false);
+      // 坡道北側貼地排水緣石（緊貼 5.1m 車道南緣）
+      addBox(g, slopeRun + (rampLandX - rampTopX) + 0.4, 0.12, 0.14, rampSideMat, (rampTopX + rampStartX) / 2, 0.06, zOuter - 0.07, false);
+
+      // (c) 雙側天藍色圓管安全護欄（4 道橫桿＋立柱，完全吻合實景照片 093249 / 093258）
+      const addBlueRailSeg = (x1, y1, z1, x2, y2, z2, postStep = 1.28) => {
+        const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
+        const hLen = Math.hypot(dx, dz);
+        const segLen = Math.hypot(hLen, dy);
+        if (segLen < 0.05) return;
+        const yaw = -Math.atan2(dz, dx);
+        const pitch = Math.atan2(dy, hLen);
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, mz = (z1 + z2) / 2;
+        const barH = [0.22, 0.45, 0.68, 0.92];
+        for (const bh of barH) {
+          const bar = addBox(g, segLen + 0.02, 0.042, 0.042, rampAzureMat, mx, my + bh, mz);
+          bar.rotation.order = 'YXZ';
+          bar.rotation.y = yaw;
+          bar.rotation.z = pitch;
+        }
+        const nPosts = Math.max(1, Math.round(hLen / postStep));
+        for (let p = 0; p <= nPosts; p++) {
+          const t = p / nPosts;
+          addBox(g, 0.048, 0.96, 0.048, rampAzureMat, x1 + dx * t, y1 + dy * t + 0.48, z1 + dz * t);
+        }
+      };
+
+      // 東端收頭橫欄（軸線 ⑱ 白磁磚角柱向北圍封採光井）
+      addBlueRailSeg(eastEndX - 0.04, yBot, zb - 0.20, eastEndX - 0.04, yBot, zInner, 0.70);
+      // 內側（南側）水平護欄（⑱ → 坡道起步點，保護下凹採光井）
+      addBlueRailSeg(rampStartX, yBot, zInner, eastEndX - 0.04, yBot, zInner, 1.25);
+      // 內側（南側）斜坡護欄（坡道起步點 → ⑫ 頂平台）
+      addBlueRailSeg(rampLandX, yTop, zInner, rampStartX, yBot, zInner, 1.25);
+      addBlueRailSeg(rampTopX, yTop, zInner, rampLandX, yTop, zInner, 0.75);
+      // 外側（北側，臨車道）斜坡護欄（坡道起步點 → ⑫ 頂平台，與中央門廊天藍欄杆齊平銜接）
+      addBlueRailSeg(rampLandX, yTop, zOuter + 0.04, rampStartX, yBot, zOuter + 0.04, 1.25);
+      addBlueRailSeg(rampTopX, yTop, zOuter + 0.04, rampLandX, yTop, zOuter + 0.04, 0.75);
+
+      // (d) 軸線 ⑱ 東山牆前方平整水泥混凝土廣場鋪面與圓形鑄鐵人孔蓋（照片 093249 / 093258 左前景）
+      const apronX1 = eastEndX + 0.05, apronX2 = eastEndX + 8.6;
+      const apronZ1 = zb - 2.82, apronZ2 = zCoreFront + 0.50;
+      addBox(g, apronX2 - apronX1, 0.08, apronZ2 - apronZ1, apronMat, (apronX1 + apronX2) / 2, 0.032, (apronZ1 + apronZ2) / 2, false);
+      // 圓形鑄鐵人孔蓋（位於東廣場靠車道邊緣）
+      addMesh(g, new THREE.CylinderGeometry(0.42, 0.44, 0.025, 20), manholeMat, eastEndX + 4.3, 0.078, zb - 2.35, false);
     }
   }
 
@@ -6302,19 +8253,7 @@ function buildNorthBuilding() {
   // (8a) South-West B1 Lightwell (`⑥–⑪ 天井走廊 -260 / 上鋪採光罩`)
   addSkylightLightwellSpan(6, 11, zf + 0.98, 1.75, true);
 
-  // (8b) South-East B1 Lightwell (`⑫–⑱ 天井走廊 -260 / 上鋪採光罩` + 2-Tier Planter Terrace & Flanking Exit Stairs at `⑫` & `⑱`)
-  addSkylightLightwellSpan(12, 18, zf + 0.98, 1.75, true);
-  {
-    const plL = ax(12) + 0.9, plR = ax(18) - 0.9, plW = plR - plL, plCx = (plL + plR) / 2, plZ = zf + 2.55;
-    addBox(g, plW, 0.52, 1.45, mats.slab, plCx, 0.26, plZ);
-    addBox(g, plW - 0.4, 0.58, 1.10, new THREE.MeshStandardMaterial({ color: 0x4f8d46, roughness: 0.86 }), plCx, 0.30, plZ);
-    // Flanking access steps at Axis `⑫` and Axis `⑱` (`地下層/壹層平面圖 兩側階梯`)
-    for (const sx of [ax(12) + 0.42, ax(18) - 0.42]) {
-      for (let s = 0; s < 5; s++) {
-        addBox(g, 0.95, 0.18, 0.34, mats.slab, sx, 0.09 + s * 0.16, plZ + 0.68 - s * 0.32);
-      }
-    }
-  }
+  // (8b 南側東翼 ⑫–⑱ 地下室採光天井、弧形雨遮、雙階水泥斜坡護岸、深灰褐矮牆不銹鋼欄杆、雙座下沉樓梯與東端陶板手印牆已於上方 I.4 區依 5 張實景照片 1:1 完整重建)
 
   // (8c & 8d 北側後走廊採光天井與墨綠色防護欄杆已於第7節完整構建，與實景 5fbdd98a.jpg 100% 吻合)
 
@@ -6322,10 +8261,23 @@ function buildNorthBuilding() {
   // 9) MAIN ROOF SLAB & SOLAR PANELS (`aerial_map.jpg`)
   // ==========================================================================
   addBox(g, mainSpanW + 0.4, 0.28, D + 0.4, mats.roof, mainCenterX, H + 0.14, (zf + zb) / 2);
+  // v2.12.43 依實景照片 5375／4926：屋頂西端（③～⑤）綠色浪板鐵皮屋
+  {
+    const shedMat = new THREE.MeshStandardMaterial({ color: 0x6f9a86, roughness: 0.6, metalness: 0.25 });
+    const shedRoofMat = new THREE.MeshStandardMaterial({ color: 0x3f5f52, roughness: 0.55, metalness: 0.35, side: THREE.DoubleSide });
+    const sx1 = ax(3) + 1.2, sx2 = ax(5) - 0.6, sz1 = zCoreBack + 0.6, sz2 = zCoreFront - 0.4, sH = 2.6;
+    addBox(g, sx2 - sx1, sH, sz2 - sz1, shedMat, (sx1 + sx2) / 2, H + 0.28 + sH / 2, (sz1 + sz2) / 2);
+    const half = (sz2 - sz1) / 2 + 0.35, rise = 0.55, slope = Math.hypot(half, rise);
+    [-1, 1].forEach(sd => {
+      const r = addBox(g, sx2 - sx1 + 0.5, 0.06, slope, shedRoofMat, (sx1 + sx2) / 2, H + 0.28 + sH + rise / 2, (sz1 + sz2) / 2 + sd * half / 2);
+      r.rotation.x = sd * Math.atan2(rise, half);
+    });
+  }
   addBox(g, 18, 0.22, 4.5, mats.solar, (ax(4) + ax(10)) / 2, H + 0.4, cz - 1.2);
   addBox(g, 18, 0.22, 4.5, mats.solar, (ax(13) + ax(17)) / 2, H + 0.4, cz - 1.2);
 
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'north-building'; });
+  NORTH_XF.apply(g);   // v2.12.40 依平面圖＋航照：①～⑳ 整棟北移約 11.5 m、東移約 6 m、順時針轉 5.1°
   layerGroups.buildings.add(g);
   clickableGroups.push(g);
   landmarkGroupMap.set('north-building', g);
@@ -6338,7 +8290,7 @@ function buildEastBuilding() {
   const eastDetailGroup = new THREE.Group();
   eastDetailGroup.name = 'east-detail-group';
   g.add(eastDetailGroup);
-  registerLOD('east-building', [58.8, 6, Z(201)], eastDetailGroup, 68);
+  registerLOD('east-building', ((c) => [c[0], 6, c[1]])(EAST_XF.toWorld(58.8, Z(201))), eastDetailGroup, 68);   // v2.12.40
 
   // ---------- 測繪尺寸系統 (圖面單位：公分；世界單位：與校園地圖 S=0.26 比例一致) ----------
   const z1 = Z(88), z2 = Z(315), L = z2 - z1, czm = (z1 + z2) / 2;
@@ -6361,13 +8313,15 @@ function buildEastBuilding() {
   const slabMat = new THREE.MeshStandardMaterial({ color: 0xbbb8af, roughness: 0.85 });
   const soffitMat = new THREE.MeshStandardMaterial({ color: 0xa8a59d, roughness: 0.9 });
   const columnMat = new THREE.MeshStandardMaterial({ color: 0xf2f0e9, roughness: 0.7 });
-  const passageFloorMat = new THREE.MeshStandardMaterial({ color: 0x8b8c88, roughness: 0.55 });
+  // 穿堂／後走廊水磨石地坪（照片：淺灰白底、黑色石粒、約 60 cm 方格分割）
+  const passageFloorTex = makeTerrazzoTexture(); passageFloorTex.repeat.set(12, 12);
+  const passageFloorMat = new THREE.MeshStandardMaterial({ map: passageFloorTex, color: 0xf2f1ec, roughness: 0.42 });
   const pebbleMat = new THREE.MeshStandardMaterial({ color: 0xd3d1c9, roughness: 0.9 });
   const acMat = new THREE.MeshStandardMaterial({ color: 0xeeefee, roughness: 0.5 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x3b3c3e, roughness: 0.7 });
 
   // ---------- 東向彩繪立面設計圖 (east_elevation.jpg，以 data-URI 內嵌避免 file:// 跨域限制) ----------
-  const muralMat = new THREE.MeshStandardMaterial({ color: 0xf2c94c, roughness: 0.55 });
+  const muralMat = new THREE.MeshStandardMaterial({ color: 0xf2c94c, roughness: 0.55 }); muralMat.userData.noDedupe = true;   // 圖片載入後會改色換貼圖
   {
     const muralTex = new THREE.Texture();
     muralTex.colorSpace = THREE.SRGBColorSpace;
@@ -6536,7 +8490,7 @@ function buildEastBuilding() {
   // 6) 1F 穿堂文化核心：「復興德馬號」五分車閱讀站 ＆ 「READ」原木造型書架
   // 依據現場實拍照片 media_1793514956908～1793514957415 1:1 沉浸式精準建模
   // ============================================================================
-  const yBreezeFloor = 1.36; // 穿堂 1F 水磨石地坪標高
+  const yBreezeFloor = y0 + 0.02; // 穿堂 1F 水磨石地坪標高（v2.12.0：與前走廊等高，正面僅一階；中庭已下沉約 0.9 m）
   const yCeiling = yF[1] - 0.25; // 天花板底面標高 (約 4.15m)
   const zNorthWall = cz(AXIS_CM[8]); // 北側牆面 (約 -10.65m，面向 +Z)
   const zSouthWall = cz(AXIS_CM[7]); // 南側牆面 (約 -1.93m，面向 -Z)
@@ -6729,14 +8683,14 @@ function buildEastBuilding() {
     ctx.lineWidth = 3;
 
     const poemLines = [
-      { chars: ['閱','讀','五','分','車','，'], x: 1830 },
-      { chars: ['行','經','萬','年','縣','。'], x: 1895 },
-      { chars: ['與','糖','越','讀','者','，'], x: 1955 },
-      { chars: ['復','興','展','新','頁','。'], x: 2005 }
+      { chars: ['閱','讀','五','分','車','，'], x: 2000, y0: 120 },   // 直書由右至左，各行依序下移（照片）
+      { chars: ['行','經','萬','年','縣','。'], x: 1935, y0: 175 },
+      { chars: ['興','糖','越','讀','者','，'], x: 1870, y0: 270 },
+      { chars: ['復','興','展','新','頁','。'], x: 1805, y0: 325 }
     ];
 
     poemLines.forEach(col => {
-      let cy = 320;
+      let cy = col.y0;
       col.chars.forEach(ch => {
         ctx.strokeText(ch, col.x, cy);
         ctx.fillText(ch, col.x, cy);
@@ -6746,9 +8700,9 @@ function buildEastBuilding() {
 
     ctx.font = 'bold 26px "DFKai-SB","BiauKai","Noto Serif TC",serif';
     ctx.fillStyle = '#44403c';
-    let sy = 760;
-    ['（','五','分','車','閱','讀','站','）'].forEach(ch => {
-      ctx.fillText(ch, 1955, sy);
+    let sy = 640;
+    ['《','五','分','車','閱','讀','站','》'].forEach(ch => {
+      ctx.fillText(ch, 1745, sy);
       sy += 32;
     });
 
@@ -6950,386 +8904,155 @@ function buildEastBuilding() {
          xCabCtr - 0.10, yBase + 0.52, zLoco + locoWid / 2 + 0.04, false);
 
   // ============================================================
-  // 3. 2 節大型書架車廂 (Book-Cart Wagons x 2)
-  //    深褐灰色箱體 / 3 列 x 2 排格子 / 黃色踢腳板 / 黑小輪
+  // 3. 2 節書架車廂（v2.11.7 依 2026 實景照片）：每節 = 書櫃塔 ｜ 座椅＋黃色圓頭小桌 ｜ 書櫃塔
+  //    深咖啡灰箱體、上兩層黃色斜面展示板（封面朝外）、底層直立書；黃色車台邊條、灰色大圓輪
   // ============================================================
-  const carStartX   = xCabCtr - cabLen / 2;
-  const numCars     = 2;
-  const carLen      = 1.65;
-  const carWid      = 0.56;
-  const carH        = 1.22;
-  const carBaseH    = 0.10;
-  const carWheelR   = 0.09;
-  const zCar        = zNorthWall + carWid / 2 + 0.05;
-
+  const carStartX = xCabCtr - cabLen / 2;
+  const numCars = 2, carLen = 2.15, carWid = 0.62, zCar = zNorthWall + carWid / 2 + 0.06;
+  const deckH = 0.18, towerW = 0.56, towerH = 1.05;
+  const cabinetMat = new THREE.MeshStandardMaterial({ color: 0x544a43, roughness: 0.7 });
+  const cabinetIn = new THREE.MeshStandardMaterial({ color: 0x3f3732, roughness: 0.75 });
+  const wheelGrey = new THREE.MeshStandardMaterial({ color: 0x6b6460, roughness: 0.6 });
+  const faceOut = (x, y, z, w) => {   // 斜面展示板＋封面朝外書本
+    const board = addBox(g, w, 0.02, 0.30, carriageYellowMat, x, y + 0.13, z + 0.04, false);
+    board.rotation.x = -1.05;
+    const nB = 2;
+    for (let i = 0; i < nB; i++) {
+      const col = bookPalette[(Math.floor(x * 13) + i * 3) % bookPalette.length];
+      const bk = addBox(g, w / nB - 0.03, 0.24, 0.015, new THREE.MeshStandardMaterial({ color: col, roughness: 0.6 }), x - w / 2 + (i + 0.5) * w / nB, y + 0.15, z + 0.13, false);
+      bk.rotation.x = -0.5;
+    }
+  };
+  const tower = (x) => {
+    const yb = yBase + deckH, zc = zCar;
+    addBox(g, towerW, towerH, 0.03, cabinetMat, x, yb + towerH / 2, zc - carWid / 2 + 0.015);          // 背板
+    [-1, 1].forEach(s => addBox(g, 0.03, towerH, carWid, cabinetMat, x + s * (towerW / 2 - 0.015), yb + towerH / 2, zc));   // 側板
+    addBox(g, towerW, 0.03, carWid, cabinetMat, x, yb + towerH - 0.015, zc);                         // 頂板
+    [0.36, 0.70].forEach(h => addBox(g, towerW - 0.06, 0.025, carWid - 0.04, cabinetIn, x, yb + h, zc, false));
+    faceOut(x, yb + 0.70, zc, towerW - 0.08);
+    faceOut(x, yb + 0.36, zc, towerW - 0.08);
+    makeBooksRow(x - towerW / 2 + 0.05, x + towerW / 2 - 0.05, yb + 0.01, zc + 0.04, 9, carWid * 0.7);
+  };
   for (let c = 0; c < numCars; c++) {
-    const cx = carStartX - carLen / 2 - c * carLen;
-
-    addBox(g, carLen, carBaseH, carWid, locoBlackFrameMat, cx, yBase + carBaseH / 2, zCar);
-
-    [+0.60, -0.60].forEach(dwx => {
-      [+1, -1].forEach(ds => {
-        const cw = addMesh(g, new THREE.CylinderGeometry(carWheelR, carWheelR, 0.04, 14),
-                           trainWheelMat, cx + dwx, yBase + carWheelR, zCar + ds * (carWid / 2 + 0.02), false);
-        cw.rotation.x = Math.PI / 2;
-      });
+    const cx = carStartX - 0.06 - carLen / 2 - c * (carLen + 0.08);
+    // 車台：深色台面＋黃色邊條
+    addBox(g, carLen, 0.10, carWid + 0.04, cabinetMat, cx, yBase + deckH - 0.05, zCar);
+    addBox(g, carLen + 0.02, 0.07, 0.02, carriageYellowMat, cx, yBase + deckH - 0.04, zCar + carWid / 2 + 0.03, false);
+    [-1, 1].forEach(s => addBox(g, 0.02, 0.07, carWid + 0.04, carriageYellowMat, cx + s * (carLen / 2 + 0.01), yBase + deckH - 0.04, zCar, false));
+    // 灰色大圓輪（前側兩顆、圓面朝外）
+    [-carLen / 2 + 0.32, carLen / 2 - 0.32].forEach(dx => {
+      const wl = addMesh(g, new THREE.CylinderGeometry(0.15, 0.15, 0.05, 24), wheelGrey, cx + dx, yBase + 0.15, zCar + carWid / 2 - 0.05, false);
+      wl.rotation.x = Math.PI / 2;
     });
-
-    const carBodyMat = new THREE.MeshStandardMaterial({ color: 0x3e3b35, roughness: 0.70 });
-
-    addBox(g, carLen, carH, 0.045, carBodyMat, cx, yBase + carBaseH + carH / 2, zCar - carWid / 2 + 0.022, false);
-    addBox(g, 0.045, carH, carWid, carBodyMat, cx - carLen / 2 + 0.022, yBase + carBaseH + carH / 2, zCar, false);
-    addBox(g, 0.045, carH, carWid, carBodyMat, cx + carLen / 2 - 0.022, yBase + carBaseH + carH / 2, zCar, false);
-    addBox(g, carLen, 0.045, carWid, carBodyMat, cx, yBase + carBaseH + carH - 0.022, zCar, false);
-    addBox(g, carLen + 0.04, 0.055, carWid + 0.04, carriageYellowMat,
-           cx, yBase + carBaseH + carH + 0.005, zCar);
-    addBox(g, carLen + 0.04, 0.09, carWid + 0.04, carriageYellowMat,
-           cx, yBase + carBaseH + 0.045, zCar);
-
-    addBox(g, carLen - 0.09, 0.040, carWid - 0.06, carBodyMat,
-           cx, yBase + carBaseH + carH / 2, zCar, false);
-    for (let col = 1; col < 3; col++) {
-      addBox(g, 0.040, carH - 0.09, carWid - 0.06, carBodyMat,
-             cx - carLen / 2 + col * (carLen / 3), yBase + carBaseH + carH / 2, zCar, false);
-    }
-
-    if (c < numCars - 1) {
-      const deskX = cx - carLen / 2;
-      addMesh(g, new THREE.CylinderGeometry(0.26, 0.26, 0.04, 20),
-              carriageYellowMat, deskX, yBase + carBaseH + carH / 2 + 0.04, zCar + carWid / 2 + 0.22);
-      addMesh(g, new THREE.CylinderGeometry(0.06, 0.06, carH / 2 - 0.02, 12),
-              locoBlackFrameMat, deskX, yBase + carBaseH + carH / 4, zCar + carWid / 2 + 0.22);
-    }
-
-    const colW = (carLen - 0.09) / 3;
-    for (let col = 0; col < 3; col++) {
-      const bStartX = cx - carLen / 2 + 0.045 + col * colW;
-      const bEndX   = bStartX + colW - 0.025;
-      makeBooksRow(bStartX, bEndX, yBase + carBaseH + 0.10, zCar + 0.05, 6, 0.46);
-      makeBooksRow(bStartX, bEndX, yBase + carBaseH + carH / 2 + 0.04, zCar + 0.05, 5, 0.46);
-    }
+    tower(cx - carLen / 2 + towerW / 2);
+    tower(cx + carLen / 2 - towerW / 2);
+    // 中段：座椅與黃色圓頭小桌（桌板固定於牆側立柱）
+    const gapX = cx, gapW = carLen - 2 * towerW;
+    addBox(g, gapW - 0.06, 0.24, carWid * 0.55, cabinetMat, gapX, yBase + deckH + 0.12, zCar - carWid * 0.2);   // 座椅
+    const top = addMesh(g, new THREE.CylinderGeometry(0.22, 0.22, 0.04, 24), carriageYellowMat, gapX, yBase + deckH + 0.62, zCar + 0.02);
+    top.scale.set(1.25, 1, 0.9);
+    addBox(g, 0.05, 0.6, 0.05, cabinetMat, gapX, yBase + deckH + 0.31, zCar - 0.05, false);
   }
 
   // ============================================================
+  // (C) 南側牆面：消光黑底牆 ＆ READ 立體造型書架（v2.11.7 依 2026 實景照片）
+  //     每個字母為「中空粗體字框」：淺原木色外框（深 28 cm）＋字腔內框，書本置於筆畫內，筆畫內設橫隔板
   // ============================================================
-  // (C) 南側牆面：消光黑底牆 ＆ READ 立體原木造型書架
-  //     依實拍照片精準 1:1 重建 (精確數學版)
-  //     LD=28cm 厚度、LH=1.28m 高、LW=0.95m 寬
-  //     顏色：溫暖蜂蜜金 #D4A030
-  // ============================================================
-
-  // 1. 消光黑底牆
   const blackWallH = 1.52;
-  const blackWallW = hallLenX - 0.1;
-  addBox(g, blackWallW, blackWallH, 0.05, chalkBoardMat,
-         bodyCx, yBreezeFloor + blackWallH / 2, zSouthWall - 0.02);
-
-  // 2. READ 立體書架 (溫暖蜂蜜金 #D4A030)
-  // 面向南牆（+Z方向）之觀察者由左至右依序閱讀 R · E · A · D
-  // 觀察者左方為 +X（東），右方為 -X（西）
-  const letterGoldMat = new THREE.MeshStandardMaterial({ color: 0xd4a030, roughness: 0.42 });
-
-  const LH  = 1.28;    // 字高
-  const LD  = 0.28;    // 字厚 (前後深)
-  const LW  = 0.95;    // 字寬
-  const LT  = 0.090;   // 板厚
-  const LSP = 0.12;    // 字間距
-
-  const totalLetterW = 4 * LW + 3 * LSP;
-  // 觀察者視野由左至右：R 在最高 X，D 在最低 X
-  const xLetR = bodyCx + totalLetterW / 2 - LW / 2;
-  const xLetE = xLetR - (LW + LSP);
-  const xLetA = xLetE - (LW + LSP);
-  const xLetD = xLetA - (LW + LSP);
-
-  const yL = yBreezeFloor;
-  const zL = zSouthWall - 0.22;  // 字母中心 Z：貼南牆消光黑底牆前方，留足夠進深避免Z-fighting
-
-  // ════════════════════════════════════════════
-  // ─── 「R」字母書架 ───────────────────────────
-  // ════════════════════════════════════════════
+  addBox(g, hallLenX - 0.1, blackWallH, 0.05, chalkBoardMat, bodyCx, yBreezeFloor + blackWallH / 2, zSouthWall - 0.02);
   {
-    const xc = xLetR;
-    const x_spine = xc + LW / 2 - LT / 2; // 觀察者左側主柱（高 X 端）
-    const bowlW   = LW * 0.65;
-    const bowlMidY = LH * 0.52;
-    const bowlH   = LH - bowlMidY;
-
-    // 左垂直主柱 (全高)
-    addBox(g, LT, LH, LD, letterGoldMat, x_spine, yL + LH / 2, zL);
-
-    // 頂橫樑 (向觀察者右方 -X 延伸)
-    addBox(g, bowlW, LT, LD, letterGoldMat, x_spine - LT / 2 - bowlW / 2, yL + LH - LT / 2, zL);
-
-    // 中橫樑 (向觀察者右方 -X 延伸)
-    addBox(g, bowlW, LT, LD, letterGoldMat, x_spine - LT / 2 - bowlW / 2, yL + bowlMidY + LT / 2, zL);
-
-    // 碗形右側垂直弧板 (連接頂橫樑與中橫樑)
-    addBox(g, LT, bowlH - LT, LD, letterGoldMat,
-           x_spine - LT / 2 - bowlW + LT / 2,
-           yL + bowlMidY + LT + (bowlH - LT) / 2, zL);
-
-    // 右斜腿：自中橫樑底部往右下（-X、-Y）延伸至 (xc - LW/2 + LT/2, yL)
-    const leg_startX = x_spine - LT / 2 - bowlW * 0.68;
-    const leg_startY = yL + bowlMidY;
-    const leg_endX   = xc - LW / 2 + LT / 2;
-    const leg_endY   = yL;
-    const legDx = leg_endX - leg_startX;
-    const legDy = leg_endY - leg_startY;
-    const legLen = Math.hypot(legDx, legDy);
-    const legAngle = Math.atan2(legDx, -legDy);
-    const rLegMesh = addBox(g, LT * 1.3, legLen, LD, letterGoldMat,
-           (leg_startX + leg_endX) / 2, (leg_startY + leg_endY) / 2, zL);
-    rLegMesh.rotation.z = legAngle;
-
-    // 書籍：R 碗內 (中橫樑上方)
-    makeBooksRow(x_spine - LT - bowlW + 0.08, x_spine - LT - 0.04,
-                 yL + bowlMidY + LT + 0.02, zL, 5, LD * 0.70, true);
-    // 書籍：R 下格左區 (主柱旁中橫樑下方)
-    makeBooksRow(x_spine - LT - bowlW * 0.45, x_spine - LT - 0.04,
-                 yL + 0.02, zL, 3, LD * 0.70);
-  }
-
-  // ════════════════════════════════════════════
-  // ─── 「E」字母書架 ───────────────────────────
-  // ════════════════════════════════════════════
-  {
-    const xc = xLetE;
-    const x_spine = xc + LW / 2 - LT / 2; // 觀察者左側背柱（高 X 端）
-    const armTopW = LW * 0.82;
-    const armMidW = LW * 0.64;
-    const armBotW = LW * 0.82;
-    const midY    = LH * 0.50;
-
-    // 左垂直背柱 (全高)
-    addBox(g, LT, LH, LD, letterGoldMat, x_spine, yL + LH / 2, zL);
-    // 頂橫臂 (向觀察者右方 -X 延伸)
-    addBox(g, armTopW - LT, LT, LD, letterGoldMat,
-           x_spine - LT / 2 - (armTopW - LT) / 2, yL + LH - LT / 2, zL);
-    // 中橫臂 (向觀察者右方 -X 延伸)
-    addBox(g, armMidW - LT, LT, LD, letterGoldMat,
-           x_spine - LT / 2 - (armMidW - LT) / 2, yL + midY, zL);
-    // 底橫臂 (向觀察者右方 -X 延伸)
-    addBox(g, armBotW - LT, LT, LD, letterGoldMat,
-           x_spine - LT / 2 - (armBotW - LT) / 2, yL + LT / 2, zL);
-
-    // 書籍：上格 (中臂 → 頂臂之間)
-    makeBooksRow(x_spine - LT - armMidW + 0.12, x_spine - LT - 0.04,
-                 yL + midY + LT / 2 + 0.02, zL, 6, LD * 0.70, true);
-    // 書籍：下格 (底臂 → 中臂之間)
-    makeBooksRow(x_spine - LT - armBotW + 0.12, x_spine - LT - 0.04,
-                 yL + LT + 0.02, zL, 7, LD * 0.70);
-  }
-
-  // ════════════════════════════════════════════
-  // ─── 「A」字母書架 ───────────────────────────
-  // ════════════════════════════════════════════
-  {
-    const xc = xLetA;
-    const apexX = xc;
-    const apexY = yL + LH;
-    const dxL = (xc + LW / 2 - LT / 2) - apexX;
-    const lenA = Math.hypot(dxL, -LH);
-
-    // 左斜柱 (頂端 apexX 向觀察者左側 +X 傾斜向下開展)
-    const rotL = Math.atan2(dxL, LH);
-    const aLMesh = addBox(g, LT * 1.25, lenA, LD, letterGoldMat,
-                          (apexX + (xc + LW / 2 - LT / 2)) / 2, yL + LH / 2, zL);
-    aLMesh.rotation.z = rotL;
-
-    // 右斜柱 (頂端 apexX 向觀察者右側 -X 傾斜向下開展)
-    const dxR = (xc - LW / 2 + LT / 2) - apexX;
-    const rotR = Math.atan2(dxR, LH);
-    const aRMesh = addBox(g, LT * 1.25, lenA, LD, letterGoldMat,
-                          (apexX + (xc - LW / 2 + LT / 2)) / 2, yL + LH / 2, zL);
-    aRMesh.rotation.z = rotR;
-
-    // 頂封帽
-    addBox(g, LT * 2.2, LT, LD, letterGoldMat, xc, yL + LH - LT / 2, zL);
-
-    // 中橫檔層板
-    const crossY = yL + LH * 0.44;
-    const frac = (crossY - yL) / LH;
-    const wAtCross = (LW - LT) * (1 - frac);
-    addBox(g, wAtCross, LT * 1.1, LD, letterGoldMat, xc, crossY, zL);
-
-    // 書籍：中橫檔上方 (三角格內)
-    makeBooksRow(xc - wAtCross / 2 + 0.06, xc + wAtCross / 2 - 0.06,
-                 crossY + LT * 0.55 + 0.02, zL, 3, LD * 0.70, true);
-    // 書籍：左側開展腳區
-    makeBooksRow(xc + wAtCross / 2 - 0.02, xc + LW / 2 - 0.12,
-                 yL + 0.02, zL, 2, LD * 0.70);
-    // 書籍：右側開展腳區
-    makeBooksRow(xc - LW / 2 + 0.12, xc - wAtCross / 2 + 0.02,
-                 yL + 0.02, zL, 2, LD * 0.70);
-  }
-
-  // ════════════════════════════════════════════
-  // ─── 「D」字母書架 ───────────────────────────
-  // ════════════════════════════════════════════
-  {
-    const xc = xLetD;
-    const x_spine = xc + LW / 2 - LT / 2; // 觀察者左側垂直主柱（高 X 端）
-    const capW = LW * 0.65;
-
-    // 左垂直主柱 (全高)
-    addBox(g, LT, LH, LD, letterGoldMat, x_spine, yL + LH / 2, zL);
-    // 頂橫板 (向觀察者右方 -X 延伸)
-    addBox(g, capW - LT, LT, LD, letterGoldMat,
-           x_spine - LT / 2 - (capW - LT) / 2, yL + LH - LT / 2, zL);
-    // 底橫板 (向觀察者右方 -X 延伸)
-    addBox(g, capW - LT, LT, LD, letterGoldMat,
-           x_spine - LT / 2 - (capW - LT) / 2, yL + LT / 2, zL);
-
-    // 右弧形拱板：上斜段、中垂直段、下斜段向右圓潤凸出
-    const p0 = [x_spine - capW, yL + LH - LT];
-    const p1 = [xc - LW / 2 + LT / 2, yL + LH * 0.68];
-    const p2 = [xc - LW / 2 + LT / 2, yL + LH * 0.32];
-    const p3 = [x_spine - capW, yL + LT];
-
-    const addArcSegment = (pa, pb) => {
-      const dx = pb[0] - pa[0];
-      const dy = pb[1] - pa[1];
-      const len = Math.hypot(dx, dy);
-      const rot = Math.atan2(dx, -dy);
-      const m = addBox(g, LT * 1.25, len, LD, letterGoldMat, (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2, zL);
-      m.rotation.z = rot;
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0xd8b57c, roughness: 0.55 });
+    const woodEdge = new THREE.MeshStandardMaterial({ color: 0xc49a5c, roughness: 0.6 });
+    const H = 1.25, D = 0.28, t = 0.05, y0 = yBreezeFloor + 0.06, zc = zSouthWall - 0.05 - D / 2;
+    const arc = (cx, cy, rx, ry, a0, a1, n = 10) => { const p = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; p.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); } return p; };
+    // 字母輪廓（字母座標：x 向觀者右、y 向上；外框順時針，字腔另列）
+    const L = {
+      R: { w: 1.0, outer: [[0, 0], [0, H], [0.56, H], ...arc(0.56, 0.95, 0.36, 0.30, Math.PI / 2, -Math.PI / 2), [0.98, 0], [0.70, 0], [0.42, 0.56], [0.26, 0.56], [0.26, 0]],
+           holes: [[[0.26, 0.82], [0.26, 1.07], [0.56, 1.07], ...arc(0.56, 0.945, 0.12, 0.125, Math.PI / 2, -Math.PI / 2, 6)]],
+           shelves: [[0, 0.26, 0.42], [0, 0.26, 0.85], [0.72, 0.92, 0.18]] },
+      E: { w: 0.86, outer: [[0, 0], [0, H], [0.86, H], [0.86, 1.01], [0.27, 1.01], [0.27, 0.74], [0.72, 0.74], [0.72, 0.51], [0.27, 0.51], [0.27, 0.24], [0.86, 0.24], [0.86, 0]],
+           holes: [], shelves: [[0, 0.27, 0.62], [0, 0.27, 0.95]] },
+      A: { w: 1.06, outer: [[0, 0], [0.41, H], [0.65, H], [1.06, 0], [0.79, 0], [0.71, 0.27], [0.35, 0.27], [0.27, 0]],
+           holes: [[[0.43, 0.49], [0.53, 0.92], [0.63, 0.49]]], shelves: [[0.2, 0.86, 0.27]] },
+      D: { w: 1.02, outer: [[0, 0], [0, H], [0.42, H], ...arc(0.42, H / 2, 0.60, H / 2, Math.PI / 2, -Math.PI / 2, 14)],
+           holes: [[[0.26, 0.24], [0.26, 1.01], [0.42, 1.01], ...arc(0.42, H / 2, 0.32, 0.385, Math.PI / 2, -Math.PI / 2, 10)]],
+           shelves: [[0, 0.26, 0.45], [0, 0.26, 0.85]] }
     };
-
-    addArcSegment(p0, p1);
-    addBox(g, LT, p1[1] - p2[1], LD, letterGoldMat, p1[0], (p1[1] + p2[1]) / 2, zL);
-    addArcSegment(p2, p3);
-
-    // 書籍：D 字下排
-    makeBooksRow(x_spine - capW + 0.06, x_spine - LT - 0.04,
-                 yL + LT + 0.02, zL, 6, LD * 0.70);
-    // 書籍：D 字上排
-    makeBooksRow(x_spine - capW + 0.06, x_spine - LT - 0.04,
-                 yL + LH * 0.52 + 0.02, zL, 5, LD * 0.70, true);
+    const sp = 0.16, order = ['R', 'E', 'A', 'D'];
+    const totalW = order.reduce((a, k) => a + L[k].w, 0) + sp * 3;
+    let cursor = bodyCx + totalW / 2;          // 觀者面向南牆，左手邊為 +X（東）
+    const ring = (pts, x0, mat) => {
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        const ax = x0 - a[0], ay = y0 + a[1], bx = x0 - b[0], by = y0 + b[1];
+        const len = Math.hypot(bx - ax, by - ay);
+        if (len < 0.005) continue;
+        const m = addBox(g, len + t, t, D, mat, (ax + bx) / 2, (ay + by) / 2, zc);
+        m.rotation.z = Math.atan2(by - ay, bx - ax);
+      }
+    };
+    order.forEach((k, li) => {
+      const Lt = L[k], x0 = cursor;
+      ring(Lt.outer, x0, woodMat);
+      Lt.holes.forEach(h => ring(h, x0, woodEdge));
+      // 筆畫內橫隔板與書本
+      Lt.shelves.forEach(([sx1, sx2, sy], si) => {
+        addBox(g, sx2 - sx1, 0.03, D - 0.02, woodMat, x0 - (sx1 + sx2) / 2, y0 + sy, zc);
+        const n = Math.max(2, Math.round((sx2 - sx1) / 0.035));
+        makeBooksRow(x0 - sx2 + 0.03, x0 - sx1 - 0.03, y0 + sy + 0.015, zc, Math.min(n, 6), D * 0.7, si % 2 === 0);
+      });
+      // 底部書本（字腳內）
+      makeBooksRow(x0 - 0.24, x0 - 0.03, y0 + 0.02, zc, 5, D * 0.7);
+      if (k === 'R' || k === 'A') makeBooksRow(x0 - Lt.w + 0.06, x0 - Lt.w + 0.24, y0 + 0.02, zc, 4, D * 0.7);
+      void li;
+      cursor -= Lt.w + sp;
+    });
   }
 
-  // 3. 上方四聯式木框玻璃校務歷史公佈欄 (Glass Showcase Bulletin Board)
+  // 3. 上方三聯木框玻璃公佈欄（v2.11.7 依照片：軟木底板、紅底家長會名單、三張校刊海報）＋原木飾板橫楣
   function makeEastHallwayBulletinBoardTexture() {
-    const c = document.createElement('canvas');
-    c.width = 2048; c.height = 512;
+    const c = document.createElement('canvas'); c.width = 2048; c.height = 400;
     const ctx = c.getContext('2d');
-    const W = 2048, H = 512;
-
-    ctx.fillStyle = '#f7eedb';
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.fillStyle = 'rgba(168, 126, 75, 0.12)';
-    for (let i = 0; i < 4000; i++) {
-      ctx.fillRect(Math.random() * W, Math.random() * H, 2.5, 2.5);
-    }
-
-    const panelW = W / 4;
-    ctx.fillStyle = '#5c3d28';
-    for (let p = 0; p <= 4; p++) {
-      ctx.fillRect(p * panelW - (p === 0 ? 0 : (p === 4 ? 16 : 8)), 0, 16, H);
-    }
-
-    // 第 1 聯
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('校史沿革與糖廠記憶', panelW * 0.5, 60);
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillRect(panelW * 0.1, 80, panelW * 0.8, 4);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(panelW * 0.12, 105, panelW * 0.76, 210);
-    ctx.fillStyle = '#64748b';
-    ctx.fillRect(panelW * 0.16, 120, panelW * 0.68, 140);
-    ctx.fillStyle = '#475569';
-    ctx.font = '22px "Noto Sans TC",sans-serif';
-    ctx.fillText('1947 年創校老校舍與製糖工場五分車老照片', panelW * 0.5, 290);
-    ctx.fillStyle = '#334155';
-    ctx.font = '20px "Noto Sans TC",sans-serif';
-    ctx.fillText('傳承台糖子弟小學文脈，深耕萬年溪畔一甲子', panelW * 0.5, 360);
-    ctx.fillText('開拓書香永續校園，培育卓越復興學子', panelW * 0.5, 410);
-
-    // 第 2 聯
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
-    ctx.fillText('復興少棒隊光榮歷史', panelW * 1.5, 60);
-    ctx.fillStyle = '#f59e0b';
-    ctx.fillRect(panelW * 1.1, 80, panelW * 0.8, 4);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(panelW * 1.12, 105, panelW * 0.76, 210);
-    ctx.fillStyle = '#0284c7';
-    ctx.fillRect(panelW * 1.16, 120, panelW * 0.68, 140);
-    ctx.fillStyle = '#ca8a04';
-    ctx.font = 'bold 24px "Noto Sans TC",sans-serif';
-    ctx.fillText('★ 全國少棒選拔賽冠軍・威廉波特代表隊 ★', panelW * 1.5, 290);
-    ctx.fillStyle = '#334155';
-    ctx.font = '20px "Noto Sans TC",sans-serif';
-    ctx.fillText('1972 年成軍揚威國際・復興棒球薪火相傳', panelW * 1.5, 360);
-    ctx.fillText('熱血拚搏・團隊合作・強健體魄・追求卓越', panelW * 1.5, 410);
-
-    // 第 3 聯
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
-    ctx.fillText('適性樂學 · 幸福復興', panelW * 2.5, 60);
-    ctx.fillStyle = '#10b981';
-    ctx.fillRect(panelW * 2.1, 80, panelW * 0.8, 4);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(panelW * 2.12, 105, panelW * 0.76, 210);
-    ctx.fillStyle = '#059669';
-    ctx.fillRect(panelW * 2.16, 120, panelW * 0.68, 140);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 32px "Noto Sans TC",sans-serif';
-    ctx.fillText('愛上閱讀 · 快樂學習', panelW * 2.5, 180);
-    ctx.font = 'bold 26px "Noto Sans TC",sans-serif';
-    ctx.fillText('多元展能 · 迎向未來', panelW * 2.5, 225);
-    ctx.fillStyle = '#334155';
-    ctx.font = '20px "Noto Sans TC",sans-serif';
-    ctx.fillText('推動晨讀時光・班級讀書會・五分車故事媽媽', panelW * 2.5, 360);
-    ctx.fillText('雙語教育・數位科技・美感藝術全人發展', panelW * 2.5, 410);
-
-    // 第 4 聯
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 36px "Noto Sans TC",sans-serif';
-    ctx.fillText('學生藝文成果展與校園快訊', panelW * 3.5, 60);
-    ctx.fillStyle = '#ec4899';
-    ctx.fillRect(panelW * 3.1, 80, panelW * 0.8, 4);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(panelW * 3.12, 105, panelW * 0.36, 180);
-    ctx.fillRect(panelW * 3.52, 105, panelW * 0.36, 180);
-    ctx.fillStyle = '#f43f5e';
-    ctx.fillRect(panelW * 3.15, 115, panelW * 0.30, 125);
-    ctx.fillStyle = '#8b5cf6';
-    ctx.fillRect(panelW * 3.55, 115, panelW * 0.30, 125);
-    ctx.fillStyle = '#475569';
-    ctx.font = '18px "Noto Sans TC",sans-serif';
-    ctx.fillText('屏東縣學生美展特優', panelW * 3.30, 265);
-    ctx.fillText('語文競賽特優榮譽榜', panelW * 3.70, 265);
-    ctx.fillStyle = '#334155';
-    ctx.font = '20px "Noto Sans TC",sans-serif';
-    ctx.fillText('【最新快訊】全校閱讀列車集點摸彩開跑！', panelW * 3.5, 340);
-    ctx.fillText('歡迎小朋友課後到 1F 穿堂閱讀五分車借書！', panelW * 3.5, 385);
-    ctx.fillText('借閱一本蓋一枚五分車章，兌換榮譽徽章！', panelW * 3.5, 430);
-
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = 8;
+    ctx.fillStyle = '#c99a68'; ctx.fillRect(0, 0, 2048, 400);
+    let sd = 3; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 9000; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(120,80,40,0.18)' : 'rgba(255,230,190,0.15)'; ctx.fillRect(r() * 2048, r() * 400, 2, 2); }
+    // 三聯分隔木條
+    ctx.fillStyle = '#d6b27a';
+    [0, 684, 1366, 2040].forEach(x => ctx.fillRect(x, 0, 10, 400));
+    // 紅底家長會名單（第 1 聯）
+    ctx.fillStyle = '#e8322b'; ctx.fillRect(220, 60, 300, 260);
+    ctx.fillStyle = '#1a1a1a'; ctx.font = 'bold 22px "Noto Serif TC",serif'; ctx.textAlign = 'center';
+    for (let col = 0; col < 9; col++) for (let row = 0; row < 6; row++) if (r() > 0.25) ctx.fillText('名', 500 - col * 32, 92 + row * 38);
+    // 海報（第 2、3 聯）
+    const poster = (x, title, accent) => {
+      ctx.fillStyle = '#fbf6ec'; ctx.fillRect(x, 40, 200, 300);
+      ctx.fillStyle = accent; ctx.fillRect(x, 40, 200, 30);
+      ctx.fillStyle = '#333'; ctx.font = 'bold 18px "Noto Sans TC",sans-serif'; ctx.fillText(title, x + 100, 62);
+      ctx.fillStyle = '#9aa3a8'; ctx.fillRect(x + 20, 90, 160, 80);
+      ctx.fillStyle = '#777'; for (let i = 0; i < 9; i++) ctx.fillRect(x + 20, 185 + i * 15, 160 - (i % 3) * 25, 5);
+    };
+    poster(840, '多元社團 藝境非凡', '#f2c9a0');
+    poster(1110, '復興報馬仔', '#a8dccf');
+    poster(1460, '復興報馬仔', '#a8dccf');
+    poster(1740, '校園新訊', '#a8dccf');
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
     return t;
   }
 
-  const bbW = 5.8, bbH = 1.05;
-  const bbY = yBreezeFloor + 1.55 + bbH / 2;
-  const bbTex = makeEastHallwayBulletinBoardTexture();
-  const bbMat = new THREE.MeshStandardMaterial({ map: bbTex, roughness: 0.65 });
-  addMesh(g, new THREE.PlaneGeometry(bbW, bbH), bbMat, bodyCx, bbY, zSouthWall - 0.04, false);
-  // 深胡桃木外框
-  addBox(g, bbW + 0.18, 0.09, 0.08, darkWalnutMat, bodyCx, bbY + bbH / 2 + 0.045, zSouthWall - 0.04);
-  addBox(g, bbW + 0.18, 0.09, 0.08, darkWalnutMat, bodyCx, bbY - bbH / 2 - 0.045, zSouthWall - 0.04);
-  addBox(g, 0.09, bbH, 0.08, darkWalnutMat, bodyCx - bbW / 2 - 0.045, bbY, zSouthWall - 0.04);
-  addBox(g, 0.09, bbH, 0.08, darkWalnutMat, bodyCx + bbW / 2 + 0.045, bbY, zSouthWall - 0.04);
-  // 微透明玻璃拉門
-  addBox(g, bbW, bbH, 0.02, mats.glassDark, bodyCx, bbY, zSouthWall - 0.07, false);
+  const bbW = hallLenX - 0.5, bbH = 0.82;
+  const bbY = yBreezeFloor + blackWallH + 0.05 + bbH / 2;
+  const bbMat = new THREE.MeshStandardMaterial({ map: makeEastHallwayBulletinBoardTexture(), roughness: 0.75 });
+  addMesh(g, new THREE.PlaneGeometry(bbW, bbH), bbMat, bodyCx, bbY, zSouthWall - 0.04, false).rotation.y = Math.PI;
+  const lightOak = new THREE.MeshStandardMaterial({ color: 0xd6b27a, roughness: 0.6 });
+  addBox(g, bbW + 0.12, 0.05, 0.10, lightOak, bodyCx, bbY - bbH / 2 - 0.025, zSouthWall - 0.06);
+  [-1, 1].forEach(sd => addBox(g, 0.05, bbH, 0.10, lightOak, bodyCx + sd * (bbW / 2 + 0.035), bbY, zSouthWall - 0.06));
+  // 上方原木飾板橫楣（直達天花板）
+  const hdrH = Math.max(0.15, yCeiling - (bbY + bbH / 2));
+  addBox(g, bbW + 0.12, hdrH, 0.10, lightOak, bodyCx, bbY + bbH / 2 + hdrH / 2, zSouthWall - 0.06);
+  addBox(g, bbW, bbH, 0.012, new THREE.MeshStandardMaterial({ color: 0xdfe8ea, roughness: 0.05, transparent: true, opacity: 0.18 }), bodyCx, bbY, zSouthWall - 0.085, false);
 
   // 4. 右側復古木質閱覽小矮桌與置物推車
-  const xDesk = xA - 0.70, zDesk = zSouthWall - 0.45;
+  const xDesk = xB + 0.75, zDesk = zSouthWall - 0.45;   // 照片 37：小木桌位於 READ 右側（西側）
   addBox(g, 0.85, 0.04, 0.52, warmOakMat, xDesk, yBreezeFloor + 0.48, zDesk);
   [-0.38, 0.38].forEach(dx => [-0.22, 0.22].forEach(dz => {
     addBox(g, 0.035, 0.46, 0.035, darkMat, xDesk + dx, yBreezeFloor + 0.23, zDesk + dz, false);
@@ -7339,7 +9062,7 @@ function buildEastBuilding() {
   addBox(g, 0.22, 0.020, 0.16, bookPalette[1], xDesk + 0.12, yBreezeFloor + 0.51, zDesk + 0.04, false);
 
   // 置物推車
-  const xCart = xA - 1.35, zCart = zSouthWall - 0.45;
+  const xCart = xB + 1.55, zCart = zSouthWall - 0.55;
   addBox(g, 0.42, 0.03, 0.36, warmOakMat, xCart, yBreezeFloor + 0.16, zCart, false);
   addBox(g, 0.42, 0.03, 0.36, warmOakMat, xCart, yBreezeFloor + 0.52, zCart, false);
   addBox(g, 0.03, 0.65, 0.03, darkMat, xCart + 0.21, yBreezeFloor + 0.35, zCart + 0.15, false);
@@ -7371,7 +9094,7 @@ function buildEastBuilding() {
       const cmA = AXIS_CM[i], cmB = AXIS_CM[i + 1];
       const wp = addMesh(g, new THREE.PlaneGeometry((cmB - cmA) * K * 0.78, 1.45), makeWindowMaterial(`east-rear-${k}-${i}`), xB - 0.04, yF[k] + 1.9, (cz(cmA) + cz(cmB)) / 2, false);
       wp.rotation.y = -Math.PI / 2;
-      if (k === 0 && i % 2 === 1) addBox(g, 0.3, 0.5, 0.85, acMat, xB - 0.18, yF[0] + 0.7, (cz(cmA) + cz(cmB)) / 2);
+      if (k === 0 && i % 2 === 1) addBox(g, 0.3, 0.5, 0.85, acMat, xB - 0.18, yBreezeFloor + 0.95, (cz(cmA) + cz(cmB)) / 2);   // 後走廊架高 (1.36 m) 後之冷氣機位置
     }
   }
 
@@ -7379,11 +9102,11 @@ function buildEastBuilding() {
   // 1F 穿堂西側出口：花崗石寬階梯、兩側混凝土側牆與無障礙坡道轉折平臺
   // 依據最新實景照片 media_1793002887451_10566a0d.jpg 1:1 精確還原
   // ============================================================================
-  const yCourtGround = 0.16;
-  // yBreezeFloor (1.36m) 已於穿堂文化核心區塊宣告
+  const yCourtGround = 0.16 - COURTYARD_SINK.D;   // 下沉中庭鋪面標高
+  // yBreezeFloor 已於穿堂文化核心區塊宣告
   const stairRiseTotal = yBreezeFloor - yCourtGround; // 1.20m
-  const nBreezeSteps = 8;    // 8 級平緩寬台階
-  const stepRiserH = stairRiseTotal / nBreezeSteps; // 0.15m
+  const nBreezeSteps = Math.max(1, Math.round((yBreezeFloor - yCourtGround) / 0.15));   // 依高差自動計算級數
+  const stepRiserH = stairRiseTotal / nBreezeSteps;
   const stepTreadD = 0.35;   // 踏步進深 35cm
   const stairTotalRunX = nBreezeSteps * stepTreadD; // 2.80m
 
@@ -7393,6 +9116,7 @@ function buildEastBuilding() {
   const breezeFloorH = yBreezeFloor - y0;
   addBox(g, breezeFloorW + 0.15, breezeFloorH, breezeW, passageFloorMat, breezeFloorCx, y0 + breezeFloorH / 2, breezeZ, false);
 
+  const keepMarkG = g.children.length, keepMarkD = eastDetailGroup.children.length;
   // 穿堂西側 8 階寬大戶外花崗石台階 (正對挑高大穿堂出口)
   const stairZ_Min = cz(AXIS_CM[8]) + 0.25;
   const stairZ_Max = cz(AXIS_CM[7]) - 0.25;
@@ -7426,157 +9150,268 @@ function buildEastBuilding() {
   }
 
   // ============================================================================
-  // 東棟大樓後面 1F 無障礙樓梯與坡道系統 (依據指示與現場照片 1:1 精確還原)
-  // 動線特徵：南北走向，由北向南上坡，至南端轉折平臺迴旋 180°，再由南向北上坡直通穿堂 1F 出入口
-  // 欄杆特徵：清通明亮之水平多管式不銹鋼圓管安全護欄（頂層主扶手、次扶手、防護橫管、踢腳橫管與弧形端部）
+  // 東棟大樓背面（西側・中庭面）南段三折無障礙坡道（依實景照片與手繪配置圖重建）
+  // 動線（北→南：z 遞增；西→東：x 遞增）：
+  //   ・出入口(三)（西側 Run Y）：自中庭紅磚鋪面（zY0）向南緩上坡至南端轉彎平臺（zLand～zT，yMid）
+  //   ・中段 Run R：於南端轉彎平臺 180° 折返向北緩上坡，抵達北端頂部平臺（zN～zTopS，yTop），
+  //     經北端「出口(一)／入口(一)」向東銜接東棟 1F 後走廊（緊鄰穿堂階梯）
+  //   ・內側 Run S（貼花台）：由「出入口(二)」（zTopS～plantZ1）進入北端平臺，向南緩上坡至
+  //     「通往南棟平台」（zT～zE，與南棟 1F 前走廊 ySouthFloor 同高）
+  //   ・外觀：淺灰白抿石子連續擋土牆（北端圓弧收邊、無突兀落差）＋淺灰抿石子防滑坡面
+  //     ＋不鏽鋼直立欄杆與雙層壁掛扶手＋雙向無障礙藍牌＋東側低矮植栽花台
   // ============================================================================
   {
-    const rampNorthZ = stairZ_Max + 0.10; // 北端起點與穿堂交界 (約 -2.25m)
-    const rampSouthZ = cz(AXIS_CM[4]);    // 南端平臺底緣 (約 +6.80m)
-    const landingLenZ = 2.45;             // 南端 180° 迴旋轉折平臺長度
-    const landingSouthZ = rampSouthZ;
-    const landingNorthZ = rampSouthZ - landingLenZ;
-    const landingZ = (landingSouthZ + landingNorthZ) / 2;
+    const yTop = yBreezeFloor, yGround = yCourtGround;          // 穿堂／後走廊地坪 → 中庭地面
+    const ySouthFloor = 1.15;                                    // 南棟（興學樓）1F 前走廊標高
+    const zN = stairZ_Max + 0.10;                                // 北端（緊鄰穿堂大台階南側）
+    const zS = cz(AXIS_CM[4]) + 0.75;                            // 後走廊延伸南端
+    const laneW = 1.80;                                          // 三道坡道淨寬（讓出南棟東端柱位）
+    const plantW = 0.62, walkW = 1.80, plantGap = 1.16;
+    const xPl1 = xW0 - plantGap - plantW, xWalk1 = xPl1 - walkW; // 花台與南棟東端柱同線
+    const xC1 = xWalk1 - laneW, xC2 = xWalk1;                    // 中道 Run R
+    const xB1 = xC1 - laneW, xB2 = xC1;                          // 西道 Run Y
+    const topN = 1.50;                                           // 北端「出口(一)／入口(一)」通道寬度
+    const zT = 5.0, zE = 6.6;                                    // 轉彎平臺南緣 / 通往南棟平台南緣
+    const zLand = zT - 1.60;                                     // 南端轉彎平臺北緣
+    const zTopS = zN + topN;                                     // 北端「出口(一)」南緣（分隔欄杆位置）
+    const plantZ1 = zTopS + 1.45;                                // 「出入口(二)」南緣／花台北端
+    const plantZ2 = zE - 0.75;                                   // 花台南端（留出建築柱位）
+    const zSin = plantZ1, zSup = zT;                             // Run S 坡段起訖
+    const zY0 = zN + 0.36 * (zE - zN);                           // Run Y 地面起點（出入口三）
+    const lenR = zLand - zTopS, lenY = zLand - zY0;
+    const yMid = yGround + (yTop - yGround) * lenY / (lenR + lenY);
+    const y1 = yMid, y2 = yGround;
+    const yOnR = z => z <= zTopS ? yTop : z >= zLand ? yMid : yMid + (yTop - yMid) * (zLand - z) / lenR;
+    const yOnY = z => z <= zY0 ? yGround : z >= zLand ? yMid : yGround + (yMid - yGround) * (z - zY0) / lenY;
+    const yOnS = z => z <= zSin ? yTop : z >= zSup ? ySouthFloor : yTop + (ySouthFloor - yTop) * (z - zSin) / (zSup - zSin);
 
-    const slopeRunZ = landingNorthZ - rampNorthZ; // 斜坡段長度 ~6.60m
-    const slopeCenterZ = (rampNorthZ + landingNorthZ) / 2;
+    // 材質：淺灰白抿石子牆面、淺灰防滑洗石子坡面、壓頂、亮面不鏽鋼
+    const rampTex = makeTerrazzoTexture ? makeTerrazzoTexture() : null;
+    const graniteMat = new THREE.MeshStandardMaterial({ map: rampTex, color: 0xd4d3ce, roughness: 0.85, side: THREE.DoubleSide });
+    const rampSurfMat = new THREE.MeshStandardMaterial({ map: rampTex, color: 0xa7aaad, roughness: 0.90 });
+    const walkMat = new THREE.MeshStandardMaterial({ map: rampTex, color: 0xb2b4b6, roughness: 0.88 });
+    const capMat = new THREE.MeshStandardMaterial({ color: 0xe2e1dc, roughness: 0.76 });
+    const stainlessMat = new THREE.MeshStandardMaterial({ color: 0xd8dee2, roughness: 0.22, metalness: 0.86 });
 
-    const runW = 1.35;        // 每一單向走道淨寬 1.35m
-    const divW = 0.18;        // 雙走道中央欄杆隔離帶 0.18m
-    const curbW = 0.24;       // 外側混凝土擋土側牆厚 0.24m
+    const fillBlock = (x1, x2, za, ya, zb_, yb_, ytopExtra = 0) => {
+      const shp = new THREE.Shape();
+      shp.moveTo(za, yGround - 0.05); shp.lineTo(zb_, yGround - 0.05); shp.lineTo(zb_, yb_ + ytopExtra); shp.lineTo(za, ya + ytopExtra); shp.closePath();
+      const geo = new THREE.ExtrudeGeometry(shp, { depth: x2 - x1, bevelEnabled: false });
+      const m = addMesh(g, geo, graniteMat, x2, 0, 0);
+      m.rotation.y = -Math.PI / 2;
+      return m;
+    };
+    const slopeSurface = (x1, x2, za, ya, zb_, yb_, mat = rampSurfMat) => {
+      const len = Math.hypot(zb_ - za, yb_ - ya);
+      const sf = addBox(g, x2 - x1 - 0.02, 0.04, len, mat, (x1 + x2) / 2, (ya + yb_) / 2 + 0.02, (za + zb_) / 2, false);
+      sf.rotation.x = -Math.atan2(yb_ - ya, zb_ - za);
+    };
 
-    const xOuterWall = xW0 - (runW * 2 + divW + curbW / 2); // ~49.70m
-    const xRun1 = xOuterWall + curbW / 2 + runW / 2;        // ~50.49m (外側走道：由北向南上坡)
-    const xDiv = xRun1 + runW / 2 + divW / 2;               // ~51.25m (中央雙向分隔護欄)
-    const xRun2 = xDiv + divW / 2 + runW / 2;               // ~52.01m (內側走道：由南向北上坡)
+    // 1) 架高 1F 後走廊
+    addBox(g, xB - xW0 - 0.04, yTop - y0, zS + 0.9 - (zN - 0.1), passageFloorMat, (xW0 + xB) / 2, y0 + (yTop - y0) / 2, (zS + 0.9 + zN - 0.1) / 2, false);
 
-    const yLanding = yCourtGround + stairRiseTotal * 0.50;  // 南端中間平臺標高 0.76m
-    const landingW = runW * 2 + divW;
-    const landingX = (xRun1 + xRun2) / 2;
+    // 2) 三道坡道主體量體與鋪面
+    // 2a) Run R 北端頂部平臺（zN～zTopS）與坡段（zTopS～zLand）
+    fillBlock(xC1, xC2, zN, yTop, zTopS, yTop);
+    addBox(g, xC2 - xC1 - 0.02, 0.04, topN, rampSurfMat, (xC1 + xC2) / 2, yTop + 0.02, (zN + zTopS) / 2, false);
+    fillBlock(xC1, xC2, zTopS, yTop, zLand, yMid);
+    slopeSurface(xC1, xC2, zTopS, yTop, zLand, yMid);
+    // 2b) 南端轉彎平臺（Run Y + Run R，zLand～zT，yMid）
+    fillBlock(xB1, xC2, zLand, yMid, zT, yMid);
+    addBox(g, xC2 - xB1 - 0.02, 0.04, zT - zLand, rampSurfMat, (xB1 + xC2) / 2, yMid + 0.02, (zLand + zT) / 2, false);
+    // 2c) Run Y（出入口三 zY0 → 南端轉彎平臺 zLand）
+    fillBlock(xB1, xB2, zY0, yGround, zLand, yMid);
+    slopeSurface(xB1, xB2, zY0, yGround, zLand, yMid);
+    // 2d) Run S 北端「出口(一)／出入口(二)」平臺（zN～zSin，yTop）與緩上坡段（zSin～zSup，yTop→ySouthFloor）
+    fillBlock(xWalk1, xPl1, zN, yTop, zSin, yTop);
+    addBox(g, walkW - 0.02, 0.04, zSin - zN, walkMat, (xWalk1 + xPl1) / 2, yTop + 0.02, (zN + zSin) / 2, false);
+    fillBlock(xWalk1, xPl1, zSin, yTop, zSup, ySouthFloor);
+    slopeSurface(xWalk1, xPl1, zSin, yTop, zSup, ySouthFloor);
+    // 2e) 通往南棟平台（Run R、Run S 南方 zT～zE，與南棟 1F 前走廊同高 ySouthFloor）
+    fillBlock(xC1, xPl1, zT, ySouthFloor, zE, ySouthFloor);
+    addBox(g, xPl1 - xC1 - 0.02, 0.04, zE - zT, walkMat, (xC1 + xPl1) / 2, ySouthFloor + 0.02, (zT + zE) / 2, false);
+    // 2f) 花台北端（出入口一／二旁）與花台東側至後走廊外緣：與東棟後走廊同色之地坪
+    fillBlock(xPl1, xPl1 + plantW, zN, yTop, plantZ1, yTop);
+    addBox(g, plantW + 0.02, 0.04, plantZ1 - zN, passageFloorMat, xPl1 + plantW / 2, yTop + 0.02, (zN + plantZ1) / 2, false);
+    fillBlock(xPl1 + plantW, xW0 + 0.02, zN, yTop, plantZ2, yTop);
+    addBox(g, xW0 - xPl1 - plantW + 0.02, 0.04, plantZ2 - zN, passageFloorMat, (xPl1 + plantW + xW0) / 2, yTop + 0.02, (zN + plantZ2) / 2, false);
 
-    const concMat = new THREE.MeshStandardMaterial({ color: 0xd8d5cd, roughness: 0.82 });      // 洗石子混凝土
-    const rampFloorMat = new THREE.MeshStandardMaterial({ color: 0xbebab0, roughness: 0.65 }); // 坡道防滑地坪
-    const stainlessMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, roughness: 0.18, metalness: 0.90 }); // 明亮拉絲不鏽鋼
-
-    // (1) 外側第一段坡道 Run 1 (由北向南上坡：自北端中庭 0.16m 爬升至南端平臺 0.76m)
-    const run1Angle = -Math.atan2(yLanding - yCourtGround, slopeRunZ);
-    const run1Mesh = addBox(g, runW, 0.12, Math.hypot(slopeRunZ, yLanding - yCourtGround), rampFloorMat, xRun1, (yCourtGround + yLanding) / 2, slopeCenterZ, false);
-    run1Mesh.rotation.x = run1Angle;
-
-    // 外側實體混凝土擋土側牆 (自北向南隨坡道平順斜升)
+    // 3) 連續抿石子擋土牆與緣石（實景：Run R 西側為一體連續斜牆無突兀台階，頂緣高出坡面約 15 cm）
+    const wallT = 0.22, curbH = 0.15;
+    // 3a) Run R 西側連續擋土牆：北端平臺段（zN+wallT～zTopS）＋斜坡段（zTopS～zLand），一氣呵成無落差
+    fillBlock(xC1 - wallT, xC1, zN + wallT, yTop + curbH, zTopS, yTop + curbH);
+    fillBlock(xC1 - wallT, xC1, zTopS, yTop + curbH, zLand, yMid + curbH);
+    // 西北圓弧轉角與北側擋土牆（緊鄰穿堂台階，延伸至 xPl1）
     {
-      const wallShape = new THREE.Shape();
-      wallShape.moveTo(0, yCourtGround);
-      wallShape.lineTo(slopeRunZ, yLanding);
-      wallShape.lineTo(slopeRunZ, yLanding + 0.38);
-      wallShape.lineTo(0, yCourtGround + 0.22);
-      wallShape.closePath();
-      const extrudeSettings = { depth: curbW, bevelEnabled: false };
-      const outerWallGeo = new THREE.ExtrudeGeometry(wallShape, extrudeSettings);
-      const outerWallMesh = addMesh(g, outerWallGeo, concMat, xOuterWall - curbW / 2, 0, rampNorthZ);
-      outerWallMesh.rotation.y = Math.PI / 2;
+      const hN = yTop + curbH - yGround;
+      addMesh(g, new THREE.CylinderGeometry(wallT, wallT, hN, 18, 1, false, Math.PI, Math.PI / 2), graniteMat, xC1, yGround + hN / 2, zN + wallT);
+      addBox(g, xPl1 - xC1, hN, wallT, graniteMat, (xC1 + xPl1) / 2, yGround + hN / 2, zN + wallT / 2);
+    }
+    // 3b) Run Y 外側（西緣）矮緣牆：斜坡段（zY0～zLand）＋轉彎平臺西緣（zLand～zT）
+    const yCurbW = 0.18;
+    fillBlock(xB1 - yCurbW, xB1, zY0, yGround + curbH, zLand, yMid + curbH);
+    addBox(g, yCurbW, yMid + curbH - yGround, zT - zLand + yCurbW, graniteMat, xB1 - yCurbW / 2, (yMid + curbH + yGround) / 2, (zLand + zT + yCurbW) / 2);
+    // 3c) Run Y 南端轉彎平臺南緣低矮緣石（實景：僅低矮緣石＋不鏽鋼欄杆，無高實牆遮擋）
+    addBox(g, xC1 - xB1, yMid + curbH - yGround, yCurbW, graniteMat, (xB1 + xC1) / 2, (yMid + curbH + yGround) / 2, zT + yCurbW / 2);
+    // 3d) Run R / Run S 之間實心抿石子分隔擋土牆（頂緣隨較高之 Run S 緩上坡上升，西面供 Run R 固定壁掛扶手）
+    const divT = 0.18;
+    fillBlock(xC2 - divT / 2, xC2 + divT / 2, zTopS, yTop + curbH, zSin, yTop + curbH);
+    fillBlock(xC2 - divT / 2, xC2 + divT / 2, zSin, yTop + curbH, zT, ySouthFloor + curbH);
+    // 3e) 通往南棟平台（zT～zE）北側與西側抿石子擋土牆（頂緣高出南棟平台 14 cm，其上設不鏽鋼護欄）
+    const platCurb = 0.14;
+    addBox(g, xC2 - xC1 + wallT + divT / 2, ySouthFloor + platCurb - yGround, 0.20, graniteMat, (xC1 - wallT + xC2 + divT / 2) / 2, (ySouthFloor + platCurb + yGround) / 2, zT + 0.10);
+    addBox(g, 0.20, ySouthFloor + platCurb - yGround, zE - zT + 0.20, graniteMat, xC1 - 0.10, (ySouthFloor + platCurb + yGround) / 2, (zT + zE) / 2 + 0.10);
+
+    // 3f) 各牆頂淺色抿石子壓頂（無任何橫跨坡道地坪之凸起絆腳條）
+    {
+      const capR = (x, za, ya, zb, yb, w = 0.20) => {
+        const L = Math.hypot(zb - za, yb - ya);
+        const m = addBox(g, w, 0.04, L, capMat, x, (ya + yb) / 2 + 0.02, (za + zb) / 2, false);
+        m.rotation.x = -Math.atan2(yb - ya, zb - za);
+      };
+      capR(xC1 - wallT / 2, zN + wallT, yTop + curbH, zTopS, yTop + curbH, wallT + 0.02);     // Run R 西側平臺段壓頂
+      capR(xC1 - wallT / 2, zTopS, yTop + curbH, zLand, yMid + curbH, wallT + 0.02);          // Run R 西側連續斜牆壓頂
+      capR(xB1 - yCurbW / 2, zY0, yGround + curbH, zLand, yMid + curbH, yCurbW + 0.02);       // Run Y 外緣斜壓頂
+      capR(xB1 - yCurbW / 2, zLand, yMid + curbH, zT + yCurbW, yMid + curbH, yCurbW + 0.02);  // Run Y 轉彎平臺西緣壓頂
+      capR(xC2, zTopS, yTop + curbH, zSin, yTop + curbH, divT + 0.02);                        // Run R ↔ Run S 平臺分隔壓頂
+      capR(xC2, zSin, yTop + curbH, zT, ySouthFloor + curbH, divT + 0.02);                    // Run R ↔ Run S 斜坡分隔壓頂
+      capR(xPl1 - 0.07, zSin, yTop + 0.08, zSup, ySouthFloor + 0.08, 0.14);                   // Run S ↔ 花台緣石
+      addBox(g, xPl1 - xC1, 0.04, wallT + 0.02, capMat, (xC1 + xPl1) / 2, yTop + curbH + 0.02, zN + wallT / 2, false); // 北緣壓頂
+      addBox(g, xC2 - xC1 + wallT, 0.04, 0.22, capMat, (xC1 - wallT + xC2) / 2, ySouthFloor + platCurb + 0.02, zT + 0.10, false); // 南棟平台北壓頂
+      addBox(g, 0.22, 0.04, zE - zT, capMat, xC1 - 0.10, ySouthFloor + platCurb + 0.02, (zT + zE) / 2, false); // 南棟平台西壓頂
     }
 
-    // (2) 南端 180° 迴旋轉折中間平臺 (Landing at y = 0.76m)
-    addBox(g, landingW + curbW, yLanding - yCourtGround, landingLenZ, concMat, landingX - curbW / 2, yCourtGround + (yLanding - yCourtGround) / 2, landingZ);
-    addBox(g, landingW, 0.12, landingLenZ, rampFloorMat, landingX, yLanding + 0.06, landingZ, false);
-
-    // 平臺南端與西側防護水泥矮牆
-    addBox(g, landingW + curbW, 0.85, 0.26, wallMat, landingX - curbW / 2, yLanding + 0.425, landingSouthZ - 0.13);
-    addBox(g, curbW, 0.78, landingLenZ, concMat, xOuterWall, yLanding + 0.39, landingZ);
-
-    // (3) 內側第二段坡道 Run 2 (再由南向北上坡：自南端平臺 0.76m 爬升至北端穿堂出入口 1.36m)
-    const run2Angle = Math.atan2(yBreezeFloor - yLanding, slopeRunZ);
-    const run2Mesh = addBox(g, runW, 0.12, Math.hypot(slopeRunZ, yBreezeFloor - yLanding), rampFloorMat, xRun2, (yLanding + yBreezeFloor) / 2, slopeCenterZ, false);
-    run2Mesh.rotation.x = run2Angle;
-
-    // 內側 1F 穿堂銜接延伸平臺 (串聯穿堂出口與東棟 1F 走廊)
-    addBox(g, runW, 0.20, slopeRunZ + 1.2, concMat, xRun2, yBreezeFloor - 0.10, slopeCenterZ, false);
-
-    // (4) 北端起點引導區與國際無障礙藍色標誌牌 (緊鄰中央階梯南側)
-    addBox(g, curbW, 0.65, 0.45, concMat, xOuterWall, yCourtGround + 0.325, rampNorthZ + 0.22);
-    const wcSignMat = new THREE.MeshBasicMaterial({ map: makeWheelchairSignTexture() });
-    const wcSign = addMesh(g, new THREE.PlaneGeometry(0.55, 0.42), wcSignMat, xOuterWall - curbW / 2 - 0.015, yCourtGround + 0.45, rampNorthZ + 0.22, false);
-    wcSign.rotation.y = -Math.PI / 2; // 正對中庭西向
-
-    // (5) 不銹鋼水平多管式無障礙安全欄杆系統 (5道水平管＋垂直立柱＋弧形下彎收頭)
-    const addHorizontalRampRail = (railX, startY, endY, startZ, endZ, hasEndDrop = true) => {
-      const railLen = Math.hypot(endZ - startZ, endY - startY);
-      const railAngle = Math.atan2(endY - startY, endZ - startZ);
-      const midY = (startY + endY) / 2;
-      const midZ = (startZ + endZ) / 2;
-
-      // 1. 頂層主手扶管 (直徑 5cm 圓管，距地面 0.85m)
-      const topRail = addBox(eastDetailGroup, 0.05, 0.05, railLen, stainlessMat, railX, midY + 0.85, midZ, false);
-      topRail.rotation.x = railAngle;
-
-      // 2. 次層輪椅/學童輔助扶手管 (直徑 3.8cm 圓管，距地面 0.65m)
-      const midRail = addBox(eastDetailGroup, 0.038, 0.038, railLen, stainlessMat, railX, midY + 0.65, midZ, false);
-      midRail.rotation.x = railAngle;
-
-      // 3. 中間第 1 道水平防護橫管 (直徑 2.8cm，距地面 0.46m)
-      const guard1 = addBox(eastDetailGroup, 0.028, 0.028, railLen, stainlessMat, railX, midY + 0.46, midZ, false);
-      guard1.rotation.x = railAngle;
-
-      // 4. 中間第 2 道水平防護橫管 (直徑 2.8cm，距地面 0.28m)
-      const guard2 = addBox(eastDetailGroup, 0.028, 0.028, railLen, stainlessMat, railX, midY + 0.28, midZ, false);
-      guard2.rotation.x = railAngle;
-
-      // 5. 底層踢腳防滑防護橫管 (直徑 2.5cm，距地面 0.10m)
-      const botRail = addBox(eastDetailGroup, 0.025, 0.025, railLen, stainlessMat, railX, midY + 0.10, midZ, false);
-      botRail.rotation.x = railAngle;
-
-      // 6. 垂直主支撐立柱 (直徑 4.8cm 方/圓管，間距約 1.15m)
-      const nPosts = Math.max(2, Math.round(railLen / 1.15));
-      for (let p = 0; p <= nPosts; p++) {
-        const frac = p / nPosts;
-        const pz = startZ + frac * (endZ - startZ);
-        const py = startY + frac * (endY - startY);
-        addBox(eastDetailGroup, 0.048, 0.88, 0.048, stainlessMat, railX, py + 0.44, pz, false);
+    // 4) 不鏽鋼欄杆與壁掛雙層扶手（實景：細緻圓管直立欄柱＋雙層扶手＋U 形壁掛支架）
+    const railing = (x, za, ya, zb_, yb_, opts = {}) => {
+      const h = opts.h || 0.95, dz = zb_ - za, dy = yb_ - ya, len = Math.hypot(dz, dy), ang = -Math.atan2(dy, dz);
+      const midZ = (za + zb_) / 2, midY = (ya + yb_) / 2;
+      if (opts.posts !== false) {
+        const top = addBox(eastDetailGroup, 0.045, 0.045, len, stainlessMat, x, midY + h, midZ, false); top.rotation.x = ang;
+        const mid = addBox(eastDetailGroup, 0.030, 0.030, len, stainlessMat, x, midY + h * 0.54, midZ, false); mid.rotation.x = ang;
+        const bot = addBox(eastDetailGroup, 0.030, 0.030, len, stainlessMat, x, midY + 0.10, midZ, false); bot.rotation.x = ang;
+        const nP = Math.max(3, Math.round(len / 0.13));
+        for (let i = 0; i <= nP; i++) {
+          const f = i / nP, pz = za + dz * f, py = ya + dy * f, th = (i === 0 || i === nP || i % 10 === 0) ? 0.040 : 0.020;
+          addBox(eastDetailGroup, th, h - 0.05, th, stainlessMat, x, py + 0.05 + (h - 0.05) / 2, pz, false);
+        }
       }
-
-      // 7. 起迄端部向下圓弧彎折收頭
-      if (hasEndDrop) {
-        addBox(eastDetailGroup, 0.045, 0.22, 0.045, stainlessMat, railX, startY + 0.74, startZ, false);
-        addBox(eastDetailGroup, 0.045, 0.22, 0.045, stainlessMat, railX, endY + 0.74, endZ, false);
+      if (opts.handrail !== false) {
+        const off = opts.side || 0.09;
+        const hr1Y = opts.hr1Y ?? 0.82, hr2Y = opts.hr2Y ?? 0.64;
+        const hr = addBox(eastDetailGroup, 0.038, 0.038, len, stainlessMat, x + off, midY + hr1Y, midZ, false); hr.rotation.x = ang;
+        const hr2 = addBox(eastDetailGroup, 0.032, 0.032, len, stainlessMat, x + off, midY + hr2Y, midZ, false); hr2.rotation.x = ang;
+        // 兩端收邊彎管連接上下雙層扶手
+        addBox(eastDetailGroup, 0.032, hr1Y - hr2Y + 0.03, 0.032, stainlessMat, x + off, ya + (hr1Y + hr2Y) / 2, za, false);
+        addBox(eastDetailGroup, 0.032, hr1Y - hr2Y + 0.03, 0.032, stainlessMat, x + off, yb_ + (hr1Y + hr2Y) / 2, zb_, false);
+        const nB = Math.max(2, Math.round(len / 1.05));
+        for (let i = 0; i <= nB; i++) {
+          const f = i / nB, bz = za + dz * f, by = ya + dy * f;
+          addBox(eastDetailGroup, Math.abs(off) + 0.02, 0.022, 0.022, stainlessMat, x + off / 2, by + hr1Y, bz, false);
+          addBox(eastDetailGroup, Math.abs(off) + 0.02, 0.022, 0.022, stainlessMat, x + off / 2, by + hr2Y, bz, false);
+        }
+      }
+    };
+    const railingX = (z, xa, xb_, y, opts = {}) => {
+      const h = typeof opts === 'number' ? opts : (opts.h || 0.95);
+      const posts = typeof opts === 'object' ? opts.posts !== false : true;
+      const handrail = typeof opts === 'object' ? opts.handrail === true : false;
+      const sideZ = (typeof opts === 'object' && opts.sideZ) ? opts.sideZ : 0.09;
+      const len = Math.abs(xb_ - xa), cx = (xa + xb_) / 2;
+      if (posts) {
+        addBox(eastDetailGroup, len, 0.045, 0.045, stainlessMat, cx, y + h, z, false);
+        addBox(eastDetailGroup, len, 0.030, 0.030, stainlessMat, cx, y + h * 0.54, z, false);
+        addBox(eastDetailGroup, len, 0.030, 0.030, stainlessMat, cx, y + 0.10, z, false);
+        const nP = Math.max(3, Math.round(len / 0.13));
+        for (let i = 0; i <= nP; i++) {
+          const th = (i === 0 || i === nP || i % 10 === 0) ? 0.040 : 0.020;
+          addBox(eastDetailGroup, th, h - 0.05, th, stainlessMat, Math.min(xa, xb_) + len * i / nP, y + 0.05 + (h - 0.05) / 2, z, false);
+        }
+      }
+      if (handrail) {
+        const hr1Y = (typeof opts === 'object' && opts.hr1Y) ? opts.hr1Y : 0.82;
+        const hr2Y = (typeof opts === 'object' && opts.hr2Y) ? opts.hr2Y : 0.64;
+        addBox(eastDetailGroup, len, 0.038, 0.038, stainlessMat, cx, y + hr1Y, z + sideZ, false);
+        addBox(eastDetailGroup, len, 0.032, 0.032, stainlessMat, cx, y + hr2Y, z + sideZ, false);
+        const nB = Math.max(2, Math.round(len / 1.0));
+        for (let i = 0; i <= nB; i++) {
+          const bx = Math.min(xa, xb_) + len * i / nB;
+          addBox(eastDetailGroup, 0.022, 0.022, Math.abs(sideZ) + 0.02, stainlessMat, bx, y + hr1Y, z + sideZ / 2, false);
+          addBox(eastDetailGroup, 0.022, 0.022, Math.abs(sideZ) + 0.02, stainlessMat, bx, y + hr2Y, z + sideZ / 2, false);
+        }
       }
     };
 
-    // A. 外走道西側護欄 (由北端起點向南爬升至南端平臺)
-    addHorizontalRampRail(xRun1 - runW / 2 + 0.04, yCourtGround, yLanding, rampNorthZ, landingNorthZ);
-
-    // B. 南端迴旋平臺西側與南側護欄 (平臺水平防護)
-    addHorizontalRampRail(xRun1 - runW / 2 + 0.04, yLanding, yLanding, landingNorthZ, landingSouthZ, false);
+    // 4a) 北端「出口(一)／入口(一)」北緣欄杆（緊鄰穿堂台階，自西北角橫跨至花台西緣 xPl1）
+    railingX(zN + wallT / 2, xC1 - wallT / 2, xPl1, yTop + curbH, { h: 0.92, handrail: true, sideZ: 0.09, hr1Y: 0.72, hr2Y: 0.54 });
+    // 4b) 北端「出口(一)」與「出入口(二)」之間隔欄杆（zTopS，自 Run R/S 分隔牆向東至 xPl1，東端設彎管迴圈）
+    railingX(zTopS, xC2, xPl1, yTop + 0.06, { h: 0.92, handrail: true, sideZ: -0.09 });
+    // 4c) Run R 西側連續欄杆（無落差一氣呵成：平臺段 zN→zTopS ＋ 斜坡段 zTopS→zLand，內側雙層扶手）
+    railing(xC1 - wallT / 2, zN + wallT / 2, yTop + curbH, zTopS, yTop + curbH, { h: 0.92, side: 0.10, hr1Y: 0.72, hr2Y: 0.54 });
+    railing(xC1 - wallT / 2, zTopS, yTop + curbH, zLand, yMid + curbH, { h: 0.92, side: 0.10, hr1Y: 0.72, hr2Y: 0.54 });
+    // 4d) Run R 東側壁掛雙層扶手（固定於 Run R/S 抿石子分隔牆西面，依 Run R 斜率下降）
+    railing(xC2 - divT / 2, zTopS, yTop, zLand, yMid, { posts: false, side: -0.09 });
+    // 4e) Run R 南端轉彎平臺背牆壁掛雙層扶手（固定於南棟平台北側擋土牆面）
+    railingX(zT, xC1 + 0.05, xC2 - divT / 2, yMid, { posts: false, handrail: true, sideZ: -0.09 });
+    // 4f) Run Y 內側（東側）壁掛雙層扶手（固定於 Run R 擋土牆西面，依 Run Y 斜率上升）
+    railing(xC1 - wallT, zY0 + 0.12, yGround, zLand, yMid, { posts: false, side: -0.09 });
+    // 4g) Run Y 外側（西側）欄杆＋雙層扶手（斜坡段 zY0→zLand ＋ 轉彎平臺西緣 zLand→zT）
+    railing(xB1 - yCurbW / 2, zY0 + 0.12, yGround + curbH, zLand, yMid + curbH, { h: 0.92, side: 0.10, hr1Y: 0.72, hr2Y: 0.54 });
+    railing(xB1 - yCurbW / 2, zLand, yMid + curbH, zT + yCurbW / 2, yMid + curbH, { h: 0.92, side: 0.10, hr1Y: 0.72, hr2Y: 0.54 });
+    // 4h) Run Y 南端轉彎平臺南緣欄杆＋內側雙層扶手（低矮緣石上，通透可見後方綠籬）
+    railingX(zT + yCurbW / 2, xB1 - yCurbW / 2, xC1 - wallT / 2, yMid + curbH, { h: 0.92, handrail: true, sideZ: -0.10, hr1Y: 0.72, hr2Y: 0.54 });
+    // 4i) Run R / Run S 分隔牆頂欄杆（平臺段 zTopS→zSin ＋ Run S 緩上坡 zSin→zT，東側雙層扶手）
+    railing(xC2, zTopS, yTop + curbH, zSin, yTop + curbH, { h: 0.92, side: 0.10, hr1Y: 0.72, hr2Y: 0.54 });
+    railing(xC2, zSin, yTop + curbH, zT + 0.10, ySouthFloor + curbH, { h: 0.92, side: 0.10, hr1Y: 0.72, hr2Y: 0.54 });
+    // 4j) Run S 東側（花台側）欄杆＋雙層扶手（自花台北端 zSin 沿坡面至南棟平台）
+    railing(xPl1 - 0.05, zSin, yTop + 0.08, zSup, ySouthFloor + 0.08, { h: 0.92, side: -0.09, hr1Y: 0.76, hr2Y: 0.58 });
+    // 4k) 通往南棟平台（ySouthFloor）北緣與西緣安全護欄（實景：俯瞰 Run R 轉彎平臺與綠籬）
+    railingX(zT + 0.10, xC1 - 0.10, xC2, ySouthFloor + platCurb, { h: 0.92 });
+    railing(xC1 - 0.10, zT + 0.10, ySouthFloor + platCurb, zE, ySouthFloor + platCurb, { h: 0.92, handrail: false });
+    // 南棟平台西北角觀葉盆栽（實景照片 082056 / 081942 細節）
     {
-      const topS = addBox(g, landingW, 0.05, 0.05, stainlessMat, landingX, yLanding + 0.85, landingSouthZ - 0.06, false);
-      const midS = addBox(g, landingW, 0.038, 0.038, stainlessMat, landingX, yLanding + 0.65, landingSouthZ - 0.06, false);
-      const g1S = addBox(g, landingW, 0.028, 0.028, stainlessMat, landingX, yLanding + 0.46, landingSouthZ - 0.06, false);
-      const g2S = addBox(g, landingW, 0.028, 0.028, stainlessMat, landingX, yLanding + 0.28, landingSouthZ - 0.06, false);
-      const botS = addBox(g, landingW, 0.025, 0.025, stainlessMat, landingX, yLanding + 0.10, landingSouthZ - 0.06, false);
-      for (let p = -1; p <= 1; p++) {
-        addBox(g, 0.048, 0.88, 0.048, stainlessMat, landingX + p * (landingW / 2 - 0.08), yLanding + 0.44, landingSouthZ - 0.06, false);
+      const potMat = new THREE.MeshStandardMaterial({ color: 0xebe9e4, roughness: 0.75 });
+      const leafMat = new THREE.MeshStandardMaterial({ color: 0x3a7a34, roughness: 0.78 });
+      const px = xC1 + 0.28, pz = zT + 0.42;
+      addMesh(eastDetailGroup, new THREE.CylinderGeometry(0.16, 0.12, 0.36, 10), potMat, px, ySouthFloor + 0.20, pz, false);
+      addMesh(eastDetailGroup, new THREE.IcosahedronGeometry(0.32, 1), leafMat, px, ySouthFloor + 0.68, pz, false);
+    }
+
+    // 5) 東側狹長洗石子花台（自出入口二南側 plantZ1 沿 Run S 延伸至建築柱前 plantZ2）
+    {
+      const pz1 = plantZ1, pz2 = plantZ2, pw = plantW, px = xPl1 + pw / 2;
+      const pTop = z => Math.max(yTop + 0.42, yOnS(z) + 0.14);
+      fillBlock(xPl1, xPl1 + pw, pz1, pTop(pz1), pz2, pTop(pz2));
+      const soilMat = new THREE.MeshStandardMaterial({ color: 0x5b4a3a, roughness: 0.95 });
+      const L = Math.hypot(pz2 - pz1, pTop(pz2) - pTop(pz1));
+      const so = addBox(g, pw - 0.14, 0.02, L - 0.14, soilMat, px, (pTop(pz1) + pTop(pz2)) / 2 + 0.01, (pz1 + pz2) / 2, false);
+      so.rotation.x = -Math.atan2(pTop(pz2) - pTop(pz1), pz2 - pz1);
+      // 緊湊型常綠灌木與蘭草／觀葉植栽（貼合實景低矮整齊比例，不外溢穿模欄杆）
+      const pm = [0x2f6a2c, 0x3f7f35, 0x568f3e, 0x2a5a28].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.82 }));
+      let sd = 31; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let z = pz1 + 0.28; z < pz2 - 0.22; z += 0.42) {
+        const h = 0.16 + rr() * 0.20;
+        const b = addMesh(g, new THREE.IcosahedronGeometry(0.17 + rr() * 0.05, 1), pm[Math.floor(rr() * 4)], px + (rr() - 0.5) * 0.10, pTop(z) + h * 0.75, z);
+        b.scale.set(1.0, 0.85 + h, 1.05);
       }
     }
 
-    // C. 中央雙走道分隔護欄 (介於 Run 1 與 Run 2 之間，由北端向南爬升)
-    addHorizontalRampRail(xDiv, yCourtGround, yLanding, rampNorthZ, landingNorthZ);
+    // 6) 坡道落地處（出入口三）至南棟樓梯間之波浪形紅灰連鎖磚廣場與草地帶，統一於 buildSouthBuilding 的 frontLand 依實景無縫繪製
 
-    // D. 內走道東側護欄 (由南端平臺向北爬升至穿堂出口)
-    addHorizontalRampRail(xRun2 + runW / 2 - 0.04, yLanding, yBreezeFloor, landingNorthZ, rampNorthZ);
-
-    // E. 北端地面起點引導扶手 (靠近中央階梯處)
+    // 7) 國際無障礙標誌藍牌（實景共兩處：① 西北角外側欄杆面向中庭；② 花台北端面向穿堂／出入口二）
     {
-      const entryZ = rampNorthZ - 0.40;
-      addBox(g, 0.05, 0.05, 0.40, stainlessMat, xRun1 - runW / 2 - 0.15, yCourtGround + 0.85, rampNorthZ - 0.20, false);
-      addBox(g, 0.048, 0.85, 0.048, stainlessMat, xRun1 - runW / 2 - 0.15, yCourtGround + 0.425, entryZ, false);
-      addBox(g, 0.05, 0.05, 0.40, stainlessMat, xDiv + 0.15, yCourtGround + 0.85, rampNorthZ - 0.20, false);
-      addBox(g, 0.048, 0.85, 0.048, stainlessMat, xDiv + 0.15, yCourtGround + 0.425, entryZ, false);
+      const wcSignMat = new THREE.MeshBasicMaterial({ map: makeWheelchairSignTexture() });
+      const signW = addMesh(eastDetailGroup, new THREE.PlaneGeometry(0.42, 0.42), wcSignMat, xC1 - wallT - 0.04, yTop + curbH + 0.56, zN + 0.85, false);
+      signW.rotation.y = -Math.PI / 2;
+      const signN = addMesh(eastDetailGroup, new THREE.PlaneGeometry(0.36, 0.36), wcSignMat, xPl1 + plantW * 0.45, yTop + 0.56, plantZ1 - 0.03, false);
+      signN.rotation.y = Math.PI;
     }
-  }
 
-  // 南側綠籬花台矮牆 (實景修剪平整綠籬)
-  addBox(g, 0.35, 0.65, 380 * K, mats.corridorTerrazzo, xW0 - 3.8, 0.32, cz(500));
-  addBox(g, 1.1, 0.7, 380 * K, mats.greenAccent, xW0 - 4.45, 0.35, cz(500));
+    window.EAST_REAR_RAMP = { xA1: xB1 - yCurbW, xB1, xC1, xC2, zN, zS, zNland: zTopS, zSland: zLand, zCtop: zLand, zAexit: zY0, y1, y2, yTop, yGround, xS1: xWalk1, xS2: xPl1, zSin, zSup, ySouthFloor, zT, zE };
+  }
+  // 以上台階與坡道已依下沉中庭標高建置：標記為不再下移
+  g.children.slice(keepMarkG).forEach(o => o.traverse(c => { c.userData.keepLevel = true; }));
+  eastDetailGroup.children.slice(keepMarkD).forEach(o => o.traverse(c => { c.userData.keepLevel = true; }));
+
 
   // (中庭遊戲器材已統一移至 playground-zone 1:1 準確還原)
   // (北端鄰棟銜接走廊與假體已依現場照片精緻化並移除干擾方塊，不繪製任何車輛)
@@ -9130,6 +10965,7 @@ function buildEastBuilding() {
   }
 
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'east-building'; });
+  EAST_XF.apply(g);    // v2.12.40 依航照：整棟順時針轉 6.0°，北端東移約 6 m 以銜接北棟 ⑳
   layerGroups.buildings.add(g);
   clickableGroups.push(g);
   landmarkGroupMap.set('east-building', g);
@@ -9400,7 +11236,7 @@ function buildSouthBuilding() {
   //   - 軸線 C' (zCoreSouth): 教室南外牆 (教室主體進深 600 cm = 6.00 m)
   //   - 軸線 D (zSouth): 南側前走廊外緣 (前走廊深 350 cm = 3.50 m，臨建興南路42巷)
   // ============================================================================
-  const zSouth = Z(318);                // 軸線 D (20.28m)
+  const zSouth = Z(318) + SOUTH_SHIFT;  // 軸線 D（原 20.28m，v2.12.34 北移 6 m → 14.28m）
   const zCoreSouth = zSouth - 3.50;     // 軸線 C' (16.78m)
   const zCoreNorth = zCoreSouth - 6.00; // 軸線 B (10.78m)
   const zNorth = zCoreNorth - 2.00;     // 軸線 A (8.78m)
@@ -9455,6 +11291,7 @@ function buildSouthBuilding() {
   const southSolarPanelMat = new THREE.MeshStandardMaterial({ color: 0x182436, roughness: 0.2, metalness: 0.65 });
   const southSolarFrameMat = new THREE.MeshStandardMaterial({ color: 0x8c3832, roughness: 0.5, metalness: 0.35 }); // 暗紅屋簷鋼構支架
   const grassMoundMat = new THREE.MeshStandardMaterial({ color: 0x5aa044, roughness: 0.88 });
+  registerLawnMat(grassMoundMat);
   const sandySoilMat = new THREE.MeshStandardMaterial({ color: 0x9e8f75, roughness: 0.92 });
   const dinoSculptureMat = new THREE.MeshStandardMaterial({ color: 0x3b7a47, roughness: 0.5 });
   const hedgeDarkGreenMat = new THREE.MeshStandardMaterial({ color: 0x235328, roughness: 0.9 });
@@ -9903,13 +11740,14 @@ function buildSouthBuilding() {
   const lStepH = y0 / numLeftExtSteps;
   const mosaicRiserCommonMat = new THREE.MeshBasicMaterial({ map: makeSouthMosaicStairsTexture(false) });
   const mosaicRiserBottomMat = new THREE.MeshBasicMaterial({ map: makeSouthMosaicStairsTexture(true) });
+  const lStairMark = g.children.length;   // 本樓梯物件起點：結尾統一標記 keepLevel
 
   for (let s = 0; s < numLeftExtSteps; s++) {
     const curH = (s + 1) * lStepH;
     const curZ = zNorth - leftExtRunZ + (s + 0.5) * lStepD;
     addBox(g, leftExtStairW, curH, lStepD, southTerrazzoMat, entCx, curH / 2, curZ);
     const riserZ = zNorth - leftExtRunZ + s * lStepD - 0.01;
-    const rMat = s === 0 ? mosaicRiserBottomMat : mosaicRiserCommonMat;
+    const rMat = mosaicRiserCommonMat;   // v2.12.98 「109 HAPPY」底層立面移到新補的最底一級（見下）
     const riserPlane = addMesh(g, new THREE.PlaneGeometry(leftExtStairW, lStepH), rMat, entCx, (s + 0.5) * lStepH, riserZ, false);
     riserPlane.rotation.y = Math.PI;
   }
@@ -9920,11 +11758,32 @@ function buildSouthBuilding() {
     const cheekX = entCx + side * (leftExtStairW / 2 + 0.14);
     addBox(g, 0.24, y0 * 0.75, leftExtRunZ, southBaseBeamMat, cheekX, y0 * 0.375, zNorth - leftExtRunZ / 2);
     const railBar = addBox(g, 0.05, 0.05, Math.hypot(leftExtRunZ, y0), southStainlessRailMat, cheekX, y0 * 0.65 + 0.42, zNorth - leftExtRunZ / 2);
-    railBar.rotation.x = lSlopeAngle;
+    railBar.rotation.x = -lSlopeAngle;   // v2.12.98 符號修正：原為 +，扶手朝建築方向反而往下傾
     addBox(g, 0.45, 0.85, leftExtRunZ * 0.85, hedgeDarkGreenMat, cheekX + side * 0.32, 0.55, zNorth - leftExtRunZ * 0.45, false);
+  }
+  // v2.12.98 左側階梯底部落地：同右側，往北補 4 級（每級 0.144 m）落到廣場面（−0.59）；「109 HAPPY」底層彩磚立面移到最底一級
+  {
+    const extN = 4, botY = -0.76;
+    for (let k = 1; k <= extN; k++) {
+      const top = (1 - k) * lStepH;
+      const curZ = zNorth - leftExtRunZ - (k - 0.5) * lStepD;
+      addBox(g, leftExtStairW, top - botY, lStepD, southTerrazzoMat, entCx, (top + botY) / 2, curZ);
+      // 立面貼在該級踏階的北面（z = 該級北緣 − 0.01），高度 = 一級踏高
+      const rp = addMesh(g, new THREE.PlaneGeometry(leftExtStairW, lStepH), k === extN ? mosaicRiserBottomMat : mosaicRiserCommonMat, entCx, top - lStepH / 2, zNorth - leftExtRunZ - k * lStepD - 0.01, false);
+      rp.rotation.y = Math.PI;
+    }
+    const extRun = extN * lStepD;
+    for (let side of [-1, 1]) {
+      const cheekX = entCx + side * (leftExtStairW / 2 + 0.14);
+      addBox(g, 0.24, y0 * 0.75 - botY, extRun, southBaseBeamMat, cheekX, (y0 * 0.75 + botY) / 2, zNorth - leftExtRunZ - extRun / 2);
+      const L = Math.hypot(extRun, extN * lStepH);
+      const rb = addBox(g, 0.05, 0.05, L, southStainlessRailMat, cheekX, (y0 * 0.65 + 0.42) - ((leftExtRunZ + extRun) / 2) * (y0 / leftExtRunZ), zNorth - leftExtRunZ - extRun / 2);
+      rb.rotation.x = -lSlopeAngle;
+    }
   }
   // 左柱前高聳圓錐塔柏盆栽 (對應照片 01/02 興學樓左柱前的高柏樹)
   addMesh(g, new THREE.ConeGeometry(0.45, 2.50, 12), hedgeDarkGreenMat, leftStairXL + 0.15, 1.45, zNorth - 1.15);
+  for (let i = lStairMark; i < g.children.length; i++) g.children[i].traverse(o => { if (o.isMesh) o.userData.keepLevel = true; });
 
   // 10.5 左側樓梯間室內 1F ↔ 2F ↔ 3F 雙跑折返樓梯 (位於 ④–⑤ 軸 B～C' 之間)
   for (let fl = 0; fl < 2; fl++) {
@@ -9982,6 +11841,7 @@ function buildSouthBuilding() {
   const rightExtRunZ = 3.10;
   const rStepD = rightExtRunZ / numRightExtSteps;
   const rStepH = y0 / numRightExtSteps;
+  const rStairMark = g.children.length;   // 本樓梯物件起點：結尾統一標記 keepLevel（樓梯依設計標高建置，不隨下沉中庭下移）
 
   for (let s = 0; s < numRightExtSteps; s++) {
     const curH = (s + 1) * rStepH;
@@ -10009,6 +11869,35 @@ function buildSouthBuilding() {
       addBox(g, 0.035, 0.36, 0.035, southStainlessRailMat, cheekX, py, pz);
     }
   }
+
+  // v2.12.98 樓梯底部落地：中庭廣場面在 −0.59（下沉中庭），原 8 級從 GL 0.00 起算，底部懸空在廣場上方約 0.6 m
+  //   （過去靠一塊浮在 y = 0.04 的地磚帶遮住）。往北再補 4 級同尺寸踏階（每級 0.144 m）落到廣場面，並延伸兩側白色斜護牆與扶手。
+  {
+    const extN = 4;
+    for (let k = 1; k <= extN; k++) {
+      const top = (1 - k) * rStepH;                                   // 0.00、−0.144、−0.288、−0.431
+      const curZ = zNorth - rightExtRunZ - (k - 0.5) * rStepD;
+      const botY = -0.76;                                             // 下沉中庭地基頂面
+      addBox(g, rightExtStepW, top - botY, rStepD, southTerrazzoMat, rightStairCx, (top + botY) / 2, curZ);
+      addBox(g, rightExtStepW - 0.04, 0.025, 0.05, basementPierBrickMat, rightStairCx, top + 0.005, curZ - rStepD / 2 + 0.03);
+    }
+    const extRun = extN * rStepD, extDrop = extN * rStepH, extLen = Math.hypot(extRun, extDrop);
+    const zc = zNorth - rightExtRunZ - extRun / 2;
+    const yc = (y0 / 2 + 0.18) - ((rightExtRunZ + extRun) / 2) * (y0 / rightExtRunZ);      // 沿原斜護牆同一條斜線往下延伸
+    for (let side of [-1, 1]) {
+      const cheekX = rightStairCx + side * (rightExtStepW / 2 + 0.14);
+      addBox(g, 0.24, 0.80, extRun + 0.20, southWhiteWallMat, cheekX, -0.36, zc);                   // 立牆（廣場面 → 0.04）
+      const sw = addBox(g, 0.24, 0.48, extLen, southWhiteWallMat, cheekX, yc, zc);                   // 斜牆
+      sw.rotation.x = -rSlopeAngle;
+      const rh = addBox(g, 0.045, 0.045, extLen * 0.95, southStainlessRailMat, cheekX, yc + 0.50, zc);   // 金屬扶手
+      rh.rotation.x = -rSlopeAngle;
+      for (let p = 0; p <= 1; p++) {
+        const pz = zNorth - rightExtRunZ - 0.25 - p * (extRun - 0.50);
+        addBox(g, 0.035, 0.36, 0.035, southStainlessRailMat, cheekX, (1 - (p === 0 ? 0.5 : 3.5)) * rStepH + 0.42, pz);
+      }
+    }
+  }
+  for (let i = rStairMark; i < g.children.length; i++) g.children[i].traverse(o => { if (o.isMesh) o.userData.keepLevel = true; });
 
   // 1F 右側樓梯口柱頭小型太陽能感應燈與內部紅色消防栓箱 (照片 04 細節)
   addBox(g, 0.35, 0.04, 0.28, southSolarPanelMat, rightStairXR + 0.15, yF[1] - 0.55, zNorth - 0.32);
@@ -10040,20 +11929,167 @@ function buildSouthBuilding() {
   }
 
   // ============================================================================
-  // 12. 軸線 ①–④ 北側前景：基座擋土牆、修剪灌木樹列與景觀草皮帶（南棟北側無坡道，視野開闊）
+  // 12. 軸線 ①–④ 北側前景（依實景照片 081921 / 082056 忠實還原）：
+  //     下沉中庭幾何花磚 → 淺灰水泥分隔邊條 → 整片一體式波浪形（S型）紅灰雙色連鎖磚廣場
+  //     （西接南棟主樓梯、東密合東棟無障礙坡道出入口三與 Run R/Y 牆緣）
+  //     → 靠牆寬幅翠綠草地帶 → 灰色水泥擋土牆前之修剪長虹木喬木綠籬（細樹幹＋綠紅雙色枝葉）
   // ============================================================================
+  const frontLand = new THREE.Group();
+  g.add(frontLand);
+  const PY = 0.16 - COURTYARD_SINK.D;   // 南棟前地面標高 = 中庭廣場鋪面頂（−0.59）
   const hedgeRowXL = ax(1) - 0.2, hedgeRowXR = ax(4) + 0.35;
   const hedgeSpanW = Math.abs(hedgeRowXL - hedgeRowXR);
-  // ①–④ 軸基座擋土矮牆
-  addBox(g, hedgeSpanW + 0.4, y0, 0.45, southBaseBeamMat, (hedgeRowXL + hedgeRowXR) / 2, y0 / 2, zNorth - 0.25);
-  // 前方草皮帶
-  addBox(g, hedgeSpanW + 0.8, 0.06, 2.40, grassMoundMat, (hedgeRowXL + hedgeRowXR) / 2, 0.03, zNorth - 1.35, false);
-  // 整齊修剪之常綠灌木樹列
-  for (let t = 0; t < 7; t++) {
-    const tx = hedgeRowXR + (t / 6) * (hedgeRowXL - hedgeRowXR);
-    addMesh(g, new THREE.CylinderGeometry(0.05, 0.07, 1.15, 8), southDoorWoodMat, tx, 0.58, zNorth - 0.65);
-    const crown = addMesh(g, new THREE.SphereGeometry(0.68, 12, 10), hedgeDarkGreenMat, tx, 1.38, zNorth - 0.68);
-    crown.scale.set(1.15, 0.85, 0.75);
+  const hedgeCx = (hedgeRowXL + hedgeRowXR) / 2;
+  window.__SOUTH_FRONT = { zNorth, y0, PY, hedgeRowXL, hedgeRowXR, ax1: ax(1), ax4: ax(4) };
+  const _rr = window.EAST_REAR_RAMP;
+  const hedgeXL2 = _rr ? Math.min(hedgeRowXL, EAST_XF.toWorld(_rr.xC1 - 0.25, 5.5)[0]) : hedgeRowXL;
+  const hedgeSpan2 = Math.abs(hedgeXL2 - hedgeRowXR), hedgeCx2 = (hedgeXL2 + hedgeRowXR) / 2;
+  {
+    const wallGrey = new THREE.MeshStandardMaterial({ color: 0xb9b8b2, roughness: 0.9 });
+    addBox(frontLand, hedgeSpanW + 0.4, y0 - PY, 0.45, wallGrey, hedgeCx, (y0 + PY) / 2, zNorth - 0.25);
+
+    // 輔助：將世界 XZ 多邊形建立為平鋪於指定標高之 Mesh，並以世界座標計算均勻無拉伸 UV
+    const makeFlatPoly = (ptsXZ, yPos, mat, tileU = 1.6, tileV = 1.6) => {
+      const shp = new THREE.Shape();
+      ptsXZ.forEach(([x, z], idx) => { if (idx === 0) shp.moveTo(x, -z); else shp.lineTo(x, -z); });
+      shp.closePath();
+      const geo = new THREE.ShapeGeometry(shp);
+      const pos = geo.attributes.position, uv = geo.attributes.uv;
+      for (let i = 0; i < pos.count; i++) {
+        uv.setXY(i, pos.getX(i) / tileU, -pos.getY(i) / tileV);
+      }
+      uv.needsUpdate = true;
+      const m = new THREE.Mesh(geo, mat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.y = yPos;
+      m.receiveShadow = true;
+      frontLand.add(m);
+      return m;
+    };
+
+    // 12.1 台灣實景 S 型波浪連鎖磚貼圖（512×512，對應 1.6 m × 1.6 m，紅灰交替條帶＋自然石紋與暗灰磚縫）
+    const makeWavyPaverTex = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 512;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#4f5255'; ctx.fillRect(0, 0, 512, 512); // 深灰細沙縫
+      const cols = 8, rows = 16;
+      const bw = 512 / cols, bh = 512 / rows;
+      const redPal = ['#9b696c', '#916064', '#a47376', '#895b5f', '#9e6f71'];
+      const greyPal = ['#7d8387', '#878d91', '#73797d', '#8e9397', '#787e82'];
+      let sd = 137; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      // 實景為 2～3 排暗磚紅與 1～2 排冷灰交替的波浪型連鎖磚
+      const rowIsGrey = r => (r % 5 === 2 || r % 5 === 3);
+      for (let r = -1; r <= rows; r++) {
+        const stag = (r & 1) ? bw * 0.5 : 0;
+        for (let k = -1; k <= cols; k++) {
+          const x0 = k * bw - stag, y0 = r * bh;
+          const useGrey = rr() < 0.08 ? !rowIsGrey((r + 16) % 16) : rowIsGrey((r + 16) % 16);
+          const pal = useGrey ? greyPal : redPal;
+          ctx.fillStyle = pal[Math.floor(rr() * pal.length)];
+          // S 型波浪輪廓（上下邊各帶一個柔和波峰與波谷）
+          const pad = 1.6, amp = bh * 0.18;
+          ctx.beginPath();
+          ctx.moveTo(x0 + pad, y0 + pad);
+          ctx.lineTo(x0 + bw * 0.30, y0 + pad + amp);
+          ctx.lineTo(x0 + bw * 0.70, y0 + pad - amp);
+          ctx.lineTo(x0 + bw - pad, y0 + pad);
+          ctx.lineTo(x0 + bw - pad, y0 + bh - pad);
+          ctx.lineTo(x0 + bw * 0.70, y0 + bh - pad - amp);
+          ctx.lineTo(x0 + bw * 0.30, y0 + bh - pad + amp);
+          ctx.lineTo(x0 + pad, y0 + bh - pad);
+          ctx.closePath();
+          ctx.fill();
+          // 磚面細微磨損高光／顆粒感
+          ctx.fillStyle = rr() > 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+          ctx.fillRect(x0 + 6, y0 + 5, bw - 12, bh - 10);
+        }
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      return tex;
+    };
+
+    // 12.2 翠綠自然草皮貼圖（256×256）
+    const makeLushGrassTex = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#3d6f2a'; ctx.fillRect(0, 0, 256, 256);
+      const cols = ['#356424', '#467c30', '#4f8636', '#2f5a20', '#588e3d'];
+      let sd = 91; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let i = 0; i < 1800; i++) {
+        ctx.fillStyle = cols[Math.floor(rr() * cols.length)];
+        ctx.fillRect(rr() * 256, rr() * 256, 2 + rr() * 4, 2 + rr() * 5);
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    };
+
+    // 12.3 精確對齊世界座標邊界（西起南棟主樓梯東緣，東密合東棟坡道 Run R／Run Y 外緣）
+    const xWest = ax(4) - 0.20;             // 緊密內縮至南棟主樓梯東側護牆下緣，不露縫隙
+    const zWallFront = zNorth - 0.38;       // 南棟灰色擋土牆北面
+    const zGrassN = zNorth - 3.45;          // 寬幅草地帶北緣（距牆約 3.1 m，綠籬前留出約 2.3 m 開闊草皮）
+    const pRN = _rr ? EAST_XF.toWorld(_rr.xC1 - 0.22, _rr.zN + 0.90) : [ax(1) - 3.0, zNorth - 7.6];
+    const pRY = _rr ? EAST_XF.toWorld(_rr.xC1 - 0.22, _rr.zAexit) : [ax(1) - 3.0, zNorth - 5.6];
+    const pY0 = _rr ? EAST_XF.toWorld(_rr.xA1, _rr.zAexit) : [ax(1) - 5.0, zNorth - 5.6];
+    const pYT = _rr ? EAST_XF.toWorld(_rr.xA1, _rr.zT) : [ax(1) - 5.2, zNorth - 1.7];
+    const pRT = _rr ? EAST_XF.toWorld(_rr.xC1 - 0.22, _rr.zT) : [ax(1) - 3.3, zNorth - 1.5];
+    const zPaverN = pRN[1];                 // 連鎖磚廣場北緣（對齊坡道西北角南側）
+    // 線性內插 Run Y 外緣在 z = zGrassN 處的世界 X
+    const tG = (zGrassN - pY0[1]) / ((pYT[1] - pY0[1]) || 1);
+    const xRampAtGrassN = pY0[0] + (pYT[0] - pY0[0]) * tG;
+
+    // (a) 整片一體式波浪形紅灰雙色連鎖磚廣場（涵蓋出入口三前埕至南棟樓梯，無縫密合無拼接破口）
+    const wavyPaverMat = new THREE.MeshStandardMaterial({ map: makeWavyPaverTex(), roughness: 0.88 });
+    const paverPoly = [
+      [xWest, zPaverN],
+      [pRN[0], zPaverN],
+      [pRY[0], pRY[1]],
+      [pY0[0], pY0[1]],
+      [xRampAtGrassN, zGrassN],
+      [xWest, zGrassN],
+    ];
+    const paverMesh = makeFlatPoly(paverPoly, PY + 0.022, wavyPaverMat, 1.6, 1.6);
+    paverMesh.renderOrder = 1;
+
+    // (b) 連鎖磚廣場北緣之淺灰水泥分隔邊條／排水溝緣（實景 082056／081921 與幾何花磚廣場之交界線）
+    const borderMat = new THREE.MeshStandardMaterial({ color: 0xc2c5c7, roughness: 0.85 });
+    const borderW = pRN[0] - xWest;
+    const borderStrip = addBox(frontLand, borderW, 0.03, 0.24, borderMat, xWest + borderW / 2, PY + 0.016, zPaverN - 0.12, false);
+    borderStrip.renderOrder = 1;
+
+    // (c) 靠牆寬幅翠綠草地帶（自連鎖磚南緣延伸至擋土牆下，並沿 Run Y 外緣貼齊至長虹木下方）
+    const lushGrassMat = new THREE.MeshStandardMaterial({ map: makeLushGrassTex(), roughness: 0.94 });
+    const grassPoly = [
+      [xWest, zGrassN],
+      [xRampAtGrassN, zGrassN],
+      [pYT[0], pYT[1]],
+      [pRT[0], pRT[1]],
+      [pRT[0], zWallFront],
+      [xWest, zWallFront],
+    ];
+    const grassMesh = makeFlatPoly(grassPoly, PY + 0.026, lushGrassMat, 2.2, 2.2);
+    grassMesh.renderOrder = 1;
+
+    // (d) 連續修剪長虹木喬木綠籬（下段細樹幹紮根於草皮，上段方整修剪之深綠＋紅銅嫩葉冠層）
+    const hdA = new THREE.MeshStandardMaterial({ color: 0x2b5e27, roughness: 0.84 });
+    const hdB = new THREE.MeshStandardMaterial({ color: 0x39702f, roughness: 0.82 });
+    const hdBronze = new THREE.MeshStandardMaterial({ color: 0x7c4a32, roughness: 0.82 });
+    const nT = Math.max(4, Math.floor(hedgeSpan2 / 0.9));
+    for (let t = 0; t <= nT; t++) {
+      const tx = hedgeRowXR + (t / nT) * (hedgeXL2 - hedgeRowXR);
+      const trunk = addMesh(frontLand, new THREE.CylinderGeometry(0.038, 0.055, 1.05, 6), southDoorWoodMat, tx + ((t * 7) % 3 - 1) * 0.07, PY + 0.52, zNorth - 0.78, false);
+      trunk.rotation.z = ((t % 3) - 1) * 0.06;
+      const cr = addMesh(frontLand, new THREE.IcosahedronGeometry(0.56 + (t % 3) * 0.05, 1), t % 2 ? hdA : hdB, tx, PY + 1.54 + (t % 4) * 0.04, zNorth - 0.78);
+      cr.scale.set(1.0, 0.92, 0.82);
+      // 實景長虹木表層零星紅銅色新芽點綴
+      const tip = addMesh(frontLand, new THREE.IcosahedronGeometry(0.24 + (t % 2) * 0.05, 1), hdBronze, tx + ((t % 2) ? 0.18 : -0.18), PY + 1.72 + (t % 3) * 0.05, zNorth - 1.08, false);
+      tip.scale.set(1.1, 0.65, 0.75);
+    }
+    addBox(frontLand, hedgeSpan2, 0.88, 0.86, hdA, hedgeCx2, PY + 1.46, zNorth - 0.78);
   }
 
   // ============================================================================
@@ -10101,50 +12137,61 @@ function buildSouthBuilding() {
   buildCircularWindowTowerBay(6, southSkyBlueTowerMat, true);
   buildCircularWindowTowerBay(10, southFreshGreenTowerMat, false);
 
-  // 14.1 洗石子收邊緣石 (北側分隔同心方塊連鎖磚廣場與微地形草坡，軸線 ④ 至 ⑬ 全長)
+  // 14.1 洗石子收邊緣石 (北側分隔同心方塊連鎖磚廣場與微地形草坡，軸線 ⑤ 西側至 ⑬ 東側)
+  // v2.12.100 依實景照片 20261123_073037 / 073053 修正景觀進深：草地山丘自南棟北牆向北延伸約 6.3 m（超出西側樓梯底階約 1.65 m），
+  //   東西兩端止於兩座中庭樓梯外側、不跨過樓梯口；緣石加入 frontLand 並置於下沉廣場面（PY）之上。
   const southCurbMat = new THREE.MeshStandardMaterial({ color: 0xbbb6aa, roughness: 0.78 });
-  const curbZ = zNorth - 2.95;
-  const curbX1 = ax(13) - 0.20; // 約 -0.42m
-  const curbX2 = ax(4) + 0.20;  // 約 39.98m
+  const curbZ = zNorth - 6.30;
+  const curbX1 = ax(13) + 0.35; // 約 +0.13m（右側／西側樓梯東緣外側）
+  const curbX2 = ax(5) - 0.35;  // 約 +35.43m（左側／東側樓梯西緣外側）
   const curbW = curbX2 - curbX1;
   const curbCx = (curbX1 + curbX2) / 2;
-  addBox(g, curbW, 0.14, 0.18, southCurbMat, curbCx, 0.07, curbZ, false);
+  const hillDepth = zNorth - curbZ;
+  addBox(frontLand, curbW + 0.20, 0.16, 0.20, southCurbMat, curbCx, PY + 0.08, curbZ, false);
+  addBox(frontLand, 0.20, 0.16, hillDepth, southCurbMat, curbX1, PY + 0.08, (zNorth + curbZ) / 2, false);
+  addBox(frontLand, 0.20, 0.16, hillDepth, southCurbMat, curbX2, PY + 0.08, (zNorth + curbZ) / 2, false);
+  // 全區連續草皮底板：避免山丘橢球體之間與緣石轉角露出下方花磚
+  addBox(frontLand, curbW - 0.16, 0.06, hillDepth - 0.16, grassMoundMat, curbCx, PY + 0.03, (zNorth + curbZ) / 2, false);
 
-  // 14.2 右中段翠綠微地形大草坡 (位於 ⑨–⑫ 軸草綠色圓窗塔柱前方，綠意盎然遮蔽半地下室基座)
-  const rightMoundGroup = new THREE.Group();
-  const rMoundCx = (ax(9) + ax(12)) / 2 - 0.5; // 約 10.5m
-  const rMoundCz = zNorth - 1.65;
-  rightMoundGroup.position.set(rMoundCx, 0, rMoundCz);
-  // 主草坡隆起 (高度約 1.25m，平緩順接至緣石與地下室窗沿)
-  const mainGreenHill = addMesh(rightMoundGroup, new THREE.SphereGeometry(6.2, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.5), grassMoundMat, 0, 0, 0);
-  mainGreenHill.scale.set(1.45, 0.20, 0.58);
-  const secondaryGreenHill = addMesh(rightMoundGroup, new THREE.SphereGeometry(4.5, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), grassMoundMat, 2.8, 0, -0.4);
-  secondaryGreenHill.scale.set(1.15, 0.16, 0.52);
-  g.add(rightMoundGroup);
-
-  // 14.3 左中段微地形土丘與恐龍景觀園區 (位於 ⑥–⑨ 軸天藍色圓窗塔柱前方，樹蔭裸土與草坡交融)
-  const leftMoundGroup = new THREE.Group();
-  const lMoundCx = (ax(6) + ax(9)) / 2; // 約 24.53m
-  const lMoundCz = zNorth - 1.65;
-  leftMoundGroup.position.set(lMoundCx, 0, lMoundCz);
-  // 西側綠色草坪緩坡
-  const leftGrassHill = addMesh(leftMoundGroup, new THREE.SphereGeometry(5.2, 28, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), grassMoundMat, 2.6, 0, -0.2);
-  leftGrassHill.scale.set(1.25, 0.18, 0.55);
-  // 中央大欖仁樹與恐龍座落處之裸露沙質土丘 (Sandy Earth Mound under Terminalia Canopy)
-  const centralSoilKnoll = addMesh(leftMoundGroup, new THREE.SphereGeometry(4.6, 28, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), sandySoilMat, -0.8, 0, -0.2);
-  centralSoilKnoll.scale.set(1.35, 0.22, 0.62);
-
-  // 14.4 踏步石階 (Stepping Stone Path — 自廣場緣石引導學童親近恐龍雕塑)
-  const southStepMat = new THREE.MeshStandardMaterial({ color: 0x938e83, roughness: 0.85 });
-  const dinoPathCoords = [
-    [-0.2, -1.0], [0.1, -0.65], [0.3, -0.3], [0.2, 0.05], [-0.1, 0.35], [-0.4, 0.6]
+  // 14.2 微地形草坡與沙質土丘（v2.12.100 依實景照片 20261123_073037 / 073053 / south_photo_03 深化進深至 6.3 m）：
+  //   脊線位於草坡中段（zNorth − 2.90），前後皆呈平緩自然坡面，避免突入 1F 走廊並完整覆蓋 ⑤–⑬ 全段
+  //   A：⑤–⑥ 東側平緩草坪　B：⑥–⑧ 欖仁樹下裸露沙土丘（恐龍雕塑）　C：⑧–⑫ 草綠圓窗塔前大草坡　D：⑫–⑬ 西端草坡（銜接西側樓梯）
+  const sandyKnollMat = (() => {
+    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256; const cx = cv.getContext('2d');
+    cx.fillStyle = '#5f9a45'; cx.fillRect(0, 0, 512, 256);
+    let sd = 71; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    for (let k = 0; k < 2600; k++) { cx.fillStyle = rr() < 0.5 ? 'rgba(70,120,50,0.5)' : 'rgba(120,170,80,0.45)'; cx.fillRect(rr() * 512, rr() * 256, 3, 3); }
+    // 裸土斑塊：集中於坡頂（畫布上緣＝丘頂）與朝中庭側
+    for (let k = 0; k < 46; k++) {
+      const x = rr() * 512, y = Math.pow(rr(), 1.6) * 200, r = 14 + rr() * 38;
+      const gr = cx.createRadialGradient(x, y, r * 0.2, x, y, r);
+      gr.addColorStop(0, 'rgba(176,154,118,0.95)'); gr.addColorStop(1, 'rgba(176,154,118,0)');
+      cx.fillStyle = gr; cx.beginPath(); cx.ellipse(x, y, r * 1.6, r, 0, 0, Math.PI * 2); cx.fill();
+    }
+    cx.fillStyle = 'rgba(176,154,118,0.85)'; cx.fillRect(0, 0, 512, 22);
+    const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace; tx.wrapS = THREE.RepeatWrapping;
+    return new THREE.MeshStandardMaterial({ map: tx, roughness: 0.95 });
+  })();
+  const moundCz = zNorth - 2.90, moundRz = 3.25;
+  const berms = [
+    { cx: ax(5) - 3.6, rx: 3.3, H: 1.05, mat: grassMoundMat },
+    { cx: ax(7) - 1.4, rx: 7.0, H: 1.65, mat: sandyKnollMat },
+    { cx: ax(10) - 1.2, rx: 9.2, H: 1.85, mat: grassMoundMat },
+    { cx: ax(12) - 0.6, rx: 3.5, H: 1.35, mat: grassMoundMat }
   ];
-  dinoPathCoords.forEach(([px, pz], sIdx) => {
-    const stepH = 0.04 + sIdx * 0.05;
-    const paver = addMesh(leftMoundGroup, new THREE.CylinderGeometry(0.24, 0.26, 0.05, 12), southStepMat, px, stepH, pz, false);
-    paver.scale.set(1.15, 1.0, 0.88);
-    paver.rotation.y = sIdx * 0.35;
+  berms.forEach((bm, i) => {
+    const m = addMesh(frontLand, new THREE.SphereGeometry(1, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), bm.mat, bm.cx, PY + 0.02, moundCz, false, true);
+    m.scale.set(bm.rx, bm.H, moundRz * (i === 1 ? 0.98 : 1.0));
   });
+  const hAt = (x, z) => {
+    let h = 0.04;
+    berms.forEach(bm => { const q = 1 - ((x - bm.cx) / bm.rx) ** 2 - ((z - moundCz) / moundRz) ** 2; if (q > 0) h = Math.max(h, 0.02 + bm.H * Math.sqrt(q)); });
+    return PY + h;
+  };
+  window.__southHillAt = (x, z) => (x >= curbX1 && x <= curbX2 && z >= curbZ && z <= zNorth) ? hAt(x, z) : null;
+  const leftMoundGroup = new THREE.Group();
+  const lMoundCx = ax(7) - 2.2, lMoundCz = zNorth - 3.05;
+  leftMoundGroup.position.set(lMoundCx, 0, lMoundCz);
 
   // 14.5 【綠色長頸恐龍雕塑】(Iconic Green Sauropod Dinosaur Sculpture — 依 south_photo_02/03 實景精細雕塑)
   const dinoBellyMat = new THREE.MeshStandardMaterial({ color: 0x58985c, roughness: 0.55 });
@@ -10154,7 +12201,7 @@ function buildSouthBuilding() {
   const dinoClawMat  = new THREE.MeshStandardMaterial({ color: 0xe6e4db, roughness: 0.45 });
 
   const dinoGroup = new THREE.Group();
-  dinoGroup.position.set(-0.7, 0.58, 0.15); // 座落於土丘頂部
+  dinoGroup.position.set(-0.3, hAt(lMoundCx - 0.3, lMoundCz + 0.15) - 0.06, 0.15); // 座落於沙土丘坡面
   dinoGroup.rotation.y = 2.45;              // 昂首朝向中庭廣場學童
 
   // (1) 恐龍軀幹 (橢圓圓潤飽滿身軀 + 淺綠微垂腹部)
@@ -10225,9 +12272,9 @@ function buildSouthBuilding() {
 
   leftMoundGroup.add(dinoGroup);
 
-  // 14.6 樹根旁伴隨之可愛小恐龍雕塑 (Baby Dinosaur Sculpture per south_photo_02/03)
+  // 14.6 樹根旁伴隨之可愛小恐龍雕塑 (Baby Dinosaur Sculpture per south_photo_02/03 & 002)
   const babyDinoGroup = new THREE.Group();
-  babyDinoGroup.position.set(-2.2, 0.42, -0.45);
+  babyDinoGroup.position.set(1.15, hAt(lMoundCx + 1.15, lMoundCz - 0.65) - 0.04, -0.65);   // 欖仁樹右側板根旁
   babyDinoGroup.rotation.y = -0.45;
   const babyBody = addMesh(babyDinoGroup, new THREE.SphereGeometry(0.28, 12, 8), new THREE.MeshStandardMaterial({ color: 0x6e8072, roughness: 0.7 }), 0, 0.22, 0);
   babyBody.scale.set(1.3, 0.85, 0.95);
@@ -10236,73 +12283,322 @@ function buildSouthBuilding() {
   addMesh(babyDinoGroup, new THREE.ConeGeometry(0.08, 0.45, 8), new THREE.MeshStandardMaterial({ color: 0x6e8072, roughness: 0.7 }), -0.38, 0.16, 0);
   leftMoundGroup.add(babyDinoGroup);
 
-  g.add(leftMoundGroup);
+  frontLand.add(leftMoundGroup);
 
-  // 14.7 【大葉欖仁與中庭景觀大喬木群】(Terminalia catappa with prominent buttress roots & tiered pagoda canopy)
-  // (A) 恐龍身旁標誌性大葉欖仁老樹 (南棟靈魂景觀，廣大傘狀樹冠遮蔭全園)
-  const terminaliaGroup = new THREE.Group();
-  const tX = ax(7) - 0.75; // 約 26.03m
-  const tZ = zNorth - 2.55;
-  terminaliaGroup.position.set(tX, 0, tZ);
+  // 14.7 南棟前庭土丘草皮區與隔壁西側草地喬木（v2.12.110 依實景照片 001/002/003 精緻化建模）：
+  //      面對南棟由左至右（+X → -X）依序：
+  //      ① 竹柏（興學樓樓梯旁前緣）　② 樟樹（竹柏右側略偏後方）　③ 大葉欖仁樹（最大最明顯、板根外露、寬闊輪生分層冠層夾雜紅葉）
+  //      ④ 黃金風鈴木（沙土丘與綠草坡交界、微向左傾樹幹）　⑤ 茄冬／佳冬（草綠圓窗塔右側草坡西端、Y 字分叉、緊鄰西側樓梯）
+  //      ⑥ 樟樹（西側樓梯右側隔壁草地綠帶內高聳樟樹）
+  {
+    const barkDark = new THREE.MeshStandardMaterial({ color: 0x463a2e, roughness: 0.92 });
+    const barkGrey = new THREE.MeshStandardMaterial({ color: 0x5c5349, roughness: 0.90 });
+    const barkRed  = new THREE.MeshStandardMaterial({ color: 0x634434, roughness: 0.90 });
+    const plaqueMat = new THREE.MeshStandardMaterial({ color: 0xdcecc2, roughness: 0.62 });
+    const up = new THREE.Vector3(0, 1, 0);
+    let sd = 83; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const limb = (a, b2, r0, r1, mat = barkDark, seg = 8) => {
+      const d = new THREE.Vector3().subVectors(b2, a);
+      const len = d.length();
+      if (len < 0.01) return null;
+      const m = addMesh(frontLand, new THREE.CylinderGeometry(r1, r0, len, seg), mat, (a.x + b2.x) / 2, (a.y + b2.y) / 2, (a.z + b2.z) / 2);
+      m.quaternion.setFromUnitVectors(up, d.normalize());
+      return m;
+    };
+    const leafClump = (rad, mat, x, y, z, sx, sy, sz, amp = 0.18, det = 1) => {
+      const cl = addMesh(frontLand, lumpyGeometry(new THREE.IcosahedronGeometry(rad, det), amp), mat, x, y, z);
+      cl.scale.set(sx, sy, sz);
+      return cl;
+    };
 
-  // 蒼勁樹幹 (下粗上微收)
-  const mainTrunk = addMesh(terminaliaGroup, new THREE.CylinderGeometry(0.26, 0.42, 2.6, 12), mats.bark || southDoorWoodMat, 0, 1.3, 0);
-  mainTrunk.rotation.z = -0.06;
-
-  // 隆起露出地表之發達板根 (Prominent Buttress / Fluted Roots Gripping Knoll)
-  const rootAngles = [0.2, 1.4, 2.7, 4.1, 5.2];
-  rootAngles.forEach(ang => {
-    const rx = Math.cos(ang) * 0.95;
-    const rz = Math.sin(ang) * 0.95;
-    const rootLen = 1.25;
-    const rootRidge = addMesh(terminaliaGroup, new THREE.BoxGeometry(0.12, 0.35, rootLen), mats.bark || southDoorWoodMat, rx * 0.5, 0.16, rz * 0.5);
-    rootRidge.rotation.y = -ang + Math.PI / 2;
-    rootRidge.rotation.x = 0.22;
-  });
-
-  // 欖仁樹特有之分層輪生水平傘狀大枝幹 (Tiered Horizontal Pagoda Branching)
-  const tTiers = [
-    { y: 2.3, r: 2.8, th: 0.65, count: 5, mat: hedgeDarkGreenMat },
-    { y: 3.5, r: 3.4, th: 0.75, count: 6, mat: hedgeLightGreenMat },
-    { y: 4.6, r: 2.9, th: 0.70, count: 5, mat: hedgeDarkGreenMat },
-    { y: 5.6, r: 2.1, th: 0.60, count: 4, mat: hedgeLightGreenMat }
-  ];
-  tTiers.forEach(tier => {
-    for (let i = 0; i < tier.count; i++) {
-      const theta = (i / tier.count) * Math.PI * 2 + tier.y * 0.5;
-      const bx = Math.cos(theta) * (tier.r * 0.45);
-      const bz = Math.sin(theta) * (tier.r * 0.45);
-      // 輪生橫伸分枝
-      const bStem = addMesh(terminaliaGroup, new THREE.CylinderGeometry(0.06, 0.11, tier.r * 0.75, 6), mats.bark || southDoorWoodMat, bx, tier.y - 0.15, bz);
-      bStem.rotation.z = Math.PI / 2 - 0.25;
-      bStem.rotation.y = -theta;
-      // 水平大片扁平傘狀翠綠葉叢 (Flat Horizontal Umbrella Foliage Cluster)
-      const foliagePad = addMesh(terminaliaGroup, new THREE.SphereGeometry(tier.r * 0.42, 12, 8), tier.mat, Math.cos(theta) * tier.r * 0.8, tier.y + 0.1, Math.sin(theta) * tier.r * 0.8);
-      foliagePad.scale.set(1.4, 0.42, 1.4);
+    // ① 竹柏（面對南棟最左側、興學樓樓梯右側草坡前緣，纖細直立幼樹，高約 4.2m）
+    {
+      const podoA = new THREE.MeshStandardMaterial({ color: 0x285a26, roughness: 0.82 });
+      const podoB = new THREE.MeshStandardMaterial({ color: 0x386f30, roughness: 0.80 });
+      const podoC = new THREE.MeshStandardMaterial({ color: 0x4c853a, roughness: 0.78 });
+      registerPhenoMats('竹柏', { core: [podoA], outer: [podoB, podoC] });
+      const tx = ax(5) - 1.55, tz = zNorth - 4.75, by = hAt(tx, tz) - 0.05, H = 4.2;
+      limb(V(tx, by, tz), V(tx + 0.03, by + H * 0.65, tz - 0.02), 0.075, 0.042, barkRed, 7);
+      limb(V(tx + 0.03, by + H * 0.65, tz - 0.02), V(tx + 0.01, by + H * 0.96, tz), 0.042, 0.016, barkRed, 6);
+      addBox(frontLand, 0.12, 0.08, 0.02, plaqueMat, tx, by + 1.22, tz - 0.09, false);
+      // 疏朗細枝與對生窄圓錐葉簇
+      const tiers = [
+        [0.34, 0.72, 4], [0.48, 0.78, 5], [0.62, 0.68, 5], [0.76, 0.52, 4], [0.89, 0.34, 3]
+      ];
+      tiers.forEach(([fy, reach, nb], ti) => {
+        for (let b2 = 0; b2 < nb; b2++) {
+          const a = (b2 / nb) * Math.PI * 2 + ti * 0.85;
+          const s0 = V(tx + 0.02, by + H * fy, tz);
+          const e = V(tx + Math.cos(a) * reach, by + H * fy + 0.24, tz + Math.sin(a) * reach);
+          limb(s0, e, 0.022, 0.010, barkRed, 5);
+          leafClump(0.24 + r() * 0.08, (b2 + ti) % 3 === 0 ? podoA : (b2 % 2 ? podoB : podoC),
+            e.x, e.y + 0.04, e.z, 1.15, 0.72, 1.15, 0.20, 0);
+        }
+      });
+      leafClump(0.28, podoC, tx, by + H * 0.97, tz, 0.85, 1.15, 0.85, 0.18, 0);
+      addPhenoGround(frontLand, '竹柏', tx, by + 0.05, tz, 1.3);
+      campusTreeRecords.push({ x: tx, z: tz, r: 1.3, species: 'broad' });
     }
-  });
-  g.add(terminaliaGroup);
 
-  // (B) 兩側其他中庭校園景觀喬木
-  const sideCourtyardTrees = [
-    { x: ax(6) + 1.2, z: zNorth - 3.4, h: 4.5, r: 1.55 },
-    { x: ax(9) + 0.8, z: zNorth - 3.6, h: 5.0, r: 1.75 },
-    { x: ax(12) - 0.8, z: zNorth - 3.8, h: 5.4, r: 2.10 }
-  ];
-  sideCourtyardTrees.forEach(tr => {
-    const tg = new THREE.Group();
-    tg.position.set(tr.x, 0, tr.z);
-    addMesh(tg, new THREE.CylinderGeometry(0.16, 0.24, tr.h * 0.55, 10), mats.bark || southDoorWoodMat, 0, tr.h * 0.275, 0);
-    const c1 = addMesh(tg, new THREE.SphereGeometry(tr.r, 14, 12), hedgeDarkGreenMat, 0, tr.h * 0.72, 0);
-    c1.scale.set(1.15, 0.78, 1.05);
-    const c2 = addMesh(tg, new THREE.SphereGeometry(tr.r * 0.78, 12, 10), hedgeLightGreenMat, -tr.r * 0.35, tr.h * 0.86, 0.15);
-    c2.scale.set(1.1, 0.75, 1.0);
-    g.add(tg);
-  });
+    // ② 樟樹（竹柏右側略偏後方坡面，纖細年輕樟樹、枝葉輕盈微掩於欖仁樹左冠之下，高約 6.8m）
+    {
+      const camA = new THREE.MeshStandardMaterial({ color: 0x2e6426, roughness: 0.82 });
+      const camB = new THREE.MeshStandardMaterial({ color: 0x458032, roughness: 0.80 });
+      const camC = new THREE.MeshStandardMaterial({ color: 0x629b3e, roughness: 0.76 });
+      registerPhenoMats('樟樹', { core: [camA], outer: [camB, camC] });
+      const tx = ax(6) + 0.75, tz = zNorth - 3.30, by = hAt(tx, tz) - 0.06, H = 6.8;
+      const p1 = V(tx + 0.14, by + 1.35, tz - 0.05);
+      const fk = V(tx + 0.26, by + 2.45, tz - 0.08);
+      limb(V(tx, by, tz), p1, 0.125, 0.095, barkGrey, 8);
+      limb(p1, fk, 0.095, 0.075, barkGrey, 7);
+      const branches = [
+        { dx:  1.15, dy: 3.1, dz: -0.45, r: 0.055 },
+        { dx:  0.45, dy: 4.1, dz:  0.35, r: 0.058 },
+        { dx: -0.95, dy: 3.3, dz: -0.55, r: 0.052 },
+        { dx: -0.55, dy: 3.8, dz:  0.65, r: 0.050 },
+        { dx:  0.10, dy: 4.3, dz: -0.25, r: 0.052 }
+      ];
+      branches.forEach((br, bi) => {
+        const e = V(fk.x + br.dx, fk.y + br.dy, fk.z + br.dz);
+        limb(fk, e, br.r, br.r * 0.35, barkGrey, 6);
+        for (let k = 0; k < 4; k++) {
+          const t = 0.52 + k * 0.18;
+          const cx = fk.x + br.dx * t + (r() - 0.5) * 0.55;
+          const cy = fk.y + br.dy * t + (r() - 0.3) * 0.45;
+          const cz = fk.z + br.dz * t + (r() - 0.5) * 0.55;
+          const mat = k >= 2 ? camC : ((bi + k) % 2 ? camB : camA);
+          leafClump(0.46 + r() * 0.18, mat, cx, cy, cz, 1.18, 0.85, 1.15, 0.20, 1);
+        }
+      });
+      addPhenoGround(frontLand, '樟樹', tx, by + 0.05, tz, 2.2);
+      campusTreeRecords.push({ x: tx, z: tz, r: 2.2, species: 'broad' });
+    }
+
+    // ③ 大葉欖仁樹（天藍圓窗塔右側沙土丘上，全區最大最明顯之主景老樹：高約 11.8m、寬闊分層傘冠橫跨兩開間、板根外露、大葉夾雜紅葉）
+    {
+      const almondDark = new THREE.MeshStandardMaterial({ color: 0x265521, roughness: 0.84 });
+      const almondG    = new THREE.MeshStandardMaterial({ color: 0x38702e, roughness: 0.80 });
+      const almondG2   = new THREE.MeshStandardMaterial({ color: 0x558a38, roughness: 0.78 });
+      const almondSun  = new THREE.MeshStandardMaterial({ color: 0x71a042, roughness: 0.76 });
+      const almondRed  = new THREE.MeshStandardMaterial({ color: 0xb24428, roughness: 0.82 });
+      registerPhenoMats('欖仁樹', { core: [almondDark, almondG, almondG2], outer: [almondSun, almondRed] });
+      const tx = ax(7) - 0.15, tz = zNorth - 4.05, by = hAt(tx, tz) - 0.06, H = 11.8;
+      // 粗壯主幹與明顯低位分叉（依照片 001/002：約 2.6m 處分出向左大幅伸展之粗枝與直上主幹）
+      const fk = V(tx + 0.18, by + 2.65, tz - 0.08);
+      const mid = V(tx - 0.12, by + 5.85, tz + 0.04);
+      const top = V(tx - 0.05, by + 9.45, tz + 0.02);
+      limb(V(tx, by - 0.12, tz), fk, 0.48, 0.36, barkDark, 10);
+      limb(fk, mid, 0.31, 0.22, barkDark, 9);
+      limb(mid, top, 0.22, 0.11, barkDark, 8);
+      // 8 條粗壯外露板根與地表爬根（緊貼並深埋入沙質土丘坡面，避免懸空）
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2 + 0.25;
+        const rLen = 1.05 + (k % 3) * 0.18;
+        const rx = tx + Math.cos(a) * (0.28 + rLen);
+        const rz = tz + Math.sin(a) * (0.28 + rLen);
+        const p0 = V(tx + Math.cos(a) * 0.26, by + 0.44, tz + Math.sin(a) * 0.26);
+        const p1 = V(rx, hAt(rx, rz) - 0.16, rz);
+        limb(p0, p1, 0.17, 0.07, barkDark, 6);
+      }
+      // 朝向左側（東側，天藍圓窗塔與樟樹上方）大幅橫伸之標誌性粗主枝
+      const eastLimb1 = V(tx + 3.45, by + 4.35, tz - 0.65);
+      const eastLimb2 = V(tx + 5.65, by + 5.05, tz - 0.40);
+      limb(fk, eastLimb1, 0.24, 0.15, barkDark, 8);
+      limb(eastLimb1, eastLimb2, 0.15, 0.07, barkDark, 7);
+      // 朝向右側（西側，恐龍雕塑上方）伸展之粗主枝
+      const westLimb1 = V(tx - 2.65, by + 4.45, tz - 0.25);
+      const westLimb2 = V(tx - 4.45, by + 5.15, tz - 0.15);
+      limb(fk, westLimb1, 0.21, 0.13, barkDark, 8);
+      limb(westLimb1, westLimb2, 0.13, 0.06, barkDark, 7);
+      // 輪生分層水平大枝（5 層寬闊傘狀冠層，東側略寬以還原照片 001 之雄偉輪廓）
+      const tierDefs = [
+        [0.36, 5.2, 6, 0.55],
+        [0.50, 5.6, 7, 0.48],
+        [0.64, 4.9, 6, 0.45],
+        [0.78, 3.8, 6, 0.42],
+        [0.91, 2.5, 5, 0.38]
+      ];
+      tierDefs.forEach(([fy, reach, nb, dy], tier) => {
+        for (let b2 = 0; b2 < nb; b2++) {
+          const a = (b2 / nb) * Math.PI * 2 + tier * 0.65;
+          const eastBoost = Math.cos(a) > 0 ? 1.15 : 0.94;
+          const zScale = Math.sin(a) > 0 ? 0.68 : 0.88;   // 避免貫穿南棟走廊外牆
+          const rx = reach * eastBoost;
+          const s0 = V(tx + (tier < 2 ? 0.12 : -0.06), by + H * fy, tz);
+          const e = V(tx + Math.cos(a) * rx, by + H * fy + dy + (r() - 0.3) * 0.35, tz + Math.sin(a) * reach * zScale);
+          limb(s0, e, 0.13 - tier * 0.015, 0.045, barkDark, 6);
+          for (let k = 0; k < 5; k++) {
+            const t = 0.42 + k * 0.15;
+            const rv = r();
+            const mat = rv < 0.075 ? almondRed : (tier >= 3 && rv > 0.45 ? almondSun : (k === 0 ? almondDark : (k % 2 ? almondG : almondG2)));
+            const rad = 0.92 + r() * 0.42;
+            leafClump(rad, mat,
+              s0.x + (e.x - s0.x) * t + (r() - 0.5) * 0.7,
+              e.y + 0.18 + (r() - 0.4) * 0.45,
+              s0.z + (e.z - s0.z) * t + (r() - 0.5) * 0.6,
+              1.55, 0.52, 1.48, 0.22, 1);
+          }
+        }
+      });
+      // 冠頂豐滿受光葉叢
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2 + 0.4;
+        leafClump(0.95 + r() * 0.35, k % 2 ? almondSun : almondG2,
+          tx + Math.cos(a) * 1.15, by + H * 0.95 + r() * 0.55, tz + Math.sin(a) * 0.95,
+          1.45, 0.62, 1.38, 0.22, 1);
+      }
+      // 樹幹前側淡綠樹名牌（依照片 001/002 斜貼於主幹約 1.45m 處）
+      const pq = addBox(frontLand, 0.20, 0.13, 0.02, plaqueMat, tx + 0.10, by + 1.48, tz - 0.44, false);
+      pq.rotation.z = 0.18;
+      addPhenoGround(frontLand, '欖仁樹', tx, by + 0.06, tz, 5.8);
+      campusTreeRecords.push({ x: tx, z: tz, r: 5.8, species: 'broad' });
+    }
+
+    // ④ 黃金風鈴木（欖仁樹與草綠圓窗塔之間、沙土丘與綠草坡交界處：微向左傾細直主幹＋輕盈開展冠層，高約 8.4m）
+    {
+      const tabDark = new THREE.MeshStandardMaterial({ color: 0x2f6032, roughness: 0.82 });
+      const tabMid  = new THREE.MeshStandardMaterial({ color: 0x457d3b, roughness: 0.80 });
+      const tabSun  = new THREE.MeshStandardMaterial({ color: 0x679d46, roughness: 0.76 });
+      const tabFlw  = new THREE.MeshStandardMaterial({ color: 0xf7c51e, roughness: 0.72, transparent: true, opacity: 0 });
+      registerPhenoMats('黃金風鈴木', { core: [tabDark], outer: [tabMid, tabSun], flower: [tabFlw] });
+      const tx = ax(9) - 0.10, tz = zNorth - 4.25, by = hAt(tx, tz) - 0.06, H = 8.4;
+      // 依照片 002：主幹向東（畫面左側 +X）傾斜約 13 度
+      const fk = V(tx + 0.62, by + 2.65, tz - 0.08);
+      limb(V(tx, by, tz), fk, 0.165, 0.115, barkGrey, 8);
+      const pq = addBox(frontLand, 0.16, 0.10, 0.02, plaqueMat, tx + 0.30, by + 1.40, tz - 0.17, false);
+      pq.rotation.z = -0.22;
+      const bDefs = [
+        { dx:  1.75, dy: 3.4, dz: -0.65, r: 0.075 },
+        { dx:  1.10, dy: 4.9, dz:  0.45, r: 0.078 },
+        { dx:  0.15, dy: 5.5, dz: -0.25, r: 0.082 },
+        { dx: -1.45, dy: 3.8, dz: -0.55, r: 0.074 },
+        { dx: -1.65, dy: 2.7, dz:  0.55, r: 0.068 },
+        { dx: -0.55, dy: 4.8, dz:  0.65, r: 0.072 }
+      ];
+      bDefs.forEach((br, bi) => {
+        const e = V(fk.x + br.dx, fk.y + br.dy, fk.z + br.dz);
+        limb(fk, e, br.r, br.r * 0.32, barkGrey, 6);
+        for (let k = 0; k < 5; k++) {
+          const t = 0.44 + k * 0.15;
+          const cx = fk.x + br.dx * t + (r() - 0.5) * 0.65;
+          const cy = fk.y + br.dy * t + (r() - 0.35) * 0.50;
+          const cz = fk.z + br.dz * t + (r() - 0.5) * 0.55;
+          const mat = cy > by + H * 0.66 ? tabSun : (k <= 1 ? tabDark : tabMid);
+          leafClump(0.52 + r() * 0.24, mat, cx, cy, cz, 1.32, 0.72, 1.24, 0.22, 1);
+          if (k >= 2 && (bi + k) % 2 === 0) {
+            leafClump(0.46 + r() * 0.18, tabFlw, cx, cy + 0.14, cz - 0.08, 1.25, 0.68, 1.20, 0.20, 0);
+          }
+        }
+      });
+      addPhenoGround(frontLand, '黃金風鈴木', tx, by + 0.05, tz, 2.8);
+      campusTreeRecords.push({ x: tx, z: tz, r: 2.8, species: 'flowering' });
+    }
+
+    // ⑤ 茄冬／佳冬（草綠圓窗塔右側大草坡西端、緊鄰西側樓梯左側：紅褐粗幹 Y 字分叉＋濃密寬冠，高約 10.2m）
+    {
+      const bisDark = new THREE.MeshStandardMaterial({ color: 0x255622, roughness: 0.84 });
+      const bisMid  = new THREE.MeshStandardMaterial({ color: 0x37702e, roughness: 0.80 });
+      const bisSun  = new THREE.MeshStandardMaterial({ color: 0x548f3a, roughness: 0.78 });
+      registerPhenoMats('茄冬', { core: [bisDark], outer: [bisMid, bisSun] });
+      const tx = ax(12) - 1.05, tz = zNorth - 4.10, by = hAt(tx, tz) - 0.06, H = 10.2;
+      // 根盤微張深紮草坡西緣
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2 + 0.4;
+        const rx = tx + Math.cos(a) * 0.78, rz = tz + Math.sin(a) * 0.78;
+        const p0 = V(tx + Math.cos(a) * 0.18, by + 0.34, tz + Math.sin(a) * 0.18);
+        const p1 = V(rx, hAt(rx, rz) - 0.14, rz);
+        limb(p0, p1, 0.11, 0.045, barkRed, 6);
+      }
+      // 依照片 003：紅褐樹幹於 ~2.1m 處清楚呈 Y 字分叉（主幹微直上、右枝斜向西側樓梯上方伸展）
+      const fk = V(tx + 0.04, by + 2.15, tz - 0.04);
+      const mainUp = V(tx + 0.18, by + 5.85, tz + 0.05);
+      const rightArm = V(tx - 1.35, by + 5.05, tz - 0.18);
+      limb(V(tx, by, tz), fk, 0.28, 0.22, barkRed, 9);
+      limb(fk, mainUp, 0.19, 0.12, barkRed, 8);
+      limb(fk, rightArm, 0.15, 0.09, barkRed, 7);
+      addBox(frontLand, 0.18, 0.11, 0.02, plaqueMat, tx + 0.02, by + 1.48, tz - 0.26, false);
+      const subLimbs = [
+        [mainUp, V(tx + 2.55, by + 7.4, tz - 0.75), 0.11],
+        [mainUp, V(tx + 1.75, by + 8.8, tz + 0.65), 0.11],
+        [mainUp, V(tx + 0.25, by + 9.6, tz - 0.25), 0.11],
+        [mainUp, V(tx - 1.25, by + 8.9, tz + 0.55), 0.10],
+        [rightArm, V(tx - 3.35, by + 6.4, tz - 0.65), 0.10],
+        [rightArm, V(tx - 2.65, by + 7.6, tz + 0.45), 0.09],
+        [rightArm, V(tx - 1.55, by + 6.8, tz - 1.35), 0.09]
+      ];
+      subLimbs.forEach(([s0, e, r0], bi) => {
+        limb(s0, e, r0, r0 * 0.35, barkRed, 6);
+        for (let k = 0; k < 5; k++) {
+          const t = 0.42 + k * 0.16;
+          const cx = s0.x + (e.x - s0.x) * t + (r() - 0.5) * 0.68;
+          const cy = s0.y + (e.y - s0.y) * t + (r() - 0.35) * 0.52;
+          const cz = s0.z + (e.z - s0.z) * t + (r() - 0.5) * 0.60;
+          const mat = cy > by + H * 0.70 ? bisSun : ((bi + k) % 3 === 0 ? bisDark : bisMid);
+          leafClump(0.76 + r() * 0.30, mat, cx, cy, cz, 1.32, 0.78, 1.26, 0.22, 1);
+        }
+      });
+      // 冠心與頂冠收束
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2 + 0.2;
+        leafClump(0.88 + r() * 0.28, k % 2 ? bisSun : bisMid,
+          tx + Math.cos(a) * 1.10, by + H * 0.88 + r() * 0.60, tz + Math.sin(a) * 0.90,
+          1.30, 0.76, 1.25, 0.20, 1);
+      }
+      addPhenoGround(frontLand, '茄冬', tx, by + 0.05, tz, 3.8);
+      campusTreeRecords.push({ x: tx, z: tz, r: 3.8, species: 'broad' });
+    }
+
+    // ⑥ 隔壁西側草地區域的樟樹（西側樓梯右側、坡道與樓梯間草地綠帶 poly2 內：高大挺拔樟樹，高約 10.4m）
+    {
+      const camW0 = new THREE.MeshStandardMaterial({ color: 0x265922, roughness: 0.84 });
+      const camW1 = new THREE.MeshStandardMaterial({ color: 0x3b762e, roughness: 0.80 });
+      const camW2 = new THREE.MeshStandardMaterial({ color: 0x58933c, roughness: 0.78 });
+      const camW3 = new THREE.MeshStandardMaterial({ color: 0x72ab46, roughness: 0.75 });
+      registerPhenoMats('樟樹', { core: [camW0], outer: [camW1, camW2, camW3] });
+      const tx = -5.55, tz = -0.85, by = 0.14, H = 10.4;
+      const fk = V(tx - 0.06, by + 3.15, tz - 0.05);
+      limb(V(tx, by, tz), fk, 0.27, 0.19, barkDark, 9);
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + 0.5;
+        limb(V(tx + Math.cos(a) * 0.16, by + 0.45, tz + Math.sin(a) * 0.16),
+             V(tx + Math.cos(a) * 0.62, by + 0.02, tz + Math.sin(a) * 0.62), 0.09, 0.04, barkDark, 5);
+      }
+      const wLimbs = [
+        { dx:  2.05, dy: 4.2, dz: -0.75, r: 0.12 },
+        { dx:  1.45, dy: 5.8, dz:  0.65, r: 0.12 },
+        { dx:  0.10, dy: 6.7, dz: -0.20, r: 0.13 },
+        { dx: -1.85, dy: 4.8, dz: -0.65, r: 0.12 },
+        { dx: -1.65, dy: 5.5, dz:  0.85, r: 0.11 },
+        { dx: -0.35, dy: 4.4, dz: -1.55, r: 0.11 }
+      ];
+      wLimbs.forEach((br, bi) => {
+        const e = V(fk.x + br.dx, fk.y + br.dy, fk.z + br.dz);
+        limb(fk, e, br.r, br.r * 0.34, barkDark, 6);
+        for (let k = 0; k < 5; k++) {
+          const t = 0.44 + k * 0.15;
+          const cx = fk.x + br.dx * t + (r() - 0.5) * 0.65;
+          const cy = fk.y + br.dy * t + (r() - 0.32) * 0.50;
+          const cz = fk.z + br.dz * t + (r() - 0.5) * 0.58;
+          const mat = cy > by + H * 0.72 ? camW3 : (k === 0 ? camW0 : ((bi + k) % 2 ? camW1 : camW2));
+          leafClump(0.74 + r() * 0.28, mat, cx, cy, cz, 1.28, 0.80, 1.22, 0.22, 1);
+        }
+      });
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2 + 0.3;
+        leafClump(0.84 + r() * 0.26, k % 2 ? camW3 : camW2,
+          tx + Math.cos(a) * 1.05, by + H * 0.90 + r() * 0.55, tz + Math.sin(a) * 0.95,
+          1.26, 0.78, 1.22, 0.20, 1);
+      }
+      addPhenoGround(frontLand, '樟樹', tx, by + 0.05, tz, 3.6);
+      campusTreeRecords.push({ x: tx, z: tz, r: 3.6, species: 'broad' });
+    }
+  }
 
   // 14.8 中庭前景「回字形紅灰白幾何同心方塊」連鎖透水地磚廣場
-  const courtyardBrickMat = new THREE.MeshStandardMaterial({ map: makeCourtyardConcentricBrickTexture(), roughness: 0.85 });
-  addBox(g, bldgW + 4.0, 0.04, 8.5, courtyardBrickMat, bldgCx, 0.02, zNorth - 7.2, false);
+  // v2.12.98 移除原「南棟前地磚帶」（53.1 × 8.5 m、頂面 y = 0.04）：中庭廣場鋪面（06 幾何花磚中庭廣場）自 v2.12.40 起已鋪滿整個下沉中庭，
+  //   這塊帶子與它完全重複，而且沒有隨中庭下沉，浮在廣場面（−0.59）上方約 0.63 m，板下是空的。
+  frontLand.traverse(o => { if (o.isMesh) o.userData.keepLevel = true; });
 
   // ============================================================================
   // 15. 南向街景立面 (SOUTH FACADE — 面對建興南路 42 巷)
@@ -10442,21 +12738,38 @@ function buildSouthBuilding() {
     addMesh(g, new THREE.CylinderGeometry(0.08, 0.11, 0.22, 12), coneCollarMat, cX, 0.42, cZ, false);
   }
 
-  // 通道東側人行道邊高大濃密喬木（照片 20261106_142616.jpg & 001.jpg 右側大樹，非攀牆藤蔓！）
-  const southStreetTreeX = xWest + 4.85, southStreetTreeZ = railZ + 0.65;
+  // 人行道行道樹（v2.12.4 依 2024 街景：南棟前人行道近緣石處兩株深褐粗皮喬木，約 2 m 處分為兩三支斜生主幹，
+  //   細碎小葉組成的開展樹冠高約 9 m；人行道已加寬，樹位於七彩欄杆外約 1.6 m）
   const stTrunkMat = new THREE.MeshStandardMaterial({ color: 0x3e3227, roughness: 0.92 });
-  addMesh(g, new THREE.CylinderGeometry(0.24, 0.34, 4.6, 10), stTrunkMat, southStreetTreeX, 2.3, southStreetTreeZ);
-  const stCanopyCoords = [
-    [0, 5.2, 0, 2.1, 1.6, 1.9, hedgeDarkGreenMat],
-    [-1.1, 6.2, -0.4, 1.9, 1.5, 1.8, hedgeLightGreenMat],
-    [1.0, 6.5, 0.3, 2.2, 1.7, 2.0, hedgeDarkGreenMat],
-    [-0.4, 7.6, -0.2, 2.3, 1.8, 2.1, hedgeLightGreenMat],
-    [0.6, 8.4, -0.5, 2.0, 1.6, 1.9, hedgeDarkGreenMat]
-  ];
-  stCanopyCoords.forEach(([dx, dy, dz, sx, sy, sz, m]) => {
-    const sp = addMesh(g, new THREE.SphereGeometry(1.0, 10, 8), m, southStreetTreeX + dx, dy, southStreetTreeZ + dz);
-    sp.scale.set(sx, sy, sz);
-  });
+  const stLeafA = new THREE.MeshStandardMaterial({ color: 0x3f6f34, roughness: 0.8 });
+  const stLeafB = new THREE.MeshStandardMaterial({ color: 0x55843e, roughness: 0.8 });
+  const stUp = new THREE.Vector3(0, 1, 0);
+  const stLimb = (a, b, r0, r1) => {
+    const d = new THREE.Vector3().subVectors(b, a);
+    const m = addMesh(g, new THREE.CylinderGeometry(r1, r0, d.length(), 8), stTrunkMat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    m.quaternion.setFromUnitVectors(stUp, d.normalize());
+  };
+  let stSd = 29;
+  const stR = () => ((stSd = (stSd * 16807) % 2147483647) / 2147483647);
+  function southStreetTree(tx, tz, k) {
+    const base = new THREE.Vector3(tx, 0, tz), fork = new THREE.Vector3(tx + 0.1, 2.0 * k, tz);
+    stLimb(base, fork, 0.3, 0.24);
+    // 樹穴
+    addBox(g, 1.2, 0.03, 1.2, new THREE.MeshStandardMaterial({ color: 0x4a3f33, roughness: 0.95 }), tx, 0.155, tz, false);
+    [[-1.0, 0.3], [0.9, -0.2], [0.1, 0.8]].forEach(([ox, oz], b) => {
+      const e = new THREE.Vector3(tx + ox * 2.2 * k, (5.6 + b * 0.5) * k, tz + oz * 1.4 * k);
+      stLimb(fork, e, 0.2, 0.09);
+      for (let c = 0; c < 9; c++) {
+        const a = stR() * Math.PI * 2, rr = stR() * 2.2 * k;
+        const cl = addMesh(g, new THREE.IcosahedronGeometry((0.7 + stR() * 0.45) * k, 0), c % 2 ? stLeafA : stLeafB,
+          e.x + Math.cos(a) * rr, e.y + 0.8 * k + (stR() - 0.4) * 1.6 * k, e.z + Math.sin(a) * rr * 0.8);
+        cl.scale.set(1.4, 0.7, 1.4);
+      }
+    });
+  }
+  const sidewalkTreeZ = fenceZ + 1.65;
+  southStreetTree(xWest + 4.85, sidewalkTreeZ, 1.0);
+  southStreetTree(xWest + 13.6, sidewalkTreeZ, 0.95);
 
   // 寶藍色三角遮陽帆布：位於 1F 通道內側上方（照片 001.jpg）
   const sailPoleX = xWest + 4.20, sailPoleZ = railZ - 0.25;
@@ -10467,11 +12780,54 @@ function buildSouthBuilding() {
   sailBlueExt.computeVertexNormals();
   g.add(new THREE.Mesh(sailBlueExt, new THREE.MeshStandardMaterial({ color: 0x3878c2, roughness: 0.6, side: THREE.DoubleSide })));
 
-  // 其餘東段維持原綠籬
-  const westHedgeW = Math.abs(splitX - railX2);
-  const westHedgeCx = (splitX + railX2) / 2;
-  addBox(g, westHedgeW, 0.35, 0.75, southBaseBeamMat, westHedgeCx, 0.175, fenceZ - 0.20);
-  addBox(g, westHedgeW, 1.05, 0.85, hedgeDarkGreenMat, westHedgeCx, 0.85, fenceZ - 0.20, false);
+  const stripSoilMat = new THREE.MeshStandardMaterial({ color: 0x4a3d30, roughness: 0.92 });
+  // 西段至中段：依 2024 街景，七彩直立欄杆沿南棟正面連續不斷（原深綠方塊綠籬改為欄杆），欄杆內側為低矮植栽帶
+  buildFenceRun(railX2, splitX, fenceZ - 0.20, 0.15);
+  {
+    const stripW = Math.abs(splitX - railX2), stripCx = (splitX + railX2) / 2;
+    addBox(g, stripW, 0.1, 1.6, stripSoilMat, stripCx, 0.05, fenceZ - 1.1, false);
+    for (let k = 0; k < Math.floor(stripW / 1.3); k++) {
+      const bx = Math.min(railX2, splitX) + 0.65 + k * 1.3;
+      const b = addMesh(g, new THREE.IcosahedronGeometry(0.42 + (k % 3) * 0.08, 1), k % 2 ? hedgeDarkGreenMat : hedgeLightGreenMat, bx, 0.45, fenceZ - 0.9 - (k % 2) * 0.35);
+      b.scale.set(1.2, 0.9, 1.0);
+    }
+  }
+
+  // 舊南側門（興學樓通道南口）兩側水泥方形花箱與紅色仙丹花、紅色 A 字拒馬；東側低牆花台內黃色扶桑花（2024 街景）
+  {
+    const boxMat = new THREE.MeshStandardMaterial({ color: 0xc9c5bc, roughness: 0.85 });
+    const ixoraLeaf = new THREE.MeshStandardMaterial({ color: 0x2b5e2b, roughness: 0.8 });
+    const ixoraRed = new THREE.MeshStandardMaterial({ color: 0xd83a2a, roughness: 0.55 });
+    const barrierRed = new THREE.MeshStandardMaterial({ color: 0xd9465a, roughness: 0.5, metalness: 0.3 });
+    [gateOpenXL + 0.4, gateOpenXR - 0.4].forEach((bx, i) => {
+      const bz = fenceZ + 0.25;
+      addBox(g, 0.62, 0.78, 1.25, boxMat, bx, 0.39, bz);
+      addBox(g, 0.54, 0.05, 1.17, stripSoilMat, bx, 0.77, bz, false);
+      for (let k = 0; k < 4; k++) {
+        const cl = addMesh(g, new THREE.IcosahedronGeometry(0.32, 1), ixoraLeaf, bx + (k % 2 - 0.5) * 0.2, 0.98 + (k % 2) * 0.12, bz - 0.42 + k * 0.28);
+        cl.scale.set(1.0, 0.8, 1.0);
+        addMesh(g, new THREE.IcosahedronGeometry(0.09, 0), ixoraRed, bx + (k % 2 ? 0.18 : -0.15), 1.2 + (k % 2) * 0.1, bz - 0.4 + k * 0.28, false);
+      }
+      // 紅色 A 字拒馬（斜放於花箱前）
+      const bg = new THREE.Group();
+      bg.position.set(bx + (i ? -0.55 : 0.55), 0.14, bz + 0.85);
+      bg.rotation.y = i ? 0.5 : -0.5;
+      addBox(bg, 0.04, 0.9, 0.04, barrierRed, -0.38, 0.45, 0);
+      addBox(bg, 0.04, 0.9, 0.04, barrierRed, 0.38, 0.45, 0);
+      addBox(bg, 0.8, 0.04, 0.04, barrierRed, 0, 0.85, 0);
+      addBox(bg, 0.8, 0.04, 0.04, barrierRed, 0, 0.4, 0);
+      addBox(bg, 0.6, 0.22, 0.01, new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.6 }), 0, 0.62, 0.02, false);
+      g.add(bg);
+    });
+    const hibLeaf = new THREE.MeshStandardMaterial({ color: 0x356b2c, roughness: 0.8 });
+    const hibYellow = new THREE.MeshStandardMaterial({ color: 0xf6b733, roughness: 0.5 });
+    for (let k = 0; k < 6; k++) {
+      const hx = gateOpenXR + 1.0 + k * 0.75, hz = fenceZ - 0.75;
+      const cl = addMesh(g, new THREE.IcosahedronGeometry(0.55, 1), hibLeaf, hx, 1.05 + (k % 2) * 0.15, hz);
+      cl.scale.set(1.1, 0.95, 1.0);
+      for (let f = 0; f < 3; f++) addMesh(g, new THREE.IcosahedronGeometry(0.08, 0), hibYellow, hx + (f - 1) * 0.25, 1.35 + (f % 2) * 0.2, hz + 0.45, false);
+    }
+  }
 
   // ============================================================================
   // 16. 屋頂層女兒牆、紅棕色金屬屋簷收邊與太陽能光電棚架系統 (ROOFTOP & SOLAR PV)
@@ -10683,6 +13039,8 @@ function buildWestBuilding() {
   const westCorCx = (xWest + xCoreWest) / 2;     // -36.12 m
 
   // 10 Column Z coordinates for the 9 Main Bays (`zCol[0]` South -> `zCol[9]` North)
+  // v2.12.35 依航照：西棟南端止於 z≈9.9（新棟北移 6 m 後之北面），9 跨等比縮短（×0.80），北端維持不變
+  // v2.12.40 恢復原始 9 跨長度（30.11 m）；整棟以 WEST_XF 北移 6.02 m 後南端落在 z 9.9（新棟北面）
   const BAY_SPANS = [2.98, 3.00, 3.00, 4.00, 4.00, 4.10, 3.00, 3.00, 3.03];
   const zCol = [15.918];
   for (let i = 0; i < BAY_SPANS.length; i++) {
@@ -10706,13 +13064,16 @@ function buildWestBuilding() {
   const parapetH = 0.75;
 
   // Materials tailored to the 5 real-world photos (`west_front_east.jpg`, `west_back_west.jpg`, `west_kitchen_45.jpg`)
-  const whiteTileMat    = new THREE.MeshStandardMaterial({ map: makeTileTexture('#f3f2ed', '#c7c4ba'), roughness: 0.56 });
-  const kitchenTileMat  = new THREE.MeshStandardMaterial({ map: makeTileTexture('#f7f7f4', '#ceccc4'), roughness: 0.52 });
-  const colTileMat      = new THREE.MeshStandardMaterial({ map: makeTileTexture('#f5f4ef', '#c2bfb5'), roughness: 0.54 });
+  // v2.12.56 依照片 81／5166：外牆為略帶灰藍的白色方格磁磚，深色勾縫格線明顯
+  const whiteTileMat    = new THREE.MeshStandardMaterial({ map: makeTileTexture('#e3e7ea', '#5f676f'), roughness: 0.56 });
+  const kitchenTileMat  = new THREE.MeshStandardMaterial({ map: makeTileTexture('#e6e9ec', '#5f676f'), roughness: 0.52 });
+  const colTileMat      = new THREE.MeshStandardMaterial({ map: makeTileTexture('#e8ebee', '#666e76'), roughness: 0.54 });
+  const westBaseMat     = new THREE.MeshStandardMaterial({ color: 0x5b3b32, roughness: 0.8 });   // 西向 1F 圓柱深褐色矮柱基
+  const corridorShadeMat = new THREE.MeshBasicMaterial({ color: 0x5c6167 });   // v2.12.57 再加深  // 2F/3F 西走廊深處陰影
   const dadoBrickMat    = new THREE.MeshStandardMaterial({ color: 0x7a3b2e, roughness: 0.76 }); // 1F 圓柱與走廊紅褐色磁磚柱座/腰牆
   const slotFrameMat    = new THREE.MeshStandardMaterial({ color: 0x6b3226, roughness: 0.72 }); // 東向 2F 欄杆一字型長條孔紅褐內框
   const skyBlueRailMat  = new THREE.MeshStandardMaterial({ color: 0x3898d4, roughness: 0.36, metalness: 0.45 }); // 2F/3F 女兒牆頂天藍色金屬欄杆
-  const greenLouverMat  = new THREE.MeshStandardMaterial({ color: 0x8cc29a, roughness: 0.48, metalness: 0.22 }); // 西向 3F 淺綠色水平遮陽百葉
+  const greenLouverMat  = new THREE.MeshStandardMaterial({ color: 0xcfd6d3, roughness: 0.5, metalness: 0.2 }); // 西向 3F 水平遮陽百葉（v2.12.55 依照片 81 改淺灰白）
   const corridorSlabMat = new THREE.MeshStandardMaterial({ color: 0xc8c5bc, roughness: 0.84 }); // 磨石子走廊地坪
   const rampFloorMat    = new THREE.MeshStandardMaterial({ color: 0xbab6ac, roughness: 0.88 });
   const darkMetalMat    = new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.48, metalness: 0.58 });
@@ -10776,7 +13137,35 @@ function buildWestBuilding() {
     // 1F Enclosed Core Block (Bays 1–5: `xCoreWest` to `xCoreEast`, `z = 15.918` to `-1.062`)
     addBox(g, coreW, h1F - 0.12, enclosed1FD, whiteTileMat, coreCx, y1F + (h1F - 0.12) / 2, enclosed1FCz);
     // Reddish-brown ceramic tile wainscot dado (`紅褐色腰牆`) along 1F East & West classroom walls & North 川堂 wall
-    addBox(g, coreW + 0.06, 0.92, enclosed1FD + 0.06, dadoBrickMat, coreCx, y1F + 0.46, enclosed1FCz);
+    addBox(g, coreW + 0.06, 0.50, enclosed1FD + 0.06, westBaseMat, coreCx, y1F + 0.25, enclosed1FCz);   // v2.12.56 照片 81：1F 教室外牆深褐色矮踢腳
+
+    // v2.12.57 照片 81：1F 柱廊內側教室外牆之布告欄、懸掛綠色背心、圓凳與置物架
+    {
+      const corkMat = new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.9 });
+      const frameM = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.7 });
+      const paperCols = [0xffffff, 0xfff3b0, 0xcfe8ff, 0xffd6d6, 0xd8f5d0];
+      const paperMats = paperCols.map(c => new THREE.MeshBasicMaterial({ color: c }));
+      const wx = xCoreWest - 0.04;
+      [1, 2, 4].forEach((b, k) => {
+        const bz = (zCol[b] + zCol[b + 1]) / 2 + 0.55;
+        addBox(g, 0.05, 1.10, 1.70, frameM, wx, y1F + 1.65, bz, false);
+        addBox(g, 0.05, 0.98, 1.58, corkMat, wx - 0.01, y1F + 1.65, bz, false);
+        for (let i = 0; i < 6; i++) {
+          addBox(g, 0.01, 0.30, 0.24, paperMats[(i + k) % paperMats.length], wx - 0.04, y1F + 1.42 + (i % 2) * 0.42, bz - 0.55 + Math.floor(i / 2) * 0.55, false);
+        }
+      });
+      // 綠色背心（掛於柱廊）
+      const vestMat = new THREE.MeshStandardMaterial({ color: 0x3fae5a, roughness: 0.8, side: THREE.DoubleSide });
+      addBox(g, 0.04, 0.70, 0.55, vestMat, xCoreWest - 0.35, y1F + 1.85, (zCol[3] + zCol[4]) / 2 - 0.9, false);
+      addBox(g, 0.03, 0.03, 0.70, frameM, xCoreWest - 0.35, y1F + 2.22, (zCol[3] + zCol[4]) / 2 - 0.9, false);
+      // 圓凳與低矮置物架
+      const stoolMat = new THREE.MeshStandardMaterial({ color: 0x2f3338, roughness: 0.6 });
+      [(zCol[2] + zCol[3]) / 2, (zCol[4] + zCol[5]) / 2].forEach(sz => {
+        addMesh(g, new THREE.CylinderGeometry(0.17, 0.17, 0.04, 14), stoolMat, xCoreWest - 0.6, y1F + 0.45, sz, false);
+        [-1, 1].forEach(o => addBox(g, 0.03, 0.43, 0.03, stoolMat, xCoreWest - 0.6 + o * 0.1, y1F + 0.22, sz, false));
+      });
+      addBox(g, 0.35, 0.80, 1.20, frameM, xCoreWest - 0.22, y1F + 0.40, (zCol[1] + zCol[2]) / 2 - 0.6);
+    }
 
     // Interior partition walls inside 1F Core (`z = 8.17` & `z = 6.60` for `配膳室`)
     addBox(g, coreW - 0.1, h1F - 0.2, 0.18, whiteTileMat, coreCx, y1F + (h1F - 0.2) / 2, 8.17);
@@ -10868,7 +13257,7 @@ function buildWestBuilding() {
     addBox(g, 0.48, h1F - 0.15, 0.48, colTileMat, xCoreEast, y1F + (h1F - 0.15) / 2, zNorthMain);
     addBox(g, 0.52, 0.90, 0.52, dadoBrickMat, xCoreEast, y1F + 0.45, zNorthMain);
     addBox(g, 0.48, h1F - 0.15, 0.48, colTileMat, xCoreWest, y1F + (h1F - 0.15) / 2, zNorthMain);
-    addBox(g, 0.52, 0.90, 0.52, dadoBrickMat, xCoreWest, y1F + 0.45, zNorthMain);
+    addBox(g, 0.52, 0.50, 0.52, westBaseMat, xCoreWest, y1F + 0.25, zNorthMain);
     // 柱面粉紅色消防安全標示貼紙 (Pink Safety Sign on East face of Stair Column)
     addBox(g, 0.02, 0.28, 0.22, pinkSafetySignMat, xCoreEast + 0.25, y1F + 1.48, zNorthMain - 0.02, false);
     // 柱角鮮紅色防撞立管 (Red Vertical Pipe at NE edge of Stair Column)
@@ -10971,6 +13360,8 @@ function buildWestBuilding() {
     // Bays 6–9 (`川堂`) West side is completely open between columns toward the PU running track (per Photo 1 & Photo 3)!
   }
 
+  // v2.12.61 使用者標示照片 89：1F 第 6～9 跨為四跨開放穿廊（v2.12.55 誤將第 9 跨封牆，已移除）
+
   // ==========================================================================
   // 4. 2F & 3F CLASSROOM CORE (`西棟大樓_2F/3F建築平面圖.jpg`)
   // ==========================================================================
@@ -11011,10 +13402,10 @@ function buildWestBuilding() {
       if (i === 0) {
         // Col 0（西南角轉角柱，實景照片 Image 1 為白色磁磚方柱帶紅褐色磁磚柱基）
         addBox(g, 0.50, h1F - 0.20, 0.50, colTileMat, wColX, y1F + (h1F - 0.20) / 2, zc);
-        addBox(g, 0.54, 0.90, 0.54, dadoBrickMat, wColX, y1F + 0.45, zc);
+        addBox(g, 0.54, 0.50, 0.54, westBaseMat, wColX, y1F + 0.25, zc);   // v2.12.56 照片 81：較矮、深褐色柱基
       } else {
         addMesh(g, new THREE.CylinderGeometry(0.23, 0.23, h1F - 0.20, 20), colTileMat, wColX, y1F + (h1F - 0.20) / 2, zc);
-        addMesh(g, new THREE.CylinderGeometry(0.255, 0.255, 0.90, 20), dadoBrickMat, wColX, y1F + 0.45, zc);
+        addMesh(g, new THREE.CylinderGeometry(0.255, 0.255, 0.50, 20), westBaseMat, wColX, y1F + 0.25, zc);
       }
 
       const eColX = xEast - 0.26;
@@ -11046,6 +13437,13 @@ function buildWestBuilding() {
       }
       addBox(g, 0.38, 0.48, mainD, whiteTileMat, xEast - 0.19, fy + fh - 0.36, mainCz);
       addBox(g, 0.38, 0.48, mainD, whiteTileMat, xWest + 0.19, fy + fh - 0.36, mainCz);
+      // v2.12.56 照片 81（逆光）：西走廊天花與教室外牆較暗，加深走廊開放感
+      addBox(g, xCoreWest - xWest - 0.4, 0.04, mainD, corridorShadeMat, (xWest + xCoreWest) / 2 + 0.1, fy + fh - 0.25, mainCz, false);
+      for (let b = 0; b < 9; b++) {
+        const pz = (zCol[b] + zCol[b + 1]) / 2, pw = zCol[b] - zCol[b + 1] - 0.5;
+        const sh = addMesh(g, new THREE.PlaneGeometry(pw, fh - 0.3), corridorShadeMat, xCoreWest - 0.025, fy + (fh - 0.3) / 2, pz, false);
+        sh.rotation.y = -Math.PI / 2;
+      }
     }
 
     const paraH = 1.06;
@@ -11099,10 +13497,10 @@ function buildWestBuilding() {
       for (let m = -1; m <= 1; m++) {
         addBox(g, 0.05, louverH, 0.05, greenLouverMat, xWest + 0.10, louverY, bz + m * (bw * 0.32));
       }
-      for (let bl = 0; bl < 6; bl++) {
-        const by = louverY - louverH / 2 + 0.08 + bl * (louverH / 6);
-        const blade = addBox(g, 0.12, 0.035, bw + 0.04, greenLouverMat, xWest + 0.06, by, bz);
-        blade.rotation.z = 0.28;
+      for (let bl = 0; bl < 9; bl++) {   // v2.12.55 照片 81：密排水平百葉
+        const by = louverY - louverH / 2 + 0.05 + bl * (louverH / 9);
+        const blade = addBox(g, 0.10, 0.05, bw + 0.04, greenLouverMat, xWest + 0.06, by, bz);
+        blade.rotation.z = 0.12;
       }
     }
 
@@ -11121,6 +13519,34 @@ function buildWestBuilding() {
     addBox(g, 0.28, parapetH, mainD, whiteTileMat, xEast - 0.14, yRF + parapetH / 2, mainCz);
     addBox(g, 0.28, parapetH, mainD, whiteTileMat, xWest + 0.14, yRF + parapetH / 2, mainCz);
     addBox(g, totalW, parapetH, 0.28, whiteTileMat, (xWest + xEast) / 2, yRF + parapetH / 2, zSouth - 0.14);
+    // v2.12.55 依操場實景照片 81：3F 屋頂西側挑出約 0.6 m、厚約 0.5 m 之白磁磚簷板（延伸至北端樓梯間），
+    //   北端與南端簷板端面為紅色收邊（照片左上角紅色轉角）；3F 走廊上方懸掛彩色三角旗串
+    {
+      const eaveRedMat = new THREE.MeshStandardMaterial({ color: 0xc23a2e, roughness: 0.55 });
+      const eT = 0.50, eaveY = yRF + parapetH - eT / 2 + 0.12, zN = -17.85, zS = zSouth;
+      const eD = zS - zN, eCz = (zS + zN) / 2;
+      addBox(g, 0.62, eT, eD + 0.62, whiteTileMat, xWest - 0.17, eaveY, eCz + 0.31);
+      addBox(g, totalW + 0.62, eT, 0.62, whiteTileMat, (xWest + xEast) / 2 - 0.31, eaveY, zS + 0.17);
+      addBox(g, 0.64, eT + 0.02, 0.05, eaveRedMat, xWest - 0.17, eaveY, zN - 0.02);                       // 北端紅色端面
+      addBox(g, totalW + 0.64, eT + 0.02, 0.05, eaveRedMat, (xWest + xEast) / 2 - 0.31, eaveY, zS + 0.50); // 南端紅色端面
+      // 彩色三角旗串（兩串，自南端往北至第 7 跨）
+      const flagCols = [0xe53935, 0x1e88e5, 0xfdd835, 0x43a047, 0xfb8c00, 0x8e24aa, 0xffffff];
+      const flagMats = flagCols.map(c => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide }));
+      const tri = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -0.13), new THREE.Vector3(0, 0, 0.13), new THREE.Vector3(0, -0.32, 0)]);
+      tri.computeVertexNormals();
+      const fz1 = zCol[0] - 0.4, fz2 = zCol[7];
+      [[y3F + 2.55, 0.35], [y3F + 2.15, 0.45]].forEach(([fy, sag], si) => {
+        const n = Math.floor((fz1 - fz2) / 0.42);
+        const pts = [];
+        for (let k = 0; k <= n; k++) {
+          const t = k / n, z = fz1 - (fz1 - fz2) * t, y = fy - sag * 4 * t * (1 - t);
+          pts.push(new THREE.Vector3(xWest - 0.10, y, z));
+          const m = new THREE.Mesh(tri, flagMats[(k + si * 3) % flagMats.length]);
+          m.position.set(xWest - 0.10, y, z); g.add(m);
+        }
+        g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x555555 })));
+      });
+    }
     addBox(g, 0.06, 1.35, 0.06, darkMetalMat, xEast - 0.14, yRF + parapetH + 0.65, -6.66);
     addMesh(g, new THREE.ConeGeometry(0.24, 0.42, 12), whiteDoorMat, xEast + 0.05, yRF + parapetH + 1.25, -6.66).rotation.z = Math.PI / 2;
     [-35.8, -33.6].forEach(wx => {
@@ -11325,28 +13751,27 @@ function buildWestBuilding() {
         addBox(g, westCorW, 0.02, stairBayD - 0.08, stairLandingTerrazzo, westCorCx, fy + 0.01, stairBayCz);
         
         // 操場側（西向 x = xWest）依據 20261110_160131.jpg 與 20261110_160152.jpg 實景重構為連續二丁掛白磁磚外牆：
-        if (fl === 2) {
-          // 2F: 白色二丁掛磁磚連續外牆 + 4格採光窗（無縫銜接西棟 2F 與廚房增建 2F 連續立面）
-          addBox(g, 0.26, 1.15, stairBayD, whiteTileMat, xWest + 0.14, fy + 1.15 / 2, stairBayCz);
-          addBox(g, 0.26, fh - 2.60, stairBayD, whiteTileMat, xWest + 0.14, fy + 2.60 + (fh - 2.60) / 2, stairBayCz);
-          const pierD = (stairBayD - 2.35) / 2;
-          addBox(g, 0.26, 1.45, pierD, whiteTileMat, xWest + 0.14, fy + 1.15 + 1.45 / 2, zStairSouth - pierD / 2);
-          addBox(g, 0.26, 1.45, pierD, whiteTileMat, xWest + 0.14, fy + 1.15 + 1.45 / 2, zStairNorth + pierD / 2);
-          const w2F_Stair = addMesh(g, new THREE.PlaneGeometry(2.35, 1.40), winFrost4Mat, xWest - 0.02, fy + 1.15 + 1.40 / 2, stairBayCz, false);
-          w2F_Stair.rotation.y = -Math.PI / 2;
-          addBox(g, 0.08, 1.45, 2.40, darkMetalMat, xWest + 0.01, fy + 1.15 + 1.45 / 2, stairBayCz);
-        } else {
-          // 3F: 白色二丁掛磁磚外牆 + 延續西棟 3F 全線淺綠色水平遮陽百葉與採光窗
-          addBox(g, 0.26, 1.15, stairBayD, whiteTileMat, xWest + 0.14, fy + 1.15 / 2, stairBayCz);
-          addBox(g, 0.26, fh - 2.95, stairBayD, whiteTileMat, xWest + 0.14, fy + 2.95 + (fh - 2.95) / 2, stairBayCz);
-          for (let lv = 0; lv < 5; lv++) {
-            const ly = fy + 1.35 + lv * 0.38;
-            const louver = addBox(g, 0.42, 0.04, stairBayD - 0.08, greenLouverMat, xWest - 0.08, ly, stairBayCz);
-            louver.rotation.z = -0.22;
+        // v2.12.59 依照片 86／81：北端樓梯間 2F、3F 面向操場為開放走廊（白磁磚矮牆＋天藍扶手，上緣大樑），可見內部樓梯
+        {
+          const pH = 1.06, beamH = 0.48;
+          addBox(g, 0.24, pH, stairBayD - 0.2, whiteTileMat, xWest + 0.14, fy + pH / 2, stairBayCz);
+          addBox(g, 0.38, beamH, stairBayD, whiteTileMat, xWest + 0.19, fy + fh - beamH / 2 - 0.12, stairBayCz);
+          addBox(g, 0.045, 0.045, stairBayD - 0.3, skyBlueRailMat, xWest + 0.14, fy + pH + 0.22, stairBayCz);
+          addBox(g, 0.035, 0.035, stairBayD - 0.3, skyBlueRailMat, xWest + 0.14, fy + pH + 0.11, stairBayCz);
+          for (let p = -1; p <= 1; p++) addBox(g, 0.04, 0.24, 0.04, skyBlueRailMat, xWest + 0.14, fy + pH + 0.12, stairBayCz + p * (stairBayD * 0.34));
+          if (fl === 3) {   // 3F 百葉延續
+            for (let bl = 0; bl < 9; bl++) addBox(g, 0.10, 0.05, stairBayD - 0.1, greenLouverMat, xWest + 0.06, fy + fh - 0.48 - 0.86 + 0.05 + bl * 0.096, stairBayCz).rotation.z = 0.12;
           }
-          const w3F_Stair = addMesh(g, new THREE.PlaneGeometry(2.35, 1.50), win4x3Mat, xWest + 0.04, fy + 1.15 + 1.50 / 2, stairBayCz, false);
-          w3F_Stair.rotation.y = -Math.PI / 2;
-          addBox(g, 0.08, 1.55, 2.40, darkMetalMat, xWest + 0.05, fy + 1.15 + 1.55 / 2, stairBayCz);
+          // v2.12.61 使用者標示照片 89：此跨北半為 2F 連結前後走廊之通道（透光）、南半為 2F／3F 樓梯間（深色梯間＋斜向樓梯）
+          const halfD = stairBayD / 2 - 0.2, zPass = zStairNorth + stairBayD / 4, zSt = zStairSouth - stairBayD / 4;
+          const pass = addMesh(g, new THREE.PlaneGeometry(halfD, fh - 0.4), new THREE.MeshBasicMaterial({ color: fl === 2 ? 0xc9d0d4 : 0x8e9399 }), xCoreWest - 0.03, fy + (fh - 0.4) / 2, zPass, false);
+          pass.rotation.y = -Math.PI / 2;
+          const stw = addMesh(g, new THREE.PlaneGeometry(halfD, fh - 0.4), new THREE.MeshBasicMaterial({ color: 0x4f5459 }), xCoreWest - 0.03, fy + (fh - 0.4) / 2, zSt, false);
+          stw.rotation.y = -Math.PI / 2;
+          const runL = Math.hypot(halfD * 0.95, fh * 0.85);
+          const fl1 = addBox(g, 0.05, 0.26, runL, whiteTileMat, xCoreWest - 0.06, fy + fh * 0.45, zSt, false);
+          fl1.rotation.x = Math.atan2(fh * 0.85, halfD * 0.95);
+          addBox(g, 0.04, 0.04, runL, stainlessMat, xCoreWest - 0.09, fy + fh * 0.45 + 0.9, zSt, false).rotation.x = fl1.rotation.x;
         }
         addBox(g, 0.46, fh - 0.20, 0.46, colTileMat, xWest + 0.23, fy + (fh - 0.20) / 2, zStairNorth + 0.23);
         addBox(g, 0.42, fh - 0.20, 0.42, colTileMat, xCoreWest,    fy + (fh - 0.20) / 2, zStairNorth + 0.21);
@@ -11398,16 +13823,16 @@ function buildWestBuilding() {
 
       // 【1F 操場側二丁掛白磁磚實體連續外牆】(100% 依據實景相片 20261110_160131.jpg 與 20261110_160152.jpg：徹底消除紅框處穿透空洞)
       // 底部紅褐色磁磚柱腳/踢腳 (高度 0.90m)
-      addBox(g, 0.28, 0.90, stairBayD, dadoBrickMat, xWest + 0.14, y1F + 0.45, stairBayCz);
+      addBox(g, 0.28, 0.50, stairBayD, westBaseMat, xWest + 0.14, y1F + 0.25, stairBayCz);
       // 實體白磁磚外牆身 (高至 2F 梁底)
       addBox(g, 0.26, h1F - 0.90, stairBayD, whiteTileMat, xWest + 0.14, y1F + 0.90 + (h1F - 0.90) / 2, stairBayCz);
       // 操場側外牆橫向 3 格金屬排窗 (依據 20261110_160152.jpg 實景：中段橫向排窗)
-      const w1F_Stair = addMesh(g, new THREE.PlaneGeometry(1.65, 0.62), winStripMat, xWest - 0.02, y1F + 2.15, stairBayCz, false);
+      const w1F_Stair = addMesh(g, new THREE.PlaneGeometry(1.65, 0.62), winStripMat, xWest - 0.06, y1F + 2.15, stairBayCz, false);   // v2.12.60 玻璃置於窗框外（原被窗框遮住呈黑色）
       w1F_Stair.rotation.y = -Math.PI / 2;
       addBox(g, 0.08, 0.70, 1.72, darkMetalMat, xWest + 0.01, y1F + 2.15, stairBayCz);
 
       addBox(g, 0.48, h1F - 0.20, 0.48, colTileMat, xWest + 0.26, y1F + (h1F - 0.20) / 2, zStairNorth + 0.24);
-      addBox(g, 0.52, 0.90, 0.52, dadoBrickMat,     xWest + 0.26, y1F + 0.45,              zStairNorth + 0.24);
+      addBox(g, 0.52, 0.50, 0.52, westBaseMat,     xWest + 0.26, y1F + 0.25,              zStairNorth + 0.24);
       // 1F 梯底下方與後走廊北端（z = zStairNorth = -17.85m）大型金屬鐵捲門 (Photo 2 左下角清晰可見之鐵捲門！)
       addBox(g, 2.50, 2.65, 0.08, shutterMat, westCorCx + 0.35, y1F + 1.325, zStairNorth + 0.08);
       // 3F 與廚房交界北端封閉山牆 (z = zStairNorth = -17.85m, y = kH ~ yRF + parapetH)
@@ -11449,7 +13874,6 @@ function buildWestBuilding() {
     addBox(g, kW + 0.24, 0.22, kD + 0.24, whiteTileMat, kCx, kH + 0.05, kCz);
     addBox(g, kW + 0.12, 0.14, kD + 0.12, colTileMat,   kCx, kH + 0.20, kCz);
     // 西向操場立面延續 0.90m 高紅褐色磁磚踢腳 (依據 20261110_160152.jpg 連續外觀)
-    addBox(g, 0.28, 0.90, kD, dadoBrickMat, kWestX + 0.14, y1F + 0.45, kCz);
 
     // B. 紅色框線範圍：【西北側突出建物區】 (Red-Boxed NW Wing · 1F 穿廊 + 2F 實體房間)
     const nw2FH = nwRoofH - y2F;
@@ -11520,7 +13944,7 @@ function buildWestBuilding() {
       for (let m = -1; m <= 1; m++) {
         addBox(g, 0.09, wWinH, 0.05, darkMetalMat, wWinX, wWinY, nwCz + m * (wWinLen / 4));
       }
-      addBox(g, 0.04, wWinH, wWinLen, new THREE.MeshStandardMaterial({ color: 0x7b93a8, roughness: 0.25, metalness: 0.3 }), wWinX + 0.01, wWinY, nwCz);
+      { const gl = addMesh(g, new THREE.PlaneGeometry(wWinLen, wWinH), winFrost4Mat, wWinX - 0.065, wWinY, nwCz, false); gl.rotation.y = -Math.PI / 2; }   // v2.12.60 玻璃置於窗框外（原被窗框遮住呈黑色）
 
       const flZ = nwNorthZ + 0.48, flY = y2F + 0.65;
       addBox(g, 0.65, 0.04, 0.04, darkMetalMat, nwWestX - 0.32, flY, flZ);
@@ -11530,14 +13954,14 @@ function buildWestBuilding() {
     }
 
     // C. 主廚房西向立面沿操場跑道側 (z = -17.85m ~ -20.00m)
-    const sWin = addMesh(g, new THREE.PlaneGeometry(1.55, 0.62), winStripMat, kWestX - 0.04, y1F + 2.15, kCz, false);
+    const sWin = addMesh(g, new THREE.PlaneGeometry(1.55, 0.62), winStripMat, kWestX - 0.08, y1F + 2.15, kCz, false);
     sWin.rotation.y = -Math.PI / 2;
     addBox(g, 0.08, 0.70, 1.62, darkMetalMat, kWestX - 0.02, y1F + 2.15, kCz);
     addBox(g, 0.04, 3.80, 0.04, stainlessMat, kWestX - 0.04, 1.90, -18.55);
     const hoseReel = addMesh(g, new THREE.TorusGeometry(0.28, 0.06, 10, 24), darkMetalMat, kWestX - 0.06, 0.72, -19.10);
     hoseReel.rotation.y = Math.PI / 2;
 
-    const w2F_Main = addMesh(g, new THREE.PlaneGeometry(1.65, 1.20), winFrost4Mat, kWestX - 0.04, y2F + 1.85, kCz, false);
+    const w2F_Main = addMesh(g, new THREE.PlaneGeometry(1.65, 1.20), winFrost4Mat, kWestX - 0.08, y2F + 1.85, kCz, false);
     w2F_Main.rotation.y = -Math.PI / 2;
     addBox(g, 0.08, 1.28, 1.72, darkMetalMat, kWestX - 0.02, y2F + 1.85, kCz);
 
@@ -11547,6 +13971,143 @@ function buildWestBuilding() {
       f6North.rotation.y = Math.PI;
       addBox(g, 1.92, 1.42, 0.08, darkMetalMat, wx, y2F + 1.65, kNorthZ - 0.02);
     });
+
+    // v2.12.41 廚房增建與遮雨棚（依航照 ③ 與使用者實景照片 5162/5164/5166/5167/4958）
+    //   由北而南：北棟電梯塔（北棟群組）→ 青綠色採光罩長巷（電梯南面與廚房北牆之間）→ 廚房 2 層主體；
+    //   西端「北側凸出部」2F 為房間、1F 為東西向穿廊（向西通往操場）；電梯西門前另有銀色圓弧遮雨棚與不銹鋼欄杆。
+    //   座標為西棟局部座標（世界 z − 6.02）；世界座標：凸出部北緣 z −40.7、廚房北牆 z −36.2、東緣 x −17.6
+    {
+      const kxP2 = -31.0, kxB2 = -23.22;   // v2.12.49 東翼東緣維持世界 x −17.6（中庭西緣）                      // 凸出部／西翼東緣、東翼東緣
+      const zP1 = -31.68, zB1 = -27.18;   // v2.12.58 局部座標 +3 m（世界位置不變，緊鄰電梯）                      // 凸出部北緣、廚房北牆（＝長巷南緣）
+      // v2.12.45 依實景照片 5149／5147：凸出部（穿廊）位於銀色遮雨棚正南、電梯塔西南角，向東移至 x −33.0～−27.9
+      const pX1 = kWestX, pX2 = -33.52;   // v2.12.49 東緣維持世界 x −27.9（電梯塔西南角）   // v2.12.48 依照片 5166／5167：凸出部西牆與西棟、廚房西側外牆同一平面（x −38.11）
+      const zAlleyN = -32.30;   // v2.12.51 旋轉後長巷北緣接電梯塔南面                                // 長巷北緣（電梯南面，世界 z ≈ −40.4）
+      const stTileMat = new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 });   // 穿廊與長巷地坪
+      const frameMat0 = new THREE.MeshStandardMaterial({ color: 0x8e8676, roughness: 0.4, metalness: 0.5 });   // 香檳色鋁框   // 路燈支架
+      const box = (x1, x2, y1, y2, z1, z2, m, cast = true) => addBox(g, x2 - x1, y2 - y1, z2 - z1, m, (x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2, cast);
+      const roofCap = (x1, x2, z1, z2, top) => {
+        box(x1 - 0.12, x2 + 0.12, top - 0.06, top + 0.16, z1 - 0.12, z2 + 0.12, whiteTileMat);
+        box(x1 - 0.06, x2 + 0.06, top + 0.16, top + 0.30, z1 - 0.06, z2 + 0.06, colTileMat);
+      };
+      // 1) 2 層實體量體：西翼南段、補塊、東翼（廚房主體）；原 NW 翼 1F 穿廊改為室內
+      [[kWestX, kxP2, zB1, nwNorthZ], [-33.6, kxP2, nwNorthZ, kNorthZ], [kxP2, kxB2, zB1, kNorthZ]].forEach(([x1, x2, z1, z2]) => {
+        box(x1, x2, 0, kH, z1, z2, kitchenTileMat); roofCap(x1, x2, z1, z2, kH);
+      });
+      box(kWestX + 0.02, -33.62, 0, y2F - 0.02, nwNorthZ + 0.02, kNorthZ - 0.02, kitchenTileMat);
+      // 2) 北側凸出部：2F 房間、1F 東西向穿廊（四角與中間白磁磚方柱、磨石地坪、平頂天花）
+      box(pX1, pX2, y2F, kH, zP1, zB1, kitchenTileMat); roofCap(pX1, pX2, zP1, zB1, kH);
+      box(pX1 - 0.05, pX2 + 0.05, y2F - 0.30, y2F, zP1 - 0.05, zB1, mats.slab);
+      box(pX1 + 0.1, pX2 - 0.1, y2F - 0.36, y2F - 0.30, zP1 + 0.1, zB1 - 0.1, passageCeilingMat, false);
+      box(pX1, pX2, 0, y1F, zP1, zB1, stTileMat, false);
+      // v2.12.44 依實景照片 5149／5148／5147：西北角與東北角白磁磚圓柱，穿廊向西、北（銀色遮雨棚）、東（綠色長巷）三面開敞
+      [[pX1 + 0.36, zP1 + 0.36], [pX2 - 0.36, zP1 + 0.36]].forEach(([px, pz]) => addMesh(g, new THREE.CylinderGeometry(0.32, 0.32, y2F - 0.30, 20), colTileMat, px, (y2F - 0.30) / 2, pz));
+      // 穿廊南側為廚房西翼外牆：不銹鋼鐵捲門
+      box(pX1 + 0.8, pX1 + 3.6, y1F, y1F + 2.6, zB1 - 0.06, zB1 - 0.02, stainlessMat, false);
+      for (let k = 0; k < 13; k++) box(pX1 + 0.8, pX1 + 3.6, y1F + 0.1 + k * 0.2, y1F + 0.12 + k * 0.2, zB1 - 0.08, zB1 - 0.06, darkMetalMat, false);
+      // 3) 窗戶（霧面多格鋁窗）
+      const winN = (x1, x2, zFace, ys, n0) => {
+        const n = n0 || Math.max(1, Math.floor((x2 - x1) / 2.6));
+        for (let i = 0; i < n; i++) {
+          const wx = x1 + (x2 - x1) * (i + 0.5) / n;
+          ys.forEach(([wy, wh]) => {
+            const wm = addMesh(g, new THREE.PlaneGeometry(1.85, wh), winFrost6Mat, wx, wy, zFace - 0.08, false); wm.rotation.y = Math.PI;   // 玻璃面置於窗框外側
+            box(wx - 0.96, wx + 0.96, wy - wh / 2 - 0.04, wy + wh / 2 + 0.04, zFace - 0.06, zFace + 0.02, darkMetalMat, false);
+          });
+        }
+      };
+      const winX = (xFace, z1, z2, ys, sign, n0) => {
+        const n = n0 || Math.max(1, Math.floor((z2 - z1) / 2.6));
+        for (let i = 0; i < n; i++) {
+          const wz = z1 + (z2 - z1) * (i + 0.5) / n;
+          ys.forEach(([wy, wh]) => {
+            const wm = addMesh(g, new THREE.PlaneGeometry(1.85, wh), winFrost6Mat, xFace + sign * 0.08, wy, wz, false); wm.rotation.y = sign * Math.PI / 2;
+            box(xFace + (sign > 0 ? -0.02 : -0.06), xFace + (sign > 0 ? 0.06 : 0.02), wy - wh / 2 - 0.04, wy + wh / 2 + 0.04, wz - 0.96, wz + 0.96, darkMetalMat, false);
+          });
+        }
+      };
+      const F2 = [[y2F + 1.65, 1.35]], F12 = [[y1F + 1.75, 1.10], [y2F + 1.65, 1.35]];
+      const winGlassBright = new THREE.MeshBasicMaterial({ color: 0xdfe7ec });   /* v2.12.52 霧面白玻璃（不受背光陰影影響） */   // v2.12.51 明亮霧面玻璃
+      // v2.12.50 照片 82／84：凸出部 2F 北面為一排橫向長窗、西面為 2×2 田字轉角大窗
+      { const wy = y2F + 2.15, wh = 1.05, n = 3, L = (pX2 - pX1) - 0.6;
+        for (let i = 0; i < n; i++) { const wx = pX1 + 0.3 + L * (i + 0.5) / n;
+          const wm = addMesh(g, new THREE.PlaneGeometry(L / n - 0.12, wh), winGlassBright, wx, wy, zP1 - 0.08, false); wm.rotation.y = Math.PI;
+          box(wx - L / n / 2, wx + L / n / 2, wy - wh / 2 - 0.05, wy + wh / 2 + 0.05, zP1 - 0.06, zP1 + 0.02, frameMat0, false); } }
+      { const wz = (zP1 + zB1) / 2, wy = y2F + 1.95, W2 = 3.0, H2 = 2.5;
+        const wm = addMesh(g, new THREE.PlaneGeometry(W2, H2), winGlassBright, pX1 - 0.115, wy, wz, false);   /* 玻璃面置於窗框外 */ wm.rotation.y = -Math.PI / 2;
+        box(pX1 - 0.10, pX1, wy - H2 / 2 - 0.06, wy + H2 / 2 + 0.06, wz - W2 / 2 - 0.06, wz + W2 / 2 + 0.06, frameMat0, false);
+        box(pX1 - 0.16, pX1 - 0.06, wy - H2 / 2, wy + H2 / 2, wz - 0.06, wz + 0.06, frameMat0, false);
+        box(pX1 - 0.16, pX1 - 0.06, wy - 0.06, wy + 0.06, wz - W2 / 2, wz + W2 / 2, frameMat0, false);
+        // 每格再分上下兩扇（照片 82／84 田字窗各格內有橫向分割）
+        [-1, 1].forEach(sz => box(pX1 - 0.14, pX1 - 0.08, wy + H2 * 0.27 - 0.03, wy + H2 * 0.27 + 0.03, wz + sz * W2 / 4 - W2 / 4 + 0.05, wz + sz * W2 / 4 + W2 / 4 - 0.05, frameMat0, false)); }
+      // v2.12.46 照片 5147：凸出部西面 2F 斜臂太陽能路燈（燈頭朝外、上方太陽能板）
+      { const lz = zP1 + 0.9, ly = y2F + 1.2;
+        box(pX1 - 0.06, pX1, ly - 0.35, ly + 0.35, lz - 0.08, lz + 0.08, frameMat0, false);
+        const arm = addBox(g, 1.1, 0.06, 0.06, frameMat0, pX1 - 0.5, ly + 0.45, lz); arm.rotation.z = -0.55;
+        box(pX1 - 1.15, pX1 - 0.75, ly + 0.72, ly + 0.80, lz - 0.30, lz + 0.30, darkMetalMat, false);
+        box(pX1 - 0.95, pX1 - 0.35, ly + 0.95, ly + 0.99, lz - 0.32, lz + 0.32, darkMetalMat, false); }
+      // v2.12.53 照片 81：廚房西翼面向操場 1F 為一排小橫窗、2F 僅一扇窗
+      winX(kWestX, zB1, nwNorthZ, [[y1F + 2.35, 0.55]], -1, 3);
+      winX(kWestX, zB1, nwNorthZ, [[y2F + 1.65, 1.20]], -1, 1);
+      winN(pX2, kxB2, zB1, F2);                             // 廚房北牆 2F（照片 5162）
+      // 東翼東面（面向中庭，照片 4928）：2F 素牆；1F 一扇鐵窗與一具排風扇
+      winX(kxB2, zB1, kNorthZ, [[y1F + 2.05, 0.75]], 1, 1);
+      for (let k = 0; k < 7; k++) box(kxB2 + 0.07, kxB2 + 0.10, y1F + 1.70, y1F + 2.42, (zB1 + kNorthZ) / 2 - 0.85 + k * 0.28, (zB1 + kNorthZ) / 2 - 0.82 + k * 0.28, darkMetalMat, false);
+      { const fz = zB1 + 1.6; box(kxB2, kxB2 + 0.12, y1F + 1.55, y1F + 2.35, fz - 0.4, fz + 0.4, stainlessMat, false);
+        const fan = addMesh(g, new THREE.CylinderGeometry(0.32, 0.32, 0.05, 16), darkMetalMat, kxB2 + 0.14, y1F + 1.95, fz, false); fan.rotation.z = Math.PI / 2; }
+      box(kxB2 - 0.02, kxB2 + 0.06, y1F, y1F + 2.3, (zB1 + kNorthZ) / 2 + 1.0, (zB1 + kNorthZ) / 2 + 2.8, stainlessMat, false);   // 東面進貨門
+      // 4) 長巷：青綠色半透明採光罩（方格鋁框、北緣圓弧下垂收邊、北側一列方鋼立柱）＋混凝土地坪與水溝格柵
+      const canopyGreen = new THREE.MeshStandardMaterial({ color: 0x62a88c, roughness: 0.42, metalness: 0.1, transparent: true, opacity: 0.82, depthWrite: false, side: THREE.DoubleSide });
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x8a9096, roughness: 0.4, metalness: 0.6 });
+      const silverRoof = new THREE.MeshStandardMaterial({ color: 0xc3c9ce, roughness: 0.32, metalness: 0.55, side: THREE.DoubleSide });
+      const cx1 = pX2, cx2 = -26.62, cH = 3.25;
+      box(cx1, cx2, cH, cH + 0.04, zAlleyN + 0.35, zB1, canopyGreen, false);
+      { const edge = addMesh(g, new THREE.CylinderGeometry(0.42, 0.42, cx2 - cx1, 16, 1, true, 0, Math.PI / 2), canopyGreen, (cx1 + cx2) / 2, cH - 0.42, zAlleyN + 0.35, false); edge.rotation.z = Math.PI / 2; edge.rotation.y = Math.PI; }
+      for (let x = cx1; x <= cx2 + 0.01; x += (cx2 - cx1) / 6) box(x - 0.04, x + 0.04, cH + 0.04, cH + 0.10, zAlleyN + 0.35, zB1, frameMat, false);
+      for (let z = zAlleyN + 0.35; z <= zB1 + 0.01; z += (zB1 - zAlleyN - 0.35) / 3) box(cx1, cx2, cH + 0.04, cH + 0.10, z - 0.04, z + 0.04, frameMat, false);
+      for (let x = cx1 + 0.3; x <= cx2; x += 3.2) box(x - 0.06, x + 0.06, 0, cH - 0.3, zAlleyN + 0.05, zAlleyN + 0.17, frameMat);
+      box(cx1, cx2, 0, 0.05, zAlleyN, zB1, stTileMat, false);
+      box(cx1, cx2, 0.05, 0.07, zB1 - 0.75, zB1 - 0.45, darkMetalMat, false);
+      // 廚房北牆：兩座圓弧不銹鋼排油煙罩、角落直立排煙方管（高出屋頂）、不銹鋼儲物櫃
+      [-30.1, -27.7].forEach(hx => {
+        box(hx - 0.75, hx + 0.75, 2.45, 3.05, zB1 - 0.9, zB1, stainlessMat);
+        const hood = addMesh(g, new THREE.CylinderGeometry(0.45, 0.45, 1.5, 14, 1, false, 0, Math.PI), stainlessMat, hx, 2.45, zB1 - 0.45, false); hood.rotation.z = Math.PI / 2;
+      });
+      box(pX2 + 0.15, pX2 + 0.75, 2.2, kH + 2.2, zB1 - 0.55, zB1 - 0.05, stainlessMat);
+      box(pX2 + 0.05, pX2 + 0.85, kH + 2.2, kH + 2.6, zB1 - 0.65, zB1 + 0.05, stainlessMat);
+      [-25.9, -24.3].forEach(cxm => box(cxm - 0.85, cxm + 0.85, 0.1, 1.85, zB1 - 0.8, zB1 - 0.05, stainlessMat));
+      // 5) 電梯西門前銀色圓弧遮雨棚與不銹鋼欄杆（照片 4921 俯視：L 形，東緣貼電梯塔西牆，東南角缺口為落水管與水溝）
+      //    世界座標 x −33.6～−28.1、z −45.4～−40.7；東南缺口 x −30.1～−28.1、z −42.5～−40.7
+      const sx1 = kWestX, sx2 = -33.72,   /* v2.12.48 遮雨棚前緣切齊西棟與廚房西側外牆 */ sz1 = -36.38, sz2 = zP1, sH = 2.95, nx = -35.02, nz = -33.48;
+      const roofPart = (x1, x2, z1, z2) => box(x1, x2, sH, sH + 0.05, z1, z2, silverRoof, false);
+      roofPart(sx1, sx2, sz1, nz); roofPart(sx1, nx, nz, sz2);
+      const curl = (len, x, z, alongX, rotZ) => {                       // 圓弧下彎收邊
+        const e = addMesh(g, new THREE.CylinderGeometry(0.35, 0.35, len, 14, 1, true, 0, Math.PI / 2), silverRoof, x, sH - 0.35, z, false);
+        if (alongX) { e.rotation.z = Math.PI / 2; e.rotation.x = rotZ; } else { e.rotation.x = Math.PI / 2; e.rotation.z = rotZ; }
+      };
+      curl(sz2 - sz1, sx1, (sz1 + sz2) / 2, false, Math.PI);             // 西緣
+      curl(sx2 - sx1, (sx1 + sx2) / 2, sz1, true, Math.PI);              // 北緣
+      [[sx1 + 0.1, sz1 + 0.1], [sx1 + 0.1, sz2 - 0.1], [nx - 0.1, sz2 - 0.1], [nx - 0.1, nz - 0.1], [sx2 - 0.1, nz - 0.1], [sx2 - 0.1, sz1 + 0.1]].forEach(([px, pz]) => box(px - 0.05, px + 0.05, 0, sH, pz - 0.05, pz + 0.05, frameMat));
+      box(nx - 0.06, nx + 0.02, 0, sH, nz, sz2 - 0.2, whiteTileMat, false);   // 缺口處白色落水管
+      // v2.12.47 照片 79／5149：棚下西側欄杆旁木課桌兩張、小木椅兩張；棚邊與穿廊交界水溝格柵
+      { const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a6440, roughness: 0.8 });
+        [[sx1 + 0.75, sz1 + 2.2], [sx1 + 0.75, sz1 + 3.0]].forEach(([dx, dz]) => {
+          box(dx - 0.30, dx + 0.30, 0.70, 0.75, dz - 0.38, dz + 0.38, woodMat);
+          [[-0.25, -0.33], [0.25, -0.33], [-0.25, 0.33], [0.25, 0.33]].forEach(([ox, oz]) => box(dx + ox - 0.03, dx + ox + 0.03, 0, 0.70, dz + oz - 0.03, dz + oz + 0.03, woodMat, false));
+        });
+        [[sx1 + 1.45, sz1 + 1.4], [sx1 + 1.75, sz1 + 1.0]].forEach(([cx0, cz0]) => {
+          box(cx0 - 0.18, cx0 + 0.18, 0.32, 0.36, cz0 - 0.18, cz0 + 0.18, woodMat);
+          box(cx0 - 0.18, cx0 + 0.18, 0.36, 0.70, cz0 - 0.20, cz0 - 0.17, woodMat, false);
+          [[-0.15, -0.15], [0.15, -0.15], [-0.15, 0.15], [0.15, 0.15]].forEach(([ox, oz]) => box(cx0 + ox - 0.02, cx0 + ox + 0.02, 0, 0.32, cz0 + oz - 0.02, cz0 + oz + 0.02, woodMat, false));
+        });
+        box(sx1 + 0.3, sx2, 0.05, 0.07, sz2 - 0.45, sz2 - 0.15, darkMetalMat, false);
+        box(sx2 - 0.1, sx2 + 4.5, 0.05, 0.07, sz2 - 0.45, sz2 - 0.15, darkMetalMat, false); }
+      const railH = 1.1;
+      box(sx1 + 0.05, sx1 + 0.10, railH, railH + 0.05, sz1 + 0.6, sz2 - 0.1, stainlessMat, false);
+      for (let z = sz1 + 0.6; z <= sz2 - 0.1; z += 0.12) box(sx1 + 0.06, sx1 + 0.09, 0, railH, z - 0.015, z + 0.015, stainlessMat, false);
+      box(sx1 + 0.05, sx2 - 0.6, railH, railH + 0.05, sz1 + 0.05, sz1 + 0.10, stainlessMat, false);
+      for (let x = sx1 + 0.1; x <= sx2 - 0.6; x += 0.12) box(x - 0.015, x + 0.015, 0, railH, sz1 + 0.06, sz1 + 0.09, stainlessMat, false);
+      box(sx1, sx2, 0, 0.05, sz1, sz2, stTileMat, false);
+    }
 
     // E. 廚房 2F 屋頂不銹鋼商業排油煙風管與防雨罩
     const hoods = [
@@ -11567,13 +14128,18 @@ function buildWestBuilding() {
     addBox(g, 0.24, 0.62, 0.62, stainlessMat, kEastX + 0.10, y1F + 2.15, -19.55);
     addBox(g, 0.26, 0.48, 0.48, darkMetalMat, kEastX + 0.12, y1F + 2.15, -19.55);
 
-    // 樓梯塔東北角柱旁綠植盆栽與灌木 (Photo 2 & 3 右側柱旁植栽)
-    for (let sh = 0; sh < 3; sh++) {
-      addMesh(g, new THREE.SphereGeometry(0.52, 10, 8), mats.hedge || greenRoofMat, kEastX + 0.52, 0.48, -18.05 - sh * 0.95);
+    // v2.12.106 原 3 顆簡易綠球改由中庭西棟北側草地植物區（nfg B）之靠牆茂密自然灌叢精緻呈現；此處補建廚房東牆捲掛澆花軟管（實景照片 3 & 4）
+    {
+      const hoseMat = new THREE.MeshStandardMaterial({ color: 0xb7c2b0, roughness: 0.72 });
+      const hoseCoil = addMesh(g, new THREE.TorusGeometry(0.24, 0.032, 8, 18), hoseMat, -23.16, 0.78, -21.25, false);
+      hoseCoil.rotation.y = Math.PI / 2;
+      const hoseCoil2 = addMesh(g, new THREE.TorusGeometry(0.19, 0.028, 8, 18), hoseMat, -23.13, 0.78, -21.25, false);
+      hoseCoil2.rotation.y = Math.PI / 2;
     }
   }
 
     g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'west-building'; });
+  WEST_XF.apply(g);    // v2.12.40 恢復原始 9 跨長度後整棟（含北側廚房增建）北移 6.02 m；v2.12.49 再東移 3.5 m（依航照與實景照片）
   layerGroups.buildings.add(g);
   clickableGroups.push(g);
   landmarkGroupMap.set('west-building', g);
@@ -12293,9 +14859,9 @@ function makeTerracottaTilePatternTexture() {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 256;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#c65338';
+  ctx.fillStyle = '#b8735c';   // v2.12.63 依照片 95：霧面磚紅（較原橘紅柔和）
   ctx.fillRect(0, 0, 256, 256);
-  ctx.strokeStyle = '#9e3b24';
+  ctx.strokeStyle = '#94573f';
   ctx.lineWidth = 3;
   for (let r = 0; r < 8; r++) {
     const y = r * 32;
@@ -12314,6 +14880,47 @@ function makeTerracottaTilePatternTexture() {
 }
 
 // ---- 04 新棟（復興非營利幼兒園） (`buildNew` — 1:1 Floor Plan & Photo-Accurate Build) ----
+// v2.12.64 二丁掛白磁磚（227×60 mm、錯縫、灰色勾縫）：以世界座標程序式產生，不受方塊 UV 拉伸影響；遠處以 fwidth 淡化避免疊紋
+function makeErdingguaTileMat(baseHex = 0xe7eaec, groutMul = 0.60) {
+  const m = new THREE.MeshStandardMaterial({ color: baseHex, roughness: 0.7 });
+  m.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vEWPos; varying vec3 vEWNrm;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvEWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vEWNrm = normalize(mat3(modelMatrix) * objectNormal);');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vEWPos; varying vec3 vEWNrm;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          vec3 an = abs(vEWNrm);
+          vec2 q = an.x > 0.5 ? vEWPos.zy : (an.z > 0.5 ? vEWPos.xy : vEWPos.xz);
+          float rowH = 0.068, colW = 0.235;
+          float r = floor(q.y / rowH);
+          float u = q.x / colW + 0.5 * mod(r, 2.0), v = q.y / rowH;
+          float fu = fract(u), fv = fract(v);
+          float gl = max(1.0 - smoothstep(0.0, 0.04, min(fu, 1.0 - fu)), 1.0 - smoothstep(0.0, 0.12, min(fv, 1.0 - fv)));
+          float fw = max(fwidth(u), fwidth(v));
+          gl *= clamp(1.0 - (fw - 0.08) * 6.0, 0.0, 1.0);
+          diffuseColor.rgb *= mix(1.0, ${groutMul.toFixed(2)}, gl);
+        }`);
+  };
+  return m;
+}
+
+// v2.12.97 無障礙坡道地坪：粉紅褐色小口磚（10 cm 見方、灰縫），每 1.6 m 重複
+function makeRampTileTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#a99690'; x.fillRect(0, 0, 256, 256);
+  let sd = 31; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const T = 16;
+  for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+    const v = 0.92 + r() * 0.16;
+    x.fillStyle = `rgb(${Math.round(196 * v)},${Math.round(138 * v)},${Math.round(130 * v)})`;
+    x.fillRect(i * T + 1, j * T + 1, T - 2, T - 2);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
 function buildNewBuilding() {
   const g = new THREE.Group();
   g.userData = { landmarkId: 'new-building' };
@@ -12329,7 +14936,7 @@ function buildNewBuilding() {
 
   // Depth coordinates (Z in meters, North is smaller Z, South is larger Z):
   // Aligned so `zC = 20.28m` matches South Building's south facade and `zG_south = 8.78m` meets South Building's north corridor!
-  const zG  = 8.780;   // North end of `⑩–⑪ 共用走廊` (meets South Building's North Corridor at Z = 8.78m)
+  const zG  = SHARED_CORRIDOR_ZG;   // v2.12.96 `⑩–⑪ 共用走廊` 北端：與南棟北牆整面切齊（局部 z = 11.54m；原 8.78 在新棟北移後會突出南棟北牆約 3 m）
   const zF  = 13.398;  // North face of `④–⑥` North Stairwell & `⑥–⑩` 1F Accessible Ramp
   const zE  = 15.918;  // North Corridor outer line (`④–⑩`) & South wall of `西棟` (`①–④`)
   const zD  = 19.053;  // North wall of 新棟 classrooms (`①–⑩`)
@@ -12344,12 +14951,12 @@ function buildNewBuilding() {
 
   // Custom Materials
   const creamWallMat     = new THREE.MeshStandardMaterial({ color: 0xf2eee3, roughness: 0.72 });
-  const whiteTileMat     = mats.wallTile;
+  const whiteTileMat     = makeErdingguaTileMat();   // v2.12.64 依照片：白色二丁掛磁磚錯縫灰縫（原素白磁磚）
   const darkCopingMat    = new THREE.MeshStandardMaterial({ color: 0x45494e, roughness: 0.65 });
   const terracottaBoxMat = new THREE.MeshStandardMaterial({ map: makeTerracottaTilePatternTexture(), roughness: 0.68 });
-  const greenDiamondMat  = new THREE.MeshStandardMaterial({ color: 0x1c5e3a, roughness: 0.42, metalness: 0.15 });
+  const greenDiamondMat  = new THREE.MeshStandardMaterial({ color: 0x2f6d68, roughness: 0.42, metalness: 0.15 });   // v2.12.63 照片 95：小型青綠菱形磁磚
   const diamondRimMat    = new THREE.MeshStandardMaterial({ color: 0xf4f1e8, roughness: 0.55 });
-  const roofTileRedMat   = new THREE.MeshStandardMaterial({ color: 0xb84630, roughness: 0.62 });
+  const roofTileRedMat   = new THREE.MeshStandardMaterial({ color: 0x8e959b, roughness: 0.45, metalness: 0.45 });   // v2.12.63 照片 95：灰色金屬浪板緩坡屋頂（原紅瓦）
   const greenBlindMat    = new THREE.MeshStandardMaterial({ color: 0x289c4e, roughness: 0.58, side: THREE.DoubleSide });
   const acUnitMat        = new THREE.MeshStandardMaterial({ color: 0xdcdad2, roughness: 0.55, metalness: 0.2 });
   const pvcPipeMat       = new THREE.MeshStandardMaterial({ color: 0xf7f7f5, roughness: 0.35 });
@@ -12381,10 +14988,10 @@ function buildNewBuilding() {
     // 45° Rotated Square (Diamond) Green Tile Medallion in the center
     const dGroup = new THREE.Group();
     dGroup.position.set(cx, cy, cz + faceDirZ * (boxD / 2 + 0.025));
-    const rimMesh = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.56, 0.04), diamondRimMat);
+    const rimMesh = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.04), diamondRimMat);
     rimMesh.rotation.z = Math.PI / 4;
     dGroup.add(rimMesh);
-    const gemMesh = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.06), greenDiamondMat);
+    const gemMesh = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.27, 0.06), greenDiamondMat);
     gemMesh.rotation.z = Math.PI / 4;
     dGroup.add(gemMesh);
     g.add(dGroup);
@@ -12509,7 +15116,7 @@ function buildNewBuilding() {
   //        - 景觀造景花崗岩巨石 (Natural Landscaping Boulders)
   //        - 依 1F 平面圖精確配置之行動不便緩坡道 (+120 高程無障礙斜坡地坪、鍍鋅鋼管雙層安全護欄、新設黃色活動門)
   //    - 黃框轉折棟 (⑩–⑪):
-  //      * ⑩–⑪ (ax(10) 至 ax(11)，面寬 2.50m): 3 層樓 L 型轉折共用走廊 (共用走廊 向北延伸至 zG = 8.78m)
+  //      * ⑩–⑪ (ax(10) 至 ax(11)，面寬 2.50m): 3 層樓 L 型轉折共用走廊 (共用走廊 北端與南棟北牆切齊，見 SHARED_CORRIDOR_ZG)
   //      * 轉角中庭前庭植栽一株【高聳繁茂校園綠樹】(Large Courtyard Shade Tree)，枝葉扶疏貫穿 1F~3F，完美還原照片黃框構圖
   //      * 1F~3F 西向與北向白色磁磚通風欄杆，1F 平台緣石整齊陳列陶製植栽花盆與基底綠籬矮牆
   //      * 1F 西側銜接中庭花磚地坪之 4 階踏步階梯與側向引導坡道
@@ -12541,7 +15148,7 @@ function buildNewBuilding() {
     // 梯塔主體結構側牆與頂板 (西側山牆、東側隔牆、頂部結構板)
     // 西側在 1F~3F 為通往西棟之連通樓梯通道，徹底移除阻擋 1F/2F/3F 之實體封閉牆！僅在屋頂層 (y >= yRF) 保留梯塔山牆：
     addBox(g, 0.38, stTopY - yRF, stD, whiteTileMat, stX1 + 0.19, (yRF + stTopY) / 2, stCz);
-    addBox(g, 0.38, stTopY, stD, whiteTileMat, stX2 - 0.19, stTopY / 2, stCz);
+    addBox(g, 0.38, stTopY - yRF, stD, whiteTileMat, stX2 - 0.19, (yRF + stTopY) / 2, stCz);   // v2.12.68 依 1F～3F 平面圖：梯間東側與坡道／北走廊相通，僅屋頂層保留隔牆
     addBox(g, stW, 0.35, stD, mats.roof, stCx, stTopY, stCz);
 
     // 梯塔頂部：磁磚牆體 + 深灰梁帶 + 低坡度鋼板屋頂與銀白包邊 (照片 3F 以上梯間頂部)
@@ -12557,6 +15164,11 @@ function buildNewBuilding() {
     }
     addBox(g, stW + 0.36, 0.16, 0.10, roofMetalMat, stCx, stTopY + 0.16, zF - 0.30);   // 前緣銀白包邊
     addBox(g, stW + 0.44, 0.05, 0.14, whiteMetalMat, stCx, stTopY + 0.06, zF - 0.30); // 滴水條
+    // v2.12.64 依照片：梯塔屋頂挑簷下等距黑色鋼托架
+    for (let k = 0; k <= 4; k++) {
+      const bx = stX1 + 0.3 + k * ((stW - 0.6) / 4);
+      const br = addBox(g, 0.06, 0.05, 0.55, darkCopingMat, bx, stTopY - 0.12, zF - 0.10, false); br.rotation.x = 0.62;
+    }
 
     // 1F 迎賓門楣橫梁：照片中 1F/2F 間為深灰清水混凝土水平深梁 (正面不貼磁磚)
     addBox(g, stW, 0.52, 0.42, exposedConcreteBeamMat, stCx, 3.36, zF + 0.20);
@@ -12631,10 +15243,21 @@ function buildNewBuilding() {
 
     // 階梯兩側：西側(照片右側)為長條白色磁磚低矮花台牆 + 深灰壓頂；東側為短翼牆
     const wallZ = zF - nSteps * stepRun * 0.5;
+    const xStairWestJ = ax(4);   // 西棟 1F 走廊東緣
     const wLen = (entCx - 1.66) - (stX1 + 0.25);
-    addBox(g, wLen, 1.00, nSteps * stepRun + 0.45, whiteTileMat, stX1 + 0.25 + wLen / 2, 0.50, wallZ + 0.1);
-    addBox(g, wLen + 0.06, 0.08, nSteps * stepRun + 0.52, darkCopingMat, stX1 + 0.25 + wLen / 2, 1.04, wallZ + 0.1);
-    for (const side of [-1, 1]) {
+    // v2.12.67 使用者標示照片（黃框「新棟 1F 走廊牆壁」）：階梯西側為 1F 走廊平台＋前緣白磁磚實牆，
+    //   牆面與階梯最下階切齊、高出平台約 1.05 m，向西直抵西棟 1F 走廊（紅框）
+    {
+      const tx1 = xStairWestJ, tx2 = entCx - 1.30, tzF = zF - nSteps * stepRun, tw = tx2 - tx1, tcx = (tx1 + tx2) / 2;
+      addBox(g, tw, landingY, zF - tzF, mats.concrete, tcx, landingY / 2, (zF + tzF) / 2);
+      addBox(g, tw, landingY + 1.05, 0.24, whiteTileMat, tcx, (landingY + 1.05) / 2, tzF + 0.12);
+      addBox(g, tw + 0.06, 0.08, 0.30, darkCopingMat, tcx, landingY + 1.09, tzF + 0.12);
+      // 階梯側端牆僅沿梯段下半，保留入口平台往西通往 1F 走廊平台之通道（v2.12.68 步行測試）
+      const cz2 = zF - 1.0;
+      addBox(g, 0.24, landingY + 1.05, cz2 - tzF, whiteTileMat, tx2 - 0.12, (landingY + 1.05) / 2, (cz2 + tzF) / 2);
+      addBox(g, 0.30, 0.08, cz2 - tzF + 0.06, darkCopingMat, tx2 - 0.12, landingY + 1.09, (cz2 + tzF) / 2);
+    }
+    for (const side of [1]) {
       const cheekX = entCx + side * 1.66;
       const nSegments = 4;
       const segLen = (nSteps * stepRun + 0.30) / nSegments;
@@ -12854,6 +15477,19 @@ function buildNewBuilding() {
       addMesh(g, new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12), whiteMetalMat, xStairWest + stairBayW / 2, yNew + 2.45, stairZ, false);
     });
 
+    // v2.12.64 新棟北移 3 m 後已與西棟南端相接，移除 v2.12.62 之斜向補實量體
+    // v2.12.62 依照片 90／92：連通樓梯南側白色粉刷牆，沿梯段斜向之暗紅色踢腳帶
+    {
+      const redSkirt = new THREE.MeshStandardMaterial({ color: 0x7a2630, roughness: 0.7 });
+      const wallZ = stairZ + stairClearDepth / 2 + 0.03;
+      [[y1F_west, y1F_new], [3.95, 5.85], [7.70, 9.40]].forEach(([y0, y1]) => {
+        const L = Math.hypot(stairBayW, y1 - y0), ang = Math.atan2(y1 - y0, stairBayW);
+        const band = new THREE.Mesh(new THREE.BoxGeometry(L, 0.26, 0.02), redSkirt);
+        band.position.set(xStairWest + stairBayW / 2, (y0 + y1) / 2 + 0.16, wallZ); band.rotation.z = ang; g.add(band);
+        addBox(g, stairBayW, 2.4, 0.06, creamWallMat, xStairWest + stairBayW / 2, (y0 + y1) / 2 + 1.25, wallZ + 0.04);
+      });
+    }
+
     // ========================================================================
     // C. 外立面 (面向中庭 / 北側 z = zF = 13.398m) 依正面立圖精確還原斜向白色護牆與深灰清水過梁
     // ========================================================================
@@ -12863,32 +15499,13 @@ function buildNewBuilding() {
       const yWestBase = (f === 1 ? 3.95 : 7.70) + 0.45;
       const yEastBase = (f === 1 ? 5.85 : 9.40) + 0.45;
 
-      // C.1 斜向白色二丁掛實體側板護牆 (沿著梯段斜升)
-      const slopeShape = new THREE.Shape();
-      slopeShape.moveTo(xStairWest, f * FH);
-      slopeShape.lineTo(xTopLandEast, f * FH);
-      slopeShape.lineTo(xTopLandEast, yEastBase);
-      slopeShape.lineTo(xStairWest, yWestBase);
-      slopeShape.closePath();
-
-      const slopeGeom = new THREE.ExtrudeGeometry(slopeShape, { depth: 0.26, bevelEnabled: false });
-      const slopeMesh = new THREE.Mesh(slopeGeom, whiteTileMat);
-      slopeMesh.position.set(0, 0, zF);
-      g.add(slopeMesh);
-
-      // C.2 斜牆深灰水泥壓頂 (Dark Coping)
-      const sDx = xTopLandEast - xStairWest;
-      const sDy = yEastBase - yWestBase;
-      const sLen = Math.hypot(sDx, sDy);
-      const sPitch = Math.atan2(sDy, sDx);
-      const copingMesh = new THREE.Mesh(new THREE.BoxGeometry(sLen + 0.08, 0.08, 0.32), darkCopingMat);
-      copingMesh.position.set((xStairWest + xTopLandEast) / 2, (yWestBase + yEastBase) / 2 + 0.04, facadeZ);
-      copingMesh.rotation.z = sPitch;
-      g.add(copingMesh);
-
-      // C.3 上方橫貫整跨之深灰清水混凝土防雨結構過梁
-      addBox(g, xTopLandEast - xStairWest + 0.2, 0.52, 0.38, exposedConcreteBeamMat, (xStairWest + xTopLandEast) / 2, fy + FH - 0.26, facadeZ);
-
+      // v2.12.66 依使用者照片：梯間正面 2F／3F 為整面水平白磁磚矮牆（下為深灰樓板邊梁、上為深色壓頂），取代原斜向側板
+      {
+        const yFl = f === 1 ? 5.85 : 9.40, wx1 = xStairWest, wx2 = stX2, ww = wx2 - wx1, wcx = (wx1 + wx2) / 2;
+        addBox(g, ww + 0.2, 0.52, 0.40, exposedConcreteBeamMat, wcx, yFl - 0.26, facadeZ);
+        addBox(g, ww, 1.20, 0.26, whiteTileMat, wcx, yFl + 0.60, facadeZ);
+        addBox(g, ww + 0.08, 0.08, 0.34, darkCopingMat, wcx, yFl + 1.24, facadeZ);
+      }
       // C.4 兩端結構支撐方柱 (Axis 4 與 Axis 6)
       addBox(g, 0.44, FH - 0.52, 0.44, whiteTileMat, xStairWest + 0.22, fy + (FH - 0.52) / 2, facadeZ);
       addBox(g, 0.44, FH - 0.52, 0.44, whiteTileMat, xTopLandEast - 0.22, fy + (FH - 0.52) / 2, facadeZ);
@@ -12925,6 +15542,17 @@ function buildNewBuilding() {
     addBox(g, nCorW + 0.08, 0.09, 0.36, darkCopingMat, nCorCx, yRF + 0.92, zE + 0.14);
     // 屋頂銀白金屬防雨滴水簷口邊條 (Silver Metal Roof Trim)
     addBox(g, nCorW + 0.16, 0.06, 0.44, roofMetalMat, nCorCx, yRF + 0.97, zE + 0.14);
+    // v2.12.64 依照片 4897／4900：中段屋頂灰色金屬浪板向北挑出約 0.8 m，簷下等距黑色鋼托架
+    {
+      const eave = new THREE.Mesh(new THREE.BoxGeometry(nCorW + 0.6, 0.05, 0.95), roofTileRedMat);
+      eave.position.set(nCorCx, yRF + 1.30, zE - 0.30); eave.rotation.x = -0.12; g.add(eave);
+      addBox(g, nCorW + 0.64, 0.10, 0.06, roofMetalMat, nCorCx, yRF + 1.22, zE - 0.78);
+      for (let k = 0; k <= 6; k++) {
+        const bx = nCorX1 + 0.3 + k * ((nCorW - 0.6) / 6);
+        addBox(g, 0.08, 0.06, 0.70, darkCopingMat, bx, yRF + 1.13, zE - 0.30, false);
+        const br = addBox(g, 0.06, 0.05, 0.62, darkCopingMat, bx, yRF + 0.92, zE - 0.12, false); br.rotation.x = 0.62;
+      }
+    }
 
     // 沿 zE 外廊的主結構方柱 (Structural Columns at Axes ⑥, ⑦, ⑧, ⑨, ⑩)
     [7, 8, 9, 10].forEach(idx => {
@@ -12932,9 +15560,10 @@ function buildNewBuilding() {
       addBox(g, 0.48, 0.18, 0.48, darkCopingMat, ax(idx), 0.09, zE + 0.22, false);
     });
 
-    // 【北立面視覺焦點：橘紅陶磚立體陽台盒】(Terracotta Brick Balcony Box on 2F & 3F)
+    // 【北立面視覺焦點：橘紅陶磚立體陽台盒】(Terracotta Brick Balcony Box on 1F, 2F & 3F — 依 20261118_081632 / 081654 補建 1F 橘紅陶磚矮牆與中央綠色十字菱形花磚)
     const nBoxCx = (ax(8) + ax(9)) / 2;
     const nBoxW = (ax(9) - ax(8)) - 0.24; // 約 4.33m
+    addTerracottaBalconyBox(nBoxCx, y1F + parapetH / 2 + 0.24, zE + 0.04, nBoxW, parapetH + 0.44, 0.26, -1);
     addTerracottaBalconyBox(nBoxCx, y2F + parapetH / 2 + 0.08, zE - 0.18, nBoxW, parapetH + 0.18, 0.48, -1);
     addTerracottaBalconyBox(nBoxCx, y3F + parapetH / 2 + 0.08, zE - 0.18, nBoxW, parapetH + 0.18, 0.48, -1);
 
@@ -12945,180 +15574,428 @@ function buildNewBuilding() {
     }
 
     // ------------------------------------------------------------------------
-    // 3.3 【紅框前景精緻花園與 1F 無障礙緩坡道】
+    // 3.3 【紅框前景精緻花園與 1F L 型無障礙緩坡道】
+    // v2.12.111 依實景照片 20261118_132826 / 081808 / 081632 / 081654 / 20261123_073313 全面校正：
+    //   1. L 型無障礙坡道（寬 1.40 m，粉紅褐色方格防滑磚）：
+    //      - 第一段（縱向）：緊貼共用走廊西牆（x = −8.12..−6.72），起點切齊走廊北端（z = 2.54），由地坪 +0.14 緩升至轉角平台 +0.36；
+    //      - 轉角平台（1.40×1.40 m）：位於內轉角（x = −8.12..−6.72, z = 5.518..6.918）；
+    //      - 第二段（橫向）：緊貼新棟 1F 北立面往西（z = 5.518..6.918），由 +0.36 緩升至西端 +0.88；
+    //      - 庭院側採「洗石子斜向擋土矮牆＋開放式雙層不鏽鋼圓管欄杆」（移除舊版白磚實牆與黃色鐵門），
+    //        牆側設雙層不鏽鋼牆掛扶手，入口牆角貼身障輪椅標誌與黃色警語貼紙；
+    //      - 坡道外側緊貼連續 L 型「混凝土圓孔排水溝＋方形金屬格柵」與草坪收邊緣石。
+    //   2. 新棟前庭一體化階梯狀緣石草坪與混凝土曲徑步道：
+    //      - 整合原分裂之東西兩塊草坪，依 20261118_132826 黃框還原東北角退縮階梯緣石；
+    //      - 新增由南棟西側樓梯口彎向坡道入口之混凝土曲徑步道（紅箭頭動線）；
+    //      - 細化圓錐柏樹＋基部三塊景觀石、方形綠籬圍塑之雙蓋化糞池水泥平台與通氣管、三腳支架小苗、
+    //        黃色「請勿停車」拒馬、傘形雞蛋花與踏石步道。
     // ------------------------------------------------------------------------
-    const rampW = nCorW - 0.35;
-    const rampD = zE - zF; // 2.52m
-    const rampCx = nCorCx;
-    const rampCz = (zF + zE) / 2;
+    const GRP_Z = SOUTH_SHIFT + NEW_XF.toWorld(0, 0)[1];     // 新棟群組 z 位移（−9 m）
+    const LZ = zw => zw - GRP_Z;                              // 世界 z → 群組局部 z
+    const yardMark = g.children.length;                       // 本節起點：結尾統一標記 keepLevel
+    const { RX1, RX2, RXW, RZ0 } = NEW_RAMP;                  // RX1=-8.12, RX2=-6.72, RXW=-19.81, RZ0=2.54
+    const rzF = NEW_RAMP.zF, rzE = NEW_RAMP.zE;               // rzF=5.518, rzE=6.918
+    const RYS = 0.14, RYC = 0.36, RYE = 0.88;
+    const yV = zw => RYS + (RYC - RYS) * Math.max(0, Math.min(1, (zw - RZ0) / (rzF - RZ0)));
+    const yH = xw => RYC + (RYE - RYC) * Math.max(0, Math.min(1, (RX1 - xw) / (RX1 - RXW)));
+    const rampTex = makeRampTileTexture();
+    const washedStoneSide = new THREE.MeshStandardMaterial({ color: 0x8e8d87, roughness: 0.88 });
+    const drainMat = new THREE.MeshStandardMaterial({ color: 0xa6a39a, roughness: 0.86 });
+    const drainHoleMat = new THREE.MeshStandardMaterial({ color: 0x222528, roughness: 0.9 });
+    const grateMat = new THREE.MeshStandardMaterial({ color: 0x2d3136, roughness: 0.55, metalness: 0.45 });
+    const pathConcreteMat = new THREE.MeshStandardMaterial({ color: 0xb4b1a6, roughness: 0.86 });
 
-    // 無障礙緩坡道實體基座 (斜坡走道 + 白色磁磚保護側牆)
-    addBox(g, rampW, 0.65, rampD, mats.concrete, rampCx, 0.325, rampCz);
-    addBox(g, rampW, 0.90, 0.26, whiteTileMat, rampCx, 0.45, zF + 0.13);
-    addBox(g, rampW + 0.06, 0.08, 0.32, darkCopingMat, rampCx, 0.92, zF + 0.13);
+    // 頂面依 topFn 傾斜、底面水平的方塊（x1<x2、z1<z2 為世界座標）
+    const slopedBox = (x1, x2, z1, z2, botFn, topFn, material, axis) => {
+      const w = x2 - x1, d = z2 - z1;
+      const geo = new THREE.BoxGeometry(w, 1, d);
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const wx = x1 + w / 2 + pos.getX(i), wz = z1 + d / 2 + pos.getZ(i), u = axis === 'x' ? wx : wz;
+        const top = pos.getY(i) > 0;
+        const fn = top ? topFn : botFn;
+        pos.setY(i, typeof fn === 'function' ? fn(u) : fn);
+      }
+      geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, material);
+      m.position.set((x1 + x2) / 2, 0, LZ((z1 + z2) / 2));
+      m.castShadow = true; m.receiveShadow = true;
+      g.add(m);
+      return m;
+    };
+    const tileMatFor = (w, d) => {
+      const t = rampTex.clone(); t.needsUpdate = true; t.repeat.set(w / 1.15, d / 1.15);
+      return new THREE.MeshStandardMaterial({ map: t, roughness: 0.72 });
+    };
+    const rampFaces = (w, d) => [washedStoneSide, washedStoneSide, tileMatFor(w, d), washedStoneSide, washedStoneSide, washedStoneSide];
 
-    // 雙層鍍鋅鋼管無障礙防護欄杆 (Dual-Height Galvanized Safety Handrails, 高度 75cm / 90cm)
-    addBox(g, rampW - 0.30, 0.045, 0.045, handrailMat, rampCx, 1.10, zF + 0.13, false);
-    addBox(g, rampW - 0.30, 0.045, 0.045, handrailMat, rampCx, 0.95, zF + 0.13, false);
-    const nPosts = 7;
-    for (let p = 0; p <= nPosts; p++) {
-      const px = (rampCx - rampW / 2 + 0.2) + p * ((rampW - 0.4) / nPosts);
-      addMesh(g, new THREE.CylinderGeometry(0.025, 0.025, 0.30, 8), handrailMat, px, 0.97, zF + 0.13, false);
+    // (0) L 型無障礙坡道三段主體（粉紅褐方格磚面＋洗石子擋土側面）
+    slopedBox(RX1, RX2, RZ0, rzF, -0.25, yV, rampFaces(RX2 - RX1, rzF - RZ0), 'z');
+    slopedBox(RX1, RX2, rzF, rzE, -0.25, RYC, rampFaces(RX2 - RX1, rzE - rzF), 'z');
+    slopedBox(RXW, RX1, rzF, rzE, -0.25, yH, rampFaces(RX1 - RXW, rzE - rzF), 'x');
+
+    // 不鏽鋼圓管欄杆與立柱工具
+    const railSeg = (x1, y1, z1, x2, y2, z2, r = 0.020) => {
+      const a = new THREE.Vector3(x1, y1, LZ(z1)), b = new THREE.Vector3(x2, y2, LZ(z2));
+      const dv = new THREE.Vector3().subVectors(b, a);
+      if (dv.length() < 0.005) return null;
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, dv.length(), 8), handrailMat);
+      m.position.copy(a).addScaledVector(dv, 0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dv.clone().normalize());
+      g.add(m);
+      return m;
+    };
+    const postAt = (x, y0, y1, z) => addMesh(g, new THREE.CylinderGeometry(0.022, 0.022, y1 - y0, 8), handrailMat, x, (y0 + y1) / 2, LZ(z), false);
+
+    // (1) 外側連續開放式「雙層不鏽鋼圓管欄杆」（沿第一段西緣 → 90° 轉角 → 第二段北緣，依 20261118_081632 / 081654 / 081808）
+    {
+      const rx = RX1 + 0.05;
+      const rz = rzF + 0.05;
+      [0.68, 0.90].forEach(h => {
+        railSeg(rx, yV(RZ0) + h, RZ0 + 0.04, rx, RYC + h, rz);
+        railSeg(rx, RYC + h, rz, RXW + 0.08, RYE + h, rz);
+      });
+      // 第一段立柱
+      for (let zz = RZ0 + 0.08; zz < rz - 0.15; zz += 0.95) postAt(rx, yV(zz), yV(zz) + 0.90, zz);
+      postAt(rx, RYC, RYC + 0.90, rz);
+      // 第二段立柱（每約 1.15m 一支）
+      const nHPosts = Math.round((RX1 - RXW) / 1.15);
+      for (let k = 1; k <= nHPosts; k++) {
+        const xx = rx - (rx - (RXW + 0.08)) * (k / nHPosts);
+        postAt(xx, yH(xx), yH(xx) + 0.90, rz);
+      }
+      // 坡道西端接 1F 走廊之白色金屬柵門收邊（對應 20261118_081654 遠端白柵門）
+      addBox(g, 0.08, 0.95, rzE - rzF, whiteTileMat, RXW + 0.06, RYE + 0.48, LZ((rzF + rzE) / 2), false);
     }
 
-    // 平面圖標註之「新設鍍鋅鋼欄杆及活動門」黃色烤漆活動柵門 (附插銷)
-    const yGateW = 1.65, yGateH = 0.92;
-    const yGateX = rampCx - rampW * 0.32, yGateZ = zF - 0.18;
-    const ySteelMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.38, metalness: 0.55 });
-    addBox(g, yGateW, 0.05, 0.05, ySteelMat, yGateX, 1.05, yGateZ, false);
-    addBox(g, yGateW, 0.05, 0.05, ySteelMat, yGateX, 0.35, yGateZ, false);
-    for (let k = 0; k < 6; k++) {
-      addBox(g, 0.035, 0.70, 0.035, ySteelMat, yGateX - yGateW/2 + 0.15 + k * (yGateW - 0.3)/5, 0.70, yGateZ, false);
+    // (2) 內側牆掛雙層不鏽鋼扶手（第一段貼共用走廊西牆；第二段貼新棟 1F 陶磚／白磚矮牆）
+    {
+      const ex = RX2 - 0.05;
+      const sz = rzE - 0.05;
+      [0.68, 0.88].forEach(h => {
+        railSeg(ex, yV(RZ0) + h, RZ0 + 0.08, ex, RYC + h, sz);
+        railSeg(ex, RYC + h, sz, RXW + 0.12, RYE + h, sz);
+      });
+      // 共用走廊西北角：不鏽鋼落水立管＋身障輪椅標誌＋黃色小警語貼紙（對應 20261118_081632 左側）
+      addMesh(g, new THREE.CylinderGeometry(0.032, 0.032, 1.45, 8), handrailMat, RX2 - 0.04, 0.88, LZ(RZ0 + 0.04), false);
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.36), new THREE.MeshBasicMaterial({ map: makeWheelchairSignTexture() }));
+      sign.rotation.y = -Math.PI / 2;
+      sign.position.set(RX2 - 0.015, 0.92, LZ(RZ0 + 0.36));
+      g.add(sign);
+      const warnMat = new THREE.MeshBasicMaterial({ color: 0xf4df74 });
+      addBox(g, 0.012, 0.22, 0.16, warnMat, RX2 - 0.015, 0.56, LZ(RZ0 + 0.24), false);
+      addBox(g, 0.012, 0.22, 0.16, warnMat, RX2 - 0.015, 0.32, LZ(RZ0 + 0.24), false);
+    }
+
+    // (3) 連續 L 型混凝土圓孔排水溝＋方形金屬格柵＋草坪收邊緣石（依 20261118_081808 / 081632 / 081654）
+    {
+      const dW = 0.46;
+      const curbT = 0.12;
+      // 入口門檻橫向圓孔排水溝（z = 2.08..2.54）
+      addBox(g, RX2 - RX1 + dW, 0.24, 0.46, drainMat, (RX1 - dW + RX2) / 2, 0.02, LZ(RZ0 - 0.23), false);
+      for (let k = 0; k < 3; k++) {
+        addMesh(g, new THREE.CylinderGeometry(0.032, 0.032, 0.02, 8), drainHoleMat, RX1 + 0.28 + k * 0.40, 0.142, LZ(RZ0 - 0.23), false);
+      }
+      addBox(g, 0.34, 0.02, 0.34, grateMat, RX1 - dW / 2, 0.144, LZ(RZ0 - 0.23), false);
+      // 第一段外側排水溝（x = RX1 - dW .. RX1, z = RZ0 .. rzF）
+      const d1x = RX1 - dW / 2;
+      addBox(g, dW, 0.24, rzF - RZ0, drainMat, d1x, 0.02, LZ((RZ0 + rzF) / 2), false);
+      for (let zz = RZ0 + 0.22; zz < rzF - 0.08; zz += 0.34) {
+        if (Math.abs((zz - RZ0) % 1.36 - 0.68) < 0.17) {
+          addBox(g, 0.32, 0.02, 0.34, grateMat, d1x, 0.144, LZ(zz), false);
+        } else {
+          addMesh(g, new THREE.CylinderGeometry(0.032, 0.032, 0.02, 8), drainHoleMat, d1x, 0.142, LZ(zz), false);
+        }
+      }
+      // 第一段排水溝西側水泥收邊緣石
+      addBox(g, curbT, 0.28, rzF - RZ0 + 0.46, drainMat, RX1 - dW - curbT / 2, 0.08, LZ((RZ0 - 0.46 + rzF) / 2), false);
+      // 第二段北側排水溝（x = RXW .. RX1, z = rzF - dW .. rzF）
+      const d2z = rzF - dW / 2;
+      addBox(g, RX1 - RXW + dW, 0.24, dW, drainMat, (RXW + RX1 - dW) / 2, 0.02, LZ(d2z), false);
+      for (let xx = RX1 - 0.30; xx > RXW + 0.30; xx -= 0.42) {
+        if (Math.abs((RX1 - xx) % 2.94 - 1.47) < 0.22) {
+          addBox(g, 0.34, 0.02, 0.32, grateMat, xx, 0.144, LZ(d2z), false);
+        } else {
+          addMesh(g, new THREE.CylinderGeometry(0.032, 0.032, 0.02, 8), drainHoleMat, xx, 0.142, LZ(d2z), false);
+        }
+      }
+      // 第二段排水溝北側水泥收邊緣石
+      addBox(g, RX1 - RXW + dW, 0.28, curbT, drainMat, (RXW + RX1 - dW) / 2, 0.08, LZ(rzF - dW - curbT / 2), false);
     }
 
     // 【中庭前景立體綠化花園 (Courtyard Landscape Garden Island)】
-    const lawnMat = new THREE.MeshStandardMaterial({ color: 0x487a32, roughness: 0.88 });
-    const curbMat = new THREE.MeshStandardMaterial({ color: 0xb5afa4, roughness: 0.68 });
+    const lawnMat = new THREE.MeshStandardMaterial({ color: 0x4b8236, roughness: 0.90 });
+    const curbMat = new THREE.MeshStandardMaterial({ color: 0xb8b3a8, roughness: 0.72 });
     const plumeriaTrunkMat = new THREE.MeshStandardMaterial({ color: 0x6e5843, roughness: 0.92 });
     const plumeriaLeafMat = new THREE.MeshStandardMaterial({ color: 0x367c3b, roughness: 0.72 });
     const flowerWhiteMat = new THREE.MeshStandardMaterial({ color: 0xfffaea, roughness: 0.45 });
-    const juniperMat = new THREE.MeshStandardMaterial({ color: 0x1f4826, roughness: 0.84 });
-    const hedgeMat1 = new THREE.MeshStandardMaterial({ color: 0x4a8c3d, roughness: 0.80 });
-    const hedgeMat2 = new THREE.MeshStandardMaterial({ color: 0x275e2c, roughness: 0.82 });
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x767066, roughness: 0.88 });
+    const kgPlumeriaFlowerMat = new THREE.MeshStandardMaterial({ color: 0xfffaea, roughness: 0.45 });
+    registerPhenoMats('緬梔', { outer: [plumeriaLeafMat], flower: [kgPlumeriaFlowerMat] });
+    const juniperDark = new THREE.MeshStandardMaterial({ color: 0x1e4c23, roughness: 0.84 });
+    const juniperMid  = new THREE.MeshStandardMaterial({ color: 0x2f6a29, roughness: 0.80 });
+    const juniperBright = new THREE.MeshStandardMaterial({ color: 0x498934, roughness: 0.78 });
+    const juniperTip  = new THREE.MeshStandardMaterial({ color: 0x8a5b32, roughness: 0.88 });
+    const hedgeMat1 = new THREE.MeshStandardMaterial({ color: 0x458638, roughness: 0.80 });
+    const hedgeMat2 = new THREE.MeshStandardMaterial({ color: 0x265c29, roughness: 0.82 });
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x6c6b66, roughness: 0.88 });
 
-    // 1. 起伏草坪土丘 (Lawn Mound) 與洗石子收邊緣石
-    const lawnW = rampW + 1.20;
-    const lawnCx = rampCx + 0.20;
-    const lawnCz = zF - 1.55;
-    const lawnD = 2.40;
-    addBox(g, lawnW, 0.18, lawnD, lawnMat, lawnCx, 0.09, lawnCz);
-    addBox(g, lawnW + 0.20, 0.14, 0.22, curbMat, lawnCx, 0.07, lawnCz - lawnD / 2, false);
-    addBox(g, 0.22, 0.14, lawnD, curbMat, lawnCx - lawnW / 2, 0.07, lawnCz, false);
-    addBox(g, 0.22, 0.14, lawnD, curbMat, lawnCx + lawnW / 2, 0.07, lawnCz, false);
+    const nbUp = new THREE.Vector3(0, 1, 0);
+    let nsd = 47; const nr = () => ((nsd = (nsd * 16807) % 2147483647) / 2147483647);
+    const nLimb = (a, b2, r0, r1, mat) => {
+      const d = new THREE.Vector3().subVectors(b2, a);
+      const m = addMesh(g, new THREE.CylinderGeometry(r1, r0, d.length(), 7), mat, (a.x + b2.x) / 2, (a.y + b2.y) / 2, (a.z + b2.z) / 2);
+      m.quaternion.setFromUnitVectors(nbUp, d.normalize());
+    };
+    const NV = (x, y, z) => new THREE.Vector3(x, y, z);
 
-    // 2. 【雕塑感雞蛋花樹 (Plumeria Tree)】(位於 ax(7) 前方中庭草坪)
-    const pX = ax(7) + 0.35, pZ = zF - 1.45;
-    const trunk1 = addMesh(g, new THREE.CylinderGeometry(0.16, 0.22, 1.8, 10), plumeriaTrunkMat, pX, 0.9, pZ);
-    trunk1.rotation.z = -0.12;
-    const branch1 = addMesh(g, new THREE.CylinderGeometry(0.11, 0.15, 1.6, 8), plumeriaTrunkMat, pX - 0.35, 2.1, pZ - 0.15);
-    branch1.rotation.z = 0.38;
-    branch1.rotation.x = -0.15;
-    const branch2 = addMesh(g, new THREE.CylinderGeometry(0.10, 0.14, 1.7, 8), plumeriaTrunkMat, pX + 0.42, 2.2, pZ + 0.12);
-    branch2.rotation.z = -0.42;
-    branch2.rotation.y = 0.25;
-    const branch3 = addMesh(g, new THREE.CylinderGeometry(0.09, 0.13, 1.5, 8), plumeriaTrunkMat, pX + 0.05, 2.3, pZ - 0.35);
-    branch3.rotation.x = -0.45;
-
-    const foliageClusters = [
-      { x: pX - 0.65, y: 2.85, z: pZ - 0.25, r: 1.15, s: [1.2, 0.75, 1.1] },
-      { x: pX + 0.75, y: 2.95, z: pZ + 0.15, r: 1.25, s: [1.3, 0.78, 1.2] },
-      { x: pX + 0.10, y: 3.15, z: pZ - 0.50, r: 1.05, s: [1.15, 0.7, 1.05] },
-      { x: pX + 0.15, y: 3.45, z: pZ - 0.05, r: 1.35, s: [1.35, 0.82, 1.3] },
-      { x: pX - 0.20, y: 2.65, z: pZ + 0.35, r: 0.95, s: [1.1, 0.68, 1.0] }
-    ];
-    foliageClusters.forEach(c => {
-      const sp = addMesh(g, new THREE.SphereGeometry(c.r, 12, 10), plumeriaLeafMat, c.x, c.y, c.z);
-      sp.scale.set(c.s[0], c.s[1], c.s[2]);
-    });
-
-    const flowerOffsets = [
-      [-0.75, 2.70, -0.3], [0.85, 2.80, 0.2], [0.25, 3.55, 0.1],
-      [-0.10, 3.25, -0.6], [0.45, 3.10, -0.4], [-0.40, 2.85, 0.3]
-    ];
-    flowerOffsets.forEach(fo => {
-      addMesh(g, new THREE.SphereGeometry(0.12, 8, 6), flowerWhiteMat, pX + fo[0], fo[1], pZ + fo[2], false);
-    });
-
-    // 3. 【挺拔圓錐龍柏 (Conical Juniper)】(位於雞蛋花樹右側，ax(8)+1.3)
-    const junX = ax(8) + 1.25, junZ = zF - 1.40;
-    addMesh(g, new THREE.ConeGeometry(0.85, 1.6, 12), juniperMat, junX, 1.0, junZ);
-    addMesh(g, new THREE.ConeGeometry(0.70, 1.5, 12), juniperMat, junX, 1.9, junZ);
-    addMesh(g, new THREE.ConeGeometry(0.50, 1.4, 12), juniperMat, junX, 2.7, junZ);
-    addMesh(g, new THREE.ConeGeometry(0.28, 0.9, 10), juniperMat, junX, 3.4, junZ);
-    addBox(g, 0.20, 0.40, 0.20, plumeriaTrunkMat, junX, 0.20, junZ, false);
-
-    // 4. 【複層修剪常綠綠籬帶 (Layered Manicured Shrub Hedges)】
-    addBox(g, lawnW * 0.78, 0.52, 0.58, hedgeMat2, lawnCx + 0.4, 0.26, zF - 0.70);
-    for (let b = 0; b < 6; b++) {
-      const bx = (lawnCx - lawnW * 0.35) + b * 1.5;
-      const bz = zF - 2.25 + (b % 2) * 0.25;
-      const shp = addMesh(g, new THREE.SphereGeometry(0.38, 10, 8), hedgeMat1, bx, 0.35, bz, false);
-      shp.scale.set(1.1, 0.85, 1.0);
+    // 1. 傘形雞蛋花（緬梔，位於方形綠籬西南側、鄰近橫向坡道，依 20261118_132826 / 20261123_073313）
+    const pX = -16.2, pZ = LZ(3.45);
+    addPhenoGround(g, '緬梔', pX, 0.2, pZ, 2.2);
+    {
+      const tips = [];
+      const base = NV(pX, 0.95, pZ);
+      nLimb(NV(pX, 0.14, pZ), base, 0.19, 0.16, plumeriaTrunkMat);
+      const fork = (pt, ang, tilt, len, rad, depth) => {
+        const e = NV(pt.x + Math.cos(ang) * Math.sin(tilt) * len, pt.y + Math.cos(tilt) * len, pt.z + Math.sin(ang) * Math.sin(tilt) * len);
+        nLimb(pt, e, rad, rad * 0.75, plumeriaTrunkMat);
+        if (depth === 0) { tips.push(e); return; }
+        fork(e, ang - 0.58, tilt * 0.85, len * 0.76, rad * 0.75, depth - 1);
+        fork(e, ang + 0.58, tilt * 0.85, len * 0.76, rad * 0.75, depth - 1);
+      };
+      [0.3, 1.9, 3.4, 4.9].forEach((a, i) => fork(base, a, 0.84 + (i % 2) * 0.1, 1.18, 0.115, 2));
+      const leafGeo = new THREE.BoxGeometry(0.68, 0.025, 0.19);
+      tips.forEach((e, i) => {
+        for (let l = 0; l < 8; l++) {
+          const la = (l / 8) * Math.PI * 2 + i;
+          const lf = addMesh(g, leafGeo, plumeriaLeafMat, e.x + Math.cos(la) * 0.28, e.y + 0.14, e.z + Math.sin(la) * 0.28, true, false);
+          lf.rotation.set(0, -la, 0.4);
+        }
+        const tf = addMesh(g, new THREE.DodecahedronGeometry(0.40, 1), plumeriaLeafMat, e.x, e.y + 0.18, e.z);
+        tf.scale.set(1.2, 0.52, 1.2);
+        if (i % 2 === 0) addMesh(g, new THREE.SphereGeometry(0.10, 6, 5), kgPlumeriaFlowerMat, e.x + 0.1, e.y + 0.40, e.z, false);
+      });
     }
 
-    // 5. 【天然景觀造景花崗岩巨石 (Natural Granite Landscaping Boulders)】
-    const boulderCoords = [
-      { x: pX - 1.4, y: 0.28, z: zF - 1.8, sx: 0.75, sy: 0.55, sz: 0.65, rot: 0.4 },
-      { x: junX + 0.9, y: 0.24, z: zF - 1.6, sx: 0.65, sy: 0.48, sz: 0.55, rot: -0.3 },
-      { x: lawnCx - 0.8, y: 0.20, z: zF - 2.3, sx: 0.52, sy: 0.38, sz: 0.45, rot: 0.8 }
-    ];
-    boulderCoords.forEach(b => {
-      const bMesh = addMesh(g, new THREE.DodecahedronGeometry(0.48, 1), rockMat, b.x, b.y, b.z, false);
-      bMesh.scale.set(b.sx, b.sy, b.sz);
-      bMesh.rotation.set(b.rot * 0.5, b.rot, b.rot * 0.2);
-    });
+    // 2. 圓錐柏樹／龍柏（依 20261118_132826 / 081808 / 20261123_073313：座落坡道西側草坪中央偏東，飽滿圓錐綠冠略帶褐梢＋北側三塊灰黑景觀石）
+    {
+      const junX = -10.35, junZ = LZ(1.85);
+      addBox(g, 0.18, 0.48, 0.18, plumeriaTrunkMat, junX, 0.36, junZ, false);
+      for (let k = 0; k < 20; k++) {
+        const t = k / 19;
+        const rr = 1.05 * (1 - t * 0.82) + 0.14;
+        const a = k * 2.38;
+        const mat = k % 4 === 0 ? juniperDark : (k % 3 === 0 ? juniperBright : juniperMid);
+        const cl = addMesh(g, lumpyGeometry(new THREE.IcosahedronGeometry(0.58 * (1 - t * 0.52) + 0.16, 1), 0.18), mat,
+          junX + Math.cos(a) * rr * 0.52, 0.62 + t * 2.35, junZ + Math.sin(a) * rr * 0.52);
+        cl.scale.set(1.05, 1.15, 1.05);
+      }
+      for (let k = 0; k < 6; k++) {
+        addMesh(g, new THREE.IcosahedronGeometry(0.15, 0), juniperTip,
+          junX + Math.cos(k * 1.8 + 0.4) * 0.68, 1.15 + k * 0.28, junZ + Math.sin(k * 1.8 + 0.4) * 0.68, false);
+      }
+      // 柏樹北側腳下三塊灰黑景觀圓石（對應 20261118_081808 下緣與 20261123_073313）
+      [
+        { x: -10.25, z: LZ(0.55), sx: 0.55, sy: 0.38, sz: 0.46, rot: 0.4 },
+        { x: -10.75, z: LZ(0.85), sx: 0.42, sy: 0.30, sz: 0.38, rot: -0.5 },
+        { x: -10.45, z: LZ(1.12), sx: 0.34, sy: 0.25, sz: 0.32, rot: 0.9 }
+      ].forEach(rb => {
+        const bm = addMesh(g, new THREE.DodecahedronGeometry(0.42, 1), rockMat, rb.x, 0.26, rb.z, false);
+        bm.scale.set(rb.sx, rb.sy, rb.sz);
+        bm.rotation.set(rb.rot * 0.3, rb.rot, rb.rot * 0.2);
+      });
+    }
 
-    // 6. 【西棟交接轉角石板步道與花台綠植】（依實景照片 Image 3 中庭轉角實景極致還原）
-    // (A) 自中庭幾何連鎖磚廣場一路優美蜿蜒至幼兒園 1F 入口階梯之天然板岩踏石步道
-    const stonePaverMat = new THREE.MeshStandardMaterial({ color: 0x88847b, roughness: 0.85 });
-    const steppingPath = [
-      [-21.4, 8.05],
-      [-21.2, 8.65],
-      [-21.0, 9.25],
-      [-20.8, 9.85],
-      [-20.6, 10.45],
-      [-20.4, 11.05],
-      [-20.1, 11.65],
-      [-19.8, 12.20],
-      [-19.6, 12.75]
-    ];
-    steppingPath.forEach(([px, pz], sIdx) => {
-      const paver = addMesh(g, new THREE.BoxGeometry(0.56, 0.05, 0.44), stonePaverMat, px, 0.09, pz, false);
-      paver.rotation.y = (sIdx % 2 === 0 ? 0.12 : -0.10) + sIdx * 0.03;
-    });
+    // 3. 黃色「請勿停車」移動拒馬 ×2 與橘色交通錐（依 20261118_132826 / 20261123_073313 實景位置）
+    {
+      const yBar = new THREE.MeshStandardMaterial({ color: 0xe9be1c, roughness: 0.48, metalness: 0.22 });
+      [[-11.15, LZ(-1.55), 0.18], [-16.65, LZ(1.95), -0.18]].forEach(([bx, bz, ry]) => {
+        const bg = new THREE.Group();
+        bg.position.set(bx, 0.17, bz); bg.rotation.y = ry;
+        addBox(bg, 1.05, 0.05, 0.05, yBar, 0, 0.84, 0); addBox(bg, 1.05, 0.05, 0.05, yBar, 0, 0.28, 0);
+        addBox(bg, 0.05, 0.84, 0.05, yBar, -0.50, 0.42, 0); addBox(bg, 0.05, 0.84, 0.05, yBar, 0.50, 0.42, 0);
+        addBox(bg, 0.86, 0.42, 0.014, yBar, 0, 0.56, 0.01, false);
+        addBox(bg, 0.06, 0.03, 0.48, yBar, -0.50, 0.02, 0); addBox(bg, 0.06, 0.03, 0.48, yBar, 0.50, 0.02, 0);
+        g.add(bg);
+      });
+      addMesh(g, new THREE.ConeGeometry(0.13, 0.58, 12), new THREE.MeshStandardMaterial({ color: 0xf95721, roughness: 0.5 }), -16.10, 0.46, LZ(1.80));
+    }
 
-    // (B) 步道旁與西棟東走廊轉角草坪間散落之【天然景觀石群】(Natural Landscape Boulders per Image 3)
-    const junctionBoulders = [
-      { x: -23.1, z: 11.2, sx: 0.68, sy: 0.45, sz: 0.58, rot: 0.4 },
-      { x: -22.4, z: 11.6, sx: 0.55, sy: 0.38, sz: 0.48, rot: -0.6 },
-      { x: -23.4, z: 14.2, sx: 0.48, sy: 0.32, sz: 0.42, rot: 0.8 }
-    ];
-    junctionBoulders.forEach(jb => {
-      const bMesh = addMesh(g, new THREE.DodecahedronGeometry(0.45, 1), rockMat, jb.x, 0.18, jb.z, false);
+    // 4. 西段草坪踏石步道、景觀石群與西棟牆緣小圓灌木
+    const stonePaverMat = new THREE.MeshStandardMaterial({ color: 0x908d84, roughness: 0.85 });
+    for (let sIdx = 0; sIdx < 12; sIdx++) {
+      const t = sIdx / 11;
+      const paver = addMesh(g, new THREE.BoxGeometry(0.56, 0.05, 0.40), stonePaverMat, -17.0 - t * 3.6, 0.19, LZ(-1.35 + t * 4.5), false);
+      paver.rotation.y = -0.35 + (sIdx % 2 === 0 ? 0.05 : -0.04);
+    }
+    [
+      { x: -21.2, z: 9.2, sx: 0.72, sy: 0.46, sz: 0.60, rot: 0.4 },
+      { x: -20.5, z: 9.6, sx: 0.58, sy: 0.38, sz: 0.50, rot: -0.6 },
+      { x: -20.9, z: 10.2, sx: 0.50, sy: 0.34, sz: 0.44, rot: 0.8 }
+    ].forEach(jb => {
+      const bMesh = addMesh(g, new THREE.DodecahedronGeometry(0.45, 1), rockMat, jb.x, 0.24, jb.z, false);
       bMesh.scale.set(jb.sx, jb.sy, jb.sz);
       bMesh.rotation.set(jb.rot * 0.4, jb.rot, jb.rot * 0.2);
     });
-
-    // (C) 轉角草坪修剪常綠小圓球灌木 (Pruned Spherical Shrubs per Image 3)
-    [
-      [-23.6, 10.4], [-23.4, 12.4], [-21.8, 8.8], [-18.8, 11.8], [-22.8, 14.8]
-    ].forEach(([bx, bz], i) => {
-      const shp = addMesh(g, new THREE.SphereGeometry(0.32 + (i % 2) * 0.06, 10, 8), hedgeMat1, bx, 0.28, bz, false);
-      shp.scale.set(1.1, 0.88, 1.05);
+    [[-22.7, 8.2], [-22.6, 10.6], [-22.4, 12.6]].forEach(([bx, bz], i) => {
+      const shp = addMesh(g, new THREE.SphereGeometry(0.38 + (i % 2) * 0.08, 10, 8), hedgeMat1, bx, 0.42, bz, false);
+      shp.scale.set(1.1, 0.9, 1.05);
     });
 
-    // (D) 連鎖磚廣場與草坪之【弧形洗石子收邊緣石】(Curved Wash-Stone Plaza Curb per Image 3 前景)
-    const juncCurbMat = new THREE.MeshStandardMaterial({ color: 0xbdb8ac, roughness: 0.72 });
-    for (let c = 0; c <= 8; c++) {
-      const cx = -24.31 + c * ((-19.5 - (-24.31)) / 8);
-      const cz = 7.95 + Math.sin(c / 8 * Math.PI) * 0.25;
-      addBox(g, 0.65, 0.12, 0.18, juncCurbMat, cx, 0.06, cz, false);
+    // 5. 一體化階梯緣石草坪、混凝土曲徑步道、方形綠籬化糞池平台與前緣灌木（依 20261118_132826 黃框與紅箭頭）
+    {
+      const WZ = zw => zw + 9.0;
+      const juncCurbMat = new THREE.MeshStandardMaterial({ color: 0xbdb8ac, roughness: 0.72 });
+      const gardenLawnMat = new THREE.MeshStandardMaterial({ color: 0x4f8a36, roughness: 0.9 });
+      // 一體化連續草坪輪廓（涵蓋西段草坪＋中央綠籬花台＋東側階梯退縮草坪，內側緊貼 L 型排水溝外緣）
+      const poly = [
+        [-23.4, -3.15],
+        [-17.2, -3.15],
+        [-16.2, -3.55],
+        [-11.1, -3.55],
+        [-10.4, -3.95],
+        [-7.15, -3.95],
+        [-7.15, -2.55],
+        [-4.65, -2.55],
+        [-4.65,  2.54],
+        [-6.72,  2.54],
+        [-8.68,  2.54],
+        [-8.68,  4.98],
+        [-23.4,  4.98]
+      ];
+      const lawnExtrude = pts => {
+        const sh = new THREE.Shape();
+        pts.forEach(([x, z], k) => (k ? sh.lineTo(x, -WZ(z)) : sh.moveTo(x, -WZ(z))));
+        const eg = new THREE.ExtrudeGeometry(sh, { depth: 0.17, bevelEnabled: false });
+        eg.rotateX(-Math.PI / 2);
+        return eg;
+      };
+      const skirt = (x1, z1, x2, z2) => {
+        const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+        if (Math.min(z1, z2) > 2.50 || !inCourtyardSink(mx, mz, 0.05)) return;
+        const L = Math.hypot(x2 - x1, z2 - z1);
+        const sk = addBox(g, L + 0.2, 0.80, 0.2, juncCurbMat, mx, -0.38, WZ(mz), false);
+        sk.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
+      };
+      addMesh(g, lawnExtrude(poly), gardenLawnMat, 0, 0.0, 0, false, true);
+      // 外緣（北側階梯緣石＋東側緣石＋西側緣石）與下沉中庭擋土裙邊
+      for (let k = 0; k < 8; k++) {
+        const [x1, z1] = poly[k], [x2, z2] = poly[k + 1];
+        const L = Math.hypot(x2 - x1, z2 - z1);
+        const cb = addBox(g, L + 0.18, 0.24, 0.20, juncCurbMat, (x1 + x2) / 2, 0.12, WZ((z1 + z2) / 2), false);
+        cb.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
+      }
+      addBox(g, 0.20, 0.24, 4.98 + 3.15, juncCurbMat, -23.4, 0.12, WZ((4.98 - 3.15) / 2), false);
+      for (let k = 0; k < poly.length; k++) {
+        const [x1, z1] = poly[k], [x2, z2] = poly[(k + 1) % poly.length];
+        skirt(x1, z1, x2, z2);
+      }
+
+      // 由南棟西側樓梯底彎向無障礙坡道入口之混凝土曲徑步道（對應 20261118_132826 紅箭頭動線）
+      {
+        const pPts = [
+          [-4.45, 0.72], [-5.65, 0.88], [-6.85, 1.32], [-7.42, 2.08]
+        ];
+        for (let k = 0; k < pPts.length - 1; k++) {
+          const [x1, z1] = pPts[k], [x2, z2] = pPts[k + 1];
+          const L = Math.hypot(x2 - x1, z2 - z1);
+          const seg = addBox(g, L + 0.28, 0.05, 1.08, pathConcreteMat, (x1 + x2) / 2, 0.165, WZ((z1 + z2) / 2), false);
+          seg.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
+        }
+        // 步道入口端與坡道門檻銜接混凝土墊片
+        addBox(g, 1.38, 0.05, 0.65, pathConcreteMat, -7.42, 0.165, WZ(2.22), false);
+      }
+
+      // 修剪綠籬條工具
+      let hs = 13; const hr = () => ((hs = (hs * 16807) % 2147483647) / 2147483647);
+      const hedgeStrip = (x1, z1, x2, z2, h = 0.72, w = 0.52) => {
+        const L = Math.hypot(x2 - x1, z2 - z1), ang = -Math.atan2(z2 - z1, x2 - x1);
+        const hb = addBox(g, L, h - 0.14, w, hedgeMat2, (x1 + x2) / 2, 0.17 + (h - 0.14) / 2, WZ((z1 + z2) / 2));
+        hb.rotation.y = ang;
+        const n = Math.max(2, Math.round(L / 0.52));
+        for (let k = 0; k <= n; k++) {
+          const t = k / n, cx = x1 + (x2 - x1) * t, cz = z1 + (z2 - z1) * t;
+          const cr = addMesh(g, new THREE.IcosahedronGeometry(0.28 + hr() * 0.05, 1), hr() < 0.5 ? hedgeMat1 : hedgeMat2, cx, 0.17 + h - 0.18, WZ(cz), false);
+          cr.scale.set(1.0, 0.72, w / 0.55);
+        }
+      };
+
+      // (a) 緊貼第一段無障礙坡道外側排水溝之整齊修剪綠籬（對應 20261118_081808 / 081632）
+      hedgeStrip(-9.08, 2.25, -9.08, 4.92, 0.80, 0.56);
+
+      // (b) 中央方形綠籬圍塑區＋內部混凝土化糞池雙蓋平台與金屬通氣管（依 20261118_132826 / 20261123_073313）
+      hedgeStrip(-15.65, -0.35, -11.65, -0.35, 0.74, 0.54);
+      hedgeStrip(-15.65, -0.35, -15.65,  2.15, 0.74, 0.54);
+      hedgeStrip(-15.65,  2.15, -11.65,  2.15, 0.74, 0.54);
+      hedgeStrip(-11.65,  0.55, -11.65,  2.15, 0.74, 0.54);
+      // 雙塊方形混凝土化糞池檢修蓋與中央直立細通氣管
+      const hatchMat = new THREE.MeshStandardMaterial({ color: 0xbcbab2, roughness: 0.82 });
+      const padMat = new THREE.MeshStandardMaterial({ color: 0x8f8a80, roughness: 0.90 });
+      addBox(g, 3.25, 0.06, 1.75, padMat, -13.65, 0.18, WZ(0.92), false);
+      addBox(g, 1.12, 0.05, 1.18, hatchMat, -12.95, 0.22, WZ(0.92), false);
+      addBox(g, 1.12, 0.05, 1.18, hatchMat, -14.35, 0.22, WZ(0.92), false);
+      addMesh(g, new THREE.CylinderGeometry(0.024, 0.024, 1.65, 8), handrailMat, -13.65, 1.02, WZ(0.92), false);
+
+      // (c) 曲徑步道南側與東北階梯草坪前緣之低矮觀賞灌木叢（依 20261118_132826 / 20261123_073313）
+      hedgeStrip(-10.15, -3.55, -7.45, -3.55, 0.52, 0.44);
+      hedgeStrip(-6.90, -2.25, -4.95, -2.25, 0.54, 0.44);
+      [[-5.95, -0.95, 0.44], [-6.65, 0.25, 0.36], [-7.55, 0.55, 0.38], [-8.45, 0.82, 0.40], [-10.95, -0.55, 0.48]].forEach(([bx, bz, rr], i) => {
+        const sh = addMesh(g, lumpyGeometry(new THREE.IcosahedronGeometry(rr, 1), 0.16), i % 2 ? hedgeMat1 : hedgeMat2, bx, 0.17 + rr * 0.78, WZ(bz), false);
+        sh.scale.set(1.12, 0.88, 1.06);
+      });
+
+      // (d) 白色植物解說名牌（插於階梯前緣灌木旁）
+      const tagMat = new THREE.MeshStandardMaterial({ color: 0xf6f5ee, roughness: 0.6 });
+      const stakeMat = new THREE.MeshStandardMaterial({ color: 0x8a8378, roughness: 0.8 });
+      [[-9.75, -3.72], [-8.25, -3.72], [-6.60, -2.42], [-5.35, -2.42]].forEach(([tx, tz], k) => {
+        addBox(g, 0.025, 0.38, 0.025, stakeMat, tx, 0.17 + 0.19, WZ(tz), false);
+        const tg = addBox(g, 0.22, 0.16, 0.012, tagMat, tx, 0.17 + 0.38, WZ(tz) - 0.02, false);
+        tg.rotation.x = -0.35; tg.rotation.y = (k % 2 ? 0.14 : -0.10);
+      });
+
+      // (e) 東北階梯草坪內「三腳斜撐支架小樹」（依 20261118_132826 / 20261123_073313 置於步道北側草坪中央）
+      {
+        const sx = -7.95, sz = -1.65;
+        nLimb(NV(sx, 0.17, WZ(sz)), NV(sx + 0.18, 2.55, WZ(sz - 0.06)), 0.052, 0.026, plumeriaTrunkMat);
+        for (let k = 0; k < 3; k++) {
+          const a = k * 2.09 + 0.4;
+          nLimb(NV(sx + Math.cos(a) * 0.72, 0.17, WZ(sz) + Math.sin(a) * 0.72), NV(sx + 0.09, 1.35, WZ(sz)), 0.018, 0.018, handrailMat);
+        }
+        for (let k = 0; k < 8; k++) {
+          const cl = addMesh(g, new THREE.IcosahedronGeometry(0.32 + hr() * 0.08, 0), k % 2 ? hedgeMat1 : hedgeMat2,
+            sx + 0.15 + (hr() - 0.5) * 0.65, 1.75 + hr() * 1.15, WZ(sz) + (hr() - 0.5) * 0.55);
+          cl.scale.set(1.05, 0.85, 1.05);
+        }
+      }
+
+      // (f) 花圃前方至西棟牆腳之花磚鋪面
+      {
+        const cw = (712 - 445) * S, cd = (278 - 145) * S, ccx = X((445 + 712) / 2), ccz = Z((145 + 278) / 2);
+        const bt = makeCourtyardBrickTexture();
+        bt.repeat.set(12 / cw, 8 / cd); bt.offset.set(-(ccx - cw / 2) * 12 / cw, -(ccz - cd / 2) * 8 / cd);
+        const pv = [[-21.9, -9.5], [-17.6, -9.5], [-17.6, -3.15], [-22.2, -3.15]];
+        const pg = new THREE.ShapeGeometry(new THREE.Shape(pv.map(([x, z]) => new THREE.Vector2(x, -WZ(z)))));
+        pg.rotateX(-Math.PI / 2);
+        const uv = pg.attributes.uv, pos = pg.attributes.position;
+        for (let k = 0; k < uv.count; k++) uv.setXY(k, pos.getX(k), pos.getZ(k) - 9.0);
+        addMesh(g, pg, new THREE.MeshStandardMaterial({ map: bt, roughness: 0.82, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), 0, 0.056, 0, false, true);
+      }
     }
+
+    // 本節（坡道、前庭草坪、綠籬、植栽、踏石、名牌…）全部固定在原標高
+    for (let i = yardMark; i < g.children.length; i++) g.children[i].traverse(o => { if (o.isMesh) o.userData.keepLevel = true; });
 
     // ------------------------------------------------------------------------
     // 3.4 【共用走廊連接棟】⑩–⑪ (ax(10)=-6.72 至 ax(11)=-4.22, 面寬 2.50m)
     //     依據 20261106_142631.jpg、142638.jpg 與 新棟1F建築平面圖002.jpg 1:1 校準：
-    //     - 貫通 zG=8.78m (北端階梯口) 至 zC=20.28m (南端銜接走廊通道口)
+    //     - 貫通 zG (北端，與南棟北牆切齊) 至 zC=20.28m (南端銜接走廊通道口)
     //     - 南端 (zC=20.28m) 2F、3F、RF 具深灰清水混凝土結構橫梁 + 白色二丁掛磁磚女兒牆
     //     - 1F 走廊天花板設長條日光燈具、西側懸掛兩盞喜慶大紅燈籠，南北兩端皆設踏步階梯
     // ------------------------------------------------------------------------
     const shX1 = ax(10), shX2 = ax(11);
     const shW = shX2 - shX1; // 2.50m
     const shCx = (shX1 + shX2) / 2;
-    const shD = zC - zG;     // 11.50m (自 zG=8.78m 貫通至南棟外牆線 zC=20.28m)
+    const shD = zC - zG;     // 自 zG（與南棟北牆切齊）貫通至南棟外牆線 zC=20.28m
     const shCz = (zG + zC) / 2;
-    const northExtD = zE - zG;   // 向北突出走廊部分 (zG 至 zE，長度 7.138m)
+    const northExtD = zE - zG;   // 走廊北段（zG 至 zE，約 4.38 m；北端與南棟北牆切齊）
     const northExtCz = (zG + zE) / 2;
     const lightTubeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff8e7, emissiveIntensity: 0.65, roughness: 0.2 });
     const lanternRedMat = new THREE.MeshStandardMaterial({ color: 0xd91e18, emissive: 0x550804, emissiveIntensity: 0.35, roughness: 0.45 });
@@ -13187,18 +16064,16 @@ function buildNewBuilding() {
 
     // 1F 西向欄杆矮牆上的紅陶盆栽與垂墜綠植 (Potted Terracotta Plants on Parapet)
     const potMat = new THREE.MeshStandardMaterial({ color: 0xba5838, roughness: 0.76 });
-    for (let p = 0; p < 6; p++) {
-      const pz = zG + 0.8 + p * 1.15;
+    const potCount = Math.max(2, Math.min(6, Math.round((northExtD - 1.2) / 1.15) + 1));
+    for (let p = 0; p < potCount; p++) {
+      const pz = zG + 0.8 + p * ((northExtD - 1.4) / (potCount - 1));   // 沿西側欄杆（zG 至 zE）均分，不超出北向外牆段
       addMesh(g, new THREE.CylinderGeometry(0.18, 0.13, 0.24, 10), potMat, shX1 + 0.14, parapetH + 0.16, pz, false);
       const potFoliage = addMesh(g, new THREE.SphereGeometry(0.24, 8, 8), hedgeMat1, shX1 + 0.14, parapetH + 0.38, pz, false);
       potFoliage.scale.set(1.1, 0.9, 1.1);
       addMesh(g, new THREE.SphereGeometry(0.06, 6, 6), flowerWhiteMat, shX1 + 0.08, parapetH + 0.48, pz, false);
     }
 
-    // 1F 北側銜接中庭花磚之 4 階踏步階梯與引導斜面 (North Entrance Steps at zG=8.78m per 新棟1F建築平面圖002.jpg)
-    for (let s = 0; s < 4; s++) {
-      addBox(g, 0.34 * (4 - s), 0.14 * (s + 1), 2.10, mats.concrete, shX1 - 0.17 * (4 - s), 0.07 * (s + 1), zG + 1.8);
-    }
+    // （原「走廊西側 4 階踏步」已由上方 3.3 的 L 形無障礙坡道取代）
 
     // 平屋頂結構板與南北兩端高低造型女兒牆 (含南向 zC=20.28m 頂層女兒牆與清水混凝土橫梁)
     addBox(g, shW, 0.30, shD, mats.roof, shCx, yRF + 0.15, shCz);
@@ -13227,62 +16102,8 @@ function buildNewBuilding() {
     horn2.rotation.x = -Math.PI / 2.3;
     horn2.rotation.y = Math.PI / 4;
 
-    // ========================================================================
-    // 【實景黃框靈魂主景：高聳繁茂校園遮蔭大樹】(Tall Mature Courtyard Shade Tree)
-    // 依據照片黃框標註：位於黃框轉折走廊西北前庭，主幹挺拔高聳，多層次繁茂綠葉枝葉扶疏，
-    // 高度延伸貫穿 1F、2F 直抵 3F 女兒牆頂 (高度約 11.2 米)，完美還原照片現場空間縱深與自然意境！
-    // ========================================================================
-    const treeX = shX1 - 1.25;
-    const treeZ = zG - 1.65;
-    const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4d3f32, roughness: 0.92 }); // 深褐粗糙樹皮
-    const treeLeafMat1 = new THREE.MeshStandardMaterial({ color: 0x2e6328, roughness: 0.80 }); // 濃綠樹冠
-    const treeLeafMat2 = new THREE.MeshStandardMaterial({ color: 0x3d7b32, roughness: 0.76 }); // 亮綠向陽樹葉
-    const treeLeafMat3 = new THREE.MeshStandardMaterial({ color: 0x20481d, roughness: 0.85 }); // 深綠底層陰影葉簇
-
-    // 主樹幹 (下粗上細，高達 4.8m)
-    const tMain = addMesh(g, new THREE.CylinderGeometry(0.24, 0.38, 4.8, 12), treeTrunkMat, treeX, 2.4, treeZ);
-    tMain.rotation.z = -0.06;
-    tMain.rotation.x = 0.04;
-
-    // 四大向外延伸木質分枝 (Major Structural Limbs reaching up to 8.5m)
-    const tB1 = addMesh(g, new THREE.CylinderGeometry(0.16, 0.22, 3.8, 8), treeTrunkMat, treeX - 0.45, 5.8, treeZ - 0.35);
-    tB1.rotation.z = 0.28; tB1.rotation.x = -0.18;
-    const tB2 = addMesh(g, new THREE.CylinderGeometry(0.15, 0.20, 4.2, 8), treeTrunkMat, treeX + 0.55, 6.0, treeZ + 0.25);
-    tB2.rotation.z = -0.26; tB2.rotation.y = 0.22;
-    const tB3 = addMesh(g, new THREE.CylinderGeometry(0.14, 0.18, 3.6, 8), treeTrunkMat, treeX + 0.15, 6.2, treeZ - 0.65);
-    tB3.rotation.x = -0.32;
-    const tB4 = addMesh(g, new THREE.CylinderGeometry(0.13, 0.17, 3.5, 8), treeTrunkMat, treeX - 0.30, 6.5, treeZ + 0.45);
-    tB4.rotation.z = 0.22; tB4.rotation.x = 0.25;
-
-    // 茂盛綠色樹冠球團 (Dense Multilayered Canopy Foliage Spheres, 覆蓋高度 4.5m ~ 11.2m)
-    const canopySpheres = [
-      // 3F 頂層向陽冠頂 (Y = 8.5 ~ 11.2m)
-      { x: treeX + 0.10, y: 10.4, z: treeZ - 0.20, rx: 2.2, ry: 1.6, rz: 2.1, mat: treeLeafMat2 },
-      { x: treeX - 0.85, y: 9.6,  z: treeZ - 0.55, rx: 1.9, ry: 1.5, rz: 1.8, mat: treeLeafMat1 },
-      { x: treeX + 0.95, y: 9.8,  z: treeZ + 0.35, rx: 2.0, ry: 1.5, rz: 1.9, mat: treeLeafMat2 },
-      { x: treeX + 0.20, y: 9.2,  z: treeZ - 0.90, rx: 1.8, ry: 1.4, rz: 1.7, mat: treeLeafMat1 },
-      // 2F 中層豐滿側冠 (Y = 6.0 ~ 8.5m)
-      { x: treeX - 1.20, y: 7.8,  z: treeZ - 0.30, rx: 2.1, ry: 1.7, rz: 2.0, mat: treeLeafMat1 },
-      { x: treeX + 1.25, y: 8.0,  z: treeZ + 0.20, rx: 2.2, ry: 1.8, rz: 2.1, mat: treeLeafMat2 },
-      { x: treeX - 0.35, y: 7.5,  z: treeZ - 1.20, rx: 1.9, ry: 1.6, rz: 1.8, mat: treeLeafMat3 },
-      { x: treeX + 0.45, y: 7.6,  z: treeZ + 0.95, rx: 2.0, ry: 1.6, rz: 1.9, mat: treeLeafMat1 },
-      { x: treeX + 0.05, y: 8.2,  z: treeZ + 0.10, rx: 2.4, ry: 1.9, rz: 2.3, mat: treeLeafMat1 },
-      // 1F 下層底垂葉簇 (Y = 4.2 ~ 6.0m)
-      { x: treeX - 0.90, y: 5.6,  z: treeZ - 0.20, rx: 1.6, ry: 1.3, rz: 1.5, mat: treeLeafMat3 },
-      { x: treeX + 0.85, y: 5.8,  z: treeZ + 0.30, rx: 1.7, ry: 1.4, rz: 1.6, mat: treeLeafMat3 },
-      { x: treeX - 0.15, y: 5.2,  z: treeZ - 0.70, rx: 1.5, ry: 1.2, rz: 1.4, mat: treeLeafMat3 }
-    ];
-
-    canopySpheres.forEach(cs => {
-      const sp = addMesh(g, new THREE.SphereGeometry(1.0, 12, 10), cs.mat, cs.x, cs.y, cs.z);
-      sp.scale.set(cs.rx, cs.ry, cs.rz);
-    });
-
-    // 樹穴花台基底與修剪低矮綠籬帶 (Tree Pit Planting Bed & Manicured Hedges along base)
-    addBox(g, 2.6, 0.16, 2.6, curbMat, treeX, 0.08, treeZ, false);
-    addBox(g, 2.3, 0.18, 2.3, lawnMat, treeX, 0.09, treeZ, false);
-    // 黃框走廊前緣常綠綠籬
-    addBox(g, 0.65, 0.62, northExtD * 0.85, hedgeMat2, shX1 - 0.55, 0.31, northExtCz, false);
+    // v2.12.110：原搬至南棟西側草坡（x = 4.6）之舊版佔位遮蔭大樹與方形樹穴已移除，
+    // 改由 buildSouthBuilding 14.7 依實景照片 001/002/003 精緻建置之南棟前喬木群（茄冬、西側草地樟樹等）呈現。
   }
   // ==========================================================================
   // 4. SOUTH FACADE & SOUTHEAST 45° FACADE
@@ -13712,10 +16533,10 @@ function buildNewBuilding() {
       sp.scale.set(0.9, 0.85, 1.1);
     }
 
-    // (2) 東側牆面 (`ax(11)` zG=8.78 至 zC=20.28)：淺米白走廊內牆 + 清水混凝土樓層橫梁帶 + 白色二丁掛磁磚端柱 (`142631.jpg` & `142638.jpg`)
-    addBox(g, 0.16, yRF, zC - 10.78, creamWallMat, pocketX2 - 0.08, yRF / 2, (10.78 + zC) / 2);
+    // (2) 東側牆面 (`ax(11)` zG 至 zC=20.28)：淺米白走廊內牆 + 清水混凝土樓層橫梁帶 + 白色二丁掛磁磚端柱 (`142631.jpg` & `142638.jpg`)
+    addBox(g, 0.16, yRF, zC - zG, creamWallMat, pocketX2 - 0.08, yRF / 2, (zG + zC) / 2);
     for (let f = 1; f <= 3; f++) {
-      addBox(g, 0.20, 0.48, zC - 10.78, exposedConcreteBeamMat, pocketX2 - 0.10, f * FH - 0.24, (10.78 + zC) / 2, false);
+      addBox(g, 0.20, 0.48, zC - zG, exposedConcreteBeamMat, pocketX2 - 0.10, f * FH - 0.24, (zG + zC) / 2, false);
     }
 
     // (3) 白色垂直欄杆小門 (`欄杆小門`, `20261106_142631.jpg` & `001.jpg`)
@@ -13797,6 +16618,89 @@ function buildNewBuilding() {
     mirrorRim.position.z = -0.005;
     mirrorGrp.add(mirrorRim);
     g.add(mirrorGrp);
+
+    // (7) 新棟東南轉角（42巷 34 弄口）電線桿、路牌與第二支反射鏡（v2.12.5 依 2024 街景 12 建興南路42巷）
+    //     ・深灰水泥電線桿立於緣石旁，高約 9 m：頂部橫擔與礙子、路燈挑臂，桿身掛綠底白字「← 建興南路42巷34弄」路名牌、
+    //       背面小型門牌指示牌、灰色電箱與殘留小廣告
+    //     ・電線桿右側（近新棟/南棟間白色小門）另一支反射鏡：灰色立桿、黑黃斑紋桿腳、白底黑字「注意」直牌、橘框凸面鏡
+    {
+      const textPlate = (w, h, draw) => {
+        const c = document.createElement('canvas');
+        c.width = Math.round(w * 400); c.height = Math.round(h * 400);
+        draw(c.getContext('2d'), c.width, c.height);
+        const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+        return new THREE.MeshBasicMaterial({ map: t });
+      };
+      const cautionMat = textPlate(0.12, 0.36, (ctx, W, H) => {
+        ctx.fillStyle = '#f8f8f6'; ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 3; ctx.strokeRect(2, 2, W - 4, H - 4);
+        ctx.fillStyle = '#111'; ctx.font = `bold ${Math.round(W * 0.72)}px "Noto Sans TC", sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('注', W / 2, H * 0.3); ctx.fillText('意', W / 2, H * 0.7);
+      });
+      const poleConcrete = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.85 });
+      const steelGrey = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.4, metalness: 0.7 });
+      const stripeYellow = new THREE.MeshStandardMaterial({ color: 0xf2c418, roughness: 0.5 });
+
+      // 電線桿
+      const upX = mirrorX + 2.53, upZ = mirrorZ - 0.54;
+      const up = new THREE.Group();
+      up.position.set(upX, 0.14, upZ);
+      up.rotation.y = Math.PI / 4;                       // 路名牌面向東南（42巷車道）
+      addMesh(up, new THREE.CylinderGeometry(0.13, 0.18, 9.0, 14), poleConcrete, 0, 4.5, 0);
+      addBox(up, 1.6, 0.1, 0.1, poleConcrete, 0, 8.55, 0);                                   // 頂部橫擔
+      [-0.7, -0.25, 0.25, 0.7].forEach(ix => addMesh(up, new THREE.CylinderGeometry(0.035, 0.05, 0.16, 8), new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.4 }), ix, 8.68, 0, false));
+      addBox(up, 0.08, 0.08, 1.5, steelGrey, 0, 7.4, 0.75);                                 // 路燈挑臂（往車道）
+      addMesh(up, new THREE.ConeGeometry(0.2, 0.16, 14), steelGrey, 0, 7.3, 1.45, false);
+      addMesh(up, new THREE.SphereGeometry(0.08, 8, 6), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff6dc, emissiveIntensity: 0.6 }), 0, 7.22, 1.45, false);
+      addBox(up, 0.32, 0.5, 0.2, new THREE.MeshStandardMaterial({ color: 0x8b9096, roughness: 0.6, metalness: 0.3 }), 0, 4.1, -0.2);   // 電箱
+      // 綠底白字路名牌（雙面）與背面小指示牌
+      const streetSignMat = textPlate(1.0, 0.24, (ctx, W, H) => {
+        ctx.fillStyle = '#0f7a3c'; ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.strokeRect(5, 5, W - 10, H - 10);
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.moveTo(16, H / 2); ctx.lineTo(56, H / 2 - 26); ctx.lineTo(56, H / 2 + 26); ctx.closePath(); ctx.fill();
+        ctx.fillRect(54, H / 2 - 8, 26, 16);
+        ctx.font = `bold ${Math.round(H * 0.4)}px "Noto Sans TC", sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('建興南路42巷34弄', W / 2 + 40, H / 2 + 2, W - 110);
+      });
+      [0.15, -0.15].forEach((zz, k) => {
+        const sg = addMesh(up, new THREE.PlaneGeometry(1.0, 0.24), streetSignMat, -0.62, 3.05, zz, false);
+        if (k) sg.rotation.y = Math.PI;
+      });
+      addBox(up, 1.02, 0.26, 0.02, new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.5, metalness: 0.4 }), -0.62, 3.05, 0, false);
+      addBox(up, 0.3, 0.03, 0.03, steelGrey, -0.15, 3.05, 0, false);
+      const subSign = addBox(up, 0.26, 0.5, 0.02, new THREE.MeshStandardMaterial({ color: 0x3f4b57, roughness: 0.5 }), 0.18, 2.55, 0.0, false);
+      subSign.rotation.y = Math.PI / 2;
+      // 桿身殘留小廣告與綁帶
+      [[1.6, 0.18, 0xf5f5f0], [2.05, 0.14, 0xe8e2d0], [1.25, 0.12, 0xf0f0f0]].forEach(([yy, hh, col], k) => {
+        const ad = addBox(up, 0.2, hh, 0.02, new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 }), 0, yy, 0.17, false);
+        ad.rotation.y = k * 0.6;
+      });
+      g.add(up);
+
+      // 第二支反射鏡（電線桿右後方、近白色小門）
+      const m2x = mirrorX + 0.9, m2z = mirrorZ - 1.28;
+      addMesh(g, new THREE.CylinderGeometry(0.042, 0.042, 3.0, 10), steelGrey, m2x, 1.64, m2z);
+      for (let k = 0; k < 6; k++) addMesh(g, new THREE.CylinderGeometry(0.048, 0.048, 0.14, 10), k % 2 ? gateDarkMat : stripeYellow, m2x, 0.66 + k * 0.14, m2z, false);
+      const cp = addMesh(g, new THREE.PlaneGeometry(0.12, 0.36), cautionMat, m2x + 0.04, 1.75, m2z + 0.04, false);
+      cp.rotation.y = Math.PI / 4;
+      const m2 = new THREE.Group();
+      m2.position.set(m2x, 2.82, m2z);
+      m2.rotation.y = Math.PI / 5;                        // 鏡面朝東南，照向 42 巷兩向來車
+      const m2Mirror = new THREE.Mesh(new THREE.SphereGeometry(0.75, 20, 6, 0, Math.PI * 2, 0, 0.5), new THREE.MeshStandardMaterial({ color: 0xcfd8e0, roughness: 0.06, metalness: 0.95 }));
+      m2Mirror.rotation.x = Math.PI / 2; m2Mirror.position.z = 0.04 - 0.75 * Math.cos(0.5);
+      m2.add(m2Mirror);
+      m2.add(new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.038, 8, 24), new THREE.MeshStandardMaterial({ color: 0xe8541a, roughness: 0.45 })));
+      const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.12, 20, 1, true, 0, Math.PI), new THREE.MeshStandardMaterial({ color: 0xe8541a, roughness: 0.5, side: THREE.DoubleSide }));
+      hood.rotation.x = Math.PI / 2; hood.rotation.y = Math.PI / 2; hood.position.z = -0.04;
+      m2.add(hood);
+      g.add(m2);
+      // 原反射鏡桿亦補上白底「注意」直牌
+      const cp1 = addMesh(g, new THREE.PlaneGeometry(0.12, 0.36), cautionMat, mirrorX + 0.04, 1.9, mirrorZ + 0.07, false);
+      cp1.rotation.y = 0.2;
+    }
   }
 
   // ==========================================================================
@@ -13804,9 +16708,15 @@ function buildNewBuilding() {
   //    (1:1 with `新棟正面立圖_南向.jpg` & `新棟南向正面_右手邊45度側面001.jpg`)
   // ==========================================================================
   {
-    const zWall = 34.80; // Southern perimeter wall line along the street
-    const zMeet = 20.28; // 南棟南牆面標高
+    const zWall = 34.80 - SOUTH_SHIFT - NEW_XF.toWorld(0, 0)[1]; // v2.12.64 新棟再北移 3 m，圍牆仍在街道線；南側圍牆（v2.12.35 新棟群組北移後仍落在 z=34.8 之街道圍牆線）
+    const zMeet = 20.28; // 南棟南牆面標高（局部座標；群組北移後與南棟同為 14.28）
     const gateX1 = -24.20, gateX2 = -19.20; // 5.0m wide Kindergarten Main Gate opening
+    // v2.12.74 依衛星圖：幼兒園南側圍牆沿建興南路42巷成一直線斜向（校界 V5→V4），原「水平段＋斜段」改為單一斜線
+    const gZ = SOUTH_SHIFT + NEW_XF.toWorld(0, 0)[1];                       // 新棟群組 z 位移
+    const bk = (Z(294.9) - Z(374)) / (X(496) - X(367));                      // 校界斜率 dz/dx
+    const Lz = x => Z(374) + (x - X(367)) * bk - gZ;                          // 校界線（新棟局部 z）
+    const bCos = 1 / Math.hypot(1, bk), bSin = bk / Math.hypot(1, bk);
+    const Pw = sAlong => [ax(1) + sAlong * bCos, Lz(ax(1)) + sAlong * bSin];   // 沿校界自西端起算
     const wallYellowMat  = new THREE.MeshStandardMaterial({ color: 0xf4df8e, roughness: 0.72 });
     const capGoldMat     = new THREE.MeshStandardMaterial({ color: 0xe5b53c, roughness: 0.58 });
     const darkIronMat    = new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.35, metalness: 0.72 });
@@ -13816,20 +16726,20 @@ function buildNewBuilding() {
     const greenSteelMat  = new THREE.MeshStandardMaterial({ color: 0x2e8540, roughness: 0.45, metalness: 0.35 });
     const blueTarpMat    = new THREE.MeshStandardMaterial({ color: 0x2468b8, roughness: 0.55, side: THREE.DoubleSide });
     const turfGreenMat   = new THREE.MeshStandardMaterial({ color: 0x4da856, roughness: 0.86 });
+    registerLawnMat(turfGreenMat);
     const matBluePad     = new THREE.MeshStandardMaterial({ color: 0x4c8cd6, roughness: 0.82 });
 
     // --- 5.1 Outdoor Playground Surface (`zA = 26.70m` to `zWall = 34.80m`, 100% Inside Perimeter Wall!) ---
     // 西段操場/前庭草坪 (ax(1) 至 gateX2 = -19.20，直壁圍牆段 z = 26.70 ~ 34.80)
-    const westYardW = gateX2 - ax(1);
-    const westYardCx = (ax(1) + gateX2) / 2;
-    const yardD = zWall - zA; // 8.10m
-    const yardCz = (zA + zWall) / 2;
-    addBox(g, westYardW, 0.08, yardD, turfGreenMat, westYardCx, 0.04, yardCz);
+    const yardD = Lz(ax(1)) - zA;
+    const yardCz = (zA + Lz(ax(1))) / 2;
+    { const tp = flatXZPoly([[ax(1), zA], [ax(11), zA], [ax(11), Lz(ax(11)) - 0.3], [ax(1), Lz(ax(1)) - 0.3]].map(([x, z]) => new THREE.Vector3(x, 0, z)), turfGreenMat, 0.08, g, 0.3); tp.renderOrder = 0; }
+    const yardC0 = g.children.length;
 
     // 東段草坪 (gateX2 至 ax(11)，梯形斜邊段：嚴格受限於斜向圍牆內，不突出圍牆)
     const eastSegs = 8;
     const eastSegW = (ax(11) - gateX2) / eastSegs;
-    for (let s = 0; s < eastSegs; s++) {
+    for (let s = 0; s < 0; s++) {   // v2.12.74 已改為上方單一多邊形草坪
       const sx1 = gateX2 + s * eastSegW;
       const sx2 = sx1 + eastSegW;
       const scx = (sx1 + sx2) / 2;
@@ -13849,12 +16759,15 @@ function buildNewBuilding() {
     // --- 5.2 West Pastel-Yellow Wall with Green Glass Bulletin Board (`ax(1)=-37.83` to `gateX1=-24.20`) ---
     const westWallW = gateX1 - ax(1);       // 13.63m
     const westWallCx = (ax(1) + gateX1) / 2;
+    const wallC0 = g.children.length;
     // Solid pastel-yellow wall with sloped cap
     addBox(g, westWallW, 2.05, 0.36, wallYellowMat, westWallCx, 1.025, zWall);
     addBox(g, westWallW + 0.12, 0.14, 0.48, capGoldMat, westWallCx, 2.12, zWall);
+    const wallC1 = g.children.length;
     // West return wall closing `ax(1)` from `zA` to `zWall`
     addBox(g, 0.36, 2.05, yardD, wallYellowMat, ax(1) + 0.18, 1.025, yardCz);
     addBox(g, 0.46, 0.14, yardD + 0.1, capGoldMat, ax(1) + 0.18, 2.12, yardCz);
+    const wallC2 = g.children.length;
 
     // Glass-fronted Mint-Green Bulletin Board ("屏東復興非營利幼兒園 教保活動訊息：雨露與新芽") mounted on West Wall
     const bbTex = makeKindergartenBulletinBoardTexture();
@@ -13916,12 +16829,20 @@ function buildNewBuilding() {
       g.add(leafGrp);
     }
 
+    // v2.12.74 西段圍牆、公布欄、大門柱、鐵門與銘牌：以西端 (ax(1), 校界) 為軸轉到校界斜線上（西側回牆不轉）
+    {
+      const piv = new THREE.Group(); piv.position.set(ax(1), 0, Lz(ax(1))); piv.rotation.y = -Math.atan(bk);
+      const mv = g.children.slice(wallC0, wallC1).concat(g.children.slice(wallC2));
+      mv.forEach(o => { o.position.x -= ax(1); o.position.z -= zWall; piv.add(o); });
+      g.add(piv);
+    }
     // --- 5.4 East Stepped Pastel-Yellow Perimeter Wall (`gateX2=-19.20` to `ax(11)=-4.22`) ---
     // 參照學校平面圖進行延伸：自幼兒園大門斜向平順延伸銜接至南棟大樓西端 (Z=20.28m) 與舊南側門，形成連續通學步道界面！
-    const eastWallX1 = gateX2 + 0.46, eastWallX2 = ax(11);
+    const eastWallX1 = Pw(gateX2 + 0.46 - ax(1))[0], eastWallX2 = ax(10) + 0.3;   // v2.12.74 沿校界斜線至共用走廊口
     const nEastBays = 4;
-    const eastBayW = (eastWallX2 - eastWallX1) / nEastBays;
-    const wallAng = -Math.atan2(zMeet - zWall, eastWallX2 - eastWallX1);
+    const eastBayW = (eastWallX2 - eastWallX1) / (nEastBays - 1);
+    const zWallE = Lz(eastWallX1), zMeetE = Lz(eastWallX1 + eastBayW * nEastBays);
+    const wallAng = -Math.atan(bk);
 
     for (let i = 0; i < nEastBays; i++) {
       // 依街景照片：圍牆止於新棟東南轉角，通道南口 (欄杆小門) 直接面向人行道，不再有斜牆橫亙其前
@@ -13931,8 +16852,8 @@ function buildNewBuilding() {
       const bcx = (bx1 + bx2) / 2;
       const tMid = (i + 0.5) / nEastBays;
       const tEnd = (i + 1.0) / nEastBays;
-      const bcz = zWall + tMid * (zMeet - zWall);
-      const bz2 = zWall + tEnd * (zMeet - zWall);
+      const bcz = zWallE + tMid * (zMeetE - zWallE);
+      const bz2 = zWallE + tEnd * (zMeetE - zWallE);
 
       const bayGrp = new THREE.Group();
       bayGrp.position.set(bcx, 0, bcz);
@@ -13961,8 +16882,8 @@ function buildNewBuilding() {
 
     // 幼兒園招生宣傳大型橫額 ("選擇復興 非營利幼兒園 家長安心")
     const bannerTex = makeFenceBannerTexture();
-    const bannerMidX = (eastWallX1 + eastWallX2) / 2;
-    const bannerMidZ = (zWall + zMeet) / 2;
+    const bannerMidX = (eastWallX1 + eastWallX2) / 2;   // v2.12.74
+    const bannerMidZ = Lz(bannerMidX);
     const bMesh = addMesh(g, new THREE.PlaneGeometry(5.6, 0.86), new THREE.MeshBasicMaterial({ map: bannerTex }), bannerMidX, 1.48, bannerMidZ + 0.25, false);
     bMesh.rotation.y = wallAng;
 
@@ -14020,6 +16941,7 @@ function buildNewBuilding() {
   }
 
   g.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'new-building'; });
+  g.position.z = SOUTH_SHIFT + NEW_XF.toWorld(0, 0)[1];   // v2.12.35 北移 6 m；v2.12.64 依航照與照片再北移 3 m
   layerGroups.buildings.add(g);
   clickableGroups.push(g);
   landmarkGroupMap.set('new-building', g);
@@ -14031,7 +16953,8 @@ function buildSportsLayer() {
   // 6 跑道紅 PU、白色標線、外環平整水泥通學步道、內場草皮、跳遠專用紅橡膠助跑道、木質起跳板、長條跳遠沙坑、螢光橘色交通錐與排水溝格柵)
   const tg = new THREE.Group();
   tg.userData = { landmarkId: 'sports-track' };
-  const cx = X(288), cz = Z(248), rx = 64 * S, straight = 128 * S;
+  // v2.12.33 依對位航照：外圈約 39×91 m（原 33×67 m），中心北移約 12 m；東緣緊鄰西棟（育樂樓）
+  const cx = TRACK_CFG.cx, cz = TRACK_CFG.cz, rx = TRACK_CFG.rx, straight = TRACK_CFG.straight;
   const makeStadiumShape = r => {
     const s = new THREE.Shape(), hs = straight / 2;
     s.moveTo(-r, -hs); s.lineTo(-r, hs);
@@ -14044,7 +16967,7 @@ function buildSportsLayer() {
   // 1) 跑道外環校園水泥通學人行步道 (實景照片 20261110_135221.jpg：外圍平整淺灰水泥休閒與通學步道，寬約 2.6m)
   const outerWalkwayMat = new THREE.MeshStandardMaterial({ color: 0xdcd8d0, roughness: 0.85, side: THREE.DoubleSide });
   const outerWalkwayMesh = new THREE.Mesh(
-    new THREE.ShapeGeometry(makeStadiumShape(rx + 3.8), 48),
+    new THREE.ShapeGeometry(makeStadiumShape(rx + 2.4), 48),
     outerWalkwayMat
   );
   outerWalkwayMesh.rotation.x = -Math.PI / 2;
@@ -14106,59 +17029,24 @@ function buildSportsLayer() {
     new THREE.MeshStandardMaterial({ color: 0x549b42, roughness: 0.88, side: THREE.DoubleSide })
   );
   innerGrass.rotation.x = -Math.PI / 2; innerGrass.position.set(cx, 0.14, cz); innerGrass.receiveShadow = true;
+  registerLawnMat(innerGrass.material);
   tg.add(innerGrass);
 
-  // =========================================================================
-  // 8) 實景 1:1 還原：內場跳遠跑道、木質起跳板、長條沙坑與螢光橘警示錐 (照片 135014.jpg & 135021.jpg)
-  // =========================================================================
-  const ljRunwayW = 1.25, ljRunwayL = 30.0;
-  const ljRunwayX = cx - innerCurbR + 3.2; // 位於西側直線內場草坪內側約 3.2m 處
-  const ljRunwayCz = cz - 2.0;             // 助跑段中心偏北
-  const longJumpRunwayMat = new THREE.MeshStandardMaterial({ color: 0xbd4736, roughness: 0.82 });
-  const takeoffBoardMat = new THREE.MeshStandardMaterial({ color: 0xfaf8f2, roughness: 0.55 });
-  const sandPitMat = new THREE.MeshStandardMaterial({ color: 0xd6b77e, roughness: 0.96 });
-  const curbConcreteMat = new THREE.MeshStandardMaterial({ color: 0xd8d4cb, roughness: 0.75 });
+  // 8) v2.12.6 依 Google 空拍：運動場內場僅為草皮，無跳遠助跑道、沙坑等設施（原跳遠設施與警示錐移除）
 
-  // (a) 紅色合成橡膠跳遠助跑道 (長 30m，寬 1.25m)
-  addBox(tg, ljRunwayW, 0.035, ljRunwayL, longJumpRunwayMat, ljRunwayX, 0.155, ljRunwayCz);
-  // 助跑道兩側白色 5cm 邊線
-  addBox(tg, 0.05, 0.038, ljRunwayL, lineWhiteMat, ljRunwayX - ljRunwayW / 2 + 0.025, 0.158, ljRunwayCz, false);
-  addBox(tg, 0.05, 0.038, ljRunwayL, lineWhiteMat, ljRunwayX + ljRunwayW / 2 - 0.025, 0.158, ljRunwayCz, false);
-
-  // (b) 白色標準木質起跳板 (Takeoff Board) + 黑色橡皮泥犯規顯示板
-  const takeoffZ = ljRunwayCz + ljRunwayL / 2 + 0.12;
-  addBox(tg, ljRunwayW, 0.045, 0.22, takeoffBoardMat, ljRunwayX, 0.165, takeoffZ);
-  addBox(tg, ljRunwayW, 0.048, 0.08, mats.darkMetal, ljRunwayX, 0.166, takeoffZ + 0.10); // 犯規橡皮泥板
-
-  // (c) 長條跳遠沙坑 (Sand Pit — 長 7.5m，寬 3.2m，金屬/水泥圓角邊框)
-  const pitW = 3.2, pitL = 7.5;
-  const pitZ = takeoffZ + 0.15 + pitL / 2;
-  // 外圍水泥圓角包邊緣石
-  addBox(tg, pitW + 0.36, 0.08, pitL + 0.36, curbConcreteMat, ljRunwayX, 0.17, pitZ);
-  // 金黃色顆粒跳遠專用沙坑表面
-  addBox(tg, pitW, 0.075, pitL, sandPitMat, ljRunwayX, 0.175, pitZ);
-
-  // (d) 跑道邊 4 頂螢光橘色安全警示錐 (Traffic Cones per Photo 135021.jpg)
-  const coneOrangeMat = new THREE.MeshStandardMaterial({ color: 0xff4d00, roughness: 0.45 });
-  const coneWhiteMat  = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
-  const coneBaseMat   = new THREE.MeshStandardMaterial({ color: 0x1f2326, roughness: 0.85 });
-  const coneSpacing = 7.2;
-  for (let c = 0; c < 4; c++) {
-    const kz = ljRunwayCz - 10.5 + c * coneSpacing;
-    const kx = ljRunwayX + ljRunwayW / 2 + 0.45; // 排列於助跑道東側邊緣
-    // 黑色防滑橡膠方形底座
-    addBox(tg, 0.38, 0.035, 0.38, coneBaseMat, kx, 0.155, kz);
-    // 螢光橘色錐身
-    addMesh(tg, new THREE.ConeGeometry(0.14, 0.65, 14), coneOrangeMat, kx, 0.48, kz);
-    // 中央反光白色環帶
-    addMesh(tg, new THREE.CylinderGeometry(0.082, 0.105, 0.15, 14), coneWhiteMat, kx, 0.45, kz);
+  // v2.12.54 跑道本體（步道、緣石、PU、分道線、草皮）繞中心旋轉 5.07°，與航照及校舍同方向
+  {
+    const t = TRACK_CFG.th * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+    const tr = new THREE.Group(); tr.rotation.y = -t;
+    tr.position.set(cx - (cx * c - cz * s), 0, cz - (cx * s + cz * c));
+    tr.add(...tg.children.slice());
+    tg.add(tr);
   }
-
   // 9) 跑道外圍校園草地緩衝區休閒長椅
   const lawnBenchCoords = [
     [X(232), Z(412), -0.38], [X(282), Z(408), -0.38], [X(332), Z(392), -0.38],
     [X(142), Z(355), 0.88],  [X(172), Z(395), 0.88],
-    [X(78),  Z(155), Math.PI / 2], [X(78), Z(235), Math.PI / 2]
+    [X(70),  Z(100), Math.PI / 2]
   ];
   lawnBenchCoords.forEach(([bx, bz, rotY]) => {
     const bGrp = new THREE.Group();
@@ -14279,7 +17167,7 @@ function buildSportsLayer() {
   // =========================================================================
   // 2) 雙面戶外標準籃球場 (四周無高架鐵欄網，由開闊綠草坪環繞，實景照片 20261110_135714.jpg & 160224.jpg)
   // =========================================================================
-  const bx = X((112 + 172) / 2), bz = Z((178 + 288) / 2), bw = (172 - 112) * S, bd = (288 - 178) * S;
+  const bx = X((112 + 172) / 2), bz = Z((178 + 288) / 2), bw = (172 - 112) * S, bd = (288 - 178) * S;   // v2.12.23 隨西牆斜段東移 2.5 m
   const courtDarkGreenMat = new THREE.MeshStandardMaterial({ color: 0x3d7054, roughness: 0.82 }); // 實景照片耐磨深綠球場
   const courtLightGreenMat = new THREE.MeshStandardMaterial({ color: 0x4f8868, roughness: 0.80 }); // 亮綠三分線外區
   const courtKeyMat = new THREE.MeshStandardMaterial({ color: 0xb84e38, roughness: 0.75 }); // 陶紅禁區油漆區
@@ -14436,7 +17324,17 @@ function buildSportsLayer() {
   });
 
   bg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'ball-courts'; });
-  layerGroups.sports.add(bg);
+  // v2.12.25 依使用者於校園樹木分布衛星圖之標註：排球場與籃球場緊貼西牆內側、與西牆平行（約 5.9°），
+  //   整組北移約 22 m（排球場北側為草地，西北角茄苳旁）；以兩球場中心連線中點為軸整組旋轉平移
+  {
+    const P = new THREE.Vector3(-96.05, 0, -14.1), Q = new THREE.Vector3(-103.25, 0, -35.8);
+    const pivot = new THREE.Group();
+    pivot.position.copy(Q); pivot.rotation.y = -0.103;
+    pivot.userData = { landmarkId: 'ball-courts' };
+    bg.position.set(-P.x, 0, -P.z);
+    pivot.add(bg);
+    layerGroups.sports.add(pivot);
+  }
   clickableGroups.push(bg);
   landmarkGroupMap.set('ball-courts', bg);
 
@@ -14554,7 +17452,7 @@ function makeROCFlagTexture() {
   // 10 Command Stage & Flagpoles (`司令台` 雙層洗石子挑簷、半月形洗石子拱額、動物彩繪磁磚台座壁畫、「復興國小」雙幅童趣舞台布幕與三階升旗台)
   const sg = new THREE.Group();
   sg.userData = { landmarkId: 'command-stage' };
-  const sx = X(192), sz = Z(252);
+  const sx = -89.8, sz = -8.2;   // v2.12.33 依航照標示：籃球場東側、面向跑道
 
   // 實景照片萃取之「復興國小」雙幅舞台背景布幕與台座白鷺鷥彩繪磁磚壁畫 Base64 貼圖
   window.STAGE_CURTAIN_DATA = "data:image/jpeg;base64,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";
@@ -14963,113 +17861,80 @@ function makeROCFlagTexture() {
 // 實景 1:1 紋理產生器：校門左側布條、門牌告示、海報、避難牌與受口標記
 // ================================================================
 
-// 1. 「選擇復興 家長安心」全彩招生宣傳布條 (依實拍特寫 1:1 精確構建)
+// 1. 「選擇復興 家長安心」全彩招生宣傳布條 (依實拍照片 20261019_122322.jpg 1:1 精確構建)
 function makeFuxingGateBannerTexture() {
   const c = document.createElement('canvas');
   c.width = 1024; c.height = 340;
   const ctx = c.getContext('2d');
 
-  // 純白布質底色
-  ctx.fillStyle = '#ffffff';
+  // 柔和米白漸層底色
+  const bg = ctx.createLinearGradient(0, 0, 1024, 340);
+  bg.addColorStop(0, '#fdfbf7');
+  bg.addColorStop(0.75, '#f8fafc');
+  bg.addColorStop(1, '#fce7f3');
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, 1024, 340);
 
-  // 外圍淡灰邊框與四角金屬穿孔 (Grommets)
-  ctx.strokeStyle = '#e2e8f0';
+  // 外圍淡灰邊框與金屬穿孔 (Grommets)
+  ctx.strokeStyle = '#cbd5e1';
   ctx.lineWidth = 4;
   ctx.strokeRect(6, 6, 1012, 328);
-  [[24, 24], [1000, 24], [24, 316], [1000, 316], [512, 24], [512, 316]].forEach(([gx, gy]) => {
+  [[22, 22], [1002, 22], [22, 318], [1002, 318], [512, 22], [512, 318]].forEach(([gx, gy]) => {
     ctx.fillStyle = '#64748b';
-    ctx.beginPath(); ctx.arc(gx, gy, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(gx, gy, 7, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#f8fafc';
-    ctx.beginPath(); ctx.arc(gx, gy, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(gx, gy, 3.5, 0, Math.PI * 2); ctx.fill();
   });
 
-  // 左上角全彩膠囊標籤：「112學年度」
-  ctx.fillStyle = '#e11d48';
-  if (ctx.roundRect) ctx.roundRect(40, 30, 135, 38, 19);
-  else ctx.fillRect(40, 30, 135, 38);
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 22px "Noto Sans TC", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('112學年度', 107, 49);
-
-  // 正面核心深色特大醒目標題：「選擇復興  家長安心」
-  ctx.font = '900 68px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
-  ctx.fillStyle = '#0f172a';
+  // 正面核心深藍特大醒目標題：「選擇復興  家長安心」
+  ctx.font = '900 72px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+  ctx.fillStyle = '#0f2942';
   ctx.textAlign = 'left';
-  ctx.fillText('選 擇 復 興', 40, 126);
-  ctx.fillText('家 長 安 心', 400, 126);
+  ctx.textBaseline = 'middle';
+  ctx.fillText('選擇復興  家長安心', 85, 118);
 
-  // 副標題欄位：五大核心特色（主動 | 自信 | 雙語 | 科技 | 多元潛力）
-  ctx.font = 'bold 26px "Noto Sans TC", sans-serif';
-  ctx.fillStyle = '#475569';
-  ctx.fillText('主動  |  自信  |  雙語  |  科技  |  多元潛力', 44, 188);
+  // 副標題欄位：五大核心特色（閱讀 | 品格 | 雙語 | 科技 | 多元能力）
+  ctx.font = 'bold 28px "Noto Sans TC", sans-serif';
+  ctx.fillStyle = '#334155';
+  ctx.fillText('閱讀  |  品格  |  雙語  |  科技  |  多元能力', 110, 198);
 
-  // 底部諮詢電話資訊塊
-  ctx.fillStyle = '#f1f5f9';
-  if (ctx.roundRect) ctx.roundRect(40, 225, 680, 78, 12);
-  else ctx.fillRect(40, 225, 680, 78);
-  ctx.fill();
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 1.5;
-  if (ctx.roundRect) ctx.roundRect(40, 225, 680, 78, 12);
-  ctx.stroke();
-
-  ctx.fillStyle = '#dc2626';
-  ctx.font = '900 24px "Noto Sans TC", sans-serif';
-  ctx.fillText('諮詢電話：', 56, 258);
-  ctx.fillStyle = '#1e293b';
+  // 底部教務處電話資訊
+  ctx.fillStyle = '#1e3a5f';
   ctx.font = 'bold 24px "Noto Sans TC", sans-serif';
-  ctx.fillText('08-7520402 轉 12', 170, 258);
+  ctx.fillText('復興國小教務處 08-7525402轉12', 110, 268);
   ctx.fillStyle = '#64748b';
   ctx.font = 'bold 20px "Noto Sans TC", sans-serif';
-  ctx.fillText('歡迎來電洽詢 · 業務專戶口公幼辦理新生報到', 56, 286);
+  ctx.fillText('請攜戶口名簿辦理新生報到', 475, 268);
 
-  // 右側粉紅立體書本插畫與閱讀標語：「歡迎 閱來 越愛讀！」
-  const bookX = 765, bookY = 48, bookW = 195, bookH = 240;
+  // 右側粉紅斜切區塊與 QR Code
   ctx.save();
-  ctx.translate(bookX, bookY);
-  ctx.rotate(0.06);
-
-  // 書本微投影
-  ctx.fillStyle = 'rgba(0,0,0,0.12)';
-  if (ctx.roundRect) ctx.roundRect(8, 8, bookW, bookH, 16);
-  else ctx.fillRect(8, 8, bookW, bookH);
+  ctx.fillStyle = '#f4a5b8';
+  ctx.beginPath();
+  ctx.moveTo(785, 12);
+  ctx.lineTo(1012, 12);
+  ctx.lineTo(1012, 328);
+  ctx.lineTo(745, 328);
+  ctx.closePath();
   ctx.fill();
 
-  // 書本漸層封面
-  const bgGrad = ctx.createLinearGradient(0, 0, bookW, bookH);
-  bgGrad.addColorStop(0, '#fb7185');
-  bgGrad.addColorStop(1, '#e11d48');
-  ctx.fillStyle = bgGrad;
-  if (ctx.roundRect) ctx.roundRect(0, 0, bookW, bookH, 16);
-  else ctx.fillRect(0, 0, bookW, bookH);
-  ctx.fill();
-
-  // 書頁邊緣白邊
-  ctx.fillStyle = '#fff1f2';
-  ctx.fillRect(8, 6, 14, bookH - 12);
-
-  // 書名標語
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
-  ctx.font = 'bold 26px "Noto Sans TC", sans-serif';
-  ctx.fillText('歡 迎', bookW / 2 + 8, 48);
-  ctx.font = '900 34px "Noto Sans TC", sans-serif';
-  ctx.fillText('閱 來', bookW / 2 + 8, 96);
-  ctx.fillText('越愛讀！', bookW / 2 + 8, 145);
+  ctx.font = 'bold 28px "Noto Sans TC", sans-serif';
+  ctx.fillText('新生', 835, 115);
+  ctx.fillText('報到', 835, 155);
+  ctx.fillText('專區', 835, 195);
 
-  // 底部 QR Code 框
-  ctx.fillStyle = '#ffffff';
-  if (ctx.roundRect) ctx.roundRect(bookW / 2 - 32, 172, 75, 54, 8);
-  else ctx.fillRect(bookW / 2 - 32, 172, 75, 54);
-  ctx.fill();
-  ctx.fillStyle = '#0284c7';
-  ctx.fillRect(bookW / 2 - 24, 178, 20, 20);
-  ctx.fillRect(bookW / 2 + 12, 178, 20, 20);
-  ctx.fillRect(bookW / 2 - 24, 202, 20, 20);
+  // 右側上下兩個 QR Code
+  [65, 195].forEach(qy => {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(895, qy, 92, 92);
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(903, qy + 8, 26, 26);
+    ctx.fillRect(953, qy + 8, 26, 26);
+    ctx.fillRect(903, qy + 58, 26, 26);
+    ctx.fillRect(936, qy + 38, 16, 16);
+    ctx.fillRect(958, qy + 60, 20, 20);
+  });
   ctx.restore();
 
   const t = new THREE.CanvasTexture(c);
@@ -15296,6 +18161,8 @@ function buildMainGateLayer() {
   // 平面圖基準：校門主立柱南面 (px=355) 、立柱東面 (py=700)；左 = 南 (+Z)，下 = 東 (+X)
   const SU = 0.0643, SV = 0.078, PX0 = 355, PY0 = 700;
   const P2W = (px, py) => new THREE.Vector3(pylonX + 0.925 - (PY0 - py) * SV, 0, pylonZ + 0.36 + (PX0 - px) * SU);
+  // 平面圖縱向（py → 世界 x）修正：py ≥ 592（大門與圓弧花台一帶）沿用 P2W；py < 592 線性延伸至草坪北緣 py 300 ↔ x 70.2
+  const PD = py => py >= 592 ? pylonX + 0.925 - (PY0 - py) * SV : 70.2 + (py - 300) * ((pylonX + 0.925 - (PY0 - 592) * SV) - 70.2) / 292;
 
   // 小工具：沿切線方向旋轉 (群組局部 +x = 切線，局部 -z = 朝復興路外側)
   const orientTo = (grp, tx, tz) => { grp.rotation.y = -Math.atan2(tz, tx); };
@@ -15488,218 +18355,321 @@ function buildMainGateLayer() {
   const spotHousingMat   = new THREE.MeshStandardMaterial({ color: 0x1f2428, roughness: 0.45, metalness: 0.82 });
   const spotGlowMat      = new THREE.MeshBasicMaterial({ color: 0xfffaea });
 
-  // 1. 洗石子踏階基座（依實景：碑腳僅略寬於碑身，前緣兩塊深灰花崗岩踏塊）
-  addBox(mg, 1.30, 0.12, 2.30, pylonBaseMat, pylonX - 0.02, 0.06, pylonZ + 0.15);
-  const graniteStepMat = new THREE.MeshStandardMaterial({ color: 0x4b4a47, roughness: 0.80 });
-  addBox(mg, 0.50, 0.14, 0.95, graniteStepMat, pylonX + 0.46, 0.07, pylonZ + 0.80, false);   // 南側踏塊
-  addBox(mg, 0.50, 0.16, 0.95, graniteStepMat, pylonX + 0.52, 0.08, pylonZ - 0.55, false);   // 北側踏塊
+  // 1. 洗石子踏階基座（依實景 20261019_122254_(1).jpg / 20261019_122322.jpg：碑腳前緣左右兩塊深灰洗石子踏塊）
+  addBox(mg, 1.32, 0.14, 2.34, pylonBaseMat, pylonX - 0.02, 0.12, pylonZ + 0.14);
+  const graniteStepMat = new THREE.MeshStandardMaterial({ color: 0x5c5954, roughness: 0.84 });
+  addBox(mg, 0.56, 0.16, 0.90, graniteStepMat, pylonX + 0.44, 0.24, pylonZ + 0.80, false);   // 南側踏塊
+  addBox(mg, 0.56, 0.16, 0.90, graniteStepMat, pylonX + 0.46, 0.24, pylonZ - 0.54, false);   // 北側踏塊
 
-  // 2. 三段式洗石子門碑（自南向北：南翼板 | 中央脊柱 | 北翼板），脊柱最高並向前凸出
-  const pylonConcreteMat = new THREE.MeshStandardMaterial({ color: 0xaeada6, roughness: 0.93 });
-  const southSlab = addBox(mg, 0.46, 4.25, 0.70, pylonConcreteMat, pylonX - 0.08, 2.125, pylonZ + 0.77);   // 前緣 X+0.15，頂高 4.25
-  const spineSlab = addBox(mg, 0.62, 4.65, 0.53, pylonConcreteMat, pylonX,        2.325, pylonZ + 0.155);  // 前緣 X+0.31，頂高 4.65
-  const northSlab = addBox(mg, 0.54, 4.20, 0.72, pylonConcreteMat, pylonX - 0.04, 2.100, pylonZ - 0.47);   // 前緣 X+0.23，頂高 4.20
-  // 脊柱頂部斜切壓頂
-  const spineCap = addBox(mg, 0.66, 0.10, 0.57, stoneCapMat, pylonX, 4.70, pylonZ + 0.155);
-  spineCap.rotation.z = 0.04;
-  // 脊柱北緣垂直深色溝槽（實景中銘刻字右側之垂直凹縫）
-  addBox(mg, 0.04, 4.40, 0.05, darkSteelMat, pylonX + 0.315, 2.35, pylonZ - 0.085, false);
+  // 2. 一體成型圓弧內凹洗石子主門碑（依實景照片 20261019_122254_(1).jpg / 20261019_122322.jpg）
+  //    中央凸出脊柱（高 4.68m）向南北兩側以平滑圓弧內凹曲面過渡至南翼板（高 4.24m）與北翼板（高 4.20m）
+  const pylonConcreteTex = makeSpeckledGraniteTexture('#b2afa7', '#5a5751', '#dbd8d0', true);
+  pylonConcreteTex.repeat.set(2, 4);
+  const pylonConcreteMat = new THREE.MeshStandardMaterial({ map: pylonConcreteTex, roughness: 0.92, metalness: 0.03 });
+  {
+    // 水平斷面外輪廓（局部 x = 世界 +X 東向，局部 y = 世界 -Z 北向；經 rotateX(-PI/2) 後延伸高度為 +Y）
+    // 南翼板 (Z = +1.12 -> +0.42, 局部 y = -1.12 -> -0.42)、中央脊柱 (Z = +0.42 -> -0.11)、北翼板 (Z = -0.11 -> -0.84)
+    const wingShape = new THREE.Shape();
+    wingShape.moveTo(-0.34, -1.12);               // 西南背角
+    wingShape.lineTo(0.24, -1.12);                // 東南前角
+    wingShape.quadraticCurveTo(0.10, -0.78, 0.14, -0.52); // 南翼平滑內凹弧面
+    wingShape.quadraticCurveTo(0.20, -0.42, 0.34, -0.40); // 過渡至中央脊柱南緣
+    wingShape.lineTo(0.34, 0.12);                 // 中央脊柱東面
+    wingShape.quadraticCurveTo(0.18, 0.14, 0.14, 0.28);   // 過渡至北翼內凹弧面
+    wingShape.quadraticCurveTo(0.10, 0.54, 0.26, 0.84);   // 北翼平滑內凹弧面至東北前角
+    wingShape.lineTo(-0.34, 0.84);                // 西北背角
+    wingShape.closePath();
 
-  // 柱頂黑色金屬夜間探照燈（實景：北翼板上緣向東朝下投光）
+    const wingGeo = new THREE.ExtrudeGeometry(wingShape, {
+      depth: 4.22,
+      bevelEnabled: true,
+      bevelSegments: 2,
+      bevelSize: 0.015,
+      bevelThickness: 0.015
+    });
+    wingGeo.rotateX(-Math.PI / 2);
+    const mainPylonBody = addMesh(mg, wingGeo, pylonConcreteMat, pylonX, 0.0, pylonZ);
+    mainPylonBody.castShadow = true;
+    mainPylonBody.receiveShadow = true;
+
+    // 中央脊柱上段延伸（高出兩翼約 0.44m，總高 4.66m，一體平頂無外挑蓋板，並帶中線細長凹槽）
+    const spineTopShape = new THREE.Shape();
+    spineTopShape.moveTo(-0.34, -0.42);
+    spineTopShape.lineTo(0.34, -0.42);
+    spineTopShape.lineTo(0.34, 0.12);
+    spineTopShape.lineTo(-0.34, 0.12);
+    spineTopShape.closePath();
+    const spineTopGeo = new THREE.ExtrudeGeometry(spineTopShape, {
+      depth: 0.46,
+      bevelEnabled: true,
+      bevelSegments: 2,
+      bevelSize: 0.015,
+      bevelThickness: 0.015
+    });
+    spineTopGeo.rotateX(-Math.PI / 2);
+    const spineTopMesh = addMesh(mg, spineTopGeo, pylonConcreteMat, pylonX, 4.20, pylonZ);
+    spineTopMesh.castShadow = true;
+    spineTopMesh.receiveShadow = true;
+  }
+  // 門碑背面（西側，面向前庭廣場）彩色陶瓷拼貼壁飾（依 2026 東棟 2F 俯拍照片 28、29）
+  {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 896;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#6a655c'; ctx.fillRect(0, 0, 512, 896);            // 深色勾縫
+    let sd = 101; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    const pal = ['#c9b48e', '#a88a62', '#8c6b4c', '#d8cdb5', '#b27a55', '#9a9286', '#c7a46b', '#7d6f5e', '#e2d6bd', '#a0603f', '#8e9a8a', '#b9a07a'];
+    const cell = 18;                                                          // 每片約 6 cm
+    for (let y = 0; y < 896; y += cell) {
+      for (let x = 0; x < 512; x += cell) {
+        if (rnd() < 0.12) continue;                                           // 不規則留縫
+        const w = rnd() < 0.18 ? cell * 2 : cell;
+        ctx.fillStyle = pal[Math.floor(rnd() * pal.length)];
+        ctx.fillRect(x + 2, y + 2, w - 4 + (rnd() * 3 - 1.5), cell - 4 + (rnd() * 3 - 1.5));
+      }
+    }
+    // 幾片較大的彩繪陶板（照片中可見的方形色塊）
+    for (let i = 0; i < 14; i++) {
+      const bx = Math.floor(rnd() * 8) * 64 + 4, by = Math.floor(rnd() * 14) * 64 + 4;
+      ctx.fillStyle = pal[Math.floor(rnd() * pal.length)];
+      ctx.fillRect(bx, by, 56, 56);
+      ctx.strokeStyle = 'rgba(60,40,30,0.5)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(bx + 28, by + 28, 14 + rnd() * 8, 0, Math.PI * 2); ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+    const panelW = 1.62, panelH = 2.85, backX = pylonX - 0.34;
+    const panelCz = pylonZ + 0.13, panelCy = 0.95 + panelH / 2;
+    addBox(mg, 0.04, panelH + 0.16, panelW + 0.16, stoneCapMat, backX - 0.02, panelCy, panelCz);       // 灰色石材外框
+    const mosaic = addMesh(mg, new THREE.PlaneGeometry(panelW, panelH), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 }), backX - 0.045, panelCy, panelCz, false);
+    mosaic.rotation.y = -Math.PI / 2;    // 面向西（前庭廣場）
+  }
+
+  // 脊柱正面中央細長垂直深色凹縫（實景 20261019_122254_(1).jpg 中貫穿校名金字後方之建築凹槽）
+  addBox(mg, 0.025, 4.46, 0.045, new THREE.MeshStandardMaterial({ color: 0x56534d, roughness: 0.95 }), pylonX + 0.352, 2.38, pylonZ + 0.15, false);
+
+  // 柱頂北翼上緣黑色金屬夜間探照燈（實景 20261019_122254_(1).jpg：北緣斜伸方形 LED 投光燈）
   {
     const topSpotMat = new THREE.MeshStandardMaterial({ color: 0x181a1d, roughness: 0.42, metalness: 0.85 });
-    const tsX = pylonX + 0.30, tsY = 4.05, tsZ = pylonZ - 0.90;
-    addBox(mg, 0.14, 0.04, 0.04, topSpotMat, tsX - 0.06, tsY, tsZ, false);
-    const topLamp = addMesh(mg, new THREE.CylinderGeometry(0.08, 0.11, 0.22, 12), topSpotMat, tsX + 0.08, tsY + 0.02, tsZ, false);
-    topLamp.rotation.z = Math.PI / 3;
-    const topLens = addMesh(mg, new THREE.CircleGeometry(0.075, 12), spotGlowMat, tsX + 0.14, tsY - 0.03, tsZ, false);
+    const tsX = pylonX + 0.24, tsY = 4.10, tsZ = pylonZ - 0.90;
+    addBox(mg, 0.16, 0.04, 0.04, topSpotMat, tsX - 0.04, tsY, tsZ, false);
+    const topLamp = addBox(mg, 0.18, 0.14, 0.20, topSpotMat, tsX + 0.08, tsY + 0.02, tsZ - 0.04, false);
+    topLamp.rotation.z = -Math.PI / 5;
+    const topLens = addMesh(mg, new THREE.PlaneGeometry(0.16, 0.10), spotGlowMat, tsX + 0.15, tsY - 0.03, tsZ - 0.04, false);
     topLens.rotation.y = Math.PI / 2;
-    topLens.rotation.x = -Math.PI / 3;
+    topLens.rotation.x = Math.PI / 5;
   }
 
   // 4. 脊柱正面金色立體銘牌：屏東縣(橫式第一排)／屏東市(橫式第二排)／復興國民小學(直式一排)
   const pylonInscription = addMesh(mg,
     new THREE.PlaneGeometry(0.56, 4.48),
     new THREE.MeshStandardMaterial({ map: makePylonInscriptionTexture(), transparent: true, roughness: 0.32, metalness: 0.35 }),
-    pylonX + 0.325, 2.40, pylonZ + 0.155, false
+    pylonX + 0.37, 2.40, pylonZ + 0.15, false
   );
   pylonInscription.rotation.y = Math.PI / 2;
 
-  // 5. 基座前排布 3 盞洗石子底座金屬夜間投射燈 (依照片 2 照亮校名全名金字)
-  [-0.45, 0, 0.45].forEach(dz => {
-    const sX = pylonX + 0.82, sY = 0.36, sZ = pylonZ + dz;
-    // 洗石子墊塊基座
-    addBox(mg, 0.22, 0.08, 0.22, pebbleMat, sX, sY, sZ, false);
+  // 5. 基座前排布 3 盞洗石子底座金屬夜間投射燈 (依照片 20261019_122254_(1).jpg 貼齊半圓廣場地坪 y=0.19)
+  [-0.56, 0.14, 0.82].forEach(dz => {
+    const sX = pylonX + 0.95, sY = 0.23, sZ = pylonZ + dz;
+    // 洗石子方塊基座（貼地 y = 0.19 ~ 0.28）
+    addBox(mg, 0.26, 0.09, 0.26, pebbleMat, sX, sY, sZ, false);
     // 燈座金屬外殼
-    addBox(mg, 0.14, 0.06, 0.14, spotHousingMat, sX, sY + 0.07, sZ, false);
-    // 仰角燈筒 (向西向上照)
-    const can = addMesh(mg, new THREE.CylinderGeometry(0.065, 0.075, 0.16, 12), spotHousingMat, sX - 0.03, sY + 0.14, sZ, false);
+    addBox(mg, 0.12, 0.05, 0.12, spotHousingMat, sX, sY + 0.065, sZ, false);
+    // 仰角圓筒燈頭 (向西向上照射門碑)
+    const can = addMesh(mg, new THREE.CylinderGeometry(0.055, 0.068, 0.15, 12), spotHousingMat, sX - 0.03, sY + 0.125, sZ, false);
     can.rotation.z = Math.PI / 4;
     // 發光玻璃鏡片
-    const lens = addMesh(mg, new THREE.CircleGeometry(0.06, 12), spotGlowMat, sX - 0.08, sY + 0.19, sZ, false);
+    const lens = addMesh(mg, new THREE.CircleGeometry(0.05, 12), spotGlowMat, sX - 0.075, sY + 0.17, sZ, false);
     lens.rotation.y = Math.PI / 2;
     lens.rotation.x = -Math.PI / 4;
   });
 
-  // 6. 主立碑南側（左側）洗石子矮門牆與「選擇復興 家長安心」全彩招生布條 (依現場實拍特寫 1:1 構建)
+  // 6. 主立碑南側（左側）整合式連續外牆、深褐直條欄杆、「選擇復興 家長安心」布條與三扇不銹鋼直條門
+  //    (依實拍照片 20261124_001.jpg / 20261019_122254_(1).jpg / 20261019_122322.jpg 單一連續邊界精確建置，消除重疊雙牆)
+  const gateP0 = new THREE.Vector3(pylonX - 0.04, 0, pylonZ + 1.12);   // 緊貼主碑南翼板外緣
+  const gateP1 = new THREE.Vector3(pylonX - 0.12, 0, pylonZ + 1.84);   // 第一座洗石子分隔柱（距碑 0.72m）
+  const gateP2 = new THREE.Vector3(pylonX - 0.96, 0, pylonZ + 4.38);   // 第二座洗石子分隔柱（布條寬欄杆南端，微向西南折入）
+  const gateP3 = new THREE.Vector3(pylonX - 1.60, 0, pylonZ + 6.24);   // 第三座洗石子終端柱（不銹鋼三扇門南端，無縫銜接南面斜向矮外牆）
   {
     const pinkGraniteMat = new THREE.MeshStandardMaterial({ color: 0xb59085, roughness: 0.65 });
-    const bannerStartX = pylonX - 0.02;
-    const bannerZ0 = pylonZ + 1.14; // 緊貼主碑南翼板外緣
-    const bannerZ1 = pylonZ + 5.30; // 布條木欄杆全長約 4.16m (依街景/近照：碑至伸縮門之間)
-    const bannerLen = bannerZ1 - bannerZ0; // 2.06m
-    const bannerCenterZ = (bannerZ0 + bannerZ1) / 2; // 7.07
+    const bannerWoodMat  = new THREE.MeshStandardMaterial({ color: 0x4d382b, roughness: 0.78 });
 
-    // (1) 下層深灰洗石子基座 (高 0.28m，厚 0.38m)
-    addBox(mg, 0.38, 0.28, bannerLen, pebbleMat, bannerStartX, 0.14, bannerCenterZ);
-    // (2) 上層粉紅色花崗石壓頂/踏階 (高 0.08m，厚 0.44m)
-    addBox(mg, 0.44, 0.08, bannerLen + 0.04, pinkGraniteMat, bannerStartX, 0.32, bannerCenterZ);
-
-    // (3) 深褐色木條欄杆 (依實景：矮基座上方約 0.75m 高木條，上下橫木)
-    const bannerWoodMat = new THREE.MeshStandardMaterial({ color: 0x4d382b, roughness: 0.80 });
-    addBox(mg, 0.05, 0.05, bannerLen - 0.06, bannerWoodMat, bannerStartX, 0.44, bannerCenterZ);
-    addBox(mg, 0.06, 0.06, bannerLen - 0.06, bannerWoodMat, bannerStartX, 1.10, bannerCenterZ);
-    const nSouthPickets = Math.floor(bannerLen / 0.11);
-    for (let i = 1; i <= nSouthPickets; i++) {
-      const pz = bannerZ0 + (bannerLen * i) / (nSouthPickets + 1);
-      addBox(mg, 0.04, 0.64, 0.04, bannerWoodMat, bannerStartX, 0.77, pz);
-    }
-
-    // (4) 南側洗石子獨立端柱 (斷面 0.48m × 0.48m，高 1.25m，附雙層線腳斜倒角平蓋)
-    const endPillarZ = pylonZ + 5.55;
-    addBox(mg, 0.48, 1.25, 0.48, pebbleMat, bannerStartX, 0.625, endPillarZ);
-    addBox(mg, 0.56, 0.09, 0.56, stoneCapMat, bannerStartX, 1.295, endPillarZ);
-
-    // (4b) 欄杆中段洗石子分隔柱 (街景：約距碑 1/3 處)
-    const midPostZ = bannerZ0 + 1.25;
-    addBox(mg, 0.44, 1.20, 0.44, pebbleMat, bannerStartX, 0.60, midPostZ);
-    addBox(mg, 0.52, 0.08, 0.52, stoneCapMat, bannerStartX, 1.24, midPostZ);
-
-    // (4c) 銀色不銹鋼直條伸縮/推拉門 (街景：端柱外側 1.55m，高約 1.15m)
-    {
-      const gz0 = endPillarZ + 0.30, gz1 = pylonZ + 7.40;
-      const gLen = gz1 - gz0, gCz = (gz0 + gz1) / 2;
-      addBox(mg, 0.05, 0.05, gLen, stainlessMat, bannerStartX, 0.16, gCz, false);
-      addBox(mg, 0.05, 0.05, gLen, stainlessMat, bannerStartX, 1.14, gCz, false);
-      addBox(mg, 0.04, 1.00, 0.04, stainlessMat, bannerStartX, 0.65, gz0 + 0.02, false);
-      addBox(mg, 0.04, 1.00, 0.04, stainlessMat, bannerStartX, 0.65, gz1 - 0.02, false);
-      addBox(mg, 0.04, 1.00, 0.04, stainlessMat, bannerStartX, 0.65, gCz, false);
-      const nBars = 13;
-      for (let i = 1; i < nBars; i++) {
-        const bz = gz0 + (gLen * i) / nBars;
-        addMesh(mg, new THREE.CylinderGeometry(0.014, 0.014, 0.98, 6), stainlessMat, bannerStartX, 0.65, bz, false);
+    // 小工具：建立兩點間之洗石子矮基座＋粉紅花崗石壓頂＋深褐色直條欄杆
+    function addGatePicketSpan(pA, pB, picketSpacing = 0.11) {
+      const len = pA.distanceTo(pB);
+      const midX = (pA.x + pB.x) / 2, midZ = (pA.z + pB.z) / 2;
+      const g = new THREE.Group();
+      g.position.set(midX, 0, midZ);
+      g.rotation.y = -Math.atan2(pB.z - pA.z, pB.x - pA.x);
+      // (1) 下層深灰洗石子基座 (高 0.28m，厚 0.36m)
+      addBox(g, len, 0.28, 0.36, pebbleMat, 0, 0.14, 0);
+      // (2) 上層粉紅色花崗石壓頂 (高 0.08m，厚 0.42m)
+      addBox(g, len + 0.02, 0.08, 0.42, pinkGraniteMat, 0, 0.32, 0);
+      // (3) 深褐色直條欄杆 (上下橫桿 + 直立條，頂高 1.08m)
+      addBox(g, len - 0.04, 0.05, 0.05, bannerWoodMat, 0, 0.44, 0);
+      addBox(g, len - 0.04, 0.06, 0.05, bannerWoodMat, 0, 1.06, 0);
+      const nPickets = Math.max(3, Math.floor((len - 0.12) / picketSpacing));
+      for (let i = 1; i <= nPickets; i++) {
+        const lx = -len / 2 + (len * i) / (nPickets + 1);
+        addBox(g, 0.042, 0.62, 0.038, bannerWoodMat, lx, 0.75, 0);
       }
-      // 地面導軌
-      addBox(mg, 0.06, 0.02, gLen + 0.2, darkSteelMat, bannerStartX, 0.12, gCz, false);
+      mg.add(g);
     }
-    // 伸縮門外側終端洗石子柱
-    addBox(mg, 0.48, 1.25, 0.48, pebbleMat, bannerStartX, 0.625, pylonZ + 7.65);
-    addBox(mg, 0.56, 0.09, 0.56, stoneCapMat, bannerStartX, 1.295, pylonZ + 7.65);
 
-    // (5) 「選擇復興 家長安心」全彩招生布條 (兩支黑金屬方管立桿固定)
-    addBox(mg, 0.04, 1.60, 0.04, darkSteelMat, bannerStartX + 0.10, 1.85, bannerZ0 + 0.18, false);
-    addBox(mg, 0.04, 1.60, 0.04, darkSteelMat, bannerStartX + 0.10, 1.85, bannerZ1 - 0.18, false);
+    // 小工具：建立洗石子方柱＋倒角壓頂
+    function addGatePier(p, nextP, h = 1.18, w = 0.46) {
+      const g = new THREE.Group();
+      g.position.set(p.x, 0, p.z);
+      if (nextP) g.rotation.y = -Math.atan2(nextP.z - p.z, nextP.x - p.x);
+      addBox(g, w, h, w, pebbleMat, 0, h / 2, 0);
+      addBox(g, w + 0.08, 0.08, w + 0.08, stoneCapMat, 0, h + 0.04, 0);
+      mg.add(g);
+    }
 
-    const bannerMat = new THREE.MeshStandardMaterial({
-      map: makeFuxingGateBannerTexture(),
-      roughness: 0.35,
-      side: THREE.DoubleSide
-    });
-    const bannerMesh = addMesh(mg,
-      new THREE.PlaneGeometry(bannerLen - 0.08, 0.80),
-      bannerMat,
-      bannerStartX + 0.16, 2.05, bannerCenterZ, false
-    );
-    bannerMesh.rotation.y = Math.PI / 2; // 面向東側復興路人行道 (+X)
+    // 段 1：主碑南翼旁短段深褐直條欄杆 (gateP0 -> gateP1)
+    addGatePicketSpan(gateP0, gateP1, 0.10);
+    addGatePier(gateP1, gateP2, 1.18, 0.46);
 
-    // (6) 南端柱外緣轉角處橘白反光安全交通錐 (實拍街景特寫)
-    const coneX = bannerStartX + 0.55, coneZ = pylonZ + 7.95;
-    addBox(mg, 0.36, 0.035, 0.36, new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 }), coneX, 0.02, coneZ, false);
-    addMesh(mg, new THREE.ConeGeometry(0.14, 0.70, 16), new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.45 }), coneX, 0.37, coneZ, false);
-    addMesh(mg, new THREE.CylinderGeometry(0.088, 0.112, 0.14, 16), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 }), coneX, 0.40, coneZ, false);
+    // 段 2：寬段深褐直條欄杆 (gateP1 -> gateP2) ＋ 後方雙柱懸掛「選擇復興 家長安心」招生布條
+    addGatePicketSpan(gateP1, gateP2, 0.115);
+    addGatePier(gateP2, gateP3, 1.18, 0.46);
+    {
+      const bLen = gateP1.distanceTo(gateP2);
+      const bGrp = new THREE.Group();
+      bGrp.position.set((gateP1.x + gateP2.x) / 2, 0, (gateP1.z + gateP2.z) / 2);
+      // 局部 +x 指向西南 (gateP1->gateP2)，局部 -z 指向東南外側（復興路方向），局部 +z 指向校內西北側
+      bGrp.rotation.y = -Math.atan2(gateP2.z - gateP1.z, gateP2.x - gateP1.x);
+      // 兩支黑色金屬方管立桿（位於欄杆內側 +0.20）
+      addBox(bGrp, 0.045, 2.35, 0.045, darkSteelMat, -bLen / 2 + 0.12, 1.175, 0.20, false);
+      addBox(bGrp, 0.045, 2.35, 0.045, darkSteelMat,  bLen / 2 - 0.12, 1.175, 0.20, false);
+      // 布條本體（寬約 2.85m × 高 0.88m，中心高 1.84m，正面朝局部 -Z 面向復興路東南側）
+      const bannerMat = new THREE.MeshStandardMaterial({
+        map: makeFuxingGateBannerTexture(),
+        roughness: 0.38,
+        side: THREE.DoubleSide
+      });
+      const bannerMesh = addMesh(bGrp, new THREE.PlaneGeometry(bLen + 0.24, 0.88), bannerMat, 0, 1.84, 0.15, false);
+      bannerMesh.rotation.y = Math.PI; // 面向局部 -Z（復興路東南側），文字由左至右正常顯示
+      mg.add(bGrp);
+    }
+
+    // 段 3：銀色不銹鋼三扇直條圓弧門 (gateP2 -> gateP3，依照片 20261019_122322.jpg 左側實景精確建置)
+    {
+      const gLen = gateP2.distanceTo(gateP3) - 0.46; // 扣除兩側柱半寬
+      const gg = new THREE.Group();
+      gg.position.set((gateP2.x + gateP3.x) / 2, 0, (gateP2.z + gateP3.z) / 2);
+      gg.rotation.y = -Math.atan2(gateP3.z - gateP2.z, gateP3.x - gateP2.x);
+      // 三扇獨立不銹鋼門框（每扇內含直條上下圓弧 U 型不銹鋼管）
+      const panelW = (gLen - 0.08) / 3;
+      for (let pIdx = 0; pIdx < 3; pIdx++) {
+        const px = -gLen / 2 + panelW * (pIdx + 0.5) + pIdx * 0.04;
+        // 外框上下橫管與左右直管 (高 0.18m ~ 1.16m)
+        addBox(gg, panelW, 0.032, 0.032, stainlessMat, px, 0.20, 0, false);
+        addBox(gg, panelW, 0.032, 0.032, stainlessMat, px, 1.16, 0, false);
+        addBox(gg, 0.032, 0.98, 0.032, stainlessMat, px - panelW / 2 + 0.016, 0.68, 0, false);
+        addBox(gg, 0.032, 0.98, 0.032, stainlessMat, px + panelW / 2 - 0.016, 0.68, 0, false);
+        // 門扇內 3 組直立圓弧環管（U 型圓頂＋圓底）
+        const nLoops = 3;
+        const loopW = (panelW - 0.10) / nLoops;
+        for (let l = 0; l < nLoops; l++) {
+          const lx = px - (panelW - 0.10) / 2 + loopW * (l + 0.5);
+          const halfW = loopW * 0.32;
+          addMesh(gg, new THREE.CylinderGeometry(0.012, 0.012, 0.72, 6), stainlessMat, lx - halfW, 0.68, 0, false);
+          addMesh(gg, new THREE.CylinderGeometry(0.012, 0.012, 0.72, 6), stainlessMat, lx + halfW, 0.68, 0, false);
+          const topArc = addMesh(gg, new THREE.TorusGeometry(halfW, 0.012, 6, 10, Math.PI), stainlessMat, lx, 1.04, 0, false);
+          const botArc = addMesh(gg, new THREE.TorusGeometry(halfW, 0.012, 6, 10, Math.PI), stainlessMat, lx, 0.32, 0, false);
+          botArc.rotation.z = Math.PI;
+          void topArc;
+        }
+      }
+      // 地面不銹鋼導軌
+      addBox(gg, gLen + 0.12, 0.02, 0.06, darkSteelMat, 0, 0.175, 0, false);
+      mg.add(gg);
+    }
+    addGatePier(gateP3, P2W(178, 592), 1.18, 0.46);
+
+    // 橘白反光安全交通錐 (依 20261124_001.jpg 位於不銹鋼門南柱前方連鎖磚廣場上)
+    const coneX = gateP3.x + 1.05, coneZ = gateP3.z + 0.55;
+    addBox(mg, 0.36, 0.035, 0.36, new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 }), coneX, 0.19, coneZ, false);
+    addMesh(mg, new THREE.ConeGeometry(0.14, 0.68, 16), new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.45 }), coneX, 0.53, coneZ, false);
+    addMesh(mg, new THREE.CylinderGeometry(0.088, 0.112, 0.14, 16), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 }), coneX, 0.56, coneZ, false);
   }
 
-  // 7. 主立碑北側人行通道門牆、門牌 376 號柱與伸縮門收納機座 (依照片 2 實景精確構建)
+  // 7. 主立碑北側人行通道門牆、門牌 376 號柱與伸縮門收納機座 (依照片 20261019_122254_(1).jpg / 20261019_122440.jpg 精確構建)
   {
     const pinkGraniteMat = new THREE.MeshStandardMaterial({ color: 0xb59085, roughness: 0.65 });
+    const northWoodMat   = new THREE.MeshStandardMaterial({ color: 0x4d382b, roughness: 0.78 });
     const pedStartX = pylonX - 0.02;
 
-    // (1) 緊鄰主碑北側面之洗石子側柱 (斷面 0.50m × 0.50m，高 1.45m)
-    const pierZ = 4.16;
-    addBox(mg, 0.50, 1.45, 0.40, pebbleMat, pedStartX, 0.725, pierZ);
-    addBox(mg, 0.56, 0.08, 0.46, stoneCapMat, pedStartX, 1.49, pierZ);
-    // 柱身正面垂直裝飾凹槽
-    addBox(mg, 0.02, 0.85, 0.06, darkSteelMat, pedStartX + 0.255, 0.85, pierZ, false);
-
-    // 銘牌配置：
-    // A. 國立屏東大學專業發展合作學校銘牌 (面向東)
+    // A. 主碑北翼正面左下：國立屏東大學專業發展合作學校銘牌 (藍黃雙色直牌，面向東)
     const partnerMesh = addMesh(mg,
-      new THREE.PlaneGeometry(0.32, 0.45),
+      new THREE.PlaneGeometry(0.28, 0.52),
       new THREE.MeshStandardMaterial({ map: makeUniversityPartnerPlateTexture(), roughness: 0.35 }),
-      pedStartX + 0.255, 1.95, pylonZ - 0.75, false
+      pylonX + 0.27, 1.72, pylonZ - 0.72, false
     );
     partnerMesh.rotation.y = Math.PI / 2;
 
-    // B. 「屏東市 復興路 376 號」大門牌
+    // (0) 主碑北緣與 376 門牌柱之間窄幅深色直條鐵柵縫 (Z = 4.36 ~ 4.10，依 20261019_122254_(1).jpg)
+    addBox(mg, 0.34, 0.24, 0.28, pebbleMat, pedStartX, 0.12, 4.23);
+    for (let k = 0; k < 3; k++) {
+      addBox(mg, 0.024, 0.92, 0.024, darkSteelMat, pedStartX, 0.70, 4.14 + k * 0.09);
+    }
+
+    // (1) 376 號門牌洗石子側柱 (斷面 0.44m × 0.44m，高 1.42m，倒角頂)
+    const pierZ = 3.92;
+    addBox(mg, 0.46, 1.42, 0.42, pebbleMat, pedStartX, 0.71, pierZ);
+    addBox(mg, 0.52, 0.08, 0.48, stoneCapMat, pedStartX, 1.46, pierZ);
+
+    // B. 「屏東市 復興路 376 號」大門牌 (正面朝東)
     const addrMesh = addMesh(mg,
-      new THREE.PlaneGeometry(0.30, 0.22),
+      new THREE.PlaneGeometry(0.28, 0.20),
       new THREE.MeshStandardMaterial({ map: makeAddressPlateTexture(), roughness: 0.35 }),
-      pedStartX + 0.255, 1.18, pierZ, false
+      pedStartX + 0.235, 1.20, pierZ, false
     );
     addrMesh.rotation.y = Math.PI / 2;
 
-    // C. 「屏東縣 巡邏箱」深藍標誌
+    // C. 「屏東縣 巡邏箱」深藍標誌 (門牌下方)
     const patrolMesh = addMesh(mg,
-      new THREE.PlaneGeometry(0.24, 0.14),
+      new THREE.PlaneGeometry(0.22, 0.14),
       new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.45 }),
-      pedStartX + 0.255, 0.95, pierZ, false
+      pedStartX + 0.235, 0.96, pierZ, false
     );
     patrolMesh.rotation.y = Math.PI / 2;
 
-    // D. 「避難收容處所」綠色告示牌 (側柱北側面)
+    // D. 「避難收容處所」綠色告示牌 (側柱北側後方立牌，正面朝東，依 20261019_122254_(1).jpg)
     const shelterMesh = addMesh(mg,
-      new THREE.PlaneGeometry(0.28, 0.25),
+      new THREE.PlaneGeometry(0.30, 0.36),
       new THREE.MeshStandardMaterial({ map: makeEvacuationShelterTexture(), roughness: 0.35 }),
-      pedStartX, 1.15, pierZ - 0.205, false
+      pedStartX - 0.12, 1.18, pierZ - 0.36, false
     );
-    shelterMesh.rotation.y = Math.PI; // 面向北側人行穿道
+    shelterMesh.rotation.y = Math.PI / 2;
 
-    // (2) 人行穿道門牆 (Z: 3.96 至 3.26，長 0.70m)
-    const pedWallZ = 3.61, pedWallLen = 0.70;
-    // 地面粉紅色花崗岩踏台 (Y: 0.08m ~ 0.16m)
-    addBox(mg, 0.95, 0.08, pedWallLen + 0.40, pinkGraniteMat, pedStartX - 0.15, 0.08, pedWallZ, false);
-    // 洗石子矮牆基座與粉紅壓頂
-    addBox(mg, 0.38, 0.28, pedWallLen, pebbleMat, pedStartX, 0.14, pedWallZ);
-    addBox(mg, 0.44, 0.08, pedWallLen + 0.02, pinkGraniteMat, pedStartX, 0.32, pedWallZ);
-    // 垂直黑色鐵柵欄
-    addBox(mg, 0.035, 0.035, pedWallLen - 0.04, darkSteelMat, pedStartX, 0.42, pedWallZ);
-    addBox(mg, 0.035, 0.035, pedWallLen - 0.04, darkSteelMat, pedStartX, 1.08, pedWallZ);
-    for (let k = 1; k <= 4; k++) {
-      const pz = 3.96 - (pedWallLen * k) / 5;
-      addBox(mg, 0.022, 0.68, 0.022, darkSteelMat, pedStartX, 0.75, pz);
+    // (2) 人行穿道矮牆與深褐直條欄杆 (Z: 3.71 至 3.16，長 0.55m)
+    const pedWallZ = 3.435, pedWallLen = 0.55;
+    addBox(mg, 0.36, 0.28, pedWallLen, pebbleMat, pedStartX - 0.06, 0.14, pedWallZ);
+    addBox(mg, 0.42, 0.08, pedWallLen + 0.02, pinkGraniteMat, pedStartX - 0.06, 0.32, pedWallZ);
+    addBox(mg, 0.04, 0.04, pedWallLen - 0.04, northWoodMat, pedStartX - 0.06, 0.42, pedWallZ);
+    addBox(mg, 0.045, 0.045, pedWallLen - 0.04, northWoodMat, pedStartX - 0.06, 0.98, pedWallZ);
+    for (let k = 1; k <= 5; k++) {
+      const pz = 3.71 - (pedWallLen * k) / 6;
+      addBox(mg, 0.03, 0.56, 0.03, northWoodMat, pedStartX - 0.06, 0.70, pz);
     }
-    // 東側面懸掛彩色活動海報 (紅邊框全彩活動海報)
-    const posterMesh = addMesh(mg,
-      new THREE.PlaneGeometry(0.48, 0.68),
-      new THREE.MeshStandardMaterial({ map: makeCampusEventPosterTexture(), roughness: 0.38 }),
-      pedStartX + 0.22, 0.75, pedWallZ, false
-    );
-    posterMesh.rotation.y = Math.PI / 2;
 
-    // (3) 伸縮門收納端座 / 矮機座 (Z: 3.26 至 2.76，長 0.50m，高 1.15m)
-    const housingZ = 3.01;
-    addBox(mg, 0.52, 1.15, 0.50, pebbleMat, pedStartX, 0.575, housingZ);
-    addBox(mg, 0.60, 0.08, 0.58, stoneCapMat, pedStartX, 1.19, housingZ);
-    // 正面紅色警語標示牌 (防空疏散 / 反詐騙)
+    // (3) 伸縮門收納端座與洗石子收納罩 (Z: 3.16 至 2.66，依 20261019_122440.jpg 實景呈現伸縮門收納空間)
+    const housingZ = 2.91;
+    addBox(mg, 0.52, 1.12, 0.48, pebbleMat, pedStartX - 0.04, 0.56, housingZ);
+    addBox(mg, 0.58, 0.08, 0.54, stoneCapMat, pedStartX - 0.04, 1.16, housingZ);
+    // 伸縮門收納護罩（向西延伸之洗石子門套，包覆折疊伸縮門南端）
+    addBox(mg, 1.15, 0.10, 0.56, pebbleMat, pedStartX - 0.58, 1.18, housingZ - 0.22);
+    addBox(mg, 1.15, 1.14, 0.12, pebbleMat, pedStartX - 0.58, 0.57, housingZ + 0.02);
+    // 正面紅色警語標示牌 (防空疏散 / 反詐騙，依 20261019_122254_(1).jpg 位於伸縮門旁右側柱面)
     const redSignMesh = addMesh(mg,
-      new THREE.PlaneGeometry(0.36, 0.45),
+      new THREE.PlaneGeometry(0.32, 0.42),
       new THREE.MeshStandardMaterial({ map: makeRedNoticeTexture(), roughness: 0.40 }),
-      pedStartX + 0.265, 0.85, housingZ, false
+      pedStartX + 0.225, 0.92, housingZ - 0.02, false
     );
     redSignMesh.rotation.y = Math.PI / 2;
   }
 
-  // 7b. 大門右側地貌：校門碑前半圓形灰色洗石子廣場，外緣以淺色抿石子細帶圍成弧線，向外銜接連鎖磚鋪面（依實景照片）
+  // 7b. 大門地坪：校門碑前半圓形灰色洗石子廣場 ＋ 掃過車道前緣與 FU-SHING 矮牆前之洗石子弧形帶（依 20261019_122440.jpg）
   {
     const aprR = 2.95, aprCx = pylonX + 0.38, aprCz = pylonZ + 0.12;
     const aprMat = new THREE.MeshStandardMaterial({ color: 0x8d8a85, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
@@ -15716,92 +18686,138 @@ function buildMainGateLayer() {
     aprRing.position.set(aprCx, 0.195, aprCz);
     aprRing.receiveShadow = true;
     mg.add(aprRing);
-    // 內圈第二道淺色弧線（實景中廣場內另有一道同心弧縫）
+    // 內圈第二道淺色弧線
     const aprRing2Geo = new THREE.RingGeometry(aprR * 0.62 - 0.02, aprR * 0.62 + 0.03, 60, 1, -Math.PI / 2, Math.PI);
     aprRing2Geo.rotateX(-Math.PI / 2);
     const aprRing2 = new THREE.Mesh(aprRing2Geo, aprEdgeMat);
     aprRing2.position.set(aprCx, 0.196, aprCz);
     aprRing2.receiveShadow = true;
     mg.add(aprRing2);
+
+    // FU-SHING 矮牆前方半圓形灰色洗石子弧形帶（依 20261019_122440.jpg 前景弧帶）
+    const arcGeo = new THREE.RingGeometry(2.35, 3.35, 64, 1, -Math.PI * 0.45, Math.PI * 0.90);
+    arcGeo.rotateX(-Math.PI / 2);
+    const arcMesh = new THREE.Mesh(arcGeo, aprMat);
+    arcMesh.position.set(pylonX - 0.35, 0.186, -10.05);
+    arcMesh.receiveShadow = true;
+    mg.add(arcMesh);
   }
 
-  // 8. 中央主出入口大門：鮮亮天藍色遙控電動伸縮門（由右向左移動收合開啟，停駐於左側矮門柱旁）
+  // 7c. 兩座藍色金屬「通學步道 汽機車請勿進入」車阻拒馬（依 20261019_122322.jpg 前景右側與遠方右側）
+  {
+    const barrierBlueMat = new THREE.MeshStandardMaterial({ color: 0x0277bd, roughness: 0.35, metalness: 0.45 });
+    function makeWalkwayBarrierTexture() {
+      const c = document.createElement('canvas');
+      c.width = 512; c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#0277bd';
+      ctx.fillRect(0, 0, 512, 256);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(8, 8, 496, 240);
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 64px "Noto Sans TC", sans-serif';
+      ctx.fillText('通學步道', 256, 86);
+      ctx.font = 'bold 54px "Noto Sans TC", sans-serif';
+      ctx.fillText('汽機車請勿進入', 256, 170);
+      ctx.font = 'bold 20px "Noto Sans TC", sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('復興國小', 488, 228);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    }
+    const barrierTex = makeWalkwayBarrierTexture();
+    const barrierSignMat = new THREE.MeshStandardMaterial({ map: barrierTex, roughness: 0.35, side: THREE.DoubleSide });
+
+    function addBlueWalkwayBarrier(bx, bz, rotY) {
+      const bg = new THREE.Group();
+      bg.position.set(bx, 0.175, bz);
+      bg.rotation.y = rotY;
+      // 左右直立圓管＋頂部橫管 (寬 1.32m，高 0.92m)
+      addMesh(bg, new THREE.CylinderGeometry(0.025, 0.025, 0.86, 10), barrierBlueMat, -0.64, 0.43, 0, false);
+      addMesh(bg, new THREE.CylinderGeometry(0.025, 0.025, 0.86, 10), barrierBlueMat,  0.64, 0.43, 0, false);
+      const topBar = addMesh(bg, new THREE.CylinderGeometry(0.025, 0.025, 1.28, 10), barrierBlueMat, 0, 0.88, 0, false);
+      topBar.rotation.z = Math.PI / 2;
+      // 底座支腳
+      addBox(bg, 0.05, 0.04, 0.42, barrierBlueMat, -0.64, 0.02, 0, false);
+      addBox(bg, 0.05, 0.04, 0.42, barrierBlueMat,  0.64, 0.02, 0, false);
+      // 雙面告示面板
+      addMesh(bg, new THREE.PlaneGeometry(1.18, 0.56), barrierSignMat, 0, 0.54, 0.015, false);
+      const backSign = addMesh(bg, new THREE.PlaneGeometry(1.18, 0.56), barrierSignMat, 0, 0.54, -0.015, false);
+      backSign.rotation.y = Math.PI;
+      mg.add(bg);
+    }
+    // 1) 主碑東南側通學步道入口處（照片 20261019_122322.jpg 前景右側，避開路燈桿）
+    addBlueWalkwayBarrier(pylonX + 2.20, pylonZ + 2.35, 0.18);
+    // 2) FU-SHING 矮牆北側通學步道入口處（照片 20261019_122322.jpg 右後方）
+    addBlueWalkwayBarrier(pylonX + 1.95, -13.65, 0.12);
+  }
+
+  // 8. 中央主出入口大門：鮮亮天藍色遙控電動伸縮門（由右向左移動收合開啟，停駐於南側收納機座旁）
   {
     const gateVividBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.32, metalness: 0.55 });
-    const motorHousingMat = new THREE.MeshStandardMaterial({ color: 0x0f4c81, roughness: 0.35, metalness: 0.65 });
-    const gx = pylonX - 0.10;
-    const trackZ0 = 2.76, trackZ1 = -7.80; // 地軌貫穿通道全寬 (長 10.56m)
+    const redBrickBandMat  = new THREE.MeshStandardMaterial({ color: 0x9e5346, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const gx = pylonX - 0.16;
+    const trackZ0 = 2.66, trackZ1 = -7.80; // 地軌貫穿通道全寬 (長 10.46m)
 
-    // (1) 地坪不銹鋼伸縮導軌凹槽
-    addBox(mg, 0.08, 0.015, Math.abs(trackZ0 - trackZ1), stainlessMat, gx, 0.125, (trackZ0 + trackZ1) / 2);
+    // (1) 地坪不銹鋼伸縮導軌凹槽 ＋ 東側細長紅磚飾帶（依 20261019_122440.jpg）
+    addBox(mg, 0.08, 0.018, Math.abs(trackZ0 - trackZ1), stainlessMat, gx, 0.13, (trackZ0 + trackZ1) / 2);
+    addBox(mg, 0.28, 0.016, Math.abs(trackZ0 - trackZ1), redBrickBandMat, gx + 0.24, 0.128, (trackZ0 + trackZ1) / 2, false);
 
-    // (2) 遙控電動伸縮門：由右向左收合停駐於左側機座旁 (Z: 2.76 至 0.56，長 2.20m)
+    // (2) 遙控電動伸縮門：半開收合停駐於南側收納機座旁 (Z: 2.66 至 0.46，長 2.20m)
     const gateZ_Base = trackZ0;              // 南端基座靠齊機箱
     const gateLen = 2.20;                    // 收攏折疊長度 2.2m
-    const gateZ_Head = gateZ_Base - gateLen; // 前端機頭位置 Z = 0.56m
+    const gateZ_Head = gateZ_Base - gateLen; // 前端機頭位置 Z = 0.46m
     const gateCenterZ = (gateZ_Base + gateZ_Head) / 2;
 
     // 上下滑軌水平主樑
     addBox(mg, 0.05, 0.04, gateLen, gateVividBlueMat, gx, 0.22, gateCenterZ);
-    addBox(mg, 0.05, 0.04, gateLen, gateVividBlueMat, gx, 1.28, gateCenterZ);
+    addBox(mg, 0.05, 0.04, gateLen, gateVividBlueMat, gx, 1.24, gateCenterZ);
 
     // 折疊立管與黑橡膠滾輪
     const nPosts = 16;
     for (let i = 0; i <= nPosts; i++) {
       const pz = gateZ_Base + (gateZ_Head - gateZ_Base) * (i / nPosts);
-      // 拱頂垂直圓管
-      addMesh(mg, new THREE.CylinderGeometry(0.018, 0.018, 1.15, 8), gateVividBlueMat, gx, 0.75, pz);
-      // 拱形圓頂
-      const arch = addMesh(mg, new THREE.TorusGeometry(0.06, 0.018, 6, 8, Math.PI), gateVividBlueMat, gx, 1.28, pz);
+      addMesh(mg, new THREE.CylinderGeometry(0.018, 0.018, 1.12, 8), gateVividBlueMat, gx, 0.72, pz);
+      const arch = addMesh(mg, new THREE.TorusGeometry(0.06, 0.018, 6, 8, Math.PI), gateVividBlueMat, gx, 1.24, pz);
       arch.rotation.y = Math.PI / 2;
-      // 底部滾輪
-      addMesh(mg, new THREE.CylinderGeometry(0.035, 0.035, 0.03, 10), spotHousingMat, gx, 0.14, pz, false);
+      addMesh(mg, new THREE.CylinderGeometry(0.035, 0.035, 0.03, 10), spotHousingMat, gx, 0.15, pz, false);
 
-      // 折疊 X 剪刀連桿
       if (i < nPosts) {
         const pzn = gateZ_Base + (gateZ_Head - gateZ_Base) * ((i + 1) / nPosts);
-        const L = Math.hypot(0.48, pzn - pz);
+        const L = Math.hypot(0.46, pzn - pz);
         for (const sgn of [1, -1]) {
-          const bar = addBox(mg, 0.022, 0.016, L, gateVividBlueMat, gx, 0.75, (pz + pzn) / 2);
+          const bar = addBox(mg, 0.022, 0.016, L, gateVividBlueMat, gx, 0.72, (pz + pzn) / 2);
           bar.rotation.x = sgn * 0.75;
         }
       }
     }
 
-    // (3) 前端電動機頭 (面向右側車道)
-    const motorH = 1.20, motorW = 0.24, motorD = 0.44;
-    addBox(mg, motorW, motorH, motorD, motorHousingMat, gx, motorH / 2 + 0.14, gateZ_Head - motorD / 2);
-    // 機頭不銹鋼頂蓋
-    addBox(mg, motorW + 0.04, 0.06, motorD + 0.04, stainlessMat, gx, motorH + 0.16, gateZ_Head - motorD / 2);
-    // 反光標誌與不銹鋼拉桿
-    addBox(mg, 0.02, 0.18, 0.26, new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 }), gx + 0.13, 0.88, gateZ_Head - motorD / 2);
-    addBox(mg, 0.03, 0.35, 0.04, stainlessMat, gx + 0.14, 0.82, gateZ_Head - motorD / 2);
-
-    // (4) 門面懸掛「復興國小 減速慢行」警告標誌牌
+    // (3) 前端不銹鋼電動機頭底座 ＋ 藍色上拱框 (依 20261019_122254_(1).jpg / 20261019_122440.jpg)
+    const motorH = 0.62, motorW = 0.26, motorD = 0.42;
+    addBox(mg, motorW, motorH, motorD, stainlessMat, gx, motorH / 2 + 0.16, gateZ_Head - motorD / 2);
+    // 上半部天藍色拱形框架
+    addBox(mg, motorW + 0.02, 0.04, motorD, gateVividBlueMat, gx, 1.24, gateZ_Head - motorD / 2);
+    addBox(mg, 0.035, 0.46, 0.035, gateVividBlueMat, gx - motorW / 2, 1.00, gateZ_Head - motorD + 0.04);
+    addBox(mg, 0.035, 0.46, 0.035, gateVividBlueMat, gx + motorW / 2, 1.00, gateZ_Head - motorD + 0.04);
+    // 正面紅白小警示牌 (減速慢行)
     const signMeshFront = addMesh(mg,
-      new THREE.PlaneGeometry(0.68, 0.38),
+      new THREE.PlaneGeometry(0.36, 0.22),
       new THREE.MeshStandardMaterial({ map: makeGateWarningSignTexture(), roughness: 0.35 }),
-      gx + 0.04, 0.82, gateCenterZ, false
+      gx + motorW / 2 + 0.01, 0.92, gateZ_Head - motorD / 2, false
     );
     signMeshFront.rotation.y = Math.PI / 2;
-    const signMeshBack = addMesh(mg,
-      new THREE.PlaneGeometry(0.68, 0.38),
-      new THREE.MeshStandardMaterial({ map: makeGateWarningSignTexture(), roughness: 0.35 }),
-      gx - 0.04, 0.82, gateCenterZ, false
-    );
-    signMeshBack.rotation.y = -Math.PI / 2;
   }
 
-  // 9. 大門右側（北側）門柱：洗石子防撞限位受口座 (依 2024 街景全景實況，於地軌終點 Z = -7.80 處順接 FU-SHING 波浪矮牆)
+  // 9. 大門右側（北側）門柱：洗石子防撞限位受口座 (於地軌終點 Z = -7.80 處順接 FU-SHING 波浪矮牆)
   {
-    const stopX = pylonX - 0.10, stopZ = -7.80;
-    // 洗石子限位基座 (厚 0.42m，高 0.48m，深 0.45m)
+    const stopX = pylonX - 0.16, stopZ = -7.80;
     addBox(mg, 0.42, 0.48, 0.45, pebbleMat, stopX, 0.24, stopZ);
-    // 頂部洗石子倒角平蓋
     addBox(mg, 0.48, 0.08, 0.50, stoneCapMat, stopX, 0.52, stopZ);
-    // 伸縮門鎖扣受口 (不銹鋼 U 型槽)
     addBox(mg, 0.06, 0.25, 0.08, stainlessMat, stopX, 0.30, stopZ + 0.18, false);
-    // 正面黃黑防撞反光斜紋貼條
     addBox(mg, 0.02, 0.12, 0.32, new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 }), stopX + 0.215, 0.32, stopZ, false);
   }
 
@@ -15820,120 +18836,138 @@ function buildMainGateLayer() {
   }
 
   // ================================================================
-  const wallStart = new THREE.Vector3(pylonX - 0.02, 0, pylonZ + 7.65);
+  // 2) 南面矮外牆與綠籬：自不銹鋼門南柱 (gateP3) 單一連續斜向西南延伸至圓弧花台 (wallEnd)
+  //    (依 20261124_001.jpg 實景完整重建，與大門南側欄杆無縫銜接，徹底消除雙層重疊牆體)
+  // ================================================================
+  const wallStart = gateP3.clone();
   const wallEnd = P2W(178, 592);
-  const wallMid = new THREE.Vector3((wallStart.x + wallEnd.x) / 2, 0, (wallStart.z + wallEnd.z) / 2);
-  const wallCurve = new THREE.CatmullRomCurve3([wallStart, wallMid, wallEnd], false, 'centripetal');
+  const wallCurve = new THREE.CatmullRomCurve3([
+    wallStart,
+    new THREE.Vector3(111.75, 0, 13.05),
+    new THREE.Vector3(109.75, 0, 14.95),
+    wallEnd
+  ], false, 'centripetal');
   const wallLen = wallCurve.getLength();
   const wAt = s => wallCurve.getPointAt(Math.min(1, Math.max(0, s / wallLen)));
   const wTan = s => { const t = wallCurve.getTangentAt(Math.min(1, Math.max(0, s / wallLen))); t.y = 0; return t.normalize(); };
   const wEast = s => { const t = wTan(s); return new THREE.Vector3(t.z, 0, -t.x); }; // 朝復興路(東南)外側
 
-  // 低矮洗石子牆體小段
+  // 低矮洗石子矮外牆小段 (依 20261124_001.jpg：粗粒深灰洗石子基座 ＋ 淺粉灰石材壓頂)
+  const southWallCapMat = new THREE.MeshStandardMaterial({ color: 0xc2b8ae, roughness: 0.72 });
   function lowWallSeg(parent, p1, p2, total, thick = 0.38) {
     const len = p1.distanceTo(p2);
     if (len < 0.01) return;
     const g = new THREE.Group();
     g.position.set((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
     g.rotation.y = -Math.atan2(p2.z - p1.z, p2.x - p1.x);
-    const bodyH = total - 0.16;
-    addBox(g, len + 0.05, 0.08, thick + 0.08, washStoneWallMat, 0, 0.04, 0);
-    addBox(g, len + 0.05, bodyH, thick, washStoneWallMat, 0, 0.08 + bodyH / 2, 0);
-    addBox(g, len + 0.07, 0.08, thick + 0.10, stoneCapMat, 0, total - 0.04, 0);
+    const bodyH = Math.max(0.16, total - 0.10);
+    addBox(g, len + 0.05, bodyH, thick, pebbleMat, 0, bodyH / 2, 0);
+    addBox(g, len + 0.07, 0.08, thick + 0.08, southWallCapMat, 0, total - 0.04, 0);
     parent.add(g);
   }
   function wallRun(s0, s1, total) {
-    const n = Math.max(1, Math.ceil((s1 - s0) / 0.4));
+    const n = Math.max(1, Math.ceil((s1 - s0) / 0.45));
     for (let i = 0; i < n; i++) {
       lowWallSeg(mg, wAt(s0 + (s1 - s0) * i / n), wAt(s0 + (s1 - s0) * (i + 1) / n), total);
     }
   }
-  // 深褐色木條欄杆 (依街景：約 0.45m 洗石子矮基座 + 約 0.55m 高木條欄杆，頂高約 1.0m)
-  const woodFenceMat = new THREE.MeshStandardMaterial({ color: 0x4d382b, roughness: 0.80 });
+  // 深褐色直條木/鐵欄杆 (依 20261124_001.jpg：0.42m 洗石子矮牆 ＋ 0.64m 深褐直條欄杆，總高 1.06m)
+  const woodFenceMat = new THREE.MeshStandardMaterial({ color: 0x4d382b, roughness: 0.78 });
   function fenceRun(s0, s1) {
-    const baseTop = 0.45, topY = 1.0;
+    const baseTop = 0.42, topY = 1.06;
     wallRun(s0, s1, baseTop);
-    const n = Math.max(1, Math.ceil((s1 - s0) / 0.4));
+    const n = Math.max(1, Math.ceil((s1 - s0) / 0.45));
     for (let i = 0; i < n; i++) {
       const a = wAt(s0 + (s1 - s0) * i / n), b = wAt(s0 + (s1 - s0) * (i + 1) / n);
       const len = a.distanceTo(b);
       const g = new THREE.Group();
       g.position.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
       g.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
-      // 上下橫木
-      addBox(g, len + 0.02, 0.05, 0.05, woodFenceMat, 0, baseTop + 0.10, 0, false);
+      // 上下橫條
+      addBox(g, len + 0.02, 0.05, 0.05, woodFenceMat, 0, baseTop + 0.08, 0, false);
       addBox(g, len + 0.02, 0.06, 0.05, woodFenceMat, 0, topY - 0.03, 0, false);
-      // 直立木條 (間距約 0.11m)
+      // 直立深褐色欄杆條 (間距約 0.11m)
       const nSl = Math.max(2, Math.floor(len / 0.11));
       for (let k = 0; k <= nSl; k++) {
         const lx = -len / 2 + (len * k) / nSl;
-        addBox(g, 0.05, topY - baseTop - 0.04, 0.035, woodFenceMat, lx, (topY + baseTop) / 2 - 0.01, 0, false);
+        addBox(g, 0.042, topY - baseTop - 0.04, 0.036, woodFenceMat, lx, (topY + baseTop) / 2 - 0.01, 0, false);
       }
       mg.add(g);
     }
   }
-  // 石砌方柱 (欄杆分段端柱)
-  function pier(s, h = 1.35) {
+  // 洗石子方柱 (欄杆分段端柱)
+  function pier(s, h = 1.16) {
     const p = wAt(s), t = wTan(s);
     const g = new THREE.Group();
     g.position.set(p.x, 0, p.z);
     orientTo(g, t.x, t.z);
-    addBox(g, 0.46, h, 0.46, washStoneWallMat, 0, h / 2, 0);
-    addBox(g, 0.58, 0.09, 0.58, stoneCapMat, 0, h + 0.045, 0);
+    addBox(g, 0.46, h, 0.46, pebbleMat, 0, h / 2, 0);
+    addBox(g, 0.54, 0.08, 0.54, stoneCapMat, 0, h + 0.04, 0);
     mg.add(g);
   }
 
-  // --- 南側校園邊界圍牆曲線 (銜接自南端柱，向西南順延) ---
-  const sGate0 = -5, sGate1 = -5;   // 伸縮門已移至南側直線段，斜牆無門洞
-  const sS3 = Math.min(9.4, wallLen), sS4 = wallLen;
-  wallRun(0.25, 1.95, 0.50);        // 街景：端柱後低矮洗石子實牆段
-  pier(2.2, 1.10);
-  fenceRun(2.45, wallLen - 0.25);   // 其後為木條欄杆
-  pier(wallLen, 1.10);
+  // --- 南側斜向矮外牆＋直條欄杆分段（gateP3 -> 分隔柱 1 -> 分隔柱 2 -> 花台端柱 wallEnd） ---
+  const pMid1 = wallLen * 0.36, pMid2 = wallLen * 0.72;
+  fenceRun(0.24, pMid1 - 0.24);
+  pier(pMid1, 1.16);
+  fenceRun(pMid1 + 0.24, pMid2 - 0.24);
+  pier(pMid2, 1.16);
+  fenceRun(pMid2 + 0.24, wallLen - 0.24);
+  pier(wallLen, 1.16);
 
-  // --- 通學步道欄杆(可拆式) 的橘色安全三角錐 (照片 2：小門南柱東側) ---
+  // --- 南面綠籬（依 20261124_001.jpg：緊貼南面矮外牆內側之濃密多層次常綠灌木綠籬，高約 0.95m～1.35m） ---
   {
-    const p = wAt(sGate1 + 0.1), n = wEast(sGate1 + 0.1);
-    const cg = new THREE.Group();
-    cg.position.set(p.x + n.x * 1.15, 0, p.z + n.z * 1.15);
-    addBox(cg, 0.38, 0.045, 0.38, new THREE.MeshStandardMaterial({ color: 0x1f2328, roughness: 0.9 }), 0, 0.0225, 0);
-    addMesh(cg, new THREE.ConeGeometry(0.165, 0.70, 16), new THREE.MeshStandardMaterial({ color: 0xf95721, roughness: 0.45 }), 0, 0.395, 0);
-    addMesh(cg, new THREE.CylinderGeometry(0.088, 0.118, 0.16, 16), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 }), 0, 0.44, 0);
-    mg.add(cg);
-  }
+    let hsd = 73;
+    const hrnd = () => ((hsd = (hsd * 16807) % 2147483647) / 2147483647);
+    const hedgeBoxDark = new THREE.MeshStandardMaterial({ color: 0x1e4e24, roughness: 0.80 });
+    const hedgeBoxMid  = new THREE.MeshStandardMaterial({ color: 0x2d6b31, roughness: 0.78 });
+    const hedgeBoxLit  = new THREE.MeshStandardMaterial({ color: 0x4b8a39, roughness: 0.78 });
+    const fP = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.48 });
+    const fR = new THREE.MeshStandardMaterial({ color: 0xbe123c, roughness: 0.48 });
 
-  // --- 使君子 10 株：攀附於大門左側欄杆內側 ---
-  {
-    const vineLeaf = new THREE.MeshStandardMaterial({ color: 0x2c6a2f, roughness: 0.65 });
-    const fW = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 });
-    const fP = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.45 });
-    const fR = new THREE.MeshStandardMaterial({ color: 0xbe123c, roughness: 0.45 });
-    for (let v = 0; v < 10; v++) {
-      const s = 0.55 + v * ((sS3 - 0.7) / 9);
-      if (s > sGate0 - 0.35 && s < sGate1 + 0.35) continue;
-      const p = wAt(s), n = wEast(s);
-      const vx = p.x - n.x * 0.14, vz = p.z - n.z * 0.14;
-      const blob = addMesh(mg, new THREE.SphereGeometry(0.20, 8, 6), vineLeaf, vx, 0.85, vz);
-      blob.scale.set(1.0, 1.5, 1.0);
-      for (let f = 0; f < 3; f++) {
-        const a = f * 2.09 + v;
-        addMesh(mg, new THREE.SphereGeometry(0.05, 6, 5), f === 0 ? fR : (v % 2 ? fP : fW), vx + Math.cos(a) * 0.15, 0.70 + f * 0.2, vz + Math.sin(a) * 0.15);
+    // 1) 連續修剪灌木基底綠籬帶（沿斜向矮牆內側 0.65m 連續鋪設）
+    const nHedgeSeg = Math.max(10, Math.ceil(wallLen / 0.55));
+    for (let i = 0; i < nHedgeSeg; i++) {
+      const sA = (wallLen * i) / nHedgeSeg;
+      const sB = (wallLen * (i + 1)) / nHedgeSeg;
+      const pA = wAt(sA), pB = wAt(sB);
+      const nA = wEast(sA), nB = wEast(sB);
+      const aIn = new THREE.Vector3(pA.x - nA.x * 0.68, 0, pA.z - nA.z * 0.68);
+      const bIn = new THREE.Vector3(pB.x - nB.x * 0.68, 0, pB.z - nB.z * 0.68);
+      const segLen = aIn.distanceTo(bIn);
+      const hg = new THREE.Group();
+      hg.position.set((aIn.x + bIn.x) / 2, 0, (aIn.z + bIn.z) / 2);
+      hg.rotation.y = -Math.atan2(bIn.z - aIn.z, bIn.x - aIn.x);
+      const hh = 0.88 + hrnd() * 0.22;
+      addBox(hg, segLen + 0.08, hh, 0.82, i % 2 ? hedgeBoxDark : hedgeBoxMid, 0, hh / 2, 0);
+      mg.add(hg);
+
+      // 2) 上層自然圓潤葉叢（打破方塊感，局部葉團略高出矮牆欄杆頂端約 1.15m～1.38m）
+      for (let c = 0; c < 3; c++) {
+        const sC = sA + (sB - sA) * (c + 0.5) / 3;
+        const pc = wAt(sC), nc = wEast(sC);
+        const cr = 0.34 + hrnd() * 0.16;
+        const depthOff = 0.48 + hrnd() * 0.48;
+        const cl = addMesh(mg, new THREE.IcosahedronGeometry(cr, 1),
+          c === 1 ? hedgeBoxLit : (c % 2 ? hedgeBoxDark : hedgeBoxMid),
+          pc.x - nc.x * depthOff, 0.72 + hrnd() * 0.42, pc.z - nc.z * depthOff);
+        cl.scale.set(1.2, 0.88, 1.1);
+      }
+      // 點綴少許使君子粉紅/深紅小花簇
+      if (i % 3 === 1) {
+        const pm = wAt((sA + sB) / 2), nm = wEast((sA + sB) / 2);
+        addMesh(mg, new THREE.SphereGeometry(0.055, 6, 5), i % 2 ? fP : fR,
+          pm.x - nm.x * 0.26, 0.92 + hrnd() * 0.18, pm.z - nm.z * 0.26, false);
       }
     }
-  }
-
-  // --- 矮牆內側楓港柿 / 桂花綠籬 (平面圖沿牆圓點) ---
-  for (let s = sGate1 + 0.9; s < wallLen - 0.3; s += 0.95) {
-    const p = wAt(s), n = wEast(s);
-    const sh = addMesh(mg, new THREE.SphereGeometry(0.43, 9, 7), (Math.round(s / 0.95) % 2) ? shrubDark : shrubMid, p.x - n.x * 0.75, 0.52, p.z - n.z * 0.75);
-    sh.scale.set(1.15, 0.92, 1.05);
   }
 
   // ================================================================
   // 3) 矮牆花台：深灰花崗石砌塊基座＋淺灰石材壓頂圓弧花台
   // ================================================================
-  const graniteBlockMat = new THREE.MeshStandardMaterial({ color: 0x3d4147, roughness: 0.85 });
-  const graniteCapMat   = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.65 });
+  // v2.12.3 依 2024 街景近照：中灰斑點洗石子砌塊牆身（下緣略深）＋淺灰斑點花崗石壓頂
+  const graniteBlockMat = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#8f8a83', '#45423e', '#d8d3c9', true), roughness: 0.86 });
+  const graniteCapMat   = new THREE.MeshStandardMaterial({ map: makeSpeckledGraniteTexture('#b9b4ab', '#5c5853', '#efebe3', false), roughness: 0.7 });
 
   function curvedPlanterSeg(parent, p1, p2, total = 0.54, thick = 0.44) {
     const len = p1.distanceTo(p2);
@@ -15965,10 +18999,15 @@ function buildMainGateLayer() {
   // 花台外緣淡粉褐色弧形步道帶
   {
     const pinkPathMat = new THREE.MeshStandardMaterial({ color: 0xd2a58a, roughness: 0.90, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    // v2.12.3 依街景：淡粉褐色水泥帶僅環繞花台東端圓弧尖端（往復興路側最寬約 1.6 m），往兩側漸窄收尾
     const outer = [], inner = [];
-    lobePts.forEach(p => {
+    const maxX = Math.max(...lobePts.map(p => p.x));
+    const tipPts = lobePts.filter(p => p.x > maxX - 5.5);
+    tipPts.forEach(p => {
       const d = new THREE.Vector3(p.x - centroid.x, 0, p.z - centroid.z).normalize();
-      outer.push(new THREE.Vector3(p.x + d.x * 1.00, 0, p.z + d.z * 1.00));
+      const k = THREE.MathUtils.smoothstep(p.x, maxX - 5.5, maxX - 0.8);
+      const w = 0.27 + 1.35 * k;
+      outer.push(new THREE.Vector3(p.x + d.x * w, 0, p.z + d.z * w));
       inner.push(new THREE.Vector3(p.x + d.x * 0.26, 0, p.z + d.z * 0.26));
     });
     const ribbon = outer.concat(inner.reverse());
@@ -15994,10 +19033,25 @@ function buildMainGateLayer() {
       [centroid.x + 1.5, centroid.z + 0.6, 0.55, 0.55, shrubLight],
       [centroid.x + 0.3, centroid.z + 1.5, 0.48, 0.48, shrubLight]
     ];
+    // v2.12.3：以多個葉團組成不規則灌叢（街景：中段一叢高約 2.4 m 的濃密常綠灌木、尖端一株亮黃綠圓灌木），並鋪低矮地被
+    let lsd = 41;
+    const lr = () => ((lsd = (lsd * 16807) % 2147483647) / 2147483647);
     bigShrubs.forEach(([bx, bz, r, h, m]) => {
-      const sph = addMesh(mg, new THREE.SphereGeometry(r, 12, 9), m, bx, 0.40 + r * 0.95, bz);
-      sph.scale.set(1.15, h / r * 0.9, 1.1);
+      const n = r > 0.9 ? 9 : 4;
+      for (let k = 0; k < n; k++) {
+        const cr = r * (0.45 + lr() * 0.25);
+        const a = lr() * Math.PI * 2, d = lr() * r * 0.6;
+        const cl = addMesh(mg, new THREE.IcosahedronGeometry(cr, 1), m, bx + Math.cos(a) * d, 0.40 + cr * 0.8 + lr() * h * 0.9, bz + Math.sin(a) * d);
+        cl.scale.set(1.1, 0.9, 1.05);
+      }
     });
+    for (let k = 0; k < 16; k++) {                    // 低矮地被灌叢
+      const p = lobePts[Math.floor(lr() * lobePts.length)];
+      const t = 0.55 + lr() * 0.3;
+      const gx = centroid.x + (p.x - centroid.x) * t, gz = centroid.z + (p.z - centroid.z) * t;
+      const gc = addMesh(mg, new THREE.IcosahedronGeometry(0.32 + lr() * 0.15, 0), k % 3 ? shrubMid : shrubLight, gx, 0.48, gz);
+      gc.scale.set(1.3, 0.55, 1.3);
+    }
   }
 
   // 花台轉角臨人行道路緣之「白色金屬路燈桿與號誌桿」
@@ -16019,13 +19073,23 @@ function buildMainGateLayer() {
   {
     const tx = pylonX - 2.9, tz = pylonZ + 10.6;
     // 枯黃草皮小圓塊 (嵌於連鎖磚鋪面中)
-    const dryLawnMat = new THREE.MeshStandardMaterial({ color: 0xaaa36c, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
-    const lawn = addMesh(mg, new THREE.CylinderGeometry(1.7, 1.7, 0.02, 28), dryLawnMat, tx, 0.18, tz, false);
-    lawn.scale.set(1.35, 1, 1.0);
-    // 圓球形修剪灌木 (街景中央圓球狀常綠灌木)
+    // 平面圖：圓弧花台與斜向矮牆之間鋪面上的「方形植穴」（約 2.6 m 見方，花崗石緣石＋草皮）
+    const dryLawnMat = new THREE.MeshStandardMaterial({ color: 0x8fa35a, roughness: 0.95 });
+    const sqCurbMat = new THREE.MeshStandardMaterial({ color: 0xc9c6bd, roughness: 0.75 });
+    const sq = 2.6;
+    // v2.12.3 依街景近照：植穴與鋪面齊平（僅一圈窄石緣），穴內為稀疏枯黃草皮與裸土，中央一株約 1.1 m 的小灌木
+    addBox(mg, sq - 0.16, 0.03, sq - 0.16, dryLawnMat, tx, 0.185, tz, false);
+    addMesh(mg, new THREE.CylinderGeometry(0.55, 0.6, 0.02, 14), gardenSoilMat, tx, 0.205, tz, false);
+    [[0, sq / 2 - 0.04, sq, 0.08], [0, -(sq / 2 - 0.04), sq, 0.08], [sq / 2 - 0.04, 0, 0.08, sq], [-(sq / 2 - 0.04), 0, 0.08, sq]].forEach(([ox, oz, w, d]) => {
+      addBox(mg, w, 0.04, d, sqCurbMat, tx + ox, 0.19, tz + oz, false);
+    });
     const roundShrubMat = new THREE.MeshStandardMaterial({ color: 0x4d8a2e, roughness: 0.82 });
-    const ball = addMesh(mg, new THREE.SphereGeometry(0.58, 14, 11), roundShrubMat, tx, 0.78, tz);
-    ball.scale.set(1.0, 0.92, 1.0);
+    const roundShrubMat2 = new THREE.MeshStandardMaterial({ color: 0x3b7426, roughness: 0.82 });
+    addMesh(mg, new THREE.CylinderGeometry(0.04, 0.06, 0.4, 6), trunkBrownMat, tx, 0.38, tz);
+    [[0, 0.75, 0, 0.36], [0.22, 0.95, 0.1, 0.3], [-0.2, 0.9, -0.12, 0.3], [0.05, 1.12, -0.05, 0.26], [-0.08, 0.68, 0.24, 0.26]].forEach(([ox, oy, oz, cr], k) => {
+      const cl = addMesh(mg, new THREE.IcosahedronGeometry(cr, 1), k % 2 ? roundShrubMat2 : roundShrubMat, tx + ox, oy, tz + oz);
+      cl.scale.set(1.15, 0.9, 1.1);
+    });
   }
 
   // ================================================================
@@ -16044,8 +19108,9 @@ function buildMainGateLayer() {
       new THREE.Vector3(L1.x, 0, L1.z)
     ];
     for (let i = eastPts.length - 2; i >= 0; i--) poly.push(eastPts[i].clone());
-    const wallSamples = wallCurve.getSpacedPoints(24);
+    const wallSamples = wallCurve.getSpacedPoints(20);
     for (let i = wallSamples.length - 2; i >= 0; i--) poly.push(wallSamples[i].clone());
+    poly.push(gateP2.clone(), gateP1.clone(), gateP0.clone());
     const plaza = new THREE.Mesh(flatPolyGeo(poly), brickMat);
     plaza.position.y = 0.17;
     plaza.receiveShadow = true;
@@ -16055,20 +19120,16 @@ function buildMainGateLayer() {
     addBox(mg, 0.20, 0.02, Math.abs(L1.z - (pylonZ + 0.36)) + 1.2, purpleCurbMat, curbX + 0.18, 0.22, (pylonZ + 0.36 + L1.z) / 2, false);
   }
 
-  // 白色歐式雙燈頭路燈 (立於步道外緣，欄杆前方)
+  // 校門前方臨復興路緣石單桿高柱路燈 (依 20261124_001.jpg：銀白直桿＋頂部錐形燈罩，立於主碑前緣石旁)
   {
-    const lp = wAt(8.0);
     const lampGrp = new THREE.Group();
-    lampGrp.position.set(pylonX + 2.55, 0, lp.z + 0.4);
-    addMesh(lampGrp, new THREE.CylinderGeometry(0.14, 0.18, 0.45, 8), whiteLampMat, 0, 0.225, 0);
-    addMesh(lampGrp, new THREE.CylinderGeometry(0.048, 0.048, 4.20, 12), whiteLampMat, 0, 2.10, 0);
-    addMesh(lampGrp, new THREE.SphereGeometry(0.08, 10, 8), whiteLampMat, 0, 4.30, 0);
-    for (const dir of [-1, 1]) {
-      addBox(lampGrp, 0.035, 0.035, 0.45, whiteLampMat, 0, 4.10, dir * 0.22);
-      addBox(lampGrp, 0.035, 0.18, 0.035, whiteLampMat, 0, 4.02, dir * 0.42);
-      addMesh(lampGrp, new THREE.ConeGeometry(0.18, 0.26, 12), lampGlowMat, 0, 3.82, dir * 0.42);
-      addMesh(lampGrp, new THREE.SphereGeometry(0.09, 8, 8), lampGlowMat, 0, 3.70, dir * 0.42);
-    }
+    lampGrp.position.set(pylonX + 2.85, 0.17, pylonZ + 1.35);
+    addMesh(lampGrp, new THREE.CylinderGeometry(0.11, 0.14, 0.26, 10), whiteLampMat, 0, 0.13, 0);
+    addMesh(lampGrp, new THREE.CylinderGeometry(0.055, 0.075, 4.95, 12), whiteLampMat, 0, 2.55, 0);
+    // 頂部錐形燈罩＋發光球與尖頂飾蓋
+    addMesh(lampGrp, new THREE.ConeGeometry(0.28, 0.24, 14), whiteLampMat, 0, 5.10, 0);
+    addMesh(lampGrp, new THREE.SphereGeometry(0.16, 12, 10), lampGlowMat, 0, 4.92, 0);
+    addMesh(lampGrp, new THREE.CylinderGeometry(0.015, 0.04, 0.36, 8), whiteLampMat, 0, 5.36, 0);
     mg.add(lampGrp);
   }
 
@@ -16087,13 +19148,14 @@ function buildMainGateLayer() {
         c.scale.set(1.2, 0.72, 1.2);
       });
     }
-    const t1 = P2W(215, 335), t2 = P2W(335, 350);
-    bigTree(t1.x, t1.z, 1.15);
-    bigTree(t2.x, t2.z, 0.85);
+    // 平面圖草坪內大喬木：舊換算將平面圖縱向壓縮（草坪北緣誤置於 x≈85），改以 PD() 修正至 x≈74
+    const t1 = P2W(222, 330); t1.x = PD(330);
+    // v2.12.16：草坪大喬木改依樹木普查登錄座標建置
 
     const stepMat = new THREE.MeshStandardMaterial({ color: 0xe9e7e0, roughness: 0.88 });
-    [[122, 332], [138, 328], [154, 325], [170, 322], [184, 320], [197, 319]].forEach(([a, b], i) => {
-      const p = P2W(a, b);
+    // 平面圖白色踏石：自新南側門向東北弧形排列（9 枚）
+    [[105, 345], [112, 332], [122, 322], [134, 318], [148, 322], [161, 326], [175, 320], [189, 312], [203, 306]].forEach(([a, b], i) => {
+      const p = P2W(a, b); p.x = PD(b);
       const st = addMesh(mg, new THREE.CylinderGeometry(0.26, 0.30, 0.05, 10), stepMat, p.x, 0.07, p.z);
       st.scale.set(1.5, 1, 1.0);
       st.rotation.y = i * 0.5;
@@ -16274,18 +19336,12 @@ function buildMainGateLayer() {
     side: THREE.DoubleSide
   });
 
-  // 菱形金屬網板 (置放於凹槽與長斜坡前段後方，支撐 SHING 字母與校徽，依實景放大 1.5 倍)
-  const meshW = 2.85, meshH = 1.15;
-  const meshMesh = addMesh(mg, new THREE.PlaneGeometry(meshW, meshH), diamondMeshMat, wallRightX + 0.07, 1.25, wallRightZ - 0.20, false);
+  // 菱形金屬網板 (依 20261019_122241_(1).jpg：僅封閉波浪矮牆中央 U 型凹槽孔洞，不超出牆體)
+  const meshW = 0.96, meshH = 0.72;
+  const meshMesh = addMesh(mg, new THREE.PlaneGeometry(meshW, meshH), diamondMeshMat, wallRightX - 0.02, 0.78, wallRightZ + 0.76, false);
   meshMesh.rotation.y = Math.PI / 2;
 
-  // 金屬垂直支撐方管/圓柱 (照片中網後三支直挺金屬柱，固定至矮牆上)
-  [-1.25, -0.20, 0.85].forEach(pz => {
-    addMesh(mg, new THREE.CylinderGeometry(0.02, 0.02, 1.25, 8), darkSteelMat, wallRightX + 0.05, 1.25, wallRightZ + pz);
-  });
-
-  // D. 雙色立體字「Fu SHING」與金色「復興」校徽向量高解析紋理 (1:1 忠實重現藍邊 F-u、金校徽、橘邊 S 與 HING)
-  // 放大 1.5 倍並抬高至完全無遮擋狀態，S 懸垂入托槽，HING 齊平山脊 peak 並向北水平展延
+  // D. 雙色立體字「FU-SHING」與金色「復興」校徽向量高解析紋理 (依 20261019_122241_(1).jpg 1:1 比例重構)
   function makeCutoutSignTexture() {
     const c = document.createElement('canvas');
     c.width = 2048; c.height = 1024;
@@ -16299,35 +19355,32 @@ function buildMainGateLayer() {
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
 
-      // 柔和陰影
-      ctx.fillStyle = 'rgba(0,0,0,0.40)';
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillText(text, x + 6, y + 8);
 
-      // 鮮明厚實外框
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = bWidth;
       ctx.strokeText(text, x, y);
 
-      // 正面潔白面料
       ctx.fillStyle = textColor;
       ctx.fillText(text, x, y);
     }
 
-    // 1. 巨大亮藍邊白面大寫「F」(左側雄偉直立)
-    drawLetter('F', 320, 460, '900 500px "Arial Black", "Montserrat", "Impact", sans-serif', '#0832a8', '#ffffff', 52);
+    // 1. 亮藍邊白面大寫「F」(立於左側圓拱波峰上)
+    drawLetter('F', 300, 460, '900 540px "Arial Black", "Montserrat", "Impact", sans-serif', '#0832a8', '#ffffff', 54);
 
-    // 2. 亮藍邊白面小寫「u」(嵌套於 F 字右上角開口中)
-    drawLetter('u', 680, 280, '900 300px "Arial Black", "Montserrat", "Impact", sans-serif', '#0832a8', '#ffffff', 40);
+    // 2. 亮藍邊白面大寫「U」(依實景照片為大寫 U，嵌套於 F 字右上開口)
+    drawLetter('U', 640, 265, '900 290px "Arial Black", "Montserrat", "Impact", sans-serif', '#0832a8', '#ffffff', 42);
 
     // 3. 亮藍邊連接橫槓「-」
     ctx.fillStyle = '#0832a8';
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(810, 264, 85, 34, 8);
-    else ctx.rect(810, 264, 85, 34);
+    if (ctx.roundRect) ctx.roundRect(795, 250, 82, 34, 8);
+    else ctx.rect(795, 250, 82, 34);
     ctx.fill();
 
-    // 4. 「復興」精緻校徽 (金色雙側立體麥穗、上半部紅白放射扇芒、中央寶藍盾牌嵌白色「復興」二字，高踞 H、I 正上方)
-    const bX = 1085, bY = 150, bR = 135;
+    // 4. 「復興」精緻校徽 (金色雙側麥穗、紅白放射扇芒、中央寶藍盾牌嵌白色「復興」二字，位於 H、I 正上方)
+    const bX = 1085, bY = 235, bR = 148;
     ctx.fillStyle = '#f59e0b';
     for (let i = -5; i <= 5; i++) {
       const angL = Math.PI * 0.5 + i * 0.22, angR = Math.PI * 0.5 - i * 0.22;
@@ -16349,34 +19402,34 @@ function buildMainGateLayer() {
     for (let s = 0; s < 12; s++) {
       ctx.rotate((Math.PI * 2) / 12);
       ctx.beginPath();
-      ctx.moveTo(0, 0); ctx.lineTo(-12, -75); ctx.lineTo(12, -75); ctx.closePath();
+      ctx.moveTo(0, 0); ctx.lineTo(-12, -78); ctx.lineTo(12, -78); ctx.closePath();
       ctx.fill();
     }
     ctx.restore();
 
     ctx.fillStyle = '#0832a8';
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(bX - 88, bY - 20, 176, 72, 10);
-    else ctx.rect(bX - 88, bY - 20, 176, 72);
+    if (ctx.roundRect) ctx.roundRect(bX - 92, bY - 22, 184, 76, 10);
+    else ctx.rect(bX - 92, bY - 22, 184, 76);
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 4;
     ctx.stroke();
 
-    ctx.font = 'bold 52px "Noto Sans TC", "BiauKai", serif';
+    ctx.font = 'bold 56px "Noto Sans TC", "BiauKai", serif';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('復', bX - 45, bY + 16);
-    ctx.fillText('興', bX + 45, bY + 16);
+    ctx.fillText('復', bX - 46, bY + 16);
+    ctx.fillText('興', bX + 46, bY + 16);
 
-    // 5. 亮橘邊白面大寫「S」(嵌套於 F 中橫梁下方，下環深深懸垂入抿石子圓弧托槽)
-    drawLetter('S', 580, 720, '900 480px "Arial Black", "Montserrat", "Impact", sans-serif', '#ff6f00', '#ffffff', 46);
+    // 5. 亮橘邊白面大寫「S」(嵌套於 F 右下方，下環懸垂入抿石子 U 型凹槽)
+    drawLetter('S', 590, 725, '900 470px "Arial Black", "Montserrat", "Impact", sans-serif', '#ff6f00', '#ffffff', 48);
 
-    // 6. 亮橘邊白面大寫「H I N G」(底緣齊平矮牆山脊 peak，橫向排列向北順坡展延)
-    const hing = [{ ch: 'H', x: 980 }, { ch: 'I', x: 1190 }, { ch: 'N', x: 1420 }, { ch: 'G', x: 1680 }];
+    // 6. 亮橘邊白面大寫「H I N G」(底緣齊平中央山脊 peak 並向北水平延伸)
+    const hing = [{ ch: 'H', x: 960 }, { ch: 'I', x: 1180 }, { ch: 'N', x: 1410 }, { ch: 'G', x: 1680 }];
     hing.forEach(item => {
-      drawLetter(item.ch, item.x, 450, '900 360px "Arial Black", "Montserrat", "Impact", sans-serif', '#ff6f00', '#ffffff', 42);
+      drawLetter(item.ch, item.x, 565, '900 355px "Arial Black", "Montserrat", "Impact", sans-serif', '#ff6f00', '#ffffff', 44);
     });
 
     const t = new THREE.CanvasTexture(c);
@@ -16386,102 +19439,141 @@ function buildMainGateLayer() {
   }
 
   const signTexture = makeCutoutSignTexture();
-  const signMat = new THREE.MeshStandardMaterial({
+  const signFrontMat = new THREE.MeshStandardMaterial({
     map: signTexture,
     transparent: true,
     alphaTest: 0.15,
-    roughness: 0.32,
+    roughness: 0.30,
     metalness: 0.15,
+    side: THREE.FrontSide
+  });
+  const signDepthMat = new THREE.MeshStandardMaterial({
+    map: signTexture,
+    color: 0xb8c2d0,
+    transparent: true,
+    alphaTest: 0.15,
+    roughness: 0.45,
+    metalness: 0.35,
     side: THREE.DoubleSide
   });
 
-  // 雕塑尺度：放大 1.5 倍（面寬 3.525m，高 1.725m），面向東方復興路
-  const signW = 3.525, signH = 1.725;
-  const signZ = wallRightZ + 0.18; // 中心座落於 Z = -10.045m
-  const signY = 1.48; // 抬高至 1.48m，確保 HING 完全高於 1.25m 山脊，S 完美垂入托槽，0% 遮擋
+  // 雕塑尺度：依照片 20261019_122241_(1).jpg 還原真實 1:1 比例（面寬 2.10m，高 1.05m，S 嵌入 U 型凹槽、HING 貼合山脊頂端）
+  const signW = 2.10, signH = 1.05;
+  const signZ = wallRightZ + 0.56;
+  const signY = 1.24;
 
-  // 正面標誌面板 (面向復興路東側，置於 wallRightX + 0.245m 徹底探出抿石子牆正面 2cm，徹底杜絕遮擋)
-  const signMeshFront = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signMat, wallRightX + 0.245, signY, signZ, false);
+  // 正面標誌面板（FrontSide，避免背面鏡像穿透並略探出波浪矮牆倒角外緣，確保 G 字完整無裁切）
+  const signMeshFront = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signFrontMat, wallRightX + 0.245, signY, signZ, false);
   signMeshFront.rotation.y = Math.PI / 2;
 
-  // 背面標誌面板 (面向校內西側)
-  const signMeshBack = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signMat, wallRightX + 0.05, signY, signZ, false);
+  // 3 層細密厚度切層，呈現真實字母輪廓之立體厚度（無方形背塊遮擋）
+  [0.22, 0.195, 0.17].forEach(dx => {
+    const sl = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signDepthMat, wallRightX + dx, signY, signZ, false);
+    sl.rotation.y = Math.PI / 2;
+  });
+
+  // 背面標誌面板（FrontSide 面向校內西側）
+  const signMeshBack = addMesh(mg, new THREE.PlaneGeometry(signW, signH), signFrontMat, wallRightX + 0.145, signY, signZ, false);
   signMeshBack.rotation.y = -Math.PI / 2;
 
-  // 雕塑 3D 立體側盒件 (具有 0.17m 實質厚度，完美吻合 1.5 倍放大各字母立體厚度)
+  // E. 兩座洗石子基座 ＋ 流線型銀灰斜背投射地燈（依 20261019_122241_(1).jpg / 20261019_122440.jpg：左右各一座，貼齊連鎖磚面 y=0.17）
   {
-    const boxBlueMat   = new THREE.MeshStandardMaterial({ color: 0x0832a8, roughness: 0.32, metalness: 0.45 });
-    const boxOrangeMat = new THREE.MeshStandardMaterial({ color: 0xff6f00, roughness: 0.32, metalness: 0.45 });
-    const boxGoldMat   = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.32, metalness: 0.45 });
-    const boxThick = 0.17;
-    const midX = wallRightX + 0.155;
+    const waveSpotBaseMat    = new THREE.MeshStandardMaterial({ color: 0x5c5750, roughness: 0.90 });
+    const waveSpotHousingMat = new THREE.MeshStandardMaterial({ color: 0x9aa4b0, roughness: 0.32, metalness: 0.72 });
+    const waveSpotGlassMat   = new THREE.MeshBasicMaterial({ color: 0xfffaea });
 
-    // F 區塊立體側盒 (放大 1.5x)
-    addBox(mg, boxThick, 0.82, 0.65, boxBlueMat, midX, signY + 0.09, signZ + 1.21, false);
-    // u 區塊立體側盒 (放大 1.5x)
-    addBox(mg, boxThick, 0.48, 0.46, boxBlueMat, midX, signY + 0.39, signZ + 0.59, false);
-    // 校徽立體側盒 (放大 1.5x)
-    addBox(mg, boxThick, 0.52, 0.55, boxGoldMat, midX, signY + 0.61, signZ - 0.10, false);
-    // S 區塊立體側盒 (放大 1.5x)
-    addBox(mg, boxThick, 0.72, 0.54, boxOrangeMat, midX, signY - 0.35, signZ + 0.76, false);
-    // HING 區塊立體長條側盒 (放大 1.5x)
-    addBox(mg, boxThick, 0.58, 1.48, boxOrangeMat, midX, signY + 0.10, signZ - 0.53, false);
+    [wallRightZ + 2.05, wallRightZ - 2.25].forEach(spZ => {
+      const spX = wallRightX + 0.95;
+      // 洗石子方塊基座（坐落於連鎖磚鋪面 y = 0.17 ~ 0.27）
+      addBox(mg, 0.30, 0.10, 0.28, waveSpotBaseMat, spX, 0.22, spZ, false);
+      // 銀灰色斜背方圓燈體（仰角對準 FU-SHING 矮牆）
+      const spotBody = addBox(mg, 0.14, 0.20, 0.18, waveSpotHousingMat, spX - 0.02, 0.36, spZ, false);
+      spotBody.rotation.z = Math.PI / 6;
+      const glowFace = addMesh(mg, new THREE.PlaneGeometry(0.14, 0.16), waveSpotGlassMat, spX - 0.09, 0.39, spZ, false);
+      glowFace.rotation.y = -Math.PI / 2;
+      glowFace.rotation.z = -Math.PI / 6;
+    });
   }
 
-  // E. 單一洗石子基座 ＋ 流線型銀灰斜背投射地燈 (座落於地面連鎖磚上，仰角 35° 正對 Fu SHING 打光 · Photo 3 特寫)
-  const waveSpotBaseMat    = new THREE.MeshStandardMaterial({ color: 0x544f48, roughness: 0.90 });
-  const waveSpotHousingMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.30, metalness: 0.80 });
-  const waveSpotGlassMat   = new THREE.MeshBasicMaterial({ color: 0xfffaea });
-
-  const spotX = wallRightX + 0.46, spotZ = wallRightZ + 1.45; // Z = -8.775m
-  // 洗石子基座墊塊
-  addBox(mg, 0.24, 0.05, 0.26, waveSpotBaseMat, spotX, 0.025, spotZ, false);
-
-  // 流線型銀灰色斜背燈體
-  const spotBody = addBox(mg, 0.13, 0.08, 0.15, waveSpotHousingMat, spotX - 0.03, 0.09, spotZ, false);
-  spotBody.rotation.z = Math.PI / 5;
-
-  // 斜切防眩光外罩
-  const hood = addMesh(mg, new THREE.CylinderGeometry(0.055, 0.07, 0.11, 14), waveSpotHousingMat, spotX - 0.06, 0.125, spotZ, false);
-  hood.rotation.z = Math.PI / 3.5;
-
-  // 高亮圓形發光燈面
-  const glowFace = addMesh(mg, new THREE.CircleGeometry(0.05, 14), waveSpotGlassMat, spotX - 0.095, 0.15, spotZ, false);
-  glowFace.rotation.y = Math.PI / 2;
-  glowFace.rotation.x = -Math.PI / 3.5;
-
-  // F. 矮牆後方平整修剪厚實常綠綠籬 (貼合 4.85m 矮牆背部尺寸)
+  // F. 矮牆右半部後方與北端平整修剪常綠灌木綠籬 (依 20261019_122241_(1).jpg 實景：自然茂密修剪葉叢，左側留空透出大草坪與巨石)
   {
-    const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x1b4d24, roughness: 0.86 });
-    const hW = 4.85, hH = 1.25, hD = 0.58;
-    addBox(mg, hD, hH, hW, hedgeMat, wallRightX - 0.56, hH / 2, wallRightZ, false);
-  }
+    let nsd = 19;
+    const nrnd = () => ((nsd = (nsd * 16807) % 2147483647) / 2147483647);
+    const northHedgeDark = new THREE.MeshStandardMaterial({ color: 0x1e5124, roughness: 0.82 });
+    const northHedgeMid  = new THREE.MeshStandardMaterial({ color: 0x326f32, roughness: 0.80 });
+    const northHedgeLit  = new THREE.MeshStandardMaterial({ color: 0x5c963c, roughness: 0.78 });
 
-  // 朱槿/扶桑花灌木群 (深綠葉＋艷紅花朵探出波浪抿石子矮牆頂端)
-  const bushMat = new THREE.MeshStandardMaterial({ color: 0x24582c, roughness: 0.82 });
-  const flowerMat = new THREE.MeshStandardMaterial({ color: 0xd92d20, roughness: 0.5 });
-  for (let b = -5; b <= 5; b++) {
-    const bz = wallRightZ + b * 0.46;
-    const bush = addMesh(mg, new THREE.SphereGeometry(0.60 + (Math.abs(b)%2)*0.12, 10, 8), bushMat, wallRightX - 0.72, 0.95, bz);
-    bush.scale.set(1.1, 1.2, 1.1);
-    addMesh(mg, new THREE.SphereGeometry(0.09, 7, 7), flowerMat, wallRightX - 0.38, 1.30 + (Math.abs(b) % 3)*0.10, bz + 0.10);
-    if (b % 2 === 0) {
-      addMesh(mg, new THREE.SphereGeometry(0.08, 6, 6), flowerMat, wallRightX - 0.28, 1.12 + (b % 2)*0.12, bz - 0.15);
+    // 後排修剪方整常綠綠籬（自中央山脊後方 Z = -10.35 向北延展至 Z = -14.8）
+    const hLen = 4.45, hH = 1.25, hD = 0.75;
+    addBox(mg, hD, hH, hLen, northHedgeDark, wallRightX - 0.78, hH / 2, -12.55, false);
+    for (let k = 0; k < 14; k++) {
+      const bz = -10.45 - k * 0.32;
+      const cl = addMesh(mg, new THREE.IcosahedronGeometry(0.38 + nrnd() * 0.14, 1),
+        k % 3 === 0 ? northHedgeLit : (k % 2 ? northHedgeDark : northHedgeMid),
+        wallRightX - 0.75 + (nrnd() - 0.5) * 0.25, 0.95 + nrnd() * 0.35, bz);
+      cl.scale.set(1.15, 0.85, 1.1);
+    }
+    // 前景北端緊貼波浪矮牆右端之常綠灌木叢（照片 20261019_122241_(1).jpg 右前景）
+    for (let k = 0; k < 7; k++) {
+      const bz = -12.70 - k * 0.28;
+      const cl = addMesh(mg, new THREE.IcosahedronGeometry(0.36 + nrnd() * 0.12, 1),
+        k % 2 ? northHedgeLit : northHedgeMid,
+        wallRightX + 0.10 + (nrnd() - 0.5) * 0.35, 0.55 + nrnd() * 0.42, bz);
+      cl.scale.set(1.1, 0.9, 1.15);
     }
   }
 
-  // G. 左側草坪景觀自然巨石 (Garden Boulder)
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.95 });
-  const rock = addMesh(mg, new THREE.DodecahedronGeometry(0.48), rockMat, wallRightX - 1.1, 0.38, wallRightZ + 2.8);
-  rock.scale.set(1.2, 0.8, 1.1);
+  // G. 左側草坪景觀自然巨石 (Garden Boulder，位於 FU-SHING 左後方開放草坪上)
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x4b525c, roughness: 0.95 });
+  const rock = addMesh(mg, new THREE.DodecahedronGeometry(0.55), rockMat, wallRightX - 2.6, 0.42, wallRightZ + 2.2);
+  rock.scale.set(1.3, 0.85, 1.1);
 
   // H. 大門南側背景大王椰子樹 (避開北側開放草坪與正面視野)
   const palmFoliageMat = new THREE.MeshStandardMaterial({ color: 0x2e6b35, roughness: 0.82 });
-  [Z(275)].forEach(pz => {
-    addMesh(mg, new THREE.CylinderGeometry(0.28, 0.35, 10.5, 12), mats.slab, wallRightX - 3.5, 5.25, pz);
-    const palmCrown = addMesh(mg, new THREE.SphereGeometry(2.4, 12, 10), palmFoliageMat, wallRightX - 3.5, 10.6, pz);
-    palmCrown.scale.set(1.4, 0.8, 1.4);
-  });
+  // v2.11.5 依 2026 東棟 2F 俯拍照片 29：南草坪靠校門側兩株高聳大王椰子（約 13～14 m），灰白光滑樹幹、
+  //          綠色葉鞘冠莖、羽狀長葉向四周拱形下垂
+  {
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0xb4b0a6, roughness: 0.8 });
+    const shaftMat = new THREE.MeshStandardMaterial({ color: 0x5f8f3e, roughness: 0.7 });
+    const frondMat = new THREE.MeshStandardMaterial({ color: 0x3f7a35, roughness: 0.78, side: THREE.DoubleSide });
+    const frondMat2 = new THREE.MeshStandardMaterial({ color: 0x55903f, roughness: 0.78, side: THREE.DoubleSide });
+    const royalPalm = (px, pz, h, seed) => {
+      const pg = new THREE.Group();
+      pg.position.set(px, 0, pz);
+      // 樹幹：基部略膨大、中段收細的灰白樹幹（分兩段）
+      addMesh(pg, new THREE.CylinderGeometry(0.24, 0.34, h * 0.35, 14), trunkMat, 0, h * 0.175, 0);
+      addMesh(pg, new THREE.CylinderGeometry(0.21, 0.24, h * 0.55, 14), trunkMat, 0, h * 0.35 + h * 0.275, 0);
+      for (let r = 1; r < 12; r++) addMesh(pg, new THREE.TorusGeometry(0.235 - r * 0.002, 0.012, 4, 16), trunkMat, 0, r * h * 0.075, 0).rotation.x = Math.PI / 2;   // 葉痕環紋
+      // 綠色葉鞘冠莖
+      const top = h * 0.9;
+      addMesh(pg, new THREE.CylinderGeometry(0.19, 0.22, 1.6, 12), shaftMat, 0, top + 0.8, 0);
+      // 羽狀葉：每片 4 節，逐節加大下垂角度
+      const nF = 14;
+      for (let f = 0; f < nF; f++) {
+        const ang = (f / nF) * Math.PI * 2 + seed;
+        const lift = (f % 3) * 0.12;
+        // 每片葉為一個子群組：先繞樹幹轉到方位 ang，再於該垂直面內由內而外逐節下垂
+        const fg = new THREE.Group();
+        fg.position.set(0, top + 1.55 + lift, 0);
+        fg.rotation.y = ang;
+        let x = 0, y = 0, tilt = 0.55 - (f % 2) * 0.25 - lift;      // 起始略向上，隨後拱形下垂
+        const seg = 1.0;
+        for (let k = 0; k < 4; k++) {
+          const w = 0.9 - k * 0.17;
+          const dx = Math.cos(tilt) * seg, dy = Math.sin(tilt) * seg;
+          const leaf = new THREE.Mesh(new THREE.BoxGeometry(seg + 0.06, 0.03, w), k % 2 ? frondMat2 : frondMat);
+          leaf.position.set(x + dx / 2, y + dy / 2, 0);
+          leaf.rotation.set(0.35 * (k % 2 ? 1 : -1), 0, tilt);   // 小葉片兩側略呈 V 形
+          leaf.castShadow = true;
+          fg.add(leaf);
+          x += dx; y += dy; tilt -= 0.42;
+        }
+        pg.add(fg);
+      }
+      mg.add(pg);
+    };
+    // v2.12.16：大王椰子改依樹木普查登錄座標建置
+  }
 
     // ================================================================
   // (依指示移除穿堂前盆景台與巨石，保持前庭迎賓大道通透視野)
@@ -16497,87 +19589,64 @@ function buildMainGateLayer() {
     ctx.fillStyle = '#8b8e92';
     ctx.fillRect(0, 0, W, H);
 
-    // 北側粉紅連鎖磚縱向停車帶 (y: 0..210) 與南側垂直停車格粉紅磚帶 (y: 760..1024)
-    ctx.fillStyle = '#a86b68';
-    ctx.fillRect(0, 0, W * 0.72, 210);
-    ctx.fillStyle = '#9e6865';
-    ctx.fillRect(W * 0.16, 760, W * 0.74, 264);
-
-    // 細密連鎖磚格線
-    ctx.strokeStyle = 'rgba(45,48,52,0.28)';
-    ctx.lineWidth = 1.5;
-    for (let x = 0; x < W; x += 24) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    // v2.11.4 依 2026 東棟 2F 俯拍照片重繪（畫布上 = 北、左 = 東棟、右 = 校門；1 m ≈ 46 px 寬 × 59 px 深）
+    // 細密灰色連鎖磚（錯縫小長方磚，每片微幅色差）
+    {
+      let sd = 7; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let y = 0; y < H; y += 12) {
+        const off = ((y / 12) % 2) * 11;
+        for (let x = -22; x < W; x += 22) {
+          const v = 128 + Math.floor(rnd() * 22);
+          ctx.fillStyle = `rgb(${v},${v + 2},${v + 5})`;
+          ctx.fillRect(x + off + 1, y + 1, 20, 10);
+        }
+      }
     }
-    for (let y = 0; y < H; y += 16) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    }
-
-    // 中央米黃色雙道引導磚線 (x: W*0.42..W*0.96, y: 465 & 495) 與縱向黃磚裝飾線
-    ctx.fillStyle = '#c4a668';
-    ctx.fillRect(W * 0.18, 462, W * 0.78, 12);
-    ctx.fillRect(W * 0.18, 492, W * 0.78, 12);
-    ctx.fillRect(W * 0.16, 752, W * 0.74, 12);
-    [0.22, 0.34, 0.48].forEach(fx => {
-      ctx.fillRect(W * fx, 220, 14, 520);
+    // 淡米黃色菱形拼花磚塊（照片：填色淡黃褐色方塊，非框線）
+    ctx.fillStyle = 'rgba(196,170,112,0.55)';
+    [[300, 520], [620, 360], [620, 700], [980, 520], [1300, 360], [1300, 700], [1640, 470], [420, 800], [1000, 830]].forEach(([dx, dy]) => {
+      ctx.beginPath(); ctx.moveTo(dx, dy - 70); ctx.lineTo(dx + 90, dy); ctx.lineTo(dx, dy + 70); ctx.lineTo(dx - 90, dy); ctx.closePath(); ctx.fill();
     });
+    // 北側（臨北草坪）紅磚帶 2.2 m，南側（臨南草坪）紅磚帶 1.6 m，皆全長
+    const brick = (x, y, w, h, base) => {
+      ctx.fillStyle = base; ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(60,30,28,0.25)'; ctx.lineWidth = 1.5;
+      for (let yy = y; yy < y + h; yy += 12) { ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke(); }
+    };
+    brick(0, 0, W * 0.90, 130, '#9a6662');
+    brick(0, H - 94, W, 94, '#956460');
+    // 中央偏南雙黃線（自校門延伸至中央花台）
+    ctx.fillStyle = '#d1a93e';
+    ctx.fillRect(W * 0.52, 588, W * 0.48, 9);
+    ctx.fillRect(W * 0.52, 606, W * 0.48, 9);
 
-    // 米黃色菱格幾何拼花圖騰 (Argyle / Diamond Inlays，照片 5 地面特色拼花)
-    function drawYellowDiamond(cx, cy, r) {
-      ctx.save();
-      ctx.strokeStyle = '#c8aa6c';
-      ctx.lineWidth = 14;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r);
-      ctx.lineTo(cx + r, cy);
-      ctx.lineTo(cx, cy + r);
-      ctx.lineTo(cx - r, cy);
-      ctx.closePath();
-      ctx.stroke();
-      ctx.fillStyle = '#b89a5e';
-      ctx.fillRect(cx - 12, cy - 12, 24, 24);
-      ctx.restore();
-    }
-    [
-      [340, 320, 75], [340, 620, 75],
-      [620, 320, 70], [620, 620, 70],
-      [920, 320, 70], [920, 620, 70],
-      [1240, 340, 65], [1240, 600, 65]
-    ].forEach(([dx, dy, dr]) => drawYellowDiamond(dx, dy, dr));
-
-    // 北側白線縱向停車區、禁停交叉網格 (✕) 與白色方向箭頭 (← 朝向東棟)
-    ctx.strokeStyle = '#f8fafc';
-    ctx.lineWidth = 10;
-    ctx.strokeRect(18, 8, W * 0.70, 200);
-    [0.18, 0.35, 0.44, 0.58].forEach(fx => {
-      ctx.beginPath(); ctx.moveTo(W * fx, 8); ctx.lineTo(W * fx, 208); ctx.stroke();
-    });
-    // 禁停白叉網格 (位於 x: 0.35..0.44)
-    ctx.beginPath();
-    ctx.moveTo(W * 0.35, 8); ctx.lineTo(W * 0.44, 208);
-    ctx.moveTo(W * 0.44, 8); ctx.lineTo(W * 0.35, 208);
-    ctx.stroke();
-
-    // 地面白色方向箭頭 (照片 5 北車道朝向東棟之白色箭頭)
-    ctx.fillStyle = '#f8fafc';
-    const ax = W * 0.47, ay = 315;
-    ctx.fillRect(ax, ay - 8, 70, 16);
-    ctx.beginPath();
-    ctx.moveTo(ax - 36, ay);
-    ctx.lineTo(ax + 6, ay - 28);
-    ctx.lineTo(ax + 6, ay + 28);
-    ctx.closePath();
-    ctx.fill();
-
-    // 南側 5 格白線垂直停車格 (照片 5 右側 5 格整齊白線停車位)
-    const stallStartX = W * 0.52, stallEndX = W * 0.88;
-    const stallW = (stallEndX - stallStartX) / 5;
-    ctx.strokeStyle = '#f8fafc';
+    ctx.strokeStyle = '#f4f6f8';
     ctx.lineWidth = 9;
-    for (let s = 0; s < 5; s++) {
-      const sx = stallStartX + s * stallW;
-      ctx.strokeRect(sx, 768, stallW, 240);
+    // 北側垂直停車格：前緣長白線（距北緣 4.1 m），分隔線橫跨紅磚帶至草坪緣；中段一格為斜線禁停格
+    const nStallY = 242, nX0 = W * 0.04, nX1 = W * 0.72, nCount = 9, nW = (nX1 - nX0) / nCount;
+    ctx.beginPath(); ctx.moveTo(nX0, nStallY); ctx.lineTo(nX1, nStallY); ctx.stroke();
+    for (let i = 0; i <= nCount; i++) { ctx.beginPath(); ctx.moveTo(nX0 + i * nW, 4); ctx.lineTo(nX0 + i * nW, nStallY); ctx.stroke(); }
+    {
+      const hx = nX0 + 4 * nW;   // 照片中的白色斜線格
+      ctx.beginPath(); ctx.moveTo(hx, 140); ctx.lineTo(hx + nW, nStallY); ctx.moveTo(hx + nW, 140); ctx.lineTo(hx, nStallY);
+      ctx.moveTo(hx + nW * 0.5, 140); ctx.lineTo(hx, nStallY); ctx.moveTo(hx + nW * 0.5, 140); ctx.lineTo(hx + nW, nStallY); ctx.stroke();
     }
+    // 南側近校門 5 格垂直停車格（灰磚上，南緣接紅磚帶）
+    const sX0 = W * 0.70, sX1 = W * 0.93, sCount = 5, sW = (sX1 - sX0) / sCount, sY0 = H - 94 - 250;
+    ctx.beginPath(); ctx.moveTo(sX0, sY0); ctx.lineTo(sX0, H - 94); ctx.stroke();
+    for (let i = 0; i <= sCount; i++) { ctx.beginPath(); ctx.moveTo(sX0 + i * sW, sY0 + (i === 0 ? 0 : 0)); ctx.lineTo(sX0 + i * sW, H - 94); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(sX0, sY0); ctx.lineTo(sX1, sY0); ctx.stroke();
+    // 白色方向箭頭：北車道 ← 往東棟、南側 ↰ 轉向與直行箭頭
+    ctx.fillStyle = '#f4f6f8';
+    const arrow = (x, y, dir) => {
+      ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1);
+      ctx.fillRect(0, -7, 80, 14);
+      ctx.beginPath(); ctx.moveTo(-36, 0); ctx.lineTo(4, -26); ctx.lineTo(4, 26); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    };
+    arrow(W * 0.50, 330, 1);
+    arrow(W * 0.30, 700, -1);
+    arrow(W * 0.78, 470, -1);
 
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
@@ -16636,13 +19705,13 @@ function buildMainGateLayer() {
   }
 
   // 配置南側 5 格白線停車格旁之 2 座藍色「訪客停車位」鐵牌架與停放機車 (照片 4、5)
-  addVisitorParkingStand(97.5, 4.55, -0.25, false);
-  addVisitorParkingStand(100.2, 4.65, -0.25, false);
+  addVisitorParkingStand(104.0, 4.6, -0.2, false);   // v2.12.2 依俯拍照片：位於 5 格車位中段的草坪緣
+  addVisitorParkingStand(106.3, 4.6, -0.2, false);
   {
     // 停放於南側第 1 格車位旁之黑色重機/機車 (照片 4、5)
     const motoGrp = new THREE.Group();
-    motoGrp.position.set(92.4, 0.11, 2.6);
-    motoGrp.rotation.y = 0.35;
+    motoGrp.position.set(100.2, 0.11, 3.2);          // v2.12.2：停在 5 格車位西端、紅磚帶旁
+    motoGrp.rotation.y = 1.2;
     const motoBlack = new THREE.MeshStandardMaterial({ color: 0x1e2228, roughness: 0.35, metalness: 0.45 });
     const motoSilver = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.25, metalness: 0.8 });
     const motoPlate = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
@@ -16661,24 +19730,39 @@ function buildMainGateLayer() {
     mg.add(motoGrp);
   }
 
-  // 前庭中央「6柱頭復古米灰磚造方形花台」與盛開桃紅九重葛、景觀黑石 (照片 5 核心視覺焦點)
+  // 前庭植栽共用小工具（亂數、錐形枝幹）
+  let fcSeed = 7;
+  const fcRnd = () => (fcSeed = (fcSeed * 16807) % 2147483647) / 2147483647;
+  const _limbUp = new THREE.Vector3(0, 1, 0);
+  function addLimb(parent, a, b, r0, r1, mat, seg = 7) {     // 由 a 至 b 的錐形枝幹
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const len = dir.length();
+    const m = addMesh(parent, new THREE.CylinderGeometry(r1, r0, len, seg), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    m.quaternion.setFromUnitVectors(_limbUp, dir.normalize());
+    return m;
+  }
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+  // 前庭中央九重葛花台（v2.12.2 依 2026 東棟 2F 俯拍照片：廣場中央偏西的低矮長方形花台，
+  //   灰褐粗面磚石砌、高約 0.4 m、南北長約 3.2 m × 東西寬約 1.8 m，內鋪草皮；
+  //   一株老幹九重葛，西側基部為粗壯扭曲老幹，枝條疏朗開展，零星桃紅苞片）
   {
-    function makeVintageBrickPlanterTexture() {
+    function makeRubbleStoneTexture() {
       const c = document.createElement('canvas');
-      c.width = 512; c.height = 256;
+      c.width = 512; c.height = 128;
       const ctx = c.getContext('2d');
-      ctx.fillStyle = '#6e6559';
-      ctx.fillRect(0, 0, 512, 256);
-      const brickCols = ['#9c8d76', '#857763', '#b2a38b', '#746857', '#a6957c', '#635849'];
+      ctx.fillStyle = '#5d5850';
+      ctx.fillRect(0, 0, 512, 128);
+      const cols = ['#8d877b', '#7b7569', '#9d968a', '#6f695e', '#a59f92', '#857e70'];
       let bs = 53;
       const br = () => ((bs = (bs * 16807) % 2147483647) / 2147483647);
-      const rows = 6, cols = 12;
-      const bh = 256 / rows, bw = 512 / cols;
-      for (let r = 0; r < rows; r++) {
-        const off = (r % 2) * (bw / 2);
-        for (let col = -1; col <= cols; col++) {
-          ctx.fillStyle = brickCols[Math.floor(br() * brickCols.length)];
-          ctx.fillRect(col * bw + off + 3, r * bh + 3, bw - 6, bh - 6);
+      for (let r = 0; r < 4; r++) {
+        let x = -br() * 30;
+        while (x < 512) {
+          const w = 34 + br() * 30;
+          ctx.fillStyle = cols[Math.floor(br() * cols.length)];
+          ctx.fillRect(x + 2, r * 32 + 2, w - 4, 28);
+          x += w;
         }
       }
       const t = new THREE.CanvasTexture(c);
@@ -16686,46 +19770,57 @@ function buildMainGateLayer() {
       t.colorSpace = THREE.SRGBColorSpace;
       return t;
     }
-    const vintageBrickMat = new THREE.MeshStandardMaterial({ map: makeVintageBrickPlanterTexture(), roughness: 0.88 });
-    const px = 83.2, pz = -4.2, pw = 3.6, pd = 2.8, ph = 0.54;
-    // 四周復古磚牆壁體
-    addBox(mg, pw, ph, 0.28, vintageBrickMat, px, ph / 2 + 0.08, pz - pd / 2);
-    addBox(mg, pw, ph, 0.28, vintageBrickMat, px, ph / 2 + 0.08, pz + pd / 2);
-    addBox(mg, 0.28, ph, pd, vintageBrickMat, px - pw / 2, ph / 2 + 0.08, pz);
-    addBox(mg, 0.28, ph, pd, vintageBrickMat, px + pw / 2, ph / 2 + 0.08, pz);
-    // 6 座凸出方形磚柱頭 (四角 + 長邊中柱，照片 5 清晰可見凹凸柱頭造型)
-    [
-      [-pw / 2, -pd / 2], [0, -pd / 2], [pw / 2, -pd / 2],
-      [-pw / 2,  pd / 2], [0,  pd / 2], [pw / 2,  pd / 2]
-    ].forEach(([ox, oz]) => {
-      addBox(mg, 0.44, ph + 0.14, 0.44, vintageBrickMat, px + ox, (ph + 0.14) / 2 + 0.08, pz + oz);
-      addBox(mg, 0.50, 0.06, 0.50, stoneCapMat, px + ox, ph + 0.24, pz + oz);
-    });
-    // 花台內綠茵草皮與深黑景觀奇石
-    addBox(mg, pw - 0.36, 0.42, pd - 0.36, bedGrassMat, px, 0.29, pz, false);
-    const planterRock = addMesh(mg, new THREE.DodecahedronGeometry(0.46, 1), new THREE.MeshStandardMaterial({ color: 0x26292e, roughness: 0.85 }), px - 0.35, 0.68, pz - 0.25);
-    planterRock.scale.set(1.25, 0.85, 1.1);
-    // 姿態舒展之多幹九重葛與桃紅花簇 (Bougainvillea)
-    const bougLeafMat = new THREE.MeshStandardMaterial({ color: 0x4d7c32, roughness: 0.78 });
-    const bougFlowerMat = new THREE.MeshStandardMaterial({ color: 0xd62872, roughness: 0.55 });
-    [[-0.2, 0.1, 0.25, -0.15], [0.25, -0.1, -0.22, 0.18], [0.05, 0.2, 0.12, 0.25]].forEach(([bx, bz, rx, rz]) => {
-      const st = addMesh(mg, new THREE.CylinderGeometry(0.07, 0.12, 1.85, 7), trunkBrownMat, px + bx, 1.25, pz + bz);
-      st.rotation.set(rx, 0, rz);
-    });
-    const crownClusters = [
-      [0, 2.15, 0, 1.15], [-0.95, 1.95, 0.35, 0.92], [0.95, 2.05, -0.25, 0.95],
-      [-0.45, 2.35, -0.65, 0.85], [0.55, 1.85, 0.75, 0.88], [0, 1.75, 1.05, 0.78]
-    ];
-    crownClusters.forEach(([cx, cy, cz, cr]) => {
-      const cl = addMesh(mg, new THREE.DodecahedronGeometry(cr, 1), bougLeafMat, px + cx, cy, pz + cz);
-      cl.scale.set(1.25, 0.72, 1.2);
-      for (let f = 0; f < 6; f++) {
-        const fa = f * 1.05 + cx;
-        addMesh(mg, new THREE.SphereGeometry(0.14, 6, 6), bougFlowerMat, px + cx + Math.cos(fa) * cr * 0.85, cy + (f % 2 ? 0.22 : -0.12), pz + cz + Math.sin(fa) * cr * 0.85);
+    const rubbleTex = makeRubbleStoneTexture();
+    const rubbleMatLong = new THREE.MeshStandardMaterial({ map: rubbleTex, roughness: 0.92 });
+    const rubbleTexShort = rubbleTex.clone(); rubbleTexShort.repeat.set(0.56, 1); rubbleTexShort.needsUpdate = true;
+    const rubbleMatShort = new THREE.MeshStandardMaterial({ map: rubbleTexShort, roughness: 0.92 });
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x8a8478, roughness: 0.9 });
+    const px = 83.4, pz = -3.9, pw = 1.8, pd = 3.2, ph = 0.42, t = 0.24;   // pw：東西寬、pd：南北長
+    const y0 = 0.11;
+    addBox(mg, pw, ph, t, rubbleMatShort, px, y0 + ph / 2, pz - pd / 2 + t / 2);
+    addBox(mg, pw, ph, t, rubbleMatShort, px, y0 + ph / 2, pz + pd / 2 - t / 2);
+    addBox(mg, t, ph, pd - 2 * t, rubbleMatLong, px - pw / 2 + t / 2, y0 + ph / 2, pz);
+    addBox(mg, t, ph, pd - 2 * t, rubbleMatLong, px + pw / 2 - t / 2, y0 + ph / 2, pz);
+    // 壓頂：略不平整的粗石壓頂
+    addBox(mg, pw + 0.04, 0.05, t + 0.04, capMat, px, y0 + ph + 0.025, pz - pd / 2 + t / 2);
+    addBox(mg, pw + 0.04, 0.05, t + 0.04, capMat, px, y0 + ph + 0.025, pz + pd / 2 - t / 2);
+    addBox(mg, t + 0.04, 0.05, pd - 2 * t, capMat, px - pw / 2 + t / 2, y0 + ph + 0.025, pz);
+    addBox(mg, t + 0.04, 0.05, pd - 2 * t, capMat, px + pw / 2 - t / 2, y0 + ph + 0.025, pz);
+    addBox(mg, pw - 2 * t, ph - 0.06, pd - 2 * t, bedGrassMat, px, y0 + (ph - 0.06) / 2, pz, false);
+
+    // 九重葛：西側基部扭曲老幹（深褐瘤狀）→ 斜向東上之數支主枝 → 細枝末端疏散葉團與桃紅苞片
+    const bougTrunkMat = new THREE.MeshStandardMaterial({ color: 0x3a3029, roughness: 0.95 });
+    const bougLeafMat = new THREE.MeshStandardMaterial({ color: 0x5b8a3a, roughness: 0.78 });
+    const bougLeafMat2 = new THREE.MeshStandardMaterial({ color: 0x4a7a31, roughness: 0.8 });
+    const bougFlowerMat = new THREE.MeshStandardMaterial({ color: 0xd8287a, roughness: 0.55 });
+    const g = new THREE.Group();
+    g.position.set(px - 0.35, y0 + ph - 0.06, pz + 0.3);
+    const knot = addMesh(g, new THREE.DodecahedronGeometry(0.34, 0), bougTrunkMat, 0, 0.18, 0);
+    knot.scale.set(1.3, 0.8, 1.0);
+    const base = V3(0.05, 0.3, 0);
+    addLimb(g, V3(0, 0.1, 0), base, 0.2, 0.15, bougTrunkMat, 8);
+    const tipsB = [];
+    const grow = (p, ang, tilt, len, rad, depth) => {
+      const e = V3(p.x + Math.cos(ang) * Math.sin(tilt) * len, p.y + Math.cos(tilt) * len, p.z + Math.sin(ang) * Math.sin(tilt) * len);
+      addLimb(g, p, e, rad, rad * 0.65, depth > 1 ? bougTrunkMat : trunkBrownMat, 5);
+      if (depth === 0) { tipsB.push(e); return; }
+      for (let k = 0; k < 2; k++) grow(e, ang + (k ? 0.7 : -0.6) + (fcRnd() - 0.5) * 0.4, Math.min(1.3, tilt + 0.15), len * 0.7, rad * 0.65, depth - 1);
+    };
+    [[0.3, 0.75], [1.6, 0.6], [-1.2, 0.7], [2.9, 0.85]].forEach(([a, tl]) => grow(base, a, tl, 0.85, 0.1, 2));
+    tipsB.forEach((e, i) => {
+      for (let k = 0; k < 3; k++) {
+        const r = 0.24 + fcRnd() * 0.16;
+        const cl = addMesh(g, new THREE.IcosahedronGeometry(r, 0), (i + k) % 2 ? bougLeafMat : bougLeafMat2,
+          e.x + (fcRnd() - 0.5) * 0.5, e.y + (fcRnd() - 0.3) * 0.35, e.z + (fcRnd() - 0.5) * 0.5);
+        cl.scale.set(1.3, 0.75, 1.3);
+      }
+      if (i % 3 !== 2) {
+        addMesh(g, new THREE.IcosahedronGeometry(0.11, 0), bougFlowerMat, e.x + 0.12, e.y + 0.18, e.z - 0.08, false);
+        if (i % 2) addMesh(g, new THREE.IcosahedronGeometry(0.08, 0), bougFlowerMat, e.x - 0.18, e.y + 0.05, e.z + 0.12, false);
       }
     });
+    mg.add(g);
   }
-
   // ================================================================
   // 7) 前庭北側大草坪、校門左側通學步道與復興路綠籬景觀
   //    (依據《學校前庭綠籬平面圖》CAD藍圖與 2024 年 2 月最新街景照片 1:1 極致精準還原)
@@ -16744,11 +19839,10 @@ function buildMainGateLayer() {
   const plumeriaLeafMat   = new THREE.MeshStandardMaterial({ color: 0x28632a, roughness: 0.72 });
   const plumeriaFlowerMat = new THREE.MeshStandardMaterial({ color: 0xfffbeb, roughness: 0.5 });
   const plumeriaCenterMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
+  registerPhenoMats('緬梔', { outer: [plumeriaLeafMat], flower: [plumeriaFlowerMat, plumeriaCenterMat] });
 
   const curbMat              = new THREE.MeshStandardMaterial({ color: 0xd8dce2, roughness: 0.72 });
   const walkwayPurpleCurbMat = new THREE.MeshStandardMaterial({ color: 0x9376b5, roughness: 0.62 });
-  const boxHedgeMat          = new THREE.MeshStandardMaterial({ color: 0x3b7228, roughness: 0.82 });
-  const boxHedgeTop          = new THREE.MeshStandardMaterial({ color: 0x4e8a34, roughness: 0.78 });
   const stormGrateMat        = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.65, metalness: 0.55 });
 
   {
@@ -16756,8 +19850,20 @@ function buildMainGateLayer() {
     const nLawnMinX = 70.2, nLawnMaxX = 113.8, nLawnMinZ = -39.6, nLawnMaxZ = -12.6;
     const nLawnW = nLawnMaxX - nLawnMinX, nLawnD = nLawnMaxZ - nLawnMinZ;
     const nLawnCx = (nLawnMinX + nLawnMaxX) / 2, nLawnCz = (nLawnMinZ + nLawnMaxZ) / 2;
-    const northTurfMat = new THREE.MeshStandardMaterial({ map: makeCampusLawnTexture(), roughness: 0.88 });
-    addBox(mg, nLawnW, 0.09, nLawnD, northTurfMat, nLawnCx, 0.045, nLawnCz, false);
+    // 依《學校前庭綠籬規劃平面圖》：臨復興路一側為向草坪內凹之大圓弧（FU-SHING 矮牆北端 → 老榕樹後方 → 東側門）
+    const northLawnTex = makeForecourtLawnTexture(); northLawnTex.repeat.set(0.6, 0.6);
+    const northTurfMat = new THREE.MeshStandardMaterial({ map: northLawnTex, roughness: 0.88, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    registerLawnMat(northTurfMat);
+    const northCurvePts = sampleXZCurve(FORECOURT_NORTH_CURVE, 0.5);
+    {
+      const edge = offsetXZ(northCurvePts, 0.15, -1, 0);
+      const poly = [new THREE.Vector3(nLawnMinX, 0, nLawnMaxZ)].concat(edge).concat([new THREE.Vector3(nLawnMinX, 0, nLawnMinZ)]);
+      flatXZPoly(poly, northTurfMat, 0.09, mg, 0.25);
+      // 弧形綠籬外側至通學步道內緣石之間：灰色連鎖磚鋪面
+      const pavMat = new THREE.MeshStandardMaterial({ color: 0xa9a49c, roughness: 0.86, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+      const outerPoly = northCurvePts.map(p => p.clone()).concat([new THREE.Vector3(114.2, 0, -40.3), new THREE.Vector3(114.2, 0, -12.6)]);
+      flatXZPoly(outerPoly, pavMat, 0.08, mg, 1);
+    }
 
     // 草坪北側東西向筆直水泥小徑 (直通有機農場與東北側大榕樹)
     const pathMat = new THREE.MeshStandardMaterial({ color: 0xc4c2ba, roughness: 0.86 });
@@ -16891,113 +19997,135 @@ function buildMainGateLayer() {
       mg.add(bg);
     }
 
-    // 2.【前庭左側草地中間核心景觀樹：雞蛋花樹 (Plumeria / 緬梔，非榕樹！)】
-    //   (依使用者明確修正指示：對應 CAD 綠籬平面圖中央大圓喬木，實為高雅開展之雞蛋花樹)
-    function buildSculpturalPlumeria(tx, tz, scale = 1.0) {
-      const plGrp = new THREE.Group();
-      plGrp.position.set(tx, 0, tz);
+    // 2. 前庭北草坪植栽（v2.12.1 依 2026 東棟 2F 俯拍標註照片重建）
+    //    由東棟大樓眺望左側草地：左側百年氣根大榕樹 → 中段圓錐龍柏 → 草地中央立支架雞蛋花 →
+    //    右側臨復興路兩排綠籬（第一排春不老、第二排朱槿）與羽葉藍花楹；綠籬外為通學步道大榕樹
 
-      // 石材保護樹穴與草皮邊界
-      addMesh(plGrp, new THREE.CylinderGeometry(1.55 * scale, 1.65 * scale, 0.16, 20), curbMat, 0, 0.08, 0);
-      addMesh(plGrp, new THREE.CylinderGeometry(1.42 * scale, 1.50 * scale, 0.17, 20), gardenSoilMat, 0, 0.085, 0);
-
-      // 粗壯多歧肉質主幹 (Succulent Sculptural Trunk)
-      addMesh(plGrp, new THREE.CylinderGeometry(0.24 * scale, 0.34 * scale, 1.4 * scale, 10), plumeriaTrunkMat, 0, 0.7 * scale, 0);
-
-      // 5 枝放射狀扭曲延伸之主幹肢臂 (Spreading Limbs)
-      const nLimbs = 5;
-      for (let b = 0; b < nLimbs; b++) {
-        const ang = (b / nLimbs) * Math.PI * 2 + 0.3;
-        const dist = 0.55 * scale;
-        const bx = Math.cos(ang) * dist, bz = Math.sin(ang) * dist;
-
-        // 主分枝
-        const limb = addMesh(plGrp, new THREE.CylinderGeometry(0.12 * scale, 0.18 * scale, 1.8 * scale, 8), plumeriaTrunkMat, bx, 1.6 * scale, bz);
-        limb.rotation.z = Math.cos(ang) * 0.52;
-        limb.rotation.x = -Math.sin(ang) * 0.52;
-
-        // 次級叉枝與枝端肉質節
-        for (const subAng of [-0.35, 0.35]) {
-          const subA = ang + subAng;
-          const subDist = 1.35 * scale;
-          const sx = Math.cos(subA) * subDist, sz = Math.sin(subA) * subDist;
-          const tipY = (2.4 + (b % 2) * 0.3) * scale;
-          const subBranch = addMesh(plGrp, new THREE.CylinderGeometry(0.07 * scale, 0.10 * scale, 1.1 * scale, 7), plumeriaTrunkMat, (bx + sx) / 2, (1.6 * scale + tipY) / 2, (bz + sz) / 2);
-          subBranch.rotation.z = Math.cos(subA) * 0.65;
-          subBranch.rotation.x = -Math.sin(subA) * 0.65;
-
-          // 枝端革質長卵形葉叢 (Foliage Clusters)
-          const leafCluster = addMesh(plGrp, new THREE.DodecahedronGeometry(1.05 * scale, 1), plumeriaLeafMat, sx, tipY, sz);
-          leafCluster.scale.set(1.3, 0.62, 1.3);
-
-          // 枝頂盛開五瓣乳白黃心雞蛋花朵群 (Plumeria Blossom Rosettes)
-          for (let fl = 0; fl < 6; fl++) {
-            const fa = (fl / 6) * Math.PI * 2;
-            const fx = sx + Math.cos(fa) * 0.45 * scale;
-            const fz = sz + Math.sin(fa) * 0.45 * scale;
-            const fy = tipY + 0.42 * scale + (fl % 2) * 0.1 * scale;
-            addMesh(plGrp, new THREE.CylinderGeometry(0.10 * scale, 0.05 * scale, 0.04 * scale, 5), plumeriaFlowerMat, fx, fy, fz);
-            addMesh(plGrp, new THREE.SphereGeometry(0.04 * scale, 6, 6), plumeriaCenterMat, fx, fy + 0.02 * scale, fz);
-          }
-        }
-      }
-      mg.add(plGrp);
-    }
-
-    // 正式建造前庭左側草地中間核心景觀「雞蛋花樹」(非榕樹，視野開闊通透)
-    buildSculpturalPlumeria(92.0, -25.5, 1.35);
-
-    // 草坪西北側百年大榕樹 (東棟大樓走廊北側端景)
+    // 2-1.【草坪西北側百年氣根大榕樹】照片黃框：樹冠寬約 17 m、高約 11 m，濃密圓頂樹冠，
+    //      主幹粗壯略向東傾，樹冠下緣東南側垂掛成簾的氣根，數根已入土成支柱根
     {
-      const bgNW = new THREE.Group();
-      bgNW.position.set(78.5, 0, -31.2);
-      const scaleNW = 1.05;
-      addMesh(bgNW, new THREE.CylinderGeometry(2.1 * scaleNW, 2.2 * scaleNW, 0.20, 20), curbMat, 0, 0.10, 0);
-      addMesh(bgNW, new THREE.CylinderGeometry(0.65 * scaleNW, 0.95 * scaleNW, 4.0 * scaleNW, 10), banyanTrunkMat, 0, 2.0 * scaleNW, 0);
-      for (let r = 0; r < 20; r++) {
-        const ra = (r / 20) * Math.PI * 2;
-        const rad = (0.75 + (r % 4) * 0.35) * scaleNW;
-        const rh = (2.2 + (r % 3) * 0.6) * scaleNW;
-        addMesh(bgNW, new THREE.CylinderGeometry(0.022 * scaleNW, 0.035 * scaleNW, rh, 5), banyanRootMat, Math.cos(ra) * rad, 3.8 * scaleNW - rh / 2, Math.sin(ra) * rad);
+      const bg = new THREE.Group();
+      bg.position.set(79.5, 0, -30.8);
+      // 樹穴：沿草地的淺色水泥圓緣與覆土
+      addMesh(bg, new THREE.CylinderGeometry(1.9, 2.0, 0.16, 24), curbMat, 0, 0.08, 0);
+      addMesh(bg, new THREE.CylinderGeometry(1.75, 1.85, 0.17, 24), gardenSoilMat, 0, 0.085, 0);
+      // 板根狀主幹與四道粗大主枝
+      addLimb(bg, V3(0, 0, 0), V3(0.35, 3.2, 0.1), 0.95, 0.68, banyanTrunkMat, 12);
+      for (let f = 0; f < 6; f++) {
+        const ang = (f / 6) * Math.PI * 2 + 0.2;
+        addLimb(bg, V3(Math.cos(ang) * 0.95, 0, Math.sin(ang) * 0.95), V3(Math.cos(ang) * 0.35 + 0.2, 1.9, Math.sin(ang) * 0.35), 0.34, 0.18, banyanTrunkMat, 6);
       }
-      [
-        [0, 6.2, 0, 3.4, banyanMidMat], [-2.4, 5.2, 1.2, 2.8, banyanDarkMat],
-        [2.4, 5.4, -1.0, 2.9, banyanMidMat], [0, 7.6, -0.2, 2.8, banyanLightMat]
-      ].forEach(([cx, cy, cz, cr, cMat]) => {
-        const cl = addMesh(bgNW, new THREE.DodecahedronGeometry(cr * scaleNW, 1), cMat, cx * scaleNW, cy * scaleNW, cz * scaleNW);
-        cl.scale.set(1.3, 0.75, 1.25);
+      const limbEnds = [V3(4.6, 6.2, 1.2), V3(-3.8, 6.6, -1.6), V3(1.2, 7.2, -4.2), V3(-0.8, 6.8, 4.0), V3(3.0, 7.6, -1.8)];
+      limbEnds.forEach(e => {
+        addLimb(bg, V3(0.35, 3.0, 0.1), e, 0.42, 0.18, banyanTrunkMat, 7);
+        addLimb(bg, e, V3(e.x * 1.45, e.y + 1.2, e.z * 1.45), 0.18, 0.08, banyanTrunkMat, 5);
       });
-      mg.add(bgNW);
+      // 氣根：主幹周圍入土支柱根 + 東南側樹冠下緣成簾垂鬚
+      for (let r = 0; r < 9; r++) {
+        const ra = (r / 9) * Math.PI * 2;
+        const rad = 1.2 + (r % 3) * 0.45;
+        const h = 4.6 + (r % 2) * 0.8;
+        addMesh(bg, new THREE.CylinderGeometry(0.05, 0.075, h, 6), banyanRootMat, Math.cos(ra) * rad, h / 2, Math.sin(ra) * rad);
+      }
+      for (let r = 0; r < 54; r++) {
+        const ra = -0.9 + fcRnd() * 2.6;                        // 主要偏向東側與南側
+        const rad = 1.1 + fcRnd() * 3.0;
+        const top = 5.4 - rad * 0.2;
+        const h = 0.8 + fcRnd() * (top - 2.0);
+        addMesh(bg, new THREE.CylinderGeometry(0.012, 0.022, h, 4), banyanRootMat, Math.cos(ra) * rad, top - h / 2, Math.sin(ra) * rad, false);
+      }
+      // 圓頂樹冠：外圈下垂、內圈高聳的多層葉團
+      const crownMats = [banyanDarkMat, banyanMidMat, banyanLightMat];
+      const addCl = (x, y, z, r, mat) => {
+        const cl = addMesh(bg, new THREE.DodecahedronGeometry(r, 1), mat, x, y, z);
+        cl.scale.set(1.3, 0.72, 1.25);
+        cl.rotation.y = fcRnd() * Math.PI;
+      };
+      addCl(0.6, 10.6, -0.4, 2.8, banyanLightMat);
+      for (let k = 0; k < 9; k++) {                             // 中圈
+        const a = (k / 9) * Math.PI * 2 + 0.3;
+        addCl(0.5 + Math.cos(a) * 3.6, 9.4 + (k % 2) * 0.7, Math.sin(a) * 3.4, 2.4, crownMats[k % 3]);
+      }
+      for (let k = 0; k < 16; k++) {                            // 外圈（下垂裙緣）
+        const a = (k / 16) * Math.PI * 2;
+        const rr = 6.4 + (k % 3) * 0.6;
+        addCl(0.6 + Math.cos(a) * rr, 7.2 + (k % 2) * 0.8, Math.sin(a) * rr * 0.92, 1.9 + (k % 3) * 0.25, crownMats[(k + 1) % 3]);
+      }
+      for (let k = 0; k < 18; k++) {                            // 葉團間細碎小簇，破除塊狀輪廓
+        const a = fcRnd() * Math.PI * 2, rr = 2 + fcRnd() * 6;
+        addCl(0.6 + Math.cos(a) * rr, 7.4 + fcRnd() * 3.4 - rr * 0.12, Math.sin(a) * rr * 0.92, 1.1 + fcRnd() * 0.6, crownMats[k % 3]);
+      }
+      mg.add(bg);
     }
 
-    // 3. 草地雞蛋花樹 (Plumeria / 緬梔，校名意象雕塑北側草坪邊緣 x = 100.5, z = -16.0)
-    buildSculpturalPlumeria(100.5, -16.0, 0.95);
-
-    // 草坪中北側「圓錐形修剪灌木樹」
+    // 2-2.【龍柏】照片白框：大榕樹右側、近草坪北緣小徑，高約 3.4 m，
+    //      火焰狀螺旋向上之濃密簇葉，外緣略帶黃褐枯梢
     {
-      const bushMat = new THREE.MeshStandardMaterial({ color: 0x3d7e34, roughness: 0.78 });
-      const bush = addMesh(mg, new THREE.ConeGeometry(1.35, 3.2, 14), bushMat, 88.0, 1.6, -28.5);
-      bush.scale.set(1.1, 1.0, 1.1);
-      addMesh(mg, new THREE.CylinderGeometry(0.14, 0.18, 0.65, 8), trunkBrownMat, 88.0, 0.32, -28.5);
+      const jg = new THREE.Group();
+      jg.position.set(88.6, 0, -28.9);
+      const junDark = new THREE.MeshStandardMaterial({ color: 0x1f4f26, roughness: 0.86 });
+      const junMid = new THREE.MeshStandardMaterial({ color: 0x2f6a2e, roughness: 0.84 });
+      const junTip = new THREE.MeshStandardMaterial({ color: 0x6d6a34, roughness: 0.9 });
+      addMesh(jg, new THREE.CylinderGeometry(0.1, 0.14, 0.7, 7), trunkBrownMat, 0, 0.35, 0);
+      addMesh(jg, new THREE.CylinderGeometry(0.6, 0.66, 0.06, 16), gardenSoilMat, 0, 0.1, 0);
+      const H = 3.8;
+      for (let k = 0; k < 28; k++) {
+        const t = k / 27;                                       // 由下而上
+        const rr = 1.25 * (1 - t) + 0.15;
+        const a = k * 2.35;                                     // 螺旋扭轉
+        const cr = 0.72 * (1 - t * 0.6);
+        const cl = addMesh(jg, new THREE.IcosahedronGeometry(cr, 0), k % 3 === 0 ? junMid : junDark,
+          Math.cos(a) * rr * 0.55, 0.65 + t * (H - 0.95), Math.sin(a) * rr * 0.55);
+        cl.scale.set(1.0, 1.25, 1.0);
+        cl.rotation.set(fcRnd(), fcRnd() * 3, 0.25 * Math.cos(a));
+      }
+      for (let k = 0; k < 9; k++) {                             // 黃褐枯梢斑點
+        const a = k * 1.9 + 0.5, t = 0.15 + (k / 9) * 0.6;
+        const rr = 1.25 * (1 - t) + 0.3;
+        addMesh(jg, new THREE.IcosahedronGeometry(0.12, 0), junTip, Math.cos(a) * rr, 0.75 + t * (H - 1.1), Math.sin(a) * rr, false);
+      }
+      mg.add(jg);
     }
 
-    // 草坪景觀喬木三腳木支架與覆土樹穴
+    // 2-3.【雞蛋花（緬梔）】照片紅框：草地中央、龍柏前方的新植雞蛋花，高約 4 m，
+    //      灰褐肉質主幹二至三回叉分成燭台狀，枝端放射長卵形葉叢；三腳木支架與裸土樹穴
     {
-      const tx = 84.5, tz = -22.2;
-      addMesh(mg, new THREE.CylinderGeometry(1.15, 1.25, 0.16, 16), curbMat, tx, 0.08, tz);
-      addMesh(mg, new THREE.CylinderGeometry(0.11, 0.16, 2.3, 8), trunkBrownMat, tx, 1.15, tz);
+      const pg = new THREE.Group();
+      pg.position.set(86.8, 0, -22.4);
+      addMesh(pg, new THREE.CylinderGeometry(1.15, 1.2, 0.05, 20), gardenSoilMat, 0, 0.1, 0);   // 裸土樹穴（無緣石）
+      addLimb(pg, V3(0, 0, 0), V3(0.05, 1.25, 0), 0.2, 0.16, plumeriaTrunkMat, 9);
+      const tips = [];
+      const fork = (p, ang, tilt, len, rad, depth) => {
+        const e = V3(p.x + Math.cos(ang) * Math.sin(tilt) * len, p.y + Math.cos(tilt) * len, p.z + Math.sin(ang) * Math.sin(tilt) * len);
+        addLimb(pg, p, e, rad, rad * 0.72, plumeriaTrunkMat, 7);
+        if (depth === 0) { tips.push(e); return; }
+        fork(e, ang - 0.6, tilt * 0.85, len * 0.72, rad * 0.72, depth - 1);
+        fork(e, ang + 0.6, tilt * 0.85, len * 0.72, rad * 0.72, depth - 1);
+      };
+      [0.2, 1.8, 3.3, 4.8].forEach((a, i) => fork(V3(0.05, 1.25, 0), a, 0.68 + (i % 2) * 0.1, 1.25, 0.11, 2));
+      const leafGeo = new THREE.BoxGeometry(0.7, 0.025, 0.2);
+      tips.forEach((e, i) => {
+        for (let l = 0; l < 9; l++) {                           // 枝端放射狀長葉
+          const la = (l / 9) * Math.PI * 2 + i;
+          const leaf = addMesh(pg, leafGeo, plumeriaLeafMat, e.x + Math.cos(la) * 0.3, e.y + 0.16, e.z + Math.sin(la) * 0.3, true, false);
+          leaf.rotation.set(0, -la, 0.5);
+        }
+        const tuft = addMesh(pg, new THREE.DodecahedronGeometry(0.28, 0), plumeriaLeafMat, e.x, e.y + 0.2, e.z);
+        tuft.scale.set(1, 0.7, 1);
+        if (i % 2 === 0) {                                      // 枝頂少量白花
+          addMesh(pg, new THREE.CylinderGeometry(0.08, 0.04, 0.04, 5), plumeriaFlowerMat, e.x, e.y + 0.36, e.z, false);
+          addMesh(pg, new THREE.SphereGeometry(0.03, 5, 5), plumeriaCenterMat, e.x, e.y + 0.38, e.z, false);
+        }
+      });
+      // 三腳木支架（斜撐於主幹 1.5 m 處）與綁帶
       const stakeMat = new THREE.MeshStandardMaterial({ color: 0xa38c6b, roughness: 0.85 });
       for (let s = 0; s < 3; s++) {
         const sa = (s / 3) * Math.PI * 2 + 0.4;
-        const stake = addMesh(mg, new THREE.CylinderGeometry(0.028, 0.032, 2.15, 6), stakeMat, tx + Math.cos(sa) * 0.68, 0.95, tz + Math.sin(sa) * 0.68);
-        stake.rotation.z = Math.cos(sa) * 0.56;
-        stake.rotation.x = -Math.sin(sa) * 0.56;
+        addLimb(pg, V3(Math.cos(sa) * 0.95, 0.05, Math.sin(sa) * 0.95), V3(Math.cos(sa) * 0.17, 1.55, Math.sin(sa) * 0.17), 0.035, 0.03, stakeMat, 6);
       }
-      const youngCrownMat = new THREE.MeshStandardMaterial({ color: 0x5c9642, roughness: 0.78 });
-      [[0, 2.75, 0, 1.15], [-0.85, 2.55, 0.45, 0.88], [0.85, 2.65, -0.4, 0.92], [0.2, 2.95, -0.75, 0.82]].forEach(([ox, oy, oz, r]) => {
-        const cl = addMesh(mg, new THREE.DodecahedronGeometry(r, 1), youngCrownMat, tx + ox, oy, tz + oz);
-        cl.scale.set(1.25, 0.72, 1.2);
-      });
+      addMesh(pg, new THREE.TorusGeometry(0.17, 0.025, 4, 12), stakeMat, 0.03, 1.5, 0, false).rotation.x = Math.PI / 2;
+      mg.add(pg);
+      addPhenoGround(mg, '緬梔', 86.8, 0.1, -22.4, 2.6);
     }
 
     // 草坪南緣黑色橢圓奇石與訪客車位立牌
@@ -17016,48 +20144,41 @@ function buildMainGateLayer() {
     // E. 步道內側修剪綠籬（依 CAD 平面圖：大榕樹後方呈大圓弧形深邃輪廓）與兩座石碑
     // ----------------------------------------------------------------
 
-    // 1. 直線綠籬段（大門北端至兩座石碑）
-    // 段 1: z: -12.6 .. -22.0 (長 9.4m)
-    addBox(mg, 0.90, 1.12, 9.4, boxHedgeMat, 113.3, 0.56, -17.3);
-    addBox(mg, 0.84, 0.08, 9.34, boxHedgeTop, 113.3, 1.14, -17.3);
-
-    // [z: -22.0 .. -24.0 為石碑 1 凹槽]
-
-    // 段 2: z: -24.0 .. -27.0 (長 3.0m)
-    addBox(mg, 0.90, 1.12, 3.0, boxHedgeMat, 113.3, 0.56, -25.5);
-    addBox(mg, 0.84, 0.08, 2.94, boxHedgeTop, 113.3, 1.14, -25.5);
-
-    // [z: -27.0 .. -29.0 為石碑 2 凹槽]
-
-    // 2.【核心特徵】大榕樹後方「大圓弧形綠籬輪廓」(依 CAD 藍圖《學校前庭綠籬平面圖》1:1 精確構建)
-    //   自 (113.3, -29.0) 向西深弧彎入草坪至 x ≈ 108.0，再環繞大榕樹後方優雅銜接至東側門南立柱 (114.4, -40.5)
+    // 依《學校前庭綠籬規劃平面圖》與 2026 俯拍照片綠框：沿北側草坪臨路大圓弧之兩排綠籬
+    //   第一排（草坪側）：春不老，修剪平整之矮綠籬，高約 0.85 m，細密亮綠葉間點綴紅果
+    //   第二排（步道側）：朱槿，高約 1.4 m，頂部圓弧起伏的濃綠灌叢，點綴艷紅花朵
     {
-      const arcP0 = [113.3, -29.0];
-      const arcCtrl = [104.2, -34.8]; // 控制點：向西大幅彎入草坪
-      const arcP1 = [114.3, -40.5];   // 終點：精確接合東側門南門柱
-
-      const nArcSegs = 12;
-      for (let s = 0; s < nArcSegs; s++) {
-        const t1 = s / nArcSegs;
-        const t2 = (s + 1) / nArcSegs;
-
-        const x1 = (1 - t1) * (1 - t1) * arcP0[0] + 2 * (1 - t1) * t1 * arcCtrl[0] + t1 * t1 * arcP1[0];
-        const z1 = (1 - t1) * (1 - t1) * arcP0[1] + 2 * (1 - t1) * t1 * arcCtrl[1] + t1 * t1 * arcP1[1];
-        const x2 = (1 - t2) * (1 - t2) * arcP0[0] + 2 * (1 - t2) * t2 * arcCtrl[0] + t2 * t2 * arcP1[0];
-        const z2 = (1 - t2) * (1 - t2) * arcP0[1] + 2 * (1 - t2) * t2 * arcCtrl[1] + t2 * t2 * arcP1[1];
-
-        const segLen = Math.hypot(x2 - x1, z2 - z1);
-        const segAng = -Math.atan2(z2 - z1, x2 - x1);
-        const segCx = (x1 + x2) / 2, segCz = (z1 + z2) / 2;
-
-        const hg = new THREE.Group();
-        hg.position.set(segCx, 0, segCz);
-        hg.rotation.y = segAng;
-
-        addBox(hg, 0.90, 1.12, segLen + 0.12, boxHedgeMat, 0, 0.56, 0);
-        addBox(hg, 0.84, 0.08, segLen + 0.08, boxHedgeTop, 0, 1.14, 0);
-        mg.add(hg);
-      }
+      const hibiscusMat = new THREE.MeshStandardMaterial({ color: 0x1f5326, roughness: 0.84 });
+      const hibiscusTop = new THREE.MeshStandardMaterial({ color: 0x2b6a2c, roughness: 0.82 });
+      const hibiscusFlower = new THREE.MeshStandardMaterial({ color: 0xd9261c, roughness: 0.5 });
+      const ardisiaMat = new THREE.MeshStandardMaterial({ color: 0x3f7f2f, roughness: 0.74 });
+      const ardisiaTop = new THREE.MeshStandardMaterial({ color: 0x55923a, roughness: 0.70 });
+      const ardisiaBerry = new THREE.MeshStandardMaterial({ color: 0xb3203a, roughness: 0.45 });
+      const runRow = (offset, fn) => {
+        const pts = offsetXZ(northCurvePts, offset, -1, 0);
+        for (let i = 0; i < pts.length - 1; i++) {
+          const a = pts[i], b = pts[i + 1];
+          const hg = new THREE.Group();
+          hg.position.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
+          hg.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+          fn(hg, a.distanceTo(b), i);
+          mg.add(hg);
+        }
+      };
+      // 第二排 朱槿
+      runRow(0.75, (hg, len, i) => {
+        addBox(hg, len + 0.10, 1.05, 1.10, hibiscusMat, 0, 0.525, 0);
+        const puff = addMesh(hg, new THREE.SphereGeometry(0.62, 9, 6), hibiscusTop, 0, 1.02 + (i % 3) * 0.07, 0);
+        puff.scale.set(Math.max(0.8, len * 1.1), 0.62, 0.95);
+        if (i % 2 === 0) addMesh(hg, new THREE.SphereGeometry(0.085, 6, 5), hibiscusFlower, 0.1, 1.22 + (i % 4) * 0.05, -0.42, false);
+        if (i % 3 === 1) addMesh(hg, new THREE.SphereGeometry(0.08, 6, 5), hibiscusFlower, -0.15, 0.95, 0.56, false);
+      });
+      // 第一排 春不老
+      runRow(2.05, (hg, len, i) => {
+        addBox(hg, len + 0.08, 0.78, 0.85, ardisiaMat, 0, 0.39, 0);
+        addBox(hg, len + 0.05, 0.08, 0.80, ardisiaTop, 0, 0.82, 0);
+        if (i % 2 === 1) addMesh(hg, new THREE.SphereGeometry(0.035, 5, 4), ardisiaBerry, 0, 0.55, -0.44, false);
+      });
     }
 
     // 3. 兩座斜坡面梯形水泥石碑基座 (依據照片 1 & 照片 3 街景實況 1:1 精緻建模)
@@ -17171,16 +20292,48 @@ function buildMainGateLayer() {
     addTrapezoidalMonument(-23.0, 'eco');     // 石碑 1：綠意校園 生態導覽
     addTrapezoidalMonument(-28.0, 'history'); // 石碑 2：百年老榕 歲月風華
 
-    // 綠籬旁 2 棵金黃/羽狀葉台灣欒樹
-    const luanLeafMat = new THREE.MeshStandardMaterial({ color: 0x689c38, roughness: 0.80 });
-    [[-17.8, 0.95], [-23.2, 0.92]].forEach(([tz, sc]) => {
-      const trk = addMesh(mg, new THREE.CylinderGeometry(0.14 * sc, 0.22 * sc, 4.2 * sc, 8), trunkBrownMat, 112.5, 2.1 * sc, tz);
-      trk.rotation.z = -0.12;
-      [[-0.6, 4.4, 0, 1.4], [0.7, 4.6, 0.5, 1.35], [0, 5.1, -0.5, 1.3]].forEach(([ox, oy, oz, r]) => {
-        const cl = addMesh(mg, new THREE.DodecahedronGeometry(r * sc, 1), luanLeafMat, 112.5 + ox, oy * sc, tz + oz);
-        cl.scale.set(1.25, 0.72, 1.2);
-      });
-    });
+    // 臨復興路綠籬帶「藍花楹」（照片紫框與綠框：FU-SHING 矮牆北側一株高約 9 m 主樹，
+    //   北段兩排綠籬間另有數株 5～7 m 幼樹）：細長灰褐樹幹斜上分枝，二回羽狀細葉形成稀疏通透的層狀傘冠
+    const jacLeafMat = new THREE.MeshStandardMaterial({ color: 0x6f9e3f, roughness: 0.80 });
+    const jacLeafMat2 = new THREE.MeshStandardMaterial({ color: 0x86b04c, roughness: 0.80 });
+    const jacFlowerMat = new THREE.MeshStandardMaterial({ color: 0x8a78d8, roughness: 0.6 });
+    registerPhenoMats('藍花楹', { core: [jacLeafMat2], outer: [jacLeafMat], flower: [jacFlowerMat] });
+    const jacTrunkMat = new THREE.MeshStandardMaterial({ color: 0x6b5a48, roughness: 0.88 });
+    const hedgeXAt = z => { let best = northCurvePts[0]; northCurvePts.forEach(p => { if (Math.abs(p.z - z) < Math.abs(best.z - z)) best = p; }); return best.x; };
+    function buildJacaranda(tx, tz, h, lean) {
+      const g = new THREE.Group();
+      g.position.set(tx, 0, tz);
+      const fk = V3(Math.sin(lean) * h * 0.06, h * 0.42, Math.cos(lean) * h * 0.03);
+      addLimb(g, V3(0, 0, 0), fk, 0.012 * h + 0.06, 0.008 * h + 0.05, jacTrunkMat, 8);
+      const nB = 4;
+      for (let b = 0; b < nB; b++) {
+        const a = (b / nB) * Math.PI * 2 + lean * 2;
+        const e = V3(fk.x + Math.cos(a) * h * 0.22, h * (0.74 + (b % 2) * 0.12), fk.z + Math.sin(a) * h * 0.22);
+        addLimb(g, fk, e, 0.009 * h + 0.02, 0.004 * h + 0.012, jacTrunkMat, 6);
+        // 羽葉：枝端周圍散生多簇細碎小葉團，形成稀疏通透、可透光的羽狀樹冠
+        for (let s = 0; s < 15; s++) {
+          const sa = fcRnd() * Math.PI * 2, sr = fcRnd() * h * 0.18;
+          const r = h * (0.03 + fcRnd() * 0.025);
+          const pl = addMesh(g, new THREE.IcosahedronGeometry(r, 0), s % 3 ? jacLeafMat : jacLeafMat2,
+            e.x + Math.cos(sa) * sr, e.y + (fcRnd() - 0.35) * h * 0.12, e.z + Math.sin(sa) * sr);
+          pl.scale.set(1.6, 0.55, 1.6);
+          pl.rotation.set(fcRnd() * 0.5, sa, fcRnd() * 0.5);
+          if (s % 2 === 0) {                                      // 紫藍色圓錐花序（花期顯示）
+            const fl = addMesh(g, new THREE.IcosahedronGeometry(r * 0.75, 0), jacFlowerMat, e.x + Math.cos(sa) * sr, e.y + h * 0.05 + (fcRnd() - 0.2) * h * 0.08, e.z + Math.sin(sa) * sr, false);
+            fl.scale.set(1.3, 0.8, 1.3);
+          }
+        }
+      }
+      for (let s = 0; s < 6; s++) {                               // 頂梢
+        const sa = (s / 6) * Math.PI * 2;
+        const pl = addMesh(g, new THREE.IcosahedronGeometry(h * 0.045, 0), jacLeafMat2, fk.x + Math.cos(sa) * h * 0.08, h * (0.93 + (s % 2) * 0.05), fk.z + Math.sin(sa) * h * 0.08);
+        pl.scale.set(1.6, 0.55, 1.6);
+      }
+      mg.add(g);
+      addPhenoGround(mg, '藍花楹', tx, 0.1, tz, h * 0.3);
+    }
+    buildJacaranda(hedgeXAt(-14.2) - 1.0, -14.2, 9.2, 0.3);    // FU-SHING 矮牆北側主樹
+    [[-20.8, 6.2, -0.2], [-25.6, 7.0, 0.4], [-29.4, 5.6, 0.1]].forEach(([tz, h, lean]) => buildJacaranda(hedgeXAt(tz) - 1.4, tz, h, lean));
   }
 
   // ================================================================
@@ -17188,8 +20341,28 @@ function buildMainGateLayer() {
     const sLawnMinX = 70.2, sLawnMaxX = 111.5, sLawnMinZ = 4.8, sLawnMaxZ = 19.5;
     const sLawnW = sLawnMaxX - sLawnMinX, sLawnD = sLawnMaxZ - sLawnMinZ;
     const sLawnCx = (sLawnMinX + sLawnMaxX) / 2, sLawnCz = (sLawnMinZ + sLawnMaxZ) / 2;
-    const southTurfMat = new THREE.MeshStandardMaterial({ map: makeCampusLawnTexture(), roughness: 0.88 });
-    addBox(mg, sLawnW, 0.09, sLawnD, southTurfMat, sLawnCx, 0.045, sLawnCz, false);
+    // 依《學校前庭綠籬規劃平面圖》：北緣臨中央廣場直線、東緣沿大門南側欄杆與斜向矮牆、南緣為 S 形曲線
+    const southLawnTex = makeForecourtLawnTexture(); southLawnTex.repeat.set(0.6, 0.6);
+    const southTurfMat = new THREE.MeshStandardMaterial({ map: southLawnTex, roughness: 0.88, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    registerLawnMat(southTurfMat);
+    {
+      const southEdge = offsetXZ(sampleXZCurve(FORECOURT_SOUTH_CURVE, 0.5), 0.20, 0, -1).reverse();   // 由西往東
+      const wallInner = [];
+      for (let k = 0; k <= 16; k++) {                                                                   // 斜向矮牆內側（由花台往大門）
+        const p = wAt(wallLen * (1 - k / 16)), n = wEast(wallLen * (1 - k / 16));
+        wallInner.push(new THREE.Vector3(p.x - n.x * 0.35, 0, p.z - n.z * 0.35));
+      }
+      const poly = [new THREE.Vector3(sLawnMinX, 0, sLawnMinZ)]
+        .concat(southEdge)
+        .concat(wallInner)
+        .concat([
+          new THREE.Vector3(gateP2.x - 0.35, 0, gateP2.z),
+          new THREE.Vector3(gateP1.x - 0.35, 0, gateP1.z),
+          new THREE.Vector3(gateP0.x - 0.35, 0, gateP0.z),
+          new THREE.Vector3(pylonX - 0.50, 0, sLawnMinZ)
+        ]);
+      flatXZPoly(poly, southTurfMat, 0.09, mg, 0.25);
+    }
 
     // 1. Y 字形水泥方塊踏石步道 (照片 4：由西北側停車格旁斜切草坪，中段分岔兩支方塊踏石小徑)
     const paverMat = new THREE.MeshStandardMaterial({ color: 0xc8c6be, roughness: 0.85 });
@@ -17227,6 +20400,8 @@ function buildMainGateLayer() {
       }
       // 小葉欖仁分層水平傘狀樹冠
       const termLeafMat = new THREE.MeshStandardMaterial({ color: 0x4f8a3c, roughness: 0.80 });
+      registerPhenoMats('小葉欖仁', { outer: [termLeafMat] });
+      addPhenoGround(mg, '小葉欖仁', tx, 0.1, tz, 3.4);
       [[5.2, 3.2], [6.6, 2.6], [7.8, 1.9]].forEach(([ly, lr]) => {
         for (let b = 0; b < 5; b++) {
           const ba = (b / 5) * Math.PI * 2 + ly;
@@ -17234,21 +20409,48 @@ function buildMainGateLayer() {
           cl.scale.set(1.35, 0.52, 1.35);
         }
       });
-      // 後方伴生直幹喬木 (附白色樹名牌，照片 4 左中)
-      addMesh(mg, new THREE.CylinderGeometry(0.22, 0.30, 6.4, 9), trunkBrownMat, 85.8, 3.2, 8.8);
-      addBox(mg, 0.04, 0.22, 0.30, new THREE.MeshStandardMaterial({ color: 0xffffff }), 85.55, 1.45, 8.8);
+      // v2.12.16：南草坪其餘喬木（樟樹、苦楝、可可椰子、水黃皮、黃椰子、扇葉蒲葵等）改依樹木普查登錄座標建置
     }
 
-    // 3. 草坪中央「方形水泥基座與石雕藝術品」(照片 4 小葉欖仁後方淺灰石雕)
+    // 3. 南草坪「母子」石雕與「耕心園」黑色刻字景觀石（依 2026 實景照片 29、30）
     {
       const scx = 84.5, scz = 11.4;
-      const sculpBaseMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.85 });
-      const sculpStoneMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.68 });
-      addBox(mg, 0.76, 0.52, 0.76, sculpBaseMat, scx, 0.26, scz);
-      addBox(mg, 0.84, 0.08, 0.84, stoneCapMat, scx, 0.54, scz);
-      const body = addMesh(mg, new THREE.CylinderGeometry(0.22, 0.28, 0.95, 10), sculpStoneMat, scx, 1.05, scz);
-      body.scale.set(1.1, 1.0, 0.85);
-      addMesh(mg, new THREE.SphereGeometry(0.20, 10, 10), sculpStoneMat, scx, 1.62, scz);
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8f877b, roughness: 0.92 });
+      const baseMat = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.95 });
+      const sg = new THREE.Group();
+      sg.position.set(scx, 0, scz);
+      sg.rotation.y = -0.35;                       // 母親身軀前傾朝東，懷抱幼兒
+      addBox(sg, 0.62, 0.42, 0.55, baseMat, 0, 0.21, 0);                                   // 粗鑿方形石座
+      const body = addMesh(sg, new THREE.CylinderGeometry(0.17, 0.25, 0.95, 14), stoneMat, -0.06, 0.88, 0);
+      body.rotation.z = 0.22; body.scale.set(1.0, 1.0, 0.75);                             // 弧形背部
+      addMesh(sg, new THREE.SphereGeometry(0.155, 14, 12), stoneMat, 0.06, 1.48, 0);       // 母親頭部（光滑卵形）
+      const arm = addMesh(sg, new THREE.CylinderGeometry(0.07, 0.08, 0.36, 10), stoneMat, 0.14, 0.95, 0);
+      arm.rotation.z = Math.PI / 2.4;
+      addMesh(sg, new THREE.SphereGeometry(0.095, 12, 10), stoneMat, 0.30, 1.05, 0);       // 幼兒頭部
+      const child = addMesh(sg, new THREE.CylinderGeometry(0.06, 0.09, 0.30, 10), stoneMat, 0.27, 0.82, 0);
+      child.rotation.z = -0.2;
+      mg.add(sg);
+
+      // 「耕心園」景觀石：黑色圓潤河石，正面朝北（朝廣場），紅字
+      // 球面 UV：u = 0.5 對應 +x，旋轉 +90° 後朝北 (−z)；字集中在 u 0.42～0.58 的正面範圍（1 px ≈ 3 mm）
+      const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+      const ctx = c.getContext('2d');
+      const grd = ctx.createLinearGradient(0, 0, 0, 512);
+      grd.addColorStop(0, '#262627'); grd.addColorStop(0.62, '#2f2f30'); grd.addColorStop(1, '#5f5d58');
+      ctx.fillStyle = grd; ctx.fillRect(0, 0, 1024, 512);
+      ctx.fillStyle = '#a8352b'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.save(); ctx.scale(0.82, 1);
+      ctx.font = 'bold 96px "Noto Serif TC", "PMingLiU", serif';
+      ctx.fillText('耕', 438 / 0.82, 262); ctx.fillText('園', 590 / 0.82, 262);
+      ctx.font = 'bold 66px "Noto Serif TC", "PMingLiU", serif';
+      ctx.fillText('心', 514 / 0.82, 178);
+      ctx.restore();
+      const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+      const rockMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 });
+      const rock = addMesh(mg, new THREE.SphereGeometry(0.5, 32, 20), rockMat, scx - 1.7, 0.38, scz + 0.15);
+      rock.scale.set(1.32, 0.86, 0.80);
+      rock.rotation.y = Math.PI / 2;
+      rock.scale.set(0.80, 0.86, 1.32);   // 旋轉後：局部 z 為東西寬 1.32 m、局部 x 為南北厚 0.80 m
     }
 
     // 4. 草坪中南側灌木叢與東南側「斜幹造型榕樹＋樹下紅陶盆栽群」(照片 4 右側標誌性斜幹樹與盆栽)
@@ -17260,17 +20462,7 @@ function buildMainGateLayer() {
       const bushM = addMesh(mg, new THREE.SphereGeometry(1.15, 10, 8), new THREE.MeshStandardMaterial({ color: 0x2d6628, roughness: 0.82 }), 88.8, 0.95, 13.8);
       bushM.scale.set(1.15, 0.9, 1.05);
 
-      // 斜幹造型榕樹 (位於 x = 94.8, z = 14.5，樹幹明顯向西北傾斜約 28 度)
-      const lx = 94.8, lz = 14.5;
-      const leanTrunk = addMesh(mg, new THREE.CylinderGeometry(0.24, 0.36, 3.6, 9), banyanTrunkMat, lx - 0.55, 1.65, lz - 0.25);
-      leanTrunk.rotation.z = 0.46;
-      leanTrunk.rotation.x = -0.15;
-      const leanCrownMat = new THREE.MeshStandardMaterial({ color: 0x36702d, roughness: 0.80 });
-      [[-1.2, 3.6, -0.4, 1.85], [-2.4, 3.4, -0.8, 1.55], [0.2, 3.8, 0.4, 1.65], [-1.0, 4.3, 0.6, 1.45]].forEach(([ox, oy, oz, r]) => {
-        const cl = addMesh(mg, new THREE.DodecahedronGeometry(r, 1), leanCrownMat, lx + ox, oy, lz + oz);
-        cl.scale.set(1.3, 0.72, 1.25);
-      });
-
+      const lx = 94.8, lz = 14.5;   // v2.12.16：斜幹樹改依普查資料（苦楝）建置，此處僅保留盆栽位置
       // 斜幹榕樹根部與北側圍牆邊之紅陶盆栽群 (Terracotta Flowerpots，照片 4 清晰可見)
       const potTerraMat = new THREE.MeshStandardMaterial({ color: 0xb85d3b, roughness: 0.75 });
       const potPlantMat = new THREE.MeshStandardMaterial({ color: 0x458536, roughness: 0.78 });
@@ -17615,162 +20807,551 @@ function buildEastGate() {
   landmarkGroupMap.set('east-gate', eg);
 }
 
-// ---- 19 北側大車棚與停車區 (`carport` — 藍色浪板單層鋼構大車棚與北側柏油車道) ----
+// ---- 19 北側大車棚與停車區 (`carport` — v2.12.117 依實景照片 20261125_093249 / 093309 1:1 重建 5.1m 1F 車道與 5.1m 單排懸臂鋼構停車棚) ----
 function buildNorthCarport() {
   const cp = new THREE.Group();
   cp.userData = { landmarkId: 'carport' };
 
   // -------------------------------------------------------------------------
-  // 【學校北側全線東西貫通車道通道】(東側門 x=+115.18m 經大車棚直通西側後門 x=-118.56m，全長 233.7m)
-  // 依實景照片 20261110_135208.jpg (東段柏油、標線、大車棚) 與 20261110_135221.jpg (西段水泥混凝土、伸縮縫、路緣石與林蔭綠廊)
+  // 【A. 學校北側全線東西貫通車道】(東側門→北棟北側 5.1m 車道→西段 4.0m 水泥車道→後門)
+  // 依實景照片 20261125_093249 / 093309：北棟北側 1F 車道寬 5.1m，緊貼北棟無障礙坡道與 5.1m 停車棚，
+  // 路面為風化灰水泥柏油（具細微裂紋與中央縱縫）並繪設雙向白色方向箭頭（北側車道朝西 ↑、南側車道朝東 ↓）。
   // -------------------------------------------------------------------------
-
-  // 【A. 東段柏油車道】(x = -21.32m 至 x = +115.18m，寬 6.4m，中心 z = -43.5m)
-  const driveMinX = X(430), driveMaxX = X(955), driveCx = (driveMinX + driveMaxX) / 2;
-  const driveZ = -43.5, driveW = 6.4;
-  const eastRoadLen = driveMaxX - driveMinX; // 136.5m
-  addBox(layerGroups.roads, eastRoadLen, 0.10, driveW, asphaltMat, driveCx, 0.05, driveZ, false);
-
-  // 車道南緣紅磚路緣石 (照片 2、3 草坪北緣與車道交界紅磚緣石，x = 50.0m 至 115.0m)
-  addBox(layerGroups.roads, 65.0, 0.15, 0.28, new THREE.MeshStandardMaterial({ color: 0xa8584c, roughness: 0.85 }), 82.5, 0.075, driveZ + driveW / 2, false);
-  // 車道南緣白色路面邊線 (Solid White Edge Line)
-  addBox(layerGroups.roads, eastRoadLen, 0.012, 0.15, lineWhiteMat, driveCx, 0.052, driveZ + driveW / 2 - 0.15, false);
-  // 車道北緣停放區劃分白線
-  addBox(layerGroups.roads, eastRoadLen, 0.012, 0.15, lineWhiteMat, driveCx, 0.052, driveZ - driveW / 2 + 0.15, false);
-
-  // 實景照片 20261110_135208.jpg：柏油車道路面白色直行/指示標線箭頭 (東向車流)
-  [-12.0, 18.0, 48.0, 78.0, 102.0].forEach(ax => {
-    // 箭頭桿身
-    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.055, driveZ + 0.9, false);
-    // 箭頭頭部 (指向東向 +X)
-    const arrowHead = addMesh(layerGroups.roads, new THREE.ConeGeometry(0.65, 1.25, 3), lineWhiteMat, ax + 1.5, 0.056, driveZ + 0.9, false);
-    arrowHead.rotation.x = -Math.PI / 2;
-    arrowHead.rotation.z = -Math.PI / 2;
-  });
-
-  // 西向車流地面箭頭標線 (指向西向 -X，西行出入動線)
-  [2.0, 32.0, 62.0, 92.0].forEach(ax => {
-    addBox(layerGroups.roads, 2.4, 0.015, 0.25, lineWhiteMat, ax, 0.055, driveZ - 0.9, false);
-    const arrowHead = addMesh(layerGroups.roads, new THREE.ConeGeometry(0.65, 1.25, 3), lineWhiteMat, ax - 1.5, 0.056, driveZ - 0.9, false);
-    arrowHead.rotation.x = -Math.PI / 2;
-    arrowHead.rotation.z = Math.PI / 2;
-  });
-
-  // 車道中央白色虛線分隔標線 (Dashed center guide lines)
-  for (let lx = driveMinX + 4.0; lx < driveMaxX - 4.0; lx += 6.0) {
-    addBox(layerGroups.roads, 3.2, 0.012, 0.12, lineWhiteMat, lx, 0.052, driveZ, false);
+  function makeNorthDrivewayTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 512;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#8b8a86';
+    ctx.fillRect(0, 0, 512, 512);
+    let sd = 117;
+    const rng = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+    // 斑駁骨材與輪胎磨耗深淺紋理
+    for (let i = 0; i < 4200; i++) {
+      const v = 108 + Math.floor(rng() * 52);
+      ctx.fillStyle = `rgb(${v},${v - 1},${v - 4})`;
+      ctx.fillRect(rng() * 512, rng() * 512, 2 + rng() * 5, 2 + rng() * 4);
+    }
+    // 雙車道微暗輪胎壓痕帶
+    ctx.fillStyle = 'rgba(55,54,52,0.14)';
+    ctx.fillRect(0, 95, 512, 110);
+    ctx.fillRect(0, 305, 512, 110);
+    // 中央自然縱向接縫與細微風化裂紋
+    ctx.strokeStyle = 'rgba(42,41,40,0.42)';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(0, 256);
+    for (let x = 32; x <= 512; x += 32) ctx.lineTo(x, 256 + (rng() - 0.5) * 6);
+    ctx.stroke();
+    ctx.lineWidth = 1.1;
+    ctx.strokeStyle = 'rgba(48,47,45,0.28)';
+    for (let k = 0; k < 10; k++) {
+      let cx = rng() * 512, cy = rng() * 512;
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      for (let s = 0; s < 5; s++) { cx += (rng() - 0.5) * 55; cy += (rng() - 0.5) * 45; ctx.lineTo(cx, cy); }
+      ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(10, 1);
+    tex.anisotropy = 4;
+    return tex;
   }
 
-  // 【B. 中段過渡車道】(x = -21.32m 至 x = -38.0m，微斜過渡通過北棟西端與電梯/廁所北側)
-  const transX1 = driveMinX, transX2 = -38.0;
-  const transZ1 = driveZ, transZ2 = -44.5;
-  const transCx = (transX1 + transX2) / 2;
-  const transCz = (transZ1 + transZ2) / 2;
-  const transDx = transX2 - transX1;
-  const transDz = transZ2 - transZ1;
-  const transLen = Math.hypot(transDx, transDz);
-  const transAng = Math.atan2(transDz, -transDx);
+  const northDrivewayMat = new THREE.MeshStandardMaterial({ map: makeNorthDrivewayTexture(), roughness: 0.93 });
+  const flatArrowHeadGeo = dir => {
+    const sh = new THREE.Shape();
+    sh.moveTo(0, -0.52); sh.lineTo(0, 0.52); sh.lineTo(dir * 0.95, 0); sh.closePath();
+    const g = new THREE.ShapeGeometry(sh); g.rotateX(-Math.PI / 2); return g;
+  };
+
+  const northRoadW = 5.1;     // v2.12.117 使用者實測：北棟大樓北側 1F 車道寬度 5.1 公尺
+  const westRoadW  = 4.0;     // 西段水泥車道寬度 4.0 公尺
+
+  const concreteRoadMat = new THREE.MeshStandardMaterial({ color: 0xd6d3cc, roughness: 0.88 });
+  const jointSeamMat    = new THREE.MeshStandardMaterial({ color: 0x3d4147, roughness: 0.95 });
+  const curbMat         = new THREE.MeshStandardMaterial({ color: 0xc2bfb8, roughness: 0.80 });
+  const lawnBufferMat   = new THREE.MeshStandardMaterial({ color: 0x5e9146, roughness: 0.92 });
+  registerLawnMat(lawnBufferMat);
+
+  const westRoadPts = WEST_ROAD_PTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
+  const spurPts = NORTH_SPUR_PTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
+  const roadSegs = [];
+  for (let i = 0; i < westRoadPts.length - 1; i++) roadSegs.push([westRoadPts[i], westRoadPts[i + 1], true, i]);
+  roadSegs.push([spurPts[0], spurPts[1], false, 99]);
+
+  for (const [p1, p2, main, idx] of roadSegs) {
+    const L = p1.distanceTo(p2);
+    const isNorthMain = main && (idx === 0 || idx === 1);
+    const rw = isNorthMain ? northRoadW : westRoadW;
+    const sg = new THREE.Group();
+    sg.position.set((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
+    sg.rotation.y = -Math.atan2(p2.z - p1.z, p2.x - p1.x);
+
+    if (isNorthMain) {
+      // 5.1m 風化灰水泥柏油車道主體
+      addBox(sg, L + rw * 0.45, 0.10, rw, northDrivewayMat, 0, 0.055, 0, false);
+      // 北側（local +Z，停車棚與有機農場側）水泥路緣與排水縫
+      addBox(sg, L + 0.2, 0.13, 0.18, curbMat, 0, 0.072, rw / 2 + 0.09, false);
+      // 南側（local -Z，北棟坡道與東廣場側）平順低緣排水縫（不阻擋無障礙坡道起步）
+      addBox(sg, L + 0.2, 0.014, 0.08, jointSeamMat, 0, 0.106, -rw / 2 + 0.04, false);
+      // 雙向白色方向箭頭（沿車道方向：local +X 朝西、local +Z 朝北）
+      // 實景照片 093249 / 093309：靠停車棚側(北側車道, +Z) 箭頭朝西(+1)；靠北棟側(南側車道, -Z) 箭頭朝東(-1)
+      for (let axPos = -L / 2 + 7; axPos < L / 2 - 7; axPos += 18) {
+        // 北側車道（朝西 +X）
+        addBox(sg, 1.55, 0.015, 0.24, lineWhiteMat, axPos, 0.112, 1.25, false);
+        addMesh(sg, flatArrowHeadGeo(1), lineWhiteMat, axPos + 0.78, 0.113, 1.25, false).scale.setScalar(0.85);
+        // 南側車道（朝東 -X）
+        addBox(sg, 1.55, 0.015, 0.24, lineWhiteMat, axPos + 3.2, 0.112, -1.25, false);
+        addMesh(sg, flatArrowHeadGeo(-1), lineWhiteMat, axPos + 2.42, 0.113, -1.25, false).scale.setScalar(0.85);
+      }
+    } else {
+      addBox(sg, L + rw * 0.6, 0.10, rw, concreteRoadMat, 0, 0.055, 0, false);
+      addBox(sg, L + 0.1, 0.010, 0.035, jointSeamMat, 0, 0.106, 0, false);
+      for (let jx = -L / 2 + 2.2; jx < L / 2 - 1; jx += 4.5) addBox(sg, 0.045, 0.012, rw - 0.08, jointSeamMat, jx, 0.107, 0, false);
+      [-1, 1].forEach(sd => addBox(sg, L + 0.1, 0.16, 0.22, curbMat, 0, 0.085, sd * (rw / 2 + 0.11), false));
+      if (main && L > 25) {
+        for (let axPos = -L / 2 + 8; axPos < L / 2 - 8; axPos += 26) {
+          addBox(sg, 2.4, 0.015, 0.22, lineWhiteMat, axPos, 0.112, 0.75, false);
+          addMesh(sg, flatArrowHeadGeo(-1), lineWhiteMat, axPos - 1.2, 0.113, 0.75, false).scale.setScalar(0.8);
+          addBox(sg, 2.4, 0.015, 0.22, lineWhiteMat, axPos + 9, 0.112, -0.75, false);
+          addMesh(sg, flatArrowHeadGeo(1), lineWhiteMat, axPos + 10.2, 0.113, -0.75, false).scale.setScalar(0.8);
+        }
+      }
+    }
+    layerGroups.roads.add(sg);
+  }
+
+  // 車道西端與西北角後門平順交會區
+  { const e = westRoadPts[westRoadPts.length - 1]; addBox(layerGroups.roads, 4.0, 0.09, 6.8, concreteRoadMat, e.x - 1.0, 0.052, e.z, false); }
+
+  // -------------------------------------------------------------------------
+  // 【B. 北側 5.1m 單排懸臂鋼構大停車棚】(建構於北棟局部座標系並以 NORTH_XF 對齊，與北棟及 5.1m 車道零誤差平行)
+  // 依實景照片 20261125_093249 / 093309 1:1 重建：
+  //   - 深度 sd = 5.10m（南緣緊貼 5.1m 車道北緣 zb-7.90m，北緣止於 zb-13.00m）
+  //   - 單排後退淺灰 H 型鋼柱（臨車道側完全無柱、懸臂挑出，便於機汽車進出）
+  //   - 懸臂鋼構槽型橫梁（東端天藍 → 次跨深藍 → 深綠 → 藍綠交替）＋ 6 道鍍鋅 C 型鋼檁條 ＋ 單斜銀灰浪板屋頂 ＋ 日光燈具
+  //   - 東段停放密集彩色機車（前景亮藍機車等 18 輛）、中／西段停放汽車（8 輛）；後方為深褐紅磚圍牆與高大遮蔭喬木、南洋杉
+  // -------------------------------------------------------------------------
+  const zbLocal   = Z(115) - 7.65 / 2 - 2.38;      // -38.705m（與 buildNorthBuilding 精準一致）
+  const sd        = 5.10;                          // 使用者實測：停車棚寬度 5.1 公尺
+  const cpSouthZ  = zbLocal - 7.90;                // 緊貼 5.1m 車道北緣
+  const scz       = cpSouthZ - sd / 2;             // 停車棚中心 Z (-49.155m)
+  const cpNorthZ  = cpSouthZ - sd;                 // 停車棚北緣 (-51.705m)
+  const cpWestX   = -36.91;                        // 對齊北棟西端 (Axis ①)
+  const cpEastX   = 49.79;                         // 東端緊鄰有機農場西口紅磚花台與橘色三角錐
+  const sw        = cpEastX - cpWestX;             // 86.70m
+  const scx       = (cpWestX + cpEastX) / 2;       // 6.44m
+
+  const roofMetalMat  = new THREE.MeshStandardMaterial({ color: 0xc5cacf, roughness: 0.44, metalness: 0.56, side: THREE.DoubleSide });
+  const roofUnderMat  = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.55, metalness: 0.45 });
+  const purlinMat     = new THREE.MeshStandardMaterial({ color: 0xb2b8be, roughness: 0.42, metalness: 0.58 });
+  const skyBlueBeam   = new THREE.MeshStandardMaterial({ color: 0x3898d8, roughness: 0.42, metalness: 0.25 }); // 東端首跨亮天藍槽鋼梁 (Photo 3)
+  const cobaltBeam    = new THREE.MeshStandardMaterial({ color: 0x2467a8, roughness: 0.45, metalness: 0.28 }); // 中藍橫梁
+  const forestBeam    = new THREE.MeshStandardMaterial({ color: 0x2b6e4a, roughness: 0.46, metalness: 0.25 }); // 深青綠橫梁
+  const colGreyMat    = new THREE.MeshStandardMaterial({ color: 0x8a9096, roughness: 0.48, metalness: 0.45 }); // 淺灰漆面 H 型鋼柱 (Photo 3)
+  const plinthMat     = new THREE.MeshStandardMaterial({ color: 0x9f9d97, roughness: 0.88 });
+  const padConcreteMat = new THREE.MeshStandardMaterial({ color: 0xa9a7a1, roughness: 0.90 });
+  const lampHousingMat = new THREE.MeshStandardMaterial({ color: 0xebedf0, roughness: 0.40 });
+  const lampTubeMat    = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfffef4, emissiveIntensity: 0.55 });
+
+  // 1) 5.1m 停車棚水泥地坪與南緣路緣
+  addBox(cp, sw + 0.4, 0.12, sd, padConcreteMat, scx, 0.06, scz, false);
+
+  // 2) 單斜鍍鋅浪板屋頂（南／車道側高 3.45m，北／圍牆側低 2.65m）＋ 6 道縱向鍍鋅 C 型鋼檁條
+  const frontH   = 3.45;
+  const backH    = 2.65;
+  const roofRise = frontH - backH;
+  const roofDepth = sd + 0.55;                     // 前後略為挑檐覆蓋完整 5.1m 停車區
+  const roofAng  = -Math.atan2(roofRise, roofDepth);
+  const roofMidY = (frontH + backH) / 2;
+
   {
-    const transGrp = new THREE.Group();
-    transGrp.position.set(transCx, 0.05, transCz);
-    transGrp.rotation.y = transAng;
-    addBox(transGrp, transLen, 0.10, 5.0, asphaltMat, 0, 0, 0, false);
-    layerGroups.roads.add(transGrp);
+    const roofDeck = addMesh(cp, new THREE.BoxGeometry(sw + 0.8, 0.055, roofDepth), roofMetalMat, scx, roofMidY, scz);
+    roofDeck.rotation.x = roofAng;
+    // 屋頂浪板立體肋條
+    const ribStep = 0.68;
+    const halfRibs = Math.floor((sw + 0.8) / ribStep / 2);
+    for (let k = -halfRibs; k <= halfRibs; k++) {
+      const rib = addMesh(cp, new THREE.BoxGeometry(0.045, 0.045, roofDepth), roofMetalMat, scx + k * ribStep, roofMidY + 0.042, scz, false);
+      rib.rotation.x = roofAng;
+    }
+    // 6 道貫通東西向鍍鋅 C 型鋼檁條（照片 093309 屋檐下方清晰可見）
+    for (let p = 0; p < 6; p++) {
+      const frac = -0.46 + (p / 5) * 0.92;         // -0.46 (北) → +0.46 (南)
+      const pz = scz + frac * roofDepth;
+      const py = roofMidY + frac * roofRise - 0.085;
+      const purlin = addBox(cp, sw + 0.7, 0.11, 0.065, purlinMat, scx, py, pz, false);
+      purlin.rotation.x = roofAng;
+    }
   }
 
-  // 【C. 西段平整水泥混凝土車道】(x = -38.0m 至 x = -118.56m 直通後門，寬 4.8m，中心 z = -44.5m，北側貫通車道)
-  // 實景照片 20261110_135221.jpg：淺灰平整水泥路面、橫向伸縮割縫、水泥路緣石、綠意草坪緩衝帶
-  const westRoadX1 = -38.0, westRoadX2 = X(56); // -118.56m
-  const westRoadLen = Math.abs(westRoadX2 - westRoadX1); // 80.56m
-  const westRoadCx = (westRoadX1 + westRoadX2) / 2; // -78.28m
-  const westRoadZ = -44.5, westRoadW = 4.8;
+  // 3) 單排後退淺灰 H 型鋼柱 ＋ 彩繪懸臂槽型橫梁（14 跨，臨車道側完全無柱！）＋ 棚下日光燈
+  const nBays = 14;
+  const bayW  = sw / nBays;
+  const colZ  = cpNorthZ + 1.35;                   // 退縮於北側距北緣 1.35m，向南懸臂 3.75m 覆蓋機汽車位
+  const colTopY = backH + ((colZ - cpNorthZ) / sd) * roofRise - 0.24;
 
-  const concreteRoadMat = new THREE.MeshStandardMaterial({ color: 0xd6d3cc, roughness: 0.88 }); // 平整淺灰刷紋水泥
-  const jointSeamMat    = new THREE.MeshStandardMaterial({ color: 0x3d4147, roughness: 0.95 }); // 瀝青填縫伸縮縫
-  const curbMat         = new THREE.MeshStandardMaterial({ color: 0xc8c5be, roughness: 0.78 }); // 水泥路緣石
-  const lawnBufferMat   = new THREE.MeshStandardMaterial({ color: 0x5e9146, roughness: 0.92 }); // 車道與跑道間草坪緩衝帶
+  for (let i = 0; i <= nBays; i++) {
+    const colX = cpWestX + i * bayW;
+    // H 型鋼柱本體（翼板＋腹板）與水泥基座
+    addBox(cp, 0.26, colTopY, 0.28, colGreyMat, colX, colTopY / 2, colZ);
+    addBox(cp, 0.30, colTopY, 0.05, roofUnderMat, colX, colTopY / 2, colZ + 0.13, false);
+    addBox(cp, 0.30, colTopY, 0.05, roofUnderMat, colX, colTopY / 2, colZ - 0.13, false);
+    addBox(cp, 0.40, 0.22, 0.42, plinthMat, colX, 0.11, colZ, false);
 
-  // 水泥混凝土路面主體 (高出地表 0.055m，避免與底層 z-fight)
-  addBox(layerGroups.roads, westRoadLen, 0.10, westRoadW, concreteRoadMat, westRoadCx, 0.055, westRoadZ, false);
+    // 彩繪懸臂主橫梁（照片 093309 順序：最東首跨亮天藍 → 次跨中藍 → 深青綠 → 藍綠交替）
+    let bMat;
+    if (i === nBays) bMat = skyBlueBeam;
+    else if (i === nBays - 1) bMat = cobaltBeam;
+    else bMat = ((nBays - 2 - i) % 2 === 0) ? forestBeam : cobaltBeam;
 
-  // 橫向伸縮縫 (Transverse Contraction Joints，實景照片 20261110_135221.jpg 每 4.5m 規律切縫)
-  for (let jx = westRoadX1 - 4.5; jx > westRoadX2 + 1.0; jx -= 4.5) {
-    addBox(layerGroups.roads, 0.045, 0.012, westRoadW - 0.08, jointSeamMat, jx, 0.061, westRoadZ, false);
+    const beamLen = sd + 0.25;
+    const beamY   = roofMidY - 0.29;
+    const beamWeb = addBox(cp, 0.14, 0.34, beamLen, bMat, colX, beamY, scz);
+    beamWeb.rotation.x = roofAng;
+    // 橫梁上下凸緣
+    const flTop = addBox(cp, 0.22, 0.04, beamLen, bMat, colX, beamY + 0.16, scz, false);
+    flTop.rotation.x = roofAng;
+    const flBot = addBox(cp, 0.22, 0.04, beamLen, bMat, colX, beamY - 0.16, scz, false);
+    flBot.rotation.x = roofAng;
+
+    // 每跨棚下日光燈具（照片 093309 清晰可見）
+    if (i < nBays) {
+      const lx = colX + bayW * 0.5;
+      const lz = scz + 0.25;
+      const ly = roofMidY + ((lz - scz) / roofDepth) * roofRise - 0.14;
+      addBox(cp, 1.25, 0.05, 0.13, lampHousingMat, lx, ly, lz, false);
+      addBox(cp, 1.18, 0.03, 0.06, lampTubeMat, lx, ly - 0.035, lz, false);
+    }
   }
-  // 縱向中央切縫 (Longitudinal Centerline Joint)
-  addBox(layerGroups.roads, westRoadLen, 0.010, 0.035, jointSeamMat, westRoadCx, 0.060, westRoadZ, false);
 
-  // 南側與北側水泥路緣石 (Curbs，高出路面 0.08m，寬 0.22m)
-  const southCurbZ = westRoadZ + westRoadW / 2 + 0.11; // -37.44m
-  const northCurbZ = westRoadZ - westRoadW / 2 - 0.11; // -42.86m
-  addBox(layerGroups.roads, westRoadLen, 0.16, 0.22, curbMat, westRoadCx, 0.085, southCurbZ, false);
-  addBox(layerGroups.roads, westRoadLen, 0.16, 0.22, curbMat, westRoadCx, 0.085, northCurbZ, false);
-
-  // 車道南緣與運動場外圍人行步道之間的綠意草坪緩衝帶 (Lawn Buffer Strip，照片 135221.jpg 實景)
-  // 由南側路緣石 z=-37.33m 延伸至跑道外圍步道邊緣 z=-35.0m，寬度約 2.33m
-  const lawnBufferZ = (southCurbZ + 0.11 + -35.0) / 2; // -36.16m
-  const lawnBufferW = Math.abs(-35.0 - (southCurbZ + 0.11)); // 2.33m
-  addBox(layerGroups.roads, westRoadLen + 2.0, 0.08, lawnBufferW, lawnBufferMat, westRoadCx, 0.045, lawnBufferZ, false);
-
-  // 【車道西端與西側學校後門平順交會區】(西側後門鋪面交界引導)
-  addBox(layerGroups.roads, 4.0, 0.09, 6.8, concreteRoadMat, westRoadX2 + 2.0, 0.052, -39.0, false);
-
-  // 藍色浪板單層鋼構大車棚 (實景相片 135208.jpg 天藍色烤漆方管鋼架柱梁、深藍浪板屋頂與停放機車汽車)
-  const sw = (705 - 430) * S, sd = 22 * S, scx = X((430 + 705) / 2), scz = Z(42);
-  const blueRoofMat = new THREE.MeshStandardMaterial({ color: 0x1d6fb8, roughness: 0.42, metalness: 0.35 });
-  const cyanBeamMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.38, metalness: 0.45 }); // 實景鮮豔天藍色方管鋼構
-  addBox(cp, sw, 0.14, sd + 1.4, mats.slab, scx, 0.07, scz, false);
-  addBox(cp, sw + 0.6, 0.24, sd + 0.6, blueRoofMat, scx, 3.45, scz);
-  addBox(cp, sw + 0.7, 0.12, 0.18, new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.35 }), scx, 3.52, scz + sd / 2 + 0.3);
-  for (let i = 0; i <= 10; i++) {
-    const colX = X(430) + i * (sw / 10);
-    // 天藍色方管鋼柱
-    addBox(cp, 0.22, 3.4, 0.22, cyanBeamMat, colX, 1.7, scz - sd / 2 + 0.5);
-    addBox(cp, 0.22, 3.4, 0.22, cyanBeamMat, colX, 1.7, scz + sd / 2 - 0.5);
-    // 頂部天藍色人字屋架橫梁
-    addBox(cp, 0.14, 0.18, sd, cyanBeamMat, colX, 3.32, scz);
+  // 4) 白色停車格標線（東段約 26m 劃設機車格，中／西段劃設 2.5m 汽車格）
+  const motoZoneX1 = cpEastX - 26.5;
+  addBox(cp, sw, 0.012, 0.10, lineWhiteMat, scx, 0.125, cpSouthZ - 0.18, false);
+  // 汽車格線 (cpWestX → motoZoneX1)
+  for (let lx = cpWestX + 0.3; lx <= motoZoneX1 + 0.05; lx += 2.5) {
+    addBox(cp, 0.09, 0.012, sd - 0.55, lineWhiteMat, lx, 0.125, scz, false);
   }
-  const carColors = [0xe8e9eb, 0x38495c, 0x9c3b34, 0x627078, 0xd8d4c8];
-  for (let c = 0; c < 6; c++) {
-    const carX = X(448 + c * 24), carZ = scz;
-    const cMat = new THREE.MeshStandardMaterial({ color: carColors[c % carColors.length], roughness: 0.35, metalness: 0.25 });
-    addBox(cp, 1.85, 0.72, 4.1, cMat, carX, 0.52, carZ);
-    addBox(cp, 1.62, 0.62, 2.2, cMat, carX, 1.12, carZ - 0.15);
-    addBox(cp, 1.66, 0.52, 2.25, mats.glassDark, carX, 1.12, carZ - 0.15);
+  // 機車格線 (motoZoneX1 → cpEastX)
+  for (let mx = motoZoneX1; mx <= cpEastX - 0.2; mx += 1.20) {
+    addBox(cp, 0.07, 0.012, 2.35, lineWhiteMat, mx, 0.125, cpSouthZ - 1.45, false);
   }
-  for (let b = 0; b < 16; b++) {
-    const bikeX = X(600 + b * 6.5);
-    addBox(cp, 0.14, 0.78, 1.55, mats.railBlue, bikeX, 0.45, scz);
+  addBox(cp, cpEastX - motoZoneX1, 0.012, 0.08, lineWhiteMat, (motoZoneX1 + cpEastX) / 2, 0.125, cpSouthZ - 2.65, false);
+
+  // 5) 東段前景整排停放機車（18 輛，含最東側亮藍機車，完全呼應照片 093249 / 093309）
+  const motoTireMat   = new THREE.MeshStandardMaterial({ color: 0x1a1c1f, roughness: 0.85 });
+  const motoSeatMat   = new THREE.MeshStandardMaterial({ color: 0x25272b, roughness: 0.72 });
+  const motoChromeMat = new THREE.MeshStandardMaterial({ color: 0xd0d6dc, roughness: 0.28, metalness: 0.78 });
+  const motoPlateMat  = new THREE.MeshStandardMaterial({ color: 0xf4f4f0, roughness: 0.45 });
+  const motoPalette   = [
+    0x1378d6, 0x1e2228, 0x3b424c, 0xc8cfd6, 0x2088d8, 0x1c1f24,
+    0x9b2c32, 0x2d343d, 0xd8dce0, 0x276eb0, 0x22262c, 0x5c6470,
+    0x186bb8, 0x2a2d33, 0xb8bec4, 0x7c2930, 0x333942, 0xe2e5e8
+  ];
+  for (let m = 0; m < 18; m++) {
+    const mx = cpEastX - 1.85 - m * 1.32;
+    const mz = cpSouthZ - 1.55 - (m % 3) * 0.14;
+    const mg = new THREE.Group();
+    mg.position.set(mx, 0.12, mz);
+    mg.rotation.y = Math.PI * 0.5 + ((m % 5) - 2) * 0.05;   // 車頭微斜朝北停入車棚
+    const bodyMat = new THREE.MeshStandardMaterial({ color: motoPalette[m % motoPalette.length], roughness: 0.36, metalness: 0.35 });
+    // 前後輪
+    [-0.56, 0.56].forEach(wx => {
+      const wh = addMesh(mg, new THREE.TorusGeometry(0.22, 0.065, 8, 14), motoTireMat, wx, 0.25, 0);
+      wh.rotation.y = 0;
+    });
+    // 車身側殼、座墊、龍頭斜板、把手與車牌
+    addBox(mg, 1.28, 0.38, 0.36, bodyMat, -0.04, 0.48, 0);
+    addBox(mg, 0.62, 0.13, 0.34, motoSeatMat, -0.18, 0.71, 0);
+    addBox(mg, 0.28, 0.52, 0.34, bodyMat, 0.42, 0.74, 0);
+    addBox(mg, 0.08, 0.06, 0.64, motoChromeMat, 0.38, 0.99, 0);
+    addBox(mg, 0.03, 0.14, 0.20, motoPlateMat, -0.68, 0.42, 0);
+    if (m % 2 === 0) {
+      addMesh(mg, new THREE.SphereGeometry(0.13, 10, 8), m % 4 === 0 ? motoChromeMat : motoSeatMat, -0.32, 0.87, 0); // 安全帽
+    }
+    cp.add(mg);
+  }
+
+  // 6) 中／西段停放汽車與休旅車（照片 093249 / 093309：機車旁緊接深灰休旅車與白色轎車）
+  const carSpecs = [
+    { x: motoZoneX1 - 2.0,  c: 0x3b4249, suv: true  },   // 深灰休旅車（緊鄰機車列西側，照片清晰可見）
+    { x: motoZoneX1 - 5.2,  c: 0xebedf0, suv: false },   // 白色轎車
+    { x: motoZoneX1 - 8.5,  c: 0x252930, suv: false },   // 黑色轎車
+    { x: motoZoneX1 - 14.5, c: 0xa4aab0, suv: true  },   // 銀灰休旅車
+    { x: motoZoneX1 - 20.5, c: 0xd8d5cc, suv: false },   // 米白轎車
+    { x: motoZoneX1 - 28.0, c: 0x4b5863, suv: false },   // 鐵灰轎車
+    { x: motoZoneX1 - 36.5, c: 0xe6e8eb, suv: true  },   // 白色休旅車
+    { x: motoZoneX1 - 46.0, c: 0x2d3238, suv: false }    // 深色轎車
+  ];
+  for (const cs of carSpecs) {
+    const cMat = new THREE.MeshStandardMaterial({ color: cs.c, roughness: 0.34, metalness: 0.28 });
+    const bodyH = cs.suv ? 0.72 : 0.56;
+    const cabH  = cs.suv ? 0.58 : 0.48;
+    const cabL  = cs.suv ? 2.55 : 2.15;
+    addBox(cp, 1.82, bodyH, 4.35, cMat, cs.x, 0.34 + bodyH / 2, scz + 0.15);
+    addBox(cp, 1.60, cabH, cabL, cMat, cs.x, 0.34 + bodyH + cabH / 2 - 0.04, scz - 0.05);
+    addBox(cp, 1.64, cabH - 0.10, cabL + 0.06, mats.glassDark, cs.x, 0.34 + bodyH + cabH / 2 - 0.06, scz - 0.05);
+    [[0.78, 1.32], [0.78, -1.32], [-0.78, 1.32], [-0.78, -1.32]].forEach(([wx, wz]) => {
+      const wh = addMesh(cp, new THREE.CylinderGeometry(0.32, 0.32, 0.22, 12), mats.darkMetal, cs.x + wx, 0.34, scz + 0.15 + wz);
+      wh.rotation.z = Math.PI / 2;
+    });
+  }
+
+  // 7) 停車棚後方深褐紅磚圍牆與高大遮蔭喬木、南洋杉（照片 093249 / 093309 停車棚正後方景觀）
+  {
+    const backBrickMat = new THREE.MeshStandardMaterial({ color: 0x4b352c, roughness: 0.92 });
+    const backCapMat   = new THREE.MeshStandardMaterial({ color: 0x62463a, roughness: 0.88 });
+    const backWallZ    = cpNorthZ - 0.55;
+    addBox(cp, sw + 0.6, 1.95, 0.24, backBrickMat, scx, 0.975, backWallZ);
+    addBox(cp, sw + 0.6, 0.10, 0.30, backCapMat, scx, 1.98, backWallZ, false);
+
+    // 停車棚東端後方高大老樹（粗壯深褐樹幹＋茂密傘狀樹冠垂懸於東端屋頂上方，照片 093309 右上主景）
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3b2e, roughness: 0.92 });
+    const leafDark = new THREE.MeshStandardMaterial({ color: 0x265424, roughness: 0.84 });
+    const leafMid  = new THREE.MeshStandardMaterial({ color: 0x39702d, roughness: 0.82 });
+    const pineMat  = new THREE.MeshStandardMaterial({ color: 0x2d5e31, roughness: 0.85 });
+
+    const eastTreeX = cpEastX - 2.2, eastTreeZ = cpNorthZ - 1.85;
+    addMesh(cp, new THREE.CylinderGeometry(0.34, 0.48, 5.2, 10), trunkMat, eastTreeX, 2.6, eastTreeZ);
+    [
+      [0.0, 6.2, 0.8, 2.8, leafMid], [-2.2, 5.8, 1.2, 2.3, leafDark],
+      [2.1, 5.6, 0.5, 2.2, leafDark], [0.4, 7.6, -0.3, 2.4, leafMid],
+      [-1.4, 7.1, 1.6, 2.1, leafMid]
+    ].forEach(([ox, oy, oz, rad, mat]) => {
+      const blob = addMesh(cp, new THREE.DodecahedronGeometry(rad, 1), mat, eastTreeX + ox, oy, eastTreeZ + oz);
+      blob.scale.set(1.3, 0.78, 1.2);
+    });
+
+    // 停車棚中東段後方兩株高聳錐形南洋杉（照片 093249 / 093309 屋頂後方醒目尖塔狀針葉樹）
+    [[cpEastX - 11.5, cpNorthZ - 2.1, 1.05], [cpEastX - 15.8, cpNorthZ - 2.3, 0.92]].forEach(([px, pz, sc]) => {
+      addMesh(cp, new THREE.CylinderGeometry(0.14 * sc, 0.24 * sc, 4.5 * sc, 8), trunkMat, px, 2.25 * sc, pz);
+      for (let t = 0; t < 6; t++) {
+        const ty = (3.8 + t * 1.45) * sc;
+        const tr = (2.15 - t * 0.28) * sc;
+        addMesh(cp, new THREE.ConeGeometry(tr, 2.0 * sc, 9), t % 2 ? leafDark : pineMat, px, ty, pz);
+      }
+    });
   }
 
   cp.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'carport'; });
+  NORTH_XF.apply(cp);
   layerGroups.buildings.add(cp);
   clickableGroups.push(cp);
   landmarkGroupMap.set('carport', cp);
 }
 
-// ---- 20 前庭北側有機農場與食農教育園區 (`organic-farm` — 依 forecourt_organic_farm.jpg 1:1 精緻建模) ----
+// ---- 20 前庭北側有機農場與食農教育園區 (`organic-farm` — 依東側門有機農場 5 張最新實拍照片 1:1 精緻重建) ----
 function buildOrganicFarm() {
   const ofg = new THREE.Group();
   ofg.userData = { landmarkId: 'organic-farm' };
 
-  // 1) 復古紅磚砌矮牆長條花台紋理
-  function makeRedBrickFarmWallTexture() {
+  // 決定性偽隨機數產生器（確保紋理與植栽分布穩定一致）
+  function makeRng(seed) {
+    let s = seed;
+    return () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  }
+
+  // 1) 南側矮牆下半部：斑駁灰褐砌磚／水泥塊基底紋理（含底部青苔與風化色差）
+  function makeWeatheredMasonryBaseTexture() {
     const c = document.createElement('canvas');
-    c.width = 512; c.height = 192;
+    c.width = 512; c.height = 160;
     const ctx = c.getContext('2d');
-    ctx.fillStyle = '#8c857b';
-    ctx.fillRect(0, 0, 512, 192);
-    const cols = ['#a84838', '#963c2e', '#b85644', '#7d382c', '#c26452', '#8a4236'];
-    let s = 31;
-    const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-    const nR = 5, nC = 12, bh = 192 / nR, bw = 512 / nC;
+    const r = makeRng(41);
+    ctx.fillStyle = '#6c685e';
+    ctx.fillRect(0, 0, 512, 160);
+    const cols = ['#8a8376', '#7a7568', '#968f82', '#6e6a5d', '#827c70', '#736d60'];
+    const nR = 4, nC = 10, bh = 160 / nR, bw = 512 / nC;
     for (let row = 0; row < nR; row++) {
-      const off = (row % 2) * (bw / 2);
+      const off = (row % 2) * (bw * 0.5);
       for (let col = -1; col <= nC; col++) {
         ctx.fillStyle = cols[Math.floor(r() * cols.length)];
         ctx.fillRect(col * bw + off + 2, row * bh + 2, bw - 4, bh - 4);
       }
+    }
+    // 底部青苔與水漬風化漸層
+    const g = ctx.createLinearGradient(0, 0, 0, 160);
+    g.addColorStop(0, 'rgba(60, 56, 48, 0.10)');
+    g.addColorStop(0.65, 'rgba(55, 62, 42, 0.22)');
+    g.addColorStop(1, 'rgba(42, 48, 32, 0.45)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 512, 160);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(10, 1);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 2) 南側矮牆頂部：紅磚壓頂紋理（橫向單層紅磚收頭）
+  function makeRedBrickCapTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 96;
+    const ctx = c.getContext('2d');
+    const r = makeRng(73);
+    ctx.fillStyle = '#8b847a';
+    ctx.fillRect(0, 0, 512, 96);
+    const cols = ['#a84f42', '#9b4438', '#b55b4d', '#8f3f34', '#ad5548', '#94483d'];
+    const nC = 16, bw = 512 / nC;
+    for (let col = 0; col < nC; col++) {
+      ctx.fillStyle = cols[Math.floor(r() * cols.length)];
+      ctx.fillRect(col * bw + 2, 3, bw - 4, 90);
+      // 磚面微風化斑點
+      ctx.fillStyle = 'rgba(220, 210, 195, 0.14)';
+      ctx.fillRect(col * bw + 4, 6 + r() * 40, bw - 8, 10 + r() * 14);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(12, 1);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 3) 東端收頭交錯紅灰磚紋理（083322.jpg 右下轉角）
+  function makeMixedCornerBrickTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 128;
+    const ctx = c.getContext('2d');
+    const r = makeRng(91);
+    ctx.fillStyle = '#88837b';
+    ctx.fillRect(0, 0, 256, 128);
+    const nR = 3, nC = 6, bh = 128 / nR, bw = 256 / nC;
+    for (let row = 0; row < nR; row++) {
+      const off = (row % 2) * (bw * 0.5);
+      for (let col = -1; col <= nC; col++) {
+        const isRed = (row + col) % 2 === 0;
+        ctx.fillStyle = isRed
+          ? (r() > 0.5 ? '#a85144' : '#964438')
+          : (r() > 0.5 ? '#9c968c' : '#858077');
+        ctx.fillRect(col * bw + off + 2, row * bh + 2, bw - 4, bh - 4);
+      }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(2, 1);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 4) 前排耕作區地貌：淺沙土＋自然雜草斑塊＋落葉紋理（082946 / 083304 / 083322）
+  function makeFarmSandySoilTexture() {
+    const c = document.createElement('canvas');
+    c.width = 1024; c.height = 256;
+    const ctx = c.getContext('2d');
+    const r = makeRng(137);
+    ctx.fillStyle = '#b4a58d';
+    ctx.fillRect(0, 0, 1024, 256);
+    // 沙土深淺斑塊
+    for (let i = 0; i < 420; i++) {
+      const x = r() * 1024, y = r() * 256, rad = 10 + r() * 36;
+      ctx.fillStyle = r() > 0.5 ? 'rgba(150, 134, 110, 0.25)' : 'rgba(202, 189, 166, 0.24)';
+      ctx.beginPath(); ctx.ellipse(x, y, rad * 1.4, rad * 0.8, r() * Math.PI, 0, Math.PI * 2); ctx.fill();
+    }
+    // 自然雜草與苔蘚斑塊（主要集中在東西兩段與灌木周邊，中段偏裸露沙土）
+    for (let i = 0; i < 240; i++) {
+      const u = r();
+      // 中東休耕區 (0.48..0.64) 雜草較稀疏，保留淺沙土露面
+      if (u > 0.48 && u < 0.64 && r() < 0.72) continue;
+      const x = u * 1024, y = r() * 256, rad = 8 + r() * 24;
+      ctx.fillStyle = r() > 0.45 ? 'rgba(96, 126, 58, 0.34)' : 'rgba(122, 144, 72, 0.28)';
+      ctx.beginPath(); ctx.ellipse(x, y, rad * 1.3, rad * 0.85, r() * Math.PI, 0, Math.PI * 2); ctx.fill();
+    }
+    // 細碎枯葉與石礫點綴
+    for (let i = 0; i < 500; i++) {
+      ctx.fillStyle = r() > 0.5 ? 'rgba(122, 92, 60, 0.42)' : 'rgba(85, 72, 54, 0.32)';
+      ctx.fillRect(r() * 1024, r() * 256, 2 + r() * 4, 2 + r() * 3);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 5) 農場內部溝紋水泥磚步道紋理（083005 / 083014 / 083304）
+  function makeGroovedPaverTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 128;
+    const ctx = c.getContext('2d');
+    const r = makeRng(211);
+    ctx.fillStyle = '#c2bdb3';
+    ctx.fillRect(0, 0, 512, 128);
+    // 單塊長條水泥磚接縫與細平行防滑刻槽
+    const tileW = 64, tileH = 32;
+    for (let ty = 0; ty < 128; ty += tileH) {
+      const off = ((ty / tileH) % 2) * 32;
+      for (let tx = -32; tx < 512; tx += tileW) {
+        const shade = Math.floor((r() - 0.5) * 16);
+        ctx.fillStyle = `rgb(${194 + shade}, ${189 + shade}, ${179 + shade})`;
+        ctx.fillRect(tx + off + 1, ty + 1, tileW - 2, tileH - 2);
+        // 橫向平行防滑刻紋
+        ctx.strokeStyle = 'rgba(115, 110, 100, 0.28)';
+        ctx.lineWidth = 1;
+        for (let gx = tx + off + 5; gx < tx + off + tileW - 3; gx += 6) {
+          ctx.beginPath(); ctx.moveTo(gx, ty + 2); ctx.lineTo(gx, ty + tileH - 2); ctx.stroke();
+        }
+      }
+    }
+    // 磚縫微塵與少許落葉
+    for (let i = 0; i < 65; i++) {
+      ctx.fillStyle = 'rgba(118, 86, 56, 0.45)';
+      ctx.beginPath(); ctx.ellipse(r() * 512, r() * 128, 3 + r() * 4, 1.5 + r() * 2, r() * Math.PI, 0, Math.PI * 2); ctx.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(9, 1);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 6) 西北段粉灰亂石片拼貼北牆紋理（083005.jpg / 083014.jpg 左側）
+  function makeCrazyPavingStoneTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 256;
+    const ctx = c.getContext('2d');
+    const r = makeRng(307);
+    ctx.fillStyle = '#8b847d';
+    ctx.fillRect(0, 0, 512, 256);
+    const cols = ['#b8a59b', '#a8978f', '#c2b2a8', '#9e9088', '#b09e96', '#978b84'];
+    // 不規則多邊形亂石片拼貼
+    const rows = 5, stepX = 56, stepY = 256 / rows;
+    for (let ry = 0; ry < rows; ry++) {
+      for (let rx = 0; rx < 10; rx++) {
+        const cx = rx * stepX + (ry % 2) * 24 + (r() - 0.5) * 14;
+        const cy = ry * stepY + stepY * 0.5 + (r() - 0.5) * 8;
+        ctx.fillStyle = cols[Math.floor(r() * cols.length)];
+        ctx.beginPath();
+        const sides = 5 + Math.floor(r() * 3);
+        for (let k = 0; k < sides; k++) {
+          const ang = (k / sides) * Math.PI * 2 + (r() - 0.5) * 0.35;
+          const radX = 24 + r() * 12, radY = 19 + r() * 9;
+          const px = cx + Math.cos(ang) * radX, py = cy + Math.sin(ang) * radY;
+          if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#6f6962';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(4, 1);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 7) 雙層階梯花台灰水泥塊紋理（083014.jpg / 083304.jpg）
+  function makeConcreteBlockCurbTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 128;
+    const ctx = c.getContext('2d');
+    const r = makeRng(409);
+    ctx.fillStyle = '#8b877e';
+    ctx.fillRect(0, 0, 512, 128);
+    const nC = 12, bw = 512 / nC;
+    for (let i = 0; i < nC; i++) {
+      const v = 152 + Math.floor((r() - 0.5) * 22);
+      ctx.fillStyle = `rgb(${v}, ${v - 3}, ${v - 9})`;
+      ctx.fillRect(i * bw + 2, 4, bw - 4, 120);
     }
     const t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -17779,189 +21360,679 @@ function buildOrganicFarm() {
     return t;
   }
 
-  const redBrickWallMat = new THREE.MeshStandardMaterial({ map: makeRedBrickFarmWallTexture(), roughness: 0.88 });
-  const redBrickCapMat  = new THREE.MeshStandardMaterial({ color: 0x9e4b3c, roughness: 0.82 });
-  const farmSoilMat     = new THREE.MeshStandardMaterial({ color: 0x524334, roughness: 0.95 });
-  const farmWeedMat     = new THREE.MeshStandardMaterial({ color: 0x6b8c42, roughness: 0.90 });
-  const northConcreteMat= new THREE.MeshStandardMaterial({ color: 0x8d918e, roughness: 0.88 });
-
-  // 農場範圍：x = 51.5 (車棚東端) 至 x = 97.5 (彩繪矮牆)，z = -56.2 (北圍牆) 至 z = -46.8 (北側柏油車道北緣)
-  const fMinX = 51.5, fMaxX = 97.5, fLen = fMaxX - fMinX, fCx = (fMinX + fMaxX) / 2;
-  const fSouthZ = -46.8, fNorthZ = -56.2, fDepth = Math.abs(fNorthZ - fSouthZ), fCz = (fSouthZ + fNorthZ) / 2;
-
-  // A. 沿北側柏油車道北緣之「長條形復古紅磚砌矮牆」(高 0.48m，照片 3 橫貫畫面之紅磚矮牆)
-  addBox(ofg, fLen, 0.46, 0.28, redBrickWallMat, fCx, 0.23, fSouthZ);
-  addBox(ofg, fLen + 0.08, 0.06, 0.34, redBrickCapMat, fCx, 0.48, fSouthZ);
-  // 東西兩端紅磚側牆與東端退縮紅磚階梯矮牆 (照片 3 右下角雙層紅磚花台收頭)
-  addBox(ofg, 0.28, 0.46, 4.8, redBrickWallMat, fMinX, 0.23, fSouthZ - 2.4);
-  addBox(ofg, 0.28, 0.46, 4.8, redBrickWallMat, fMaxX, 0.23, fSouthZ - 2.4);
-  addBox(ofg, 3.8, 0.32, 0.26, redBrickWallMat, fMaxX - 1.9, 0.16, fSouthZ + 0.32);
-
-  // 農場內部有機培養土基底與草地微地形
-  addBox(ofg, fLen - 0.4, 0.36, fDepth - 0.6, farmSoilMat, fCx, 0.18, fCz, false);
-  addBox(ofg, fLen - 0.8, 0.38, fDepth - 1.2, farmWeedMat, fCx, 0.19, fCz, false);
-
-  // 後方北界斑駁水泥圍牆與中段低矮水泥隔牆 (照片 3 菜園後方灰色水泥牆)
-  addBox(ofg, fLen + 2.0, 1.65, 0.30, northConcreteMat, fCx, 0.825, fNorthZ + 1.8);
-
-  // B. 後方「米白色浪板鐵皮農具資材室」(照片 3 瓜棚後方米白色鐵皮小屋)
-  {
-    const shedX = 71.5, shedZ = -53.2, shedW = 8.4, shedD = 3.8, shedH = 2.65;
-    function makeCorrugatedCreamTexture() {
-      const c = document.createElement('canvas');
-      c.width = 256; c.height = 128;
-      const ctx = c.getContext('2d');
-      ctx.fillStyle = '#e8e4d5';
-      ctx.fillRect(0, 0, 256, 128);
-      for (let x = 0; x < 256; x += 8) {
-        ctx.fillStyle = (x / 8) % 2 === 0 ? '#dcd7c6' : '#f2efe2';
-        ctx.fillRect(x, 0, 4, 128);
+  // 8) 北界苔蘚綠漆磚牆紋理（083014.jpg / 083304.jpg / 083322.jpg 後方綠牆）
+  function makeMossyGreenBrickWallTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 256;
+    const ctx = c.getContext('2d');
+    const r = makeRng(503);
+    ctx.fillStyle = '#4e633c';
+    ctx.fillRect(0, 0, 512, 256);
+    const cols = ['#6d8a52', '#5f7a46', '#7a945d', '#546b3e', '#667f4c', '#4a5e36'];
+    const nR = 8, nC = 12, bh = 256 / nR, bw = 512 / nC;
+    for (let row = 0; row < nR; row++) {
+      const off = (row % 2) * (bw * 0.5);
+      for (let col = -1; col <= nC; col++) {
+        ctx.fillStyle = cols[Math.floor(r() * cols.length)];
+        ctx.fillRect(col * bw + off + 2, row * bh + 2, bw - 4, bh - 4);
       }
-      const t = new THREE.CanvasTexture(c);
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.repeat.set(4, 1);
-      t.colorSpace = THREE.SRGBColorSpace;
-      return t;
     }
-    const creamSheetMat = new THREE.MeshStandardMaterial({ map: makeCorrugatedCreamTexture(), roughness: 0.55, metalness: 0.25 });
-    const shedRoofMat   = new THREE.MeshStandardMaterial({ color: 0xd8d4c8, roughness: 0.50, metalness: 0.35 });
-    addBox(ofg, shedW, shedH, shedD, creamSheetMat, shedX, shedH / 2 + 0.2, shedZ);
-    const sRoof = addBox(ofg, shedW + 0.5, 0.14, shedD + 0.6, shedRoofMat, shedX, shedH + 0.32, shedZ);
-    sRoof.rotation.x = 0.08;
-    // 資材室拉門與散熱窗
-    addBox(ofg, 1.6, 1.95, 0.06, new THREE.MeshStandardMaterial({ color: 0xb8b2a2, roughness: 0.6 }), shedX + 1.8, 1.2, shedZ + shedD / 2 + 0.02);
+    // 暗褐色風化水痕與青苔斑駁
+    for (let i = 0; i < 90; i++) {
+      ctx.fillStyle = r() > 0.5 ? 'rgba(42, 48, 32, 0.28)' : 'rgba(130, 148, 95, 0.22)';
+      ctx.fillRect(r() * 512, r() * 256, 12 + r() * 34, 14 + r() * 48);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(6, 1);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
   }
 
-  // C. 中西段「木竹交錯瓜果攀爬棚架 (絲瓜/百香果棚架)」覆滿翠綠藤蔓与盛開金黃絲瓜花 (照片 3 中左核心特色)
-  {
-    const trMinX = 63.0, trMaxX = 73.2, trW = trMaxX - trMinX, trCx = (trMinX + trMaxX) / 2;
-    const trCz = -49.2, trD = 3.2, trH = 2.25;
-    const bambooMat = new THREE.MeshStandardMaterial({ color: 0x9c8458, roughness: 0.85 });
-    const vineDark  = new THREE.MeshStandardMaterial({ color: 0x2f6b28, roughness: 0.80 });
-    const vineLight = new THREE.MeshStandardMaterial({ color: 0x4b8c36, roughness: 0.78 });
-    const loofahYel = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.50 });
-    const gourdMat  = new THREE.MeshStandardMaterial({ color: 0x65a30d, roughness: 0.65 });
-
-    // 木竹立柱與斜向交叉棚架桿
-    const nPosts = 6;
-    for (let i = 0; i <= nPosts; i++) {
-      const px = trMinX + (i / nPosts) * trW;
-      [-trD / 2, trD / 2].forEach(oz => {
-        const post = addMesh(ofg, new THREE.CylinderGeometry(0.038, 0.045, trH, 6), bambooMat, px, trH / 2 + 0.25, trCz + oz);
-        post.rotation.x = oz > 0 ? -0.12 : 0.12;
-      });
-      // 橫向竹橫樑
-      const cross = addMesh(ofg, new THREE.CylinderGeometry(0.03, 0.03, trD + 0.3, 6), bambooMat, px, trH + 0.22, trCz);
-      cross.rotation.x = Math.PI / 2;
+  // 9) 後方米白色直紋浪板牆紋理（083014.jpg / 082946.jpg / 083322.jpg）
+  function makeCorrugatedCreamTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 128;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#e8e5d8';
+    ctx.fillRect(0, 0, 256, 128);
+    for (let x = 0; x < 256; x += 8) {
+      ctx.fillStyle = (x / 8) % 2 === 0 ? '#dcd8c8' : '#f4f1e6';
+      ctx.fillRect(x, 0, 4, 128);
     }
-    // 縱向棚頂竹竿
-    [-trD * 0.42, 0, trD * 0.42].forEach(oz => {
-      const lon = addMesh(ofg, new THREE.CylinderGeometry(0.032, 0.032, trW + 0.4, 6), bambooMat, trCx, trH + 0.25, trCz + oz);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(5, 1);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 10) 西北牆「綠籬改善 環境永續」解說牌紋理（083005.jpg）
+  function makeGreenHedgeSignTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 360;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#efe2b8';
+    ctx.fillRect(0, 0, 512, 360);
+    // 頂部淺白標題帶
+    ctx.fillStyle = '#f8f6ec';
+    ctx.fillRect(0, 0, 512, 62);
+    ctx.fillStyle = '#2d6a4f';
+    ctx.font = 'bold 28px "Noto Sans TC", sans-serif';
+    ctx.fillText('綠籬改善 環境永續', 28, 42);
+    // 說明文字線條示意
+    ctx.fillStyle = '#4a463a';
+    ctx.font = '14px "Noto Sans TC", sans-serif';
+    ctx.fillText('配合開放校園政策建置人本通學步道與食農教育綠籬區', 24, 92);
+    ctx.fillText('結合空間區隔、生態功能、景觀美化及環境營造永續發展', 24, 116);
+    // 校園平面示意圖（操場綠橢圓＋教學樓藍灰塊＋食農教育區標示）
+    ctx.fillStyle = '#e2ebf0';
+    ctx.fillRect(36, 150, 420, 170);
+    ctx.fillStyle = '#7cb342';
+    ctx.beginPath(); ctx.ellipse(125, 235, 32, 52, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#78909c';
+    ctx.fillRect(195, 195, 140, 22);
+    ctx.fillRect(195, 260, 140, 22);
+    ctx.fillRect(195, 195, 22, 87);
+    ctx.fillRect(313, 195, 22, 87);
+    ctx.fillStyle = '#558b2f';
+    ctx.fillRect(350, 185, 58, 72);
+    ctx.strokeStyle = '#1565c0';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(285, 178); ctx.lineTo(415, 178); ctx.stroke();
+    ctx.fillStyle = '#1565c0';
+    ctx.font = 'bold 14px "Noto Sans TC", sans-serif';
+    ctx.fillText('食農教育區・香櫞・甘蔗', 330, 168);
+    ctx.fillStyle = '#8d4e1f';
+    ctx.fillText('田代氏石斑木', 210, 172);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 11) 東端「彩繪落葉堆肥池」南側壁畫紋理（083322.jpg 前景實拍還原）
+  function makeCompostMuralTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 224;
+    const ctx = c.getContext('2d');
+    // 斑駁淺灰白水泥底
+    ctx.fillStyle = '#c9ccc7';
+    ctx.fillRect(0, 0, 512, 224);
+    ctx.fillStyle = 'rgba(130, 134, 126, 0.22)';
+    ctx.fillRect(0, 0, 512, 26);
+    ctx.fillRect(0, 196, 512, 28);
+    // 左側珊瑚橘紅城市建築剪影
+    ctx.fillStyle = '#df856f';
+    const bldgs = [[48, 34, 24, 52], [74, 24, 28, 62], [104, 42, 22, 44], [128, 28, 26, 58], [156, 38, 24, 48], [182, 48, 26, 38]];
+    bldgs.forEach(([bx, by, bw, bh]) => ctx.fillRect(bx, by, bw, bh));
+    // 左側鮮綠草坡弧丘
+    ctx.fillStyle = '#7bb046';
+    ctx.beginPath();
+    ctx.ellipse(152, 148, 120, 62, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    // 中右：紅披風與粉洋裝小女孩
+    // 紅色流動披風
+    ctx.fillStyle = '#b43d34';
+    ctx.beginPath();
+    ctx.moveTo(278, 92);
+    ctx.quadraticCurveTo(356, 126, 448, 224);
+    ctx.lineTo(272, 224);
+    ctx.quadraticCurveTo(260, 152, 278, 92);
+    ctx.fill();
+    // 棕色長髮
+    ctx.fillStyle = '#6c4932';
+    ctx.beginPath();
+    ctx.ellipse(308, 72, 34, 38, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 臉部
+    ctx.fillStyle = '#f2d9c2';
+    ctx.beginPath();
+    ctx.ellipse(304, 74, 23, 25, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 粉紅色洋裝與伸展手臂
+    ctx.fillStyle = '#e59fb3';
+    ctx.beginPath();
+    ctx.moveTo(298, 102);
+    ctx.lineTo(314, 102);
+    ctx.lineTo(334, 182);
+    ctx.lineTo(286, 182);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#e59fb3';
+    ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(312, 118); ctx.lineTo(350, 138); ctx.stroke();
+    // 小愛心點綴
+    ctx.fillStyle = '#e08ca4';
+    ctx.beginPath(); ctx.arc(362, 42, 6, 0, Math.PI * 2); ctx.arc(384, 48, 5, 0, Math.PI * 2); ctx.fill();
+    // 右側藍色地球與土褐陸塊
+    ctx.fillStyle = '#4f92c8';
+    ctx.beginPath();
+    ctx.arc(448, 138, 62, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#c2905c';
+    ctx.beginPath(); ctx.ellipse(422, 112, 22, 15, 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(466, 156, 26, 22, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(446, 136, 14, 10, 0.1, 0, Math.PI * 2); ctx.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 12) 堆肥池枯黃落葉堆紋理（083322.jpg）
+  function makeDryLeavesTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const ctx = c.getContext('2d');
+    const r = makeRng(613);
+    ctx.fillStyle = '#7d5a38';
+    ctx.fillRect(0, 0, 256, 256);
+    const cols = ['#a87d4e', '#8c643c', '#c49b66', '#6b492b', '#b58c58', '#5c3e24'];
+    for (let i = 0; i < 420; i++) {
+      ctx.fillStyle = cols[Math.floor(r() * cols.length)];
+      ctx.beginPath();
+      ctx.ellipse(r() * 256, r() * 256, 5 + r() * 10, 2.5 + r() * 5, r() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(2, 2);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 共用材質
+  const masonryBaseMat    = new THREE.MeshStandardMaterial({ map: makeWeatheredMasonryBaseTexture(), roughness: 0.90 });
+  const redBrickCapMat    = new THREE.MeshStandardMaterial({ map: makeRedBrickCapTexture(), roughness: 0.84 });
+  const mixedCornerMat    = new THREE.MeshStandardMaterial({ map: makeMixedCornerBrickTexture(), roughness: 0.86 });
+  const sandySoilMat      = new THREE.MeshStandardMaterial({ map: makeFarmSandySoilTexture(), roughness: 0.96 });
+  const darkSoilMat       = new THREE.MeshStandardMaterial({ color: 0x5c4a38, roughness: 0.95 });
+  const paverMat          = new THREE.MeshStandardMaterial({ map: makeGroovedPaverTexture(), roughness: 0.86 });
+  const stoneWallMat      = new THREE.MeshStandardMaterial({ map: makeCrazyPavingStoneTexture(), roughness: 0.88 });
+  const blockCurbMat      = new THREE.MeshStandardMaterial({ map: makeConcreteBlockCurbTexture(), roughness: 0.88 });
+  const greenBrickWallMat = new THREE.MeshStandardMaterial({ map: makeMossyGreenBrickWallTexture(), roughness: 0.90 });
+  const creamSheetMat     = new THREE.MeshStandardMaterial({ map: makeCorrugatedCreamTexture(), roughness: 0.52, metalness: 0.25 });
+  const pvcPipeMat        = new THREE.MeshStandardMaterial({ color: 0x7b8288, roughness: 0.55 });
+  const weedClothMat      = new THREE.MeshStandardMaterial({ color: 0x262a2d, roughness: 0.92 });
+  const dryLeavesMat      = new THREE.MeshStandardMaterial({ map: makeDryLeavesTexture(), roughness: 0.95 });
+
+  // 農場基準範圍（維持原座標系：x = 52.8..94.3，z = -56.2..-46.8；西端讓出停車棚東柱與機車格）
+  const fMinX = 52.8, fMaxX = 94.3, fLen = fMaxX - fMinX, fCx = (fMinX + fMaxX) / 2;
+  const fSouthZ = -46.8, fNorthZ = -56.2;
+
+  // =========================================================================
+  // A. 南側臨車道「灰磚基底＋紅磚壓頂長條矮牆」與東端轉角收頭（082946 / 083304 / 083322）
+  // =========================================================================
+  addBox(ofg, fLen, 0.34, 0.28, masonryBaseMat, fCx, 0.17, fSouthZ);
+  addBox(ofg, fLen + 0.08, 0.09, 0.34, redBrickCapMat, fCx, 0.385, fSouthZ);
+  // 西端側牆
+  addBox(ofg, 0.28, 0.34, 3.8, masonryBaseMat, fMinX, 0.17, fSouthZ - 1.9);
+  addBox(ofg, 0.32, 0.09, 3.86, redBrickCapMat, fMinX, 0.385, fSouthZ - 1.9);
+  // 東端轉角交錯紅灰磚收頭＋外凸低台階與黑色防滑踏墊（083322.jpg 右下角）
+  addBox(ofg, 0.28, 0.34, 3.8, mixedCornerMat, fMaxX, 0.17, fSouthZ - 1.9);
+  addBox(ofg, 0.32, 0.09, 3.86, mixedCornerMat, fMaxX, 0.385, fSouthZ - 1.9);
+  addBox(ofg, 2.6, 0.22, 0.26, mixedCornerMat, fMaxX - 1.3, 0.11, fSouthZ + 0.25);
+  // 東角內側兩塊黑色橡膠踏墊
+  addBox(ofg, 0.65, 0.03, 0.45, weedClothMat, fMaxX - 0.85, 0.33, fSouthZ - 0.45, false);
+  addBox(ofg, 0.55, 0.03, 0.42, weedClothMat, fMaxX - 1.55, 0.33, fSouthZ - 0.52, false);
+
+  // =========================================================================
+  // B. 農場三帶狀地貌：前排淺沙土耕作區 ＋ 中北側溝紋水泥磚步道 ＋ 澆花水管
+  // =========================================================================
+  // 1) 前排淺沙土與稀疏雜草耕作帶 (z: -50.4..-46.9, y: 0.30)
+  addBox(ofg, fLen - 0.3, 0.30, 3.5, sandySoilMat, fCx, 0.15, -48.65, false);
+  // 抑草蓆局部覆蓋（芭樂樹下、休耕土緣與灌木基部，082946 / 083304）
+  [
+    [60.6, -48.5, 2.2, 1.5],
+    [77.8, -47.5, 2.0, 0.85],
+    [83.8, -47.4, 2.4, 0.72],
+    [89.5, -47.5, 1.8, 0.75]
+  ].forEach(([wx, wz, ww, wd]) => {
+    addBox(ofg, ww, 0.025, wd, weedClothMat, wx, 0.312, wz, false);
+  });
+
+  // 2) 中北側東西貫通「溝紋灰水泥磚步道」(z: -51.7..-50.4, 寬 1.3m, 083005 / 083014 / 083304)
+  addBox(ofg, 42.5, 0.28, 1.3, paverMat, 74.2, 0.14, -51.05, false);
+
+  // 3) 步道上蜿蜒之淡黃色與灰色澆花軟管（083005 / 083014）
+  {
+    const yellowHoseMat = new THREE.MeshStandardMaterial({ color: 0xc9b45a, roughness: 0.55 });
+    const grayHoseMat   = new THREE.MeshStandardMaterial({ color: 0x6f7378, roughness: 0.60 });
+    const yPts = [
+      new THREE.Vector3(53.5, 0.30, -51.45),
+      new THREE.Vector3(57.8, 0.30, -50.85),
+      new THREE.Vector3(63.5, 0.30, -51.25),
+      new THREE.Vector3(69.5, 0.30, -50.80),
+      new THREE.Vector3(75.5, 0.30, -51.15),
+      new THREE.Vector3(81.0, 0.30, -50.90),
+      new THREE.Vector3(83.2, 0.30, -50.65),
+      new THREE.Vector3(82.4, 0.30, -51.20),
+      new THREE.Vector3(77.5, 0.30, -51.30)
+    ];
+    addMesh(ofg, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(yPts), 48, 0.018, 6, false), yellowHoseMat, 0, 0, 0, false);
+    const gPts = [
+      new THREE.Vector3(69.0, 0.30, -51.35),
+      new THREE.Vector3(73.5, 0.30, -51.00),
+      new THREE.Vector3(78.0, 0.30, -51.25),
+      new THREE.Vector3(83.5, 0.30, -50.95)
+    ];
+    addMesh(ofg, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(gPts), 24, 0.014, 6, false), grayHoseMat, 0, 0, 0, false);
+  }
+
+  // =========================================================================
+  // C. 北界牆面與花台系統（西半段：亂石片北牆＋解說牌；東半段：雙層階梯灰磚花台＋苔蘚綠磚牆＋米白浪板）
+  // =========================================================================
+  // C1. 西北段粉灰亂石片拼貼牆 (x: 52.8..68.5, z: -52.72，完整包覆微斜之既有紅磚北牆內側，083005 / 083014)
+  {
+    const swLen = 15.7, swCx = 60.65, swZ = -52.72, swH = 2.18;
+    addBox(ofg, swLen, swH, 0.55, stoneWallMat, swCx, 0.24 + swH / 2, swZ);
+    // 牆頂兩條平行灰色 PVC 灌溉水管（沿牆頂水平延伸並於東端 90° 轉折下入花台，083005 / 083014）
+    [1.76, 1.62].forEach(py => {
+      const pipe = addMesh(ofg, new THREE.CylinderGeometry(0.024, 0.024, swLen + 0.1, 8), pvcPipeMat, swCx, py, swZ + 0.30);
+      pipe.rotation.z = Math.PI / 2;
+    });
+    // 東端 PVC 管 90° 下折入雙層花台（083014.jpg）
+    addMesh(ofg, new THREE.CylinderGeometry(0.024, 0.024, 0.98, 8), pvcPipeMat, 68.55, 1.24, swZ + 0.30);
+    const lowPipe = addMesh(ofg, new THREE.CylinderGeometry(0.022, 0.022, 0.85, 8), pvcPipeMat, 68.55, 0.74, -52.18);
+    lowPipe.rotation.x = Math.PI / 2;
+    // 西端水龍頭與黃黑定時灌溉器（083005.jpg 左下）
+    addMesh(ofg, new THREE.CylinderGeometry(0.022, 0.022, 0.24, 6), pvcPipeMat, 53.3, 0.62, swZ + 0.34);
+    addBox(ofg, 0.10, 0.14, 0.09, new THREE.MeshStandardMaterial({ color: 0x3b4046, roughness: 0.6 }), 53.35, 0.56, swZ + 0.42);
+    addBox(ofg, 0.06, 0.09, 0.06, new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.5 }), 53.35, 0.48, swZ + 0.42);
+
+    // 牆面解說牌：「綠籬改善 環境永續」大看板＋兩面淡綠植物牌＋東端黑色「田代氏石斑木」牌（083005 / 083014）
+    const signMat = new THREE.MeshStandardMaterial({ map: makeGreenHedgeSignTexture(), roughness: 0.55 });
+    addBox(ofg, 1.45, 0.98, 0.03, signMat, 55.2, 1.15, swZ + 0.30, false);
+    const smallPlaqueMat = new THREE.MeshStandardMaterial({ color: 0xd9e8c8, roughness: 0.6 });
+    [60.6, 64.0].forEach(px => addBox(ofg, 0.26, 0.34, 0.025, smallPlaqueMat, px, 1.34, swZ + 0.30, false));
+    // 東端黑色「田代氏石斑木 / Rosaceae」解說牌（083014.jpg）
+    const blackPlaqueMat = new THREE.MeshStandardMaterial({ color: 0x222528, roughness: 0.5 });
+    addBox(ofg, 0.36, 0.28, 0.025, blackPlaqueMat, 68.05, 1.32, swZ + 0.30, false);
+
+    // 牆頂垂掛濃密綠籬藤蔓（083005.jpg / 082946.jpg）
+    const topHedgeDark = new THREE.MeshStandardMaterial({ color: 0x2c5c24, roughness: 0.84 });
+    const topHedgeMid  = new THREE.MeshStandardMaterial({ color: 0x3f7530, roughness: 0.80 });
+    const rngH = makeRng(701);
+    for (let x = 53.4; x <= 67.8; x += 1.05) {
+      const r = 0.44 + rngH() * 0.22;
+      const cl = addMesh(ofg, new THREE.DodecahedronGeometry(r, 1), rngH() > 0.5 ? topHedgeDark : topHedgeMid, x, 2.38 + rngH() * 0.26, swZ - 0.05);
+      cl.scale.set(1.35, 0.9, 0.95);
+    }
+
+    // 亂石牆前低矮植栽帶：枯葉土床、西端兩根原木段、低矮田代氏石斑木／杜鵑叢與橫放竹竿（083005.jpg）
+    addBox(ofg, swLen, 0.24, 1.05, darkSoilMat, swCx, 0.14, -52.12, false);
+    addBox(ofg, swLen - 0.3, 0.04, 0.95, dryLeavesMat, swCx, 0.27, -52.12, false);
+    // 西端兩根深褐原木段
+    const logMat = new THREE.MeshStandardMaterial({ color: 0x5d493a, roughness: 0.95 });
+    [[-52.32, 0.35], [-52.04, 0.34]].forEach(([lz, ly]) => {
+      const lg = addMesh(ofg, new THREE.CylinderGeometry(0.11, 0.13, 0.95, 8), logMat, 54.4, ly, lz);
+      lg.rotation.z = Math.PI / 2;
+      lg.rotation.y = 0.15;
+    });
+    // 沿步道邊之棕色竹竿（083005.jpg）
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x8a6a4d, roughness: 0.85 });
+    const p1 = addMesh(ofg, new THREE.CylinderGeometry(0.025, 0.028, 3.2, 6), poleMat, 57.6, 0.30, -51.76, false);
+    p1.rotation.z = Math.PI / 2;
+    const p2 = addMesh(ofg, new THREE.CylinderGeometry(0.022, 0.025, 2.8, 6), poleMat, 61.2, 0.30, -51.80, false);
+    p2.rotation.z = Math.PI / 2;
+    // 低矮田代氏石斑木／杜鵑小灌木列
+    const azaleaMat1 = new THREE.MeshStandardMaterial({ color: 0x457b32, roughness: 0.82 });
+    const azaleaMat2 = new THREE.MeshStandardMaterial({ color: 0x5c923e, roughness: 0.78 });
+    for (let x = 56.0; x <= 68.0; x += 0.95) {
+      const h = 0.36 + rngH() * 0.26;
+      const sh = addMesh(ofg, new THREE.DodecahedronGeometry(0.34 + rngH() * 0.12, 1), rngH() > 0.5 ? azaleaMat1 : azaleaMat2, x, 0.30 + h * 0.5, -52.08 + (rngH() - 0.5) * 0.18);
+      sh.scale.set(1.2, 0.75, 0.92);
+    }
+  }
+
+  // C2. 中東段雙層階梯灰水泥磚花台 ＋ 後方苔蘚綠漆磚牆 ＋ 米白浪板牆（083014 / 083304 / 083322）
+  {
+    const stMinX = 68.5, stMaxX = 95.6, stLen = stMaxX - stMinX, stCx = (stMinX + stMaxX) / 2;
+    // 下層花台 (z: -52.65..-51.70, 牆頂 y = 0.62m)
+    addBox(ofg, stLen, 0.36, 0.16, blockCurbMat, stCx, 0.44, -51.78);
+    addBox(ofg, 0.16, 0.36, 0.95, blockCurbMat, stMinX + 0.08, 0.44, -52.18);
+    addBox(ofg, 0.16, 0.36, 0.95, blockCurbMat, stMaxX - 0.08, 0.44, -52.18);
+    addBox(ofg, stLen - 0.2, 0.30, 0.82, darkSoilMat, stCx, 0.42, -52.22, false);
+
+    // 上層花台 (z: -53.55..-52.65, 牆頂 y = 1.04m)
+    addBox(ofg, stLen, 0.44, 0.16, blockCurbMat, stCx, 0.82, -52.73);
+    addBox(ofg, 0.16, 0.44, 0.92, blockCurbMat, stMinX + 0.08, 0.82, -53.12);
+    addBox(ofg, 0.16, 0.44, 0.92, blockCurbMat, stMaxX - 0.08, 0.82, -53.12);
+    addBox(ofg, stLen - 0.2, 0.38, 0.78, darkSoilMat, stCx, 0.80, -53.16, false);
+    // 中東段上層花台局部淡紫色漆痕細節（083304.jpg 中央可見）
+    addBox(ofg, 1.5, 0.24, 0.02, new THREE.MeshStandardMaterial({ color: 0x7e4d82, roughness: 0.85 }), 83.2, 0.80, -52.64, false);
+
+    // 雙層花台內連續低矮綠籬灌木叢（083014 / 083304）
+    const rngS = makeRng(809);
+    const tierLeaf1 = new THREE.MeshStandardMaterial({ color: 0x3b6e2a, roughness: 0.82 });
+    const tierLeaf2 = new THREE.MeshStandardMaterial({ color: 0x558a38, roughness: 0.78 });
+    for (let x = stMinX + 0.6; x <= stMaxX - 0.5; x += 0.92) {
+      // 下層灌木
+      const r1 = 0.30 + rngS() * 0.12;
+      const b1 = addMesh(ofg, new THREE.DodecahedronGeometry(r1, 1), rngS() > 0.5 ? tierLeaf1 : tierLeaf2, x, 0.66 + r1 * 0.45, -52.22 + (rngS() - 0.5) * 0.18);
+      b1.scale.set(1.15, 0.82, 0.90);
+      // 上層灌木
+      const r2 = 0.36 + rngS() * 0.16;
+      const b2 = addMesh(ofg, new THREE.DodecahedronGeometry(r2, 1), rngS() > 0.45 ? tierLeaf2 : tierLeaf1, x + 0.2, 1.12 + r2 * 0.55, -53.12 + (rngS() - 0.5) * 0.18);
+      b2.scale.set(1.2, 0.92, 0.90);
+    }
+
+    // 西端黃黑相間警示桿與黑色滴灌軟管（083014.jpg）
+    const stakeYel = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.55 });
+    const stakeBlk = new THREE.MeshStandardMaterial({ color: 0x1e2022, roughness: 0.60 });
+    [[69.0, 0.98, -52.95], [69.9, 0.65, -52.18]].forEach(([sx, sy, sz]) => {
+      addMesh(ofg, new THREE.CylinderGeometry(0.025, 0.025, 0.95, 7), stakeYel, sx, sy + 0.45, sz);
+      addMesh(ofg, new THREE.CylinderGeometry(0.027, 0.027, 0.22, 7), stakeBlk, sx, sy + 0.35, sz);
+      addMesh(ofg, new THREE.CylinderGeometry(0.027, 0.027, 0.20, 7), stakeBlk, sx, sy + 0.78, sz);
+    });
+    const blkHosePts = [
+      new THREE.Vector3(69.8, 0.95, -52.4),
+      new THREE.Vector3(70.2, 0.72, -51.85),
+      new THREE.Vector3(70.5, 0.31, -51.2)
+    ];
+    addMesh(ofg, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(blkHosePts), 14, 0.016, 6, false), stakeBlk, 0, 0, 0, false);
+
+    // 後方北界「苔蘚綠漆磚牆」(x: 68.2..98.6, z: -53.58, 高 2.22m，完整包覆既有紅磚北牆內側，083014 / 083304 / 083322)
+    addBox(ofg, 30.4, 2.22, 0.72, greenBrickWallMat, 83.4, 1.15, -53.58);
+    // 磚牆上方低矮黑色鐵絲網圍籬柱（083304 / 083322）
+    const fencePostMat = new THREE.MeshStandardMaterial({ color: 0x4a453f, roughness: 0.75 });
+    for (let fx = 76.5; fx <= 98.0; fx += 2.6) {
+      addBox(ofg, 0.06, 0.78, 0.06, fencePostMat, fx, 2.58, -53.58);
+    }
+    addBox(ofg, 21.8, 0.04, 0.04, fencePostMat, 87.3, 2.88, -53.58);
+
+    // 緊鄰綠磚牆後方之「米白色直紋浪板牆」（083014 / 082946 / 083322，位於北牆外側）
+    addBox(ofg, 13.5, 2.25, 0.24, creamSheetMat, 69.8, 2.85, -54.55);
+    const roofTrim = addBox(ofg, 13.7, 0.10, 1.1, new THREE.MeshStandardMaterial({ color: 0xd8d5c8, roughness: 0.55, metalness: 0.3 }), 69.8, 4.00, -54.95);
+    roofTrim.rotation.x = 0.08;
+  }
+
+  // =========================================================================
+  // D. 西端入口（緊鄰停車棚）：兩個橘色三角錐 ＋ 紅陶／塑膠盆栽群（082946.jpg 左側）
+  // =========================================================================
+  {
+    const coneOrgMat = new THREE.MeshStandardMaterial({ color: 0xe85a2a, roughness: 0.45 });
+    const coneWhtMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.45 });
+    const coneBlkMat = new THREE.MeshStandardMaterial({ color: 0x222426, roughness: 0.85 });
+    [[52.55, -46.55], [53.02, -46.68]].forEach(([cx, cz]) => {
+      addBox(ofg, 0.34, 0.05, 0.34, coneBlkMat, cx, 0.025, cz);
+      addMesh(ofg, new THREE.ConeGeometry(0.14, 0.66, 10), coneOrgMat, cx, 0.36, cz);
+      addMesh(ofg, new THREE.CylinderGeometry(0.068, 0.092, 0.13, 10), coneWhtMat, cx, 0.44, cz);
+    });
+
+    // 紅陶盆與塑膠盆栽群（朱蕉紅紫葉＋綠葉灌木，082946.jpg 左下）
+    const potClayMat = new THREE.MeshStandardMaterial({ color: 0xb05b3c, roughness: 0.85 });
+    const potBeigeMat = new THREE.MeshStandardMaterial({ color: 0xc2b59b, roughness: 0.85 });
+    const potBlkMat = new THREE.MeshStandardMaterial({ color: 0x2d3033, roughness: 0.82 });
+    const cordyRedMat = new THREE.MeshStandardMaterial({ color: 0x8a1f36, roughness: 0.68, side: THREE.DoubleSide });
+    const potLeafMat = new THREE.MeshStandardMaterial({ color: 0x3f7a2e, roughness: 0.78 });
+    const pots = [
+      [51.75, -47.2, 0.20, 0.32, potBeigeMat, 'green'],
+      [52.15, -46.9, 0.15, 0.24, potClayMat, 'green'],
+      [52.12, -47.5, 0.18, 0.28, potClayMat, 'red'],
+      [52.25, -48.1, 0.17, 0.26, potClayMat, 'red'],
+      [52.42, -47.1, 0.14, 0.22, potBlkMat, 'green'],
+      [52.55, -47.7, 0.15, 0.24, potClayMat, 'green'],
+      [51.92, -48.2, 0.16, 0.26, potClayMat, 'red'],
+      [52.60, -48.4, 0.16, 0.24, potClayMat, 'red']
+    ];
+    pots.forEach(([px, pz, pr, ph, pMat, kind], idx) => {
+      addMesh(ofg, new THREE.CylinderGeometry(pr, pr * 0.72, ph, 10), pMat, px, ph / 2, pz);
+      if (kind === 'red') {
+        for (let b = 0; b < 7; b++) {
+          const a = (b / 7) * Math.PI * 2 + idx;
+          const lf = addBox(ofg, 0.08, 0.55 + (b % 3) * 0.14, 0.02, cordyRedMat, px + Math.cos(a) * 0.12, ph + 0.28, pz + Math.sin(a) * 0.12);
+          lf.rotation.y = -a;
+          lf.rotation.z = 0.35;
+        }
+      } else {
+        const bush = addMesh(ofg, new THREE.DodecahedronGeometry(pr * 1.45, 1), potLeafMat, px, ph + pr * 1.15, pz);
+        bush.scale.set(1.1, 0.95, 1.0);
+      }
+    });
+  }
+
+  // =========================================================================
+  // E. 西段至中段：圓形修剪灌木 ＋ 高聳甘蔗叢 ＋ 芭樂果樹 ＋ 輕量木竹攀爬棚架（082946 / 083322）
+  // =========================================================================
+  {
+    const rngW = makeRng(907);
+    const trunkDarkMat = new THREE.MeshStandardMaterial({ color: 0x4f3f32, roughness: 0.92 });
+    const leafRichMat  = new THREE.MeshStandardMaterial({ color: 0x356e28, roughness: 0.78 });
+    const leafMidMat   = new THREE.MeshStandardMaterial({ color: 0x4b8734, roughness: 0.76 });
+    const leafBrightMat= new THREE.MeshStandardMaterial({ color: 0x619d3e, roughness: 0.74 });
+
+    // 1) 西角圓球修剪小灌木（082946.jpg 橘錐右上方）
+    addMesh(ofg, new THREE.CylinderGeometry(0.05, 0.07, 0.55, 7), trunkDarkMat, 54.1, 0.55, -48.0);
+    const westBall = addMesh(ofg, new THREE.DodecahedronGeometry(0.68, 1), leafRichMat, 54.1, 1.15, -48.0);
+    westBall.scale.set(1.08, 0.92, 1.05);
+
+    // 2) 高聳纖細甘蔗叢與固定繩架（x = 55.3..58.8, 082946.jpg 中左）
+    const caneStalkMat = new THREE.MeshStandardMaterial({ color: 0x7da348, roughness: 0.75 });
+    const caneLeafMat  = new THREE.MeshStandardMaterial({ color: 0x528532, roughness: 0.78, side: THREE.DoubleSide });
+    for (let s = 0; s < 16; s++) {
+      const sx = 55.4 + (s % 8) * 0.44 + (rngW() - 0.5) * 0.20;
+      const sz = -47.75 - Math.floor(s / 8) * 1.05 + (rngW() - 0.5) * 0.35;
+      const sh = 2.0 + rngW() * 1.15;
+      const stalk = addMesh(ofg, new THREE.CylinderGeometry(0.022, 0.030, sh, 6), caneStalkMat, sx, 0.28 + sh / 2, sz);
+      stalk.rotation.z = (rngW() - 0.5) * 0.14;
+      stalk.rotation.x = (rngW() - 0.5) * 0.12;
+      // 甘蔗頂部細長垂弧葉片
+      for (let l = 0; l < 4; l++) {
+        const a = (l / 4) * Math.PI * 2 + s;
+        const lf = addBox(ofg, 0.72, 0.015, 0.06, caneLeafMat, sx + Math.cos(a) * 0.28, 0.28 + sh * 0.85, sz + Math.sin(a) * 0.28, false);
+        lf.rotation.y = -a;
+        lf.rotation.z = -0.52;
+      }
+    }
+    // 甘蔗旁防倒竹樁與細繩
+    const bambooMat = new THREE.MeshStandardMaterial({ color: 0xa68e62, roughness: 0.85 });
+    [55.1, 57.0, 58.9].forEach(px => {
+      addMesh(ofg, new THREE.CylinderGeometry(0.02, 0.024, 1.15, 6), bambooMat, px, 0.85, -47.45);
+    });
+    const wire = addMesh(ofg, new THREE.CylinderGeometry(0.008, 0.008, 3.9, 5), new THREE.MeshStandardMaterial({ color: 0xd8d5cc }), 57.0, 1.12, -47.45, false);
+    wire.rotation.z = Math.PI / 2;
+
+    // 3) 西中段芭樂／闊葉果樹（x = 60.6, z = -48.5, 082946.jpg 畫面核心主樹）
+    const gtX = 60.6, gtZ = -48.5;
+    const trunk1 = addMesh(ofg, new THREE.CylinderGeometry(0.11, 0.18, 1.95, 8), trunkDarkMat, gtX, 1.22, gtZ);
+    trunk1.rotation.z = -0.10;
+    const limb1 = addMesh(ofg, new THREE.CylinderGeometry(0.07, 0.10, 1.4, 7), trunkDarkMat, gtX - 0.35, 2.55, gtZ + 0.18);
+    limb1.rotation.z = 0.42;
+    const limb2 = addMesh(ofg, new THREE.CylinderGeometry(0.07, 0.10, 1.5, 7), trunkDarkMat, gtX + 0.42, 2.65, gtZ - 0.15);
+    limb2.rotation.z = -0.45;
+    [
+      [0.0, 3.35, 0.0, 1.55, leafRichMat],
+      [-1.15, 3.05, 0.35, 1.18, leafMidMat],
+      [1.15, 3.10, -0.25, 1.22, leafMidMat],
+      [-0.45, 3.95, -0.20, 1.15, leafBrightMat],
+      [0.65, 3.85, 0.35, 1.08, leafRichMat],
+      [0.10, 2.75, 0.78, 0.92, leafMidMat]
+    ].forEach(([ox, oy, oz, r, m]) => {
+      const cl = addMesh(ofg, new THREE.DodecahedronGeometry(r, 1), m, gtX + ox, oy, gtZ + oz);
+      cl.scale.set(1.22, 0.82, 1.15);
+    });
+
+    // 4) 中西段「輕量開放式木竹 A 字攀爬棚架」(x = 64.2..73.4, z = -48.6, 082946 / 083322)
+    //    實拍為細長竹竿交錯搭設、側邊附綠色攀爬網與適度藤蔓，透視可見下方沙土床
+    const trMinX = 64.2, trMaxX = 73.4, trW = trMaxX - trMinX, trCx = (trMinX + trMaxX) / 2;
+    const trCz = -48.6, trD = 2.4, trH = 1.75;
+    const nBays = 5;
+    for (let i = 0; i <= nBays; i++) {
+      const px = trMinX + (i / nBays) * trW;
+      // 兩側微斜 A 字竹立柱
+      [-trD / 2, trD / 2].forEach(oz => {
+        const post = addMesh(ofg, new THREE.CylinderGeometry(0.024, 0.030, trH + 0.15, 6), bambooMat, px, 0.28 + trH / 2, trCz + oz);
+        post.rotation.x = oz > 0 ? -0.14 : 0.14;
+      });
+      // 頂部橫向竹桿
+      const topCross = addMesh(ofg, new THREE.CylinderGeometry(0.022, 0.022, trD + 0.25, 6), bambooMat, px, 0.28 + trH - 0.04, trCz);
+      topCross.rotation.x = Math.PI / 2;
+      // 側向斜撐竹竿（每兩跨一組）
+      if (i % 2 === 0 && i < nBays) {
+        const brace = addMesh(ofg, new THREE.CylinderGeometry(0.018, 0.018, 2.0, 6), bambooMat, px + trW / (2 * nBays), 0.28 + trH * 0.52, trCz + trD * 0.44);
+        brace.rotation.z = 0.65;
+      }
+    }
+    // 縱向棚頂與腰部竹桿
+    [-trD * 0.38, 0, trD * 0.38].forEach(oz => {
+      const lon = addMesh(ofg, new THREE.CylinderGeometry(0.022, 0.022, trW + 0.3, 6), bambooMat, trCx, 0.28 + trH, trCz + oz);
       lon.rotation.z = Math.PI / 2;
     });
-
-    // 攀爬於棚架頂部與南側立面之濃密絲瓜藤蔓、垂掛絲瓜與金黃花朵
-    for (let v = 0; v < 18; v++) {
-      const vx = trMinX + 0.4 + (v / 17) * (trW - 0.8);
-      const vy = 1.35 + (v % 3) * 0.42;
-      const vz = trCz + (v % 2 === 0 ? trD * 0.38 : -trD * 0.15);
-      const vCl = addMesh(ofg, new THREE.DodecahedronGeometry(0.68 + (v % 2) * 0.18, 1), v % 2 ? vineDark : vineLight, vx, vy, vz);
-      vCl.scale.set(1.2, 0.95, 1.1);
-      // 棚頂濃密藤蔓覆蓋
-      const topCl = addMesh(ofg, new THREE.DodecahedronGeometry(0.75, 1), vineLight, vx, trH + 0.22, trCz + ((v % 3) - 1) * 0.75);
-      topCl.scale.set(1.35, 0.55, 1.25);
-      // 盛開金黃絲瓜花點綴 (照片 3 棚架頂端點點黃花)
-      if (v % 2 === 0) {
-        addMesh(ofg, new THREE.SphereGeometry(0.09, 6, 6), loofahYel, vx + 0.15, trH + 0.48, trCz + 0.65);
-        addMesh(ofg, new THREE.SphereGeometry(0.08, 6, 6), loofahYel, vx - 0.12, vy + 0.35, trCz + trD * 0.48);
-      }
-      // 棚下垂掛翠綠絲瓜條
-      if (v % 4 === 1) {
-        addMesh(ofg, new THREE.CylinderGeometry(0.045, 0.06, 0.42, 7), gourdMat, vx, trH - 0.18, trCz);
-      }
-    }
-  }
-
-  // D. 西端（緊鄰藍色車棚東側）：高聳甘蔗/牧草叢與果樹 (照片 3 左側高聳翠綠葉叢與果樹)
-  {
-    const caneMat = new THREE.MeshStandardMaterial({ color: 0x5c9638, roughness: 0.78 });
-    const caneDark = new THREE.MeshStandardMaterial({ color: 0x427828, roughness: 0.82 });
-    const caneCx = 55.2, caneCz = -48.6;
-    for (let s = 0; s < 32; s++) {
-      const sa = (s / 32) * Math.PI * 2;
-      const sr = (s % 5) * 0.45;
-      const sh = 1.85 + (s % 4) * 0.35;
-      const blade = addBox(ofg, 0.09, sh, 0.18, s % 2 ? caneMat : caneDark, caneCx + Math.cos(sa) * sr, sh / 2 + 0.25, caneCz + Math.sin(sa) * sr * 0.65);
-      blade.rotation.z = Math.cos(sa) * 0.28;
-      blade.rotation.x = Math.sin(sa) * 0.22;
-    }
-    // 西端芭樂/木瓜果樹 (位於甘蔗叢東側 x = 58.8, z = -49.2)
-    const ftX = 58.8, ftZ = -49.2;
-    addMesh(ofg, new THREE.CylinderGeometry(0.14, 0.22, 2.4, 8), new THREE.MeshStandardMaterial({ color: 0x5c4938, roughness: 0.9 }), ftX, 1.3, ftZ);
-    const ftLeafMat = new THREE.MeshStandardMaterial({ color: 0x468232, roughness: 0.78 });
-    [[0, 2.9, 0, 1.45], [-0.95, 2.5, 0.4, 1.15], [0.95, 2.6, -0.3, 1.2], [0, 3.4, -0.5, 1.1]].forEach(([ox, oy, oz, r]) => {
-      const cl = addMesh(ofg, new THREE.DodecahedronGeometry(r, 1), ftLeafMat, ftX + ox, oy, ftZ + oz);
-      cl.scale.set(1.25, 0.82, 1.2);
+    [-trD * 0.44, trD * 0.44].forEach(oz => {
+      const midRail = addMesh(ofg, new THREE.CylinderGeometry(0.018, 0.018, trW + 0.2, 6), bambooMat, trCx, 0.28 + trH * 0.48, trCz + oz);
+      midRail.rotation.z = Math.PI / 2;
     });
+    // 東側半透明綠色攀爬細網（082946 / 083322）
+    const netMat = new THREE.MeshStandardMaterial({ color: 0x3b8c48, transparent: true, opacity: 0.38, roughness: 0.9, side: THREE.DoubleSide });
+    addBox(ofg, 3.2, trH * 0.82, 0.02, netMat, trMaxX - 1.6, 0.28 + trH * 0.46, trCz + trD * 0.42, false);
+    addBox(ofg, 0.02, trH * 0.82, trD * 0.82, netMat, trMaxX - 0.05, 0.28 + trH * 0.46, trCz, false);
+    // 棚架中央白色小標示牌（083322.jpg 可見懸掛小牌）
+    addBox(ofg, 0.26, 0.20, 0.02, new THREE.MeshStandardMaterial({ color: 0xf4f4ef, roughness: 0.6 }), trCx + 1.2, 1.55, trCz + trD * 0.44, false);
+    // 適度攀爬藤蔓與點綴綠葉（不遮死棚架竹結構）
+    const loofahYel = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 });
+    for (let v = 0; v < 9; v++) {
+      const vx = trMinX + 0.6 + (v / 8) * (trW - 1.2);
+      const cl = addMesh(ofg, new THREE.DodecahedronGeometry(0.28 + (v % 3) * 0.06, 1), v % 2 ? leafMidMat : leafBrightMat, vx, 0.28 + trH - 0.05, trCz + ((v % 3) - 1) * 0.55);
+      cl.scale.set(1.3, 0.45, 1.1);
+      if (v % 3 === 0) {
+        addMesh(ofg, new THREE.SphereGeometry(0.055, 6, 5), loofahYel, vx + 0.1, 0.28 + trH + 0.08, trCz + 0.35, false);
+      }
+    }
   }
 
-  // E. 中東段（x = 74.2..95.5）：有機蔬菜畦、修剪圓球香草灌木叢與東端幾何彩繪矮牆 (照片 3 中右與最右側)
+  // =========================================================================
+  // F. 中東段前排耕作區：休耕沙土區 ＋ 錯落翠綠灌木與方正修剪綠籬（083304 / 083322）
+  // =========================================================================
   {
-    const herbDarkMat  = new THREE.MeshStandardMaterial({ color: 0x2e6b22, roughness: 0.78 });
-    const herbLightMat = new THREE.MeshStandardMaterial({ color: 0x529434, roughness: 0.75 });
-    const vegGreenMat  = new THREE.MeshStandardMaterial({ color: 0x65a32e, roughness: 0.80 });
-    const bedSoilRow   = new THREE.MeshStandardMaterial({ color: 0x4a3b2c, roughness: 0.95 });
+    const shrubDark  = new THREE.MeshStandardMaterial({ color: 0x2b6222, roughness: 0.80 });
+    const shrubMid   = new THREE.MeshStandardMaterial({ color: 0x417d2e, roughness: 0.78 });
+    const shrubLime  = new THREE.MeshStandardMaterial({ color: 0x5a9638, roughness: 0.75 });
+    const stemMat    = new THREE.MeshStandardMaterial({ color: 0x5c4a38, roughness: 0.90 });
 
-    // 6 道整齊有機蔬菜土畦與葉菜叢 (高麗菜、地瓜葉、A菜、木製作物解說牌)
-    for (let r = 0; r < 6; r++) {
-      const rx = 75.5 + r * 3.2;
-      addBox(ofg, 2.2, 0.16, 3.6, bedSoilRow, rx, 0.42, -50.2, false);
-      for (let p = 0; p < 5; p++) {
-        const pz = -51.6 + p * 0.72;
-        addMesh(ofg, new THREE.SphereGeometry(0.24, 8, 6), (r + p) % 2 ? vegGreenMat : herbLightMat, rx - 0.45, 0.56, pz);
-        addMesh(ofg, new THREE.SphereGeometry(0.22, 8, 6), (r + p) % 2 ? herbLightMat : vegGreenMat, rx + 0.45, 0.55, pz);
-      }
-      // 食農教育木製作物名牌
-      addBox(ofg, 0.04, 0.38, 0.04, new THREE.MeshStandardMaterial({ color: 0x8c6d46 }), rx, 0.55, -48.2);
-      addBox(ofg, 0.32, 0.18, 0.03, new THREE.MeshStandardMaterial({ color: 0xfef3c7 }), rx, 0.72, -48.18);
-    }
+    // 左側開闊淺沙土休耕區 (x = 74.2..79.4) 點綴零星小菜苗／雜草叢（083304.jpg 左側）
+    [[75.6, -47.9, 0.22], [77.4, -48.3, 0.28], [78.6, -49.1, 0.24]].forEach(([sx, sz, sr]) => {
+      const w = addMesh(ofg, new THREE.DodecahedronGeometry(sr, 1), shrubLime, sx, 0.32 + sr * 0.45, sz);
+      w.scale.set(1.2, 0.65, 1.1);
+    });
 
-    // 照片 3 前景紅磚牆內側一排茂密圓潤之香草/七里香灌木叢 (x = 76.5, 79.2, 84.5, 88.0, 91.5)
+    // 中東段 7 組實景灌木與修剪方塊綠籬（對照 083304.jpg 與 083322.jpg 位置與體量）
+    // 1) 中偏左圓潤濃綠灌木 (x = 80.4)
+    const s1 = addMesh(ofg, new THREE.DodecahedronGeometry(0.76, 1), shrubDark, 80.4, 0.92, -48.0);
+    s1.scale.set(1.12, 0.95, 1.05);
+    // 2) 中央偏直立亮綠灌木 (x = 83.1)
+    const s2 = addMesh(ofg, new THREE.DodecahedronGeometry(0.62, 1), shrubMid, 83.1, 0.85, -48.2);
+    s2.scale.set(0.95, 1.15, 0.95);
+    // 3) 中間細枝小苗樹 (x = 85.0)
+    addMesh(ofg, new THREE.CylinderGeometry(0.025, 0.035, 0.65, 6), stemMat, 85.0, 0.62, -48.5);
+    const s3 = addMesh(ofg, new THREE.DodecahedronGeometry(0.36, 1), shrubLime, 85.0, 1.02, -48.5);
+    s3.scale.set(1.05, 0.95, 1.0);
+    // 4) 前緣低矮蔓生草本灌木帶 (x = 86.4..88.4)
+    [86.5, 87.3, 88.1].forEach((bx, k) => {
+      const lb = addMesh(ofg, new THREE.DodecahedronGeometry(0.38, 1), k % 2 ? shrubMid : shrubLime, bx, 0.56, -47.75);
+      lb.scale.set(1.25, 0.68, 1.05);
+    });
+    // 5) 東偏中亮綠圓灌木 (x = 89.2)
+    const s5 = addMesh(ofg, new THREE.DodecahedronGeometry(0.68, 1), shrubLime, 89.2, 0.88, -48.25);
+    s5.scale.set(1.08, 1.02, 1.02);
+    // 6) 東側後方高大深綠圓頂灌木叢（083304 / 083322 後方高球灌木，x = 90.6, z = -49.7）
+    const s6 = addMesh(ofg, new THREE.DodecahedronGeometry(1.02, 1), shrubDark, 90.6, 1.28, -49.7);
+    s6.scale.set(1.12, 1.05, 1.05);
+    // 7) 東角主體「修剪方正濃密綠籬灌木塊」＋前側低叢（083322.jpg 前景核心灌木，x = 92.4, z = -48.1）
+    addBox(ofg, 1.65, 1.12, 0.92, shrubMid, 92.4, 0.88, -48.2);
+    // 以數顆不規則葉球柔化方塊邊緣，呈現自然修剪感
     [
-      [76.8, -48.2, 0.82, 1.05, herbDarkMat],
-      [79.2, -48.3, 0.75, 0.95, herbLightMat],
-      [83.8, -48.4, 0.68, 0.88, herbDarkMat],
-      [87.2, -48.3, 0.78, 0.98, herbLightMat],
-      [91.2, -48.2, 1.15, 1.45, herbDarkMat],
-      [90.2, -48.0, 0.72, 0.85, herbLightMat]
-    ].forEach(([bx, bz, r, h, m]) => {
-      const sh = addMesh(ofg, new THREE.SphereGeometry(r, 12, 10), m, bx, 0.35 + h * 0.55, bz);
-      sh.scale.set(1.05, h / r * 0.85, 1.0);
+      [91.75, 0.95, -48.0, 0.52, shrubLime],
+      [92.45, 1.22, -48.2, 0.56, shrubMid],
+      [93.05, 0.98, -48.3, 0.52, shrubDark],
+      [91.35, 0.68, -47.45, 0.46, shrubLime],
+      [92.85, 0.65, -47.50, 0.44, shrubMid]
+    ].forEach(([bx, by, bz, br, bm]) => {
+      const cl = addMesh(ofg, new THREE.DodecahedronGeometry(br, 1), bm, bx, by, bz);
+      cl.scale.set(1.12, 0.92, 1.0);
+    });
+  }
+
+  // =========================================================================
+  // G. 東端地標：彩繪落葉堆肥池（少女、地球、綠丘壁畫＋枯黃落葉堆）與雞蛋花樹（083322 / 083304）
+  // =========================================================================
+  {
+    const cbMinX = 95.3, cbMaxX = 98.5, cbW = cbMaxX - cbMinX, cbCx = (cbMinX + cbMaxX) / 2;
+    const cbSouthZ = -47.1, cbNorthZ = -50.1, cbD = cbSouthZ - cbNorthZ, cbCz = (cbSouthZ + cbNorthZ) / 2;
+    const cbH = 0.98, wallT = 0.16;
+    const concreteWallMat = new THREE.MeshStandardMaterial({ color: 0xc2c5bf, roughness: 0.88 });
+    const muralMat = new THREE.MeshStandardMaterial({ map: makeCompostMuralTexture(), roughness: 0.78 });
+
+    // 四面水泥池壁（南面展示彩繪壁畫）
+    const southMats = [concreteWallMat, concreteWallMat, concreteWallMat, concreteWallMat, muralMat, concreteWallMat];
+    addMesh(ofg, new THREE.BoxGeometry(cbW, cbH, wallT), southMats, cbCx, cbH / 2, cbSouthZ);
+    addBox(ofg, cbW, cbH, wallT, concreteWallMat, cbCx, cbH / 2, cbNorthZ);
+    addBox(ofg, wallT, cbH, cbD, concreteWallMat, cbMinX + wallT / 2, cbH / 2, cbCz);
+    addBox(ofg, wallT, cbH, cbD, concreteWallMat, cbMaxX - wallT / 2, cbH / 2, cbCz);
+
+    // 堆滿高出池緣之枯黃落葉堆肥堆（083322.jpg 右側滿溢落葉堆）
+    addBox(ofg, cbW - 0.34, cbH - 0.14, cbD - 0.34, dryLeavesMat, cbCx, (cbH - 0.14) / 2, cbCz, false);
+    const leafMound = addMesh(ofg, new THREE.DodecahedronGeometry(1.15, 2), dryLeavesMat, cbCx, cbH + 0.02, cbCz);
+    leafMound.scale.set(1.22, 0.42, 1.08);
+    [[-0.65, 0.12, 0.35, 0.58], [0.58, 0.16, -0.25, 0.62], [0.15, 0.24, 0.18, 0.55]].forEach(([ox, oy, oz, r]) => {
+      const m = addMesh(ofg, new THREE.DodecahedronGeometry(r, 1), dryLeavesMat, cbCx + ox, cbH + oy, cbCz + oz);
+      m.scale.set(1.25, 0.45, 1.15);
     });
 
-    // 東端轉角「幾何彩繪矮牆」(照片 3 最右側白底橘綠彩繪矮牆)
-    function makeCornerPaintedWallTex() {
-      const c = document.createElement('canvas');
-      c.width = 256; c.height = 160;
-      const ctx = c.getContext('2d');
-      ctx.fillStyle = '#f1f5f9';
-      ctx.fillRect(0, 0, 256, 160);
-      ctx.fillStyle = '#f97316';
-      ctx.beginPath(); ctx.arc(210, 65, 55, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#84cc16';
-      ctx.beginPath(); ctx.arc(225, 115, 50, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#64748b';
-      ctx.lineWidth = 8;
-      ctx.strokeRect(4, 4, 248, 152);
-      const t = new THREE.CanvasTexture(c);
-      t.colorSpace = THREE.SRGBColorSpace;
-      return t;
-    }
-    const paintedWallMat = new THREE.MeshStandardMaterial({ map: makeCornerPaintedWallTex(), roughness: 0.7 });
-    addBox(ofg, 2.4, 1.15, 0.28, paintedWallMat, 96.6, 0.575, fSouthZ + 0.35);
+    // 堆肥池後方「雞蛋花（緬梔）樹」（083322.jpg / 083304.jpg 右側分叉開展樹姿）
+    const plX = 95.8, plZ = -51.6;
+    const plumBarkMat = new THREE.MeshStandardMaterial({ color: 0x7c7468, roughness: 0.88 });
+    const plumLeafMat = new THREE.MeshStandardMaterial({ color: 0x3b6826, roughness: 0.72 });
+    const plumLeafLight = new THREE.MeshStandardMaterial({ color: 0x568536, roughness: 0.70 });
+    // 主幹與 V 型多叉光潔灰褐枝條
+    addMesh(ofg, new THREE.CylinderGeometry(0.11, 0.16, 1.65, 8), plumBarkMat, plX, 0.85, plZ);
+    const branches = [
+      [-0.75, 2.35, 0.45, 1.65, 0.52, 0.25],
+      [0.82, 2.45, 0.35, 1.75, -0.55, 0.22],
+      [-0.45, 2.65, -0.65, 1.60, 0.35, -0.45],
+      [0.55, 2.75, -0.58, 1.70, -0.38, -0.42],
+      [0.05, 2.90, 0.15, 1.55, -0.08, 0.10]
+    ];
+    branches.forEach(([bx, by, bz, blen, rz, rx], idx) => {
+      const br = addMesh(ofg, new THREE.CylinderGeometry(0.045, 0.075, blen, 7), plumBarkMat, plX + bx * 0.55, by - 0.32, plZ + bz * 0.55);
+      br.rotation.z = rz;
+      br.rotation.x = rx;
+      // 枝梢放射狀長橢圓綠葉簇
+      const tipX = plX + bx * 1.15, tipY = by + 0.55, tipZ = plZ + bz * 1.15;
+      const tuft = addMesh(ofg, new THREE.DodecahedronGeometry(0.72 + (idx % 2) * 0.12, 1), idx % 2 ? plumLeafMat : plumLeafLight, tipX, tipY, tipZ);
+      tuft.scale.set(1.35, 0.58, 1.25);
+      const tuft2 = addMesh(ofg, new THREE.DodecahedronGeometry(0.54, 1), plumLeafLight, tipX + (idx % 2 ? 0.45 : -0.45), tipY + 0.28, tipZ + 0.2);
+      tuft2.scale.set(1.25, 0.52, 1.15);
+    });
+  }
+
+  // =========================================================================
+  // H. 北界牆外探出之濃密背景樹冠（083322.jpg / 083304.jpg 浪板後方探出之綠蔭大樹）
+  // =========================================================================
+  {
+    const bgTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4c3f34, roughness: 0.92 });
+    const bgLeafDark = new THREE.MeshStandardMaterial({ color: 0x2c5c24, roughness: 0.84 });
+    const bgLeafMid  = new THREE.MeshStandardMaterial({ color: 0x457d32, roughness: 0.80 });
+    // 中段浪板牆後方探出之茂密闊葉樹冠
+    addMesh(ofg, new THREE.CylinderGeometry(0.18, 0.26, 3.6, 8), bgTrunkMat, 75.8, 1.8, -55.8);
+    [[0, 4.4, 0.4, 1.9, bgLeafMid], [-1.5, 4.0, 0.5, 1.55, bgLeafDark], [1.4, 3.9, 0.2, 1.45, bgLeafDark], [0.2, 5.2, -0.2, 1.4, bgLeafMid]].forEach(([ox, oy, oz, r, m]) => {
+      const c = addMesh(ofg, new THREE.DodecahedronGeometry(r, 1), m, 75.8 + ox, oy, -55.8 + oz);
+      c.scale.set(1.25, 0.85, 1.15);
+    });
   }
 
   ofg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'organic-farm'; });
+  {   // v2.12.117 對齊更新後之 5.1m 北側車道北緣（[57.6,-51.8]→[113.5,-45.0]），西端紅磚花台與橘色三角錐緊接 5.1m 停車棚東端
+    const cx = 74.5, cz = -51.3, halfD = 4.9;
+    const dx = 113.5 - 57.6, dz = -45.0 - (-51.8);
+    const th = -Math.atan2(dz, dx), cs = Math.cos(th), sn = Math.sin(th);
+    const roadZ = -51.8 + (cx - 57.6) * (dz / dx);
+    const tz = roadZ - 2.55 - 0.30 - halfD;
+    ofg.rotation.y = th;
+    ofg.position.set(cx - (cx * cs + cz * sn), 0, tz - (-cx * sn + cz * cs));
+    // 沿車道方向東移 4.8 m，使西口紅磚花台與雙三角錐緊接停車棚東端（照片 093249 / 093309）
+    const ux = dx / Math.hypot(dx, dz), uz = dz / Math.hypot(dx, dz);
+    ofg.position.x += 4.8 * ux; ofg.position.z += 4.8 * uz;
+  }
   layerGroups.buildings.add(ofg);
   clickableGroups.push(ofg);
   landmarkGroupMap.set('organic-farm', ofg);
@@ -18001,6 +22072,23 @@ function buildRecyclingDepot() {
 // ============================================================================
 // 5. MULTI-SPECIES BOTANICAL SYSTEM (`PKU-3D trees-v46.js`), STREETLIGHTS, WEATHER & ARTICULATED PEDESTRIANS
 // ============================================================================
+// 樹冠不規則化：以「頂點位置雜湊」沿徑向擾動頂點（相同位置得到相同位移，因此非索引幾何不會裂縫）。
+// 不增加三角面，只讓原本光滑的球形葉團變成輪廓起伏的自然樹冠。
+function lumpyGeometry(geo, amp = 0.2) {
+  if (geo.userData.lumpy) return geo;
+  geo.userData.lumpy = true;
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    // 對位置量化後再雜湊，避免浮點誤差使重合頂點得到不同位移
+    const qx = Math.round(x * 512), qy = Math.round(y * 512), qz = Math.round(z * 512);
+    const h = Math.sin(qx * 12.9898 + qy * 78.233 + qz * 37.719) * 43758.5453;
+    const f = 1 + (h - Math.floor(h) - 0.5) * 2 * amp;
+    pos.setXYZ(i, x * f, y * f, z * f);
+  }
+  pos.needsUpdate = true;
+  return geo;
+}
 const foliageMats = [
   new THREE.MeshStandardMaterial({ color: 0x3b7a42, roughness: 0.84 }), // Broad shade crown
   new THREE.MeshStandardMaterial({ color: 0x528e4e, roughness: 0.82 }), // Broad sunlit crown
@@ -18008,10 +22096,10 @@ const foliageMats = [
   new THREE.MeshStandardMaterial({ color: 0x689e54, roughness: 0.80 })  // Flowering / Accent crown (Spring pink / Autumn gold)
 ];
 const SEASON_PALETTES = {
-  spring: { foliage: [0x589c56, 0x76b569, 0x46824b, 0xe895b4], fogTint: 0xf4f2eb, label: '春 · 新綠繁花' },
+  spring: { foliage: [0x589c56, 0x76b569, 0x46824b, 0x6aa85a], fogTint: 0xf4f2eb, label: '春 · 新綠繁花' },
   summer: { foliage: [0x3b7a42, 0x528e4e, 0x2f6839, 0x689e54], fogTint: 0xebe9e1, label: '夏 · 濃蔭蟬鳴' },
-  autumn: { foliage: [0xc97b36, 0xd89c3e, 0x4f7348, 0xe06d3b], fogTint: 0xf0e9dc, label: '秋 · 金風楓染' },
-  winter: { foliage: [0x566b5c, 0x6c7d70, 0x45584b, 0x7a8a7d], fogTint: 0xe4e8eb, label: '冬 · 朗潤清寒' }
+  autumn: { foliage: [0x4a7a3e, 0x6a8a44, 0x3f6a3a, 0x8a8a3e], fogTint: 0xf0e9dc, label: '秋 · 涼風綠蔭' },
+  winter: { foliage: [0x4f6e48, 0x6a7f5a, 0x40604a, 0x8a8a5a], fogTint: 0xe4e8eb, label: '冬 · 乾季落葉' }
 };
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x69543e, roughness: 0.9 });
 const palmTrunkMat = new THREE.MeshStandardMaterial({ color: 0x8c897e, roughness: 0.86 });
@@ -18062,12 +22150,12 @@ function addTree(x, z, scale = 1, species = 'broad') {
     tg.add(branch);
 
     // 分枝末梢輕盈葉簇 (高度於 5.0m ~ 6.5m 高空，微扁圓造型，通透自然)
-    const cluster = addMesh(tg, new THREE.DodecahedronGeometry(1.25 * scale, 1), (b % 2 === 0) ? mainMat : shadeMat, bx * 1.02, by + 0.9 * scale, bz * 1.02);
+    const cluster = addMesh(tg, lumpyGeometry(new THREE.DodecahedronGeometry(1.25 * scale, 1), 0.16), (b % 2 === 0) ? mainMat : shadeMat, bx * 1.02, by + 0.9 * scale, bz * 1.02);
     cluster.scale.set(1.25, 0.75, 1.20);
   }
 
   // 主樹冠頂部光照簇團
-  const topCrown = addMesh(tg, new THREE.DodecahedronGeometry(1.55 * scale, 1), mainMat, x, trunkH + 1.85 * scale, z);
+  const topCrown = addMesh(tg, lumpyGeometry(new THREE.DodecahedronGeometry(1.55 * scale, 1), 0.16), mainMat, x, trunkH + 1.85 * scale, z);
   topCrown.scale.set(1.30, 0.80, 1.25);
 
   layerGroups.vegetation.add(tg);
@@ -18078,27 +22166,22 @@ const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 const streetLightBulbs = [];
 function buildLandscapeAndLighting() {
 // 依最新實景照片：前庭北側大草坪與有機農場已配置 1:1 專屬百年大榕樹、圓錐灌木、三腳支架景觀樹、附生鳥巢蕨小葉欖仁與斜幹榕樹，僅於南側前庭邊界保留背景椰子樹
-[
-  [X(780), Z(305), 1.05], [X(845), Z(315), 1.0],  [X(915), Z(310), 0.95]  // 南側前庭花園背景椰子
-].forEach(([px, pz, sc]) => addTree(px, pz, sc, 'palm'));
+// （v2.12.2 依東棟 2F 俯拍照片：南草坪上無椰子樹，原 3 株背景椰子移除；椰子樹群位於復興路對面）
 // 同步將前庭與有機農場 1:1 實景喬木登錄至 campusTreeRecords 供 2D 平面布局樹冠層顯示
 [
-  { x: 78.5, z: -31.2, r: 5.8, species: 'broad' },     // 前庭北草坪西北側百年氣根大榕樹
-  { x: 92.0, z: -25.5, r: 3.2, species: 'flowering' }, // 前庭左側草地核心景觀雞蛋花樹 (緬梔，非榕樹)
+  { x: 79.5, z: -30.8, r: 8.4, species: 'broad' },     // 前庭北草坪西北側百年氣根大榕樹
   { x: 113.8, z: -33.5, r: 7.2, species: 'broad' },    // 通學步道大榕樹 (校園外臨復興路百年大榕樹)
-  { x: 100.5, z: -16.0, r: 2.8, species: 'flowering' },// 前庭草地雞蛋花樹 (緬梔)
-  { x: 113.8, z: -7.8, r: 3.2, species: 'flowering' }, // FU-SHING校名雕塑後方台灣欒樹
-  { x: 88.0, z: -28.5, r: 1.8, species: 'broad' },     // 前庭北草坪圓錐形修剪灌木樹
-  { x: 84.5, z: -22.2, r: 2.2, species: 'flowering' }, // 前庭北草坪中央三腳支架景觀樹
-  { x: 112.5, z: -17.8, r: 2.6, species: 'flowering' },// 臨復興路台灣欒樹 1
-  { x: 112.5, z: -23.2, r: 2.5, species: 'flowering' },// 臨復興路台灣欒樹 2
-  { x: 83.2, z: -4.2, r: 2.4, species: 'flowering' },  // 前庭中央 6 柱頭復古磚造花台九重葛
+  { x: 88.6, z: -28.9, r: 1.0, species: 'broad' },     // 前庭北草坪龍柏
+  { x: 86.8, z: -22.4, r: 2.2, species: 'flowering' }, // 前庭北草坪中央立支架雞蛋花 (緬梔)
+  { x: 112.4, z: -14.2, r: 3.6, species: 'flowering' },// 臨復興路綠籬帶藍花楹主樹 (FU-SHING 矮牆北側)
+  { x: 110.0, z: -20.8, r: 2.4, species: 'flowering' },// 綠籬帶藍花楹 2
+  { x: 109.6, z: -25.6, r: 2.6, species: 'flowering' },// 綠籬帶藍花楹 3
+  { x: 108.8, z: -29.4, r: 2.2, species: 'flowering' },// 綠籬帶藍花楹 4
+  { x: 83.1, z: -3.6, r: 1.6, species: 'flowering' },  // 前庭中央粗石低花台九重葛
   { x: 80.5, z: 10.2, r: 3.2, species: 'broad' },      // 前庭南草坪附生鳥巢蕨小葉欖仁
-  { x: 96.8, z: 13.8, r: 3.6, species: 'broad' },      // 前庭南草坪斜幹造型榕樹
   { x: 58.5, z: -50.2, r: 2.2, species: 'broad' },     // 有機農場西端果樹與甘蔗叢
   { x: -38.5, z: -44.8, r: 4.2, species: 'broad' },     // 北棟廁所大樓西側樓梯北側（另一側）高大遮蔭大樹 (實景照片)
   { x: -39.8, z: -45.6, r: 2.4, species: 'flowering' }, // 北棟廁所大樓西側樓梯北側（另一側）優雅雞蛋花樹 (實景照片)
-  { x: -175.5, z: 27.5, r: 6.8, species: 'broad' }      // 運動場西側直線跑道與球場間百年大榕樹 (實景照片 135014.jpg)
 ].forEach(rec => campusTreeRecords.push(rec));
 
 // =========================================================================
@@ -18163,31 +22246,59 @@ function buildAthleticBanyanTree(tx, tz) {
   layerGroups.vegetation.add(bg);
 }
 
-buildAthleticBanyanTree(-175.5, 27.5); // 運動場百年大榕樹 (實景照片 135014.jpg)
-addTree(X(56) + 1.85, Z(90) + 3.80, 1.15, 'broad');
-addTree(-20.8, -12.8, 1.18, 'broad');
+// v2.12.16：原位於校園西牆外 (x≈−175) 之百年大榕樹與普查資料不符，停用
+// v2.12.15 依使用者標註之運動場實景照片：司令台（西側、面向東）周邊與跑道東側之命名樹木
+//   司令台右側（南）：麵包樹、大花紫薇；司令台左側（北）：桃花心木；
+//   跑道東側育樂樓前：三棵楓香；新棟前：兩棵印度紫檀
+const SPORTS_NAMED_TREES = [
+  // v2.12.17 依使用者照片：兩樹緊鄰跑道西側直道外緣草地（司令台南側），麵包樹在南、大花紫薇在北
+  { x: -84.4, z: 14.6, r: 3.6, kind: 'breadfruit', name: '麵包樹' },     // v2.12.33 跑道放大後移至西側步道外緣
+  { x: -84.6, z: 10.2, r: 3.4, kind: 'crapeMyrtle', name: '大花紫薇' },
+  { x: -40.1, z: 14.6, r: 5.8, kind: 'rosewood', name: '印度紫檀' },
+  { x: -40.6, z: 23.4, r: 5.6, kind: 'rosewood', name: '印度紫檀' }
+];
+function pointInCampusPx(px, py, inset = 0) {
+  const P = CAMPUS_PERIMETER_PX;
+  let inside = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const [xi, yi] = P[i], [xj, yj] = P[j];
+    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  if (!inside || inset <= 0) return inside;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {       // 與各邊距離須大於 inset
+    const [ax, ay] = P[j], [bx, by] = P[i];
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2));
+    if (Math.hypot(px - ax - t * dx, py - ay - t * dy) < inset) return false;
+  }
+  return true;
+}
 const treeZones = [
   [70, 32, 395, 65, 10, 'broad'],        // North Campus Lawn Buffer (inside North Rear Wall)
   [66, 110, 94, 315, 8, 'broad'],        // West Campus Lawn Buffer (between West Rear Wall `x=56` & Ball Courts `x=102`)
   [480, 195, 695, 255, 6, 'flowering'],  // Courtyard grass mounds (Flowering & Broad shade trees)
   [196, 115, 218, 205, 3, 'broad'],      // North of Command Stage lawn buffer
   [196, 298, 218, 365, 3, 'broad'],      // South of Command Stage lawn buffer
-  [358, 120, 376, 365, 7, 'flowering'],  // East of PU track lawn buffer
+  // v2.12.15：跑道東側（育樂樓、新棟前）改由 SPORTS_NAMED_TREES 依實景配置三棵楓香、兩棵印度紫檀
   [88, 308, 212, 438, 11, 'flowering'],  // SW Campus Lawn Buffer Grove (inside Rear Wall `(56,328)->(180,480)`, seen in Google Maps!)
   [215, 385, 365, 422, 8, 'broad']       // South Campus Lawn Buffer Grove (between PU Track `y=376` & South Rear Wall `(180,480)->(405,392)`)
 ];
-treeZones.forEach(([x1, y1, x2, y2, count, defaultType]) => {
+[].forEach(([x1, y1, x2, y2, count, defaultType]) => {   // v2.12.16 停用隨機林木
   for (let i = 0; i < count; i++) {
     const sp = (i % 3 === 0) ? 'flowering' : defaultType;
-    const tx = X(x1 + rnd() * (x2 - x1));
-    const tz = Z(y1 + rnd() * (y2 - y1));
+    const ppx = x1 + rnd() * (x2 - x1), ppy = y1 + rnd() * (y2 - y1);
+    const tx = X(ppx);
+    const tz = Z(ppy);
+    // v2.12.4：隨機樹須位於校園圍牆內至少約 2 m（原南側林帶範圍越出運動場斜向圍牆，樹木長在 42 巷車道上）
+    if (!pointInCampusPx(ppx, ppy, 8)) continue;
+    if (SPORTS_NAMED_TREES.some(t => Math.hypot(tx - t.x, tz - t.z) < t.r + 2.5)) continue;   // 讓出實景命名樹木
     // 依全景照片 media_1792763927173_74e0dc77.jpg 與西棟正面照：保持中庭幾何花磚廣場、西棟東向立面（「育樂樓」）與南棟全線立面視野通透無遮擋
     if (tx > -24.0 && tx < 54.0 && tz > -12.5 && tz < 12.0) continue;
     // 保持西棟大樓（育樂樓）、北翼廚房、北棟遮雨棚與廁所大樓全周及西側停車區/車道無隨機樹木 (依截圖紅框指示完全移除)
     if (tx > -85.0 && tx < -18.5 && tz > -58.0 && tz < 16.5) continue;
     // 【核心通視走廊保護】依 Google 街景實景圖：東棟大樓前庭迎賓廣場、挑高穿堂拱門與立面彩繪全線完全通透，禁止巨木遮蔽！
     if (tx > 66.0 && tx < 122.0 && tz > -14.0 && tz < 14.0) continue;
-    addTree(tx, tz, 0.78 + rnd() * 0.48, sp);
+    // v2.12.16：隨機林木停用，改依樹木普查登錄資料建置（CAMPUS_TREE_REGISTRY）
   }
 });
 
@@ -18203,24 +22314,518 @@ const northDrivewayShadeTrees = [
   [-82.0, -36.16, 0.95, 'broad'],
   [-94.0, -36.16, 1.04, 'broad'],
   [-106.0, -36.16, 0.92, 'broad'],
-  // 北側校園北界圍牆內側綠帶：
-  [-55.0, -47.0, 1.02, 'broad'],
-  [-72.0, -47.0, 1.08, 'broad'],
-  [-88.0, -47.0, 0.98, 'broad'],
-  [-102.0, -47.0, 1.04, 'broad']
+  // 北側圍牆內側老樹改由 buildNorthWallOldTrees() 依實景重建（板根、落葉草地）
 ];
-northDrivewayShadeTrees.forEach(([tx, tz, sc, sp]) => {
-  addTree(tx, tz, sc, sp);
-});
+// v2.12.7 依實景照片（北棟西側往後門）：紅磚北牆內側一排高大老樹，粗壯樹幹基部外露板根，樹冠茂密相連；
+//   樹下為稀疏草地與落葉。北棟北側車道與教室之間另有數株細高羽葉喬木（往東看停車場照片）
+// v2.12.16：北牆老樹列與北棟旁細高喬木改由樹木普查登錄資料（印度紫檀、黃金風鈴木、蘭嶼肉桂等）呈現
+
+
+// ============================================================================
+// v2.12.16 校園樹木普查登錄（縣立復興國小 樹木資料 2026-11-15 匯出，WGS84 座標）
+//   換算方式：以已知實景樹木與圍牆、建築線為控制點，經相似轉換（比例約 0.95、旋轉約 −7.4°）後，
+//   再依局部構造修正：福木列貼齊運動場西南斜牆內側、北界印度紫檀列貼齊北圍牆內側、楓香移至育樂樓西側步道、
+//   中庭南列移至南棟前草坡、南草坪樹木置於草坪內，並避開建築量體與車道。
+//   既有依照片精緻建模之樹木（前庭大榕樹、藍花楹、雞蛋花、龍柏、南棟前大葉欖仁、司令台大花紫薇與麵包樹、
+//   新棟前印度紫檀、南草坪小葉欖仁、幼兒園雞蛋花）沿用原模型，不重複建置。
+//   欄位：[樹木編號末 6 碼, 樹種, x, z, 傾斜]
+// ============================================================================
+const CAMPUS_TREE_REGISTRY = [
+  ["442163", "光蠟樹", -120.7, -13.8, 0],
+  ["442158", "光蠟樹", -116.9, -19.2, 0],
+  ["442152", "光蠟樹", -118.7, -25.1, 0],
+  ["442147", "臺灣櫸", -118.4, -28.8, 0],
+  ["442141", "臺灣櫸", -118.1, -34.2, 0],
+  ["442184", "光蠟樹", -115.4, -4.1, 0],
+  ["442110", "茄冬", -116.4, -59.8, 0],
+  ["442191", "緬梔", -112.9, 0.1, 0],
+  ["442201", "蘭嶼肉桂", -109.2, 8.0, 0],
+  ["442206", "緬梔", -108.4, 9.7, 0],
+  ["442220", "蘭嶼肉桂", -106.1, 14.8, 0],
+  ["839656", "七里香", -101.1, 26.8, 0],
+  ["442246", "蘭嶼肉桂", -102.8, 22.6, 0],
+  ["442251", "蘭嶼肉桂", -101.6, 25.5, 0],
+  ["442257", "蘭嶼肉桂", -100.8, 27.5, 0],
+  ["442264", "大葉桃花心木", -99.6, 30.5, 0],
+  ["839657", "七里香", -91.3, 52.7, 0],
+  ["442285", "藍花楹", -93.6, 47.3, 0],
+  ["442102", "蘭嶼肉桂", -91.3, -76.5, 0],
+  ["442253", "鳳凰木", -87.4, 58.9, 0],
+  ["442095", "蘭嶼肉桂", -87.1, -76.1, 0],
+  ["442339", "海南菜豆樹", -86.0, -38.6, 0],
+  ["442117", "大葉桃花心木", -85.0, -24.0, 0],   // 依照片：司令台北側、籃球場與排球場交界前方，緊鄰跑道
+  ["442232", "菲島福木", -84.1, 60.0, 0],
+  ["442269", "茄冬", -81.6, 48.2, 0],
+  ["442217", "菲島福木", -81.3, 58.4, 0],
+  ["442210", "菲島福木", -78.3, 56.7, 0],
+  ["442089", "印度紫檀", -76.6, -75.0, 0],
+  ["442202", "菲島福木", -74.9, 54.8, 0],
+  ["442196", "菲島福木", -71.8, 53.0, 0],
+  ["442085", "印度紫檀", -72.3, -74.6, 0],
+  ["442186", "菲島福木", -68.7, 51.3, 0],
+  ["442276", "可可椰子", -68.4, 51.1, 0],
+  ["442172", "菲島福木", -64.7, 49.0, 0],
+  ["442074", "黃金風鈴木", -64.4, -65.6, 0],
+  ["442161", "菲島福木", -61.6, 47.2, 0],
+  ["442059", "蘭嶼肉桂", -62.4, -73.6, 0],
+  ["442145", "菲島福木", -59.1, 45.8, 0],
+  ["442072", "黃金風鈴木", -59.8, -64.7, 0],
+  ["442055", "蘭嶼肉桂", -59.4, -73.3, 0],
+  ["442138", "菲島福木", -56.9, 44.6, 0],
+  ["442134", "菲島福木", -54.9, 43.4, 0],
+  ["442046", "印度紫檀", -55.3, -72.9, 0],
+  ["442129", "菲島福木", -53.2, 42.5, 0],
+  ["442070", "黃金風鈴木", -54.8, -63.4, 0],
+  ["442122", "菲島福木", -51.2, 41.4, 0],
+  ["442119", "菲島福木", -49.5, 40.4, 0],
+  ["442051", "印度紫檀", -50.9, -72.4, 0],
+  ["442112", "菲島福木", -47.9, 39.5, 0],
+  ["442106", "菲島福木", -46.3, 38.6, 0],
+  ["442049", "印度紫檀", -46.6, -72.0, 0],
+  ["442099", "菲島福木", -44.5, 37.6, 0],
+  ["442031", "風鈴木", -46.5, -61.3, 0],
+  ["442068", "菲島福木", -42.5, 36.4, 0],
+  ["442063", "蘭嶼肉桂", -40.3, 35.1, 0],
+  ["442016", "黃金風鈴木", -41.8, -50.8, 0],
+  ["442045", "印度紫檀", -40.9, -71.4, 0],
+  ["442022", "黃金風鈴木", -40.9, -55.3, 0],
+  ["442026", "黃金風鈴木", -40.6, -60.2, 0],
+  // 依照片：育樂樓西側跑道外三棵楓香等距分布（第四筆登錄 442020 現場未見，略去）
+  ["442043", "楓香", -39.7, 5.8, 0],
+  ["442035", "楓香", -39.7, -0.6, 0],
+  ["442030", "楓香", -39.7, -8.3, 0],
+  ["442040", "印度紫檀", -38.2, -71.1, 0],
+  ["442281", "雨豆樹", -33.9, 26.0, 0],
+  ["441981", "楓香", -33.9, -37.0, 0],
+  ["442007", "波羅蜜", -30.7, -69.2, 0],   // v2.12.117 移至 5.1m 停車棚西端後方綠帶，讓出 5.1m 車道
+  ["441997", "緬梔", -30.5, -69.0, 0],     // v2.12.117 移至 5.1m 停車棚西端後方綠帶
+  ["441990", "苦楝", -29.2, -68.8, 0],     // v2.12.117 移至 5.1m 停車棚西端後方綠帶
+  ["442157", "金露花", -16.8, -2.7, 0],   // v2.12.101 移入新棟前庭草坪花台內（原在花磚廣場上）
+  ["442315", "印度紫檀", -15.4, -55.2, 0], // v2.12.121 依 20261116_071557.jpg：立於北棟西側樓梯東端與採光井墨綠護欄起點旁草皮帶
+  // ["442139", "馬拉巴栗", -15.8, -31.0, 0],  // v2.12.106 改由西棟北側草地植物區（nfg B）依實景精確配置，避免與主景大樟樹重疊
+  // ["442144", "樟樹", -15.8, -28.5, 0],      // v2.12.106 改由西棟北側草地植物區（nfg B）精緻重塑主景大樟樹
+  // ["442133", "馬拉巴栗", -13.9, -34.7, 0],  // v2.12.106 原立於廚房東側紅磚鋪面區上，實景改由靠牆自然灌叢呈現
+  ["442319", "印度紫檀", -12.3, -54.9, 0], // v2.12.121 依 20261116_071557.jpg：貼齊北棟西翼採光井北緣草皮帶（第二棵細長喬木）
+  // ["442150", "榕樹", -12.4, -24.7, 0],      // v2.12.106 依實景照片 3 & 5，西棟前中庭幾何花磚廣場為開闊通道，無此立於花磚上之榕樹
+  // ["839655", "桂花", -11.4, -3.2, 0],     // v2.12.111 依實景照片 20261118_132826，前緣階梯草坪改由 buildNewBuilding 3.3 精緻灌木帶呈現
+  ["442332", "風鈴木", -7.9, -54.4, 0],    // v2.12.121 依 20261116_071557.jpg：貼齊北棟西翼採光井北緣草皮帶（第三棵細長喬木）
+  ["442179", "金露花", -6.1, -1.3, 0],    // v2.12.110 略西移至西側草地綠帶前緣，避開新配置之高大樟樹主幹
+  // ["442188", "龍柏", -5.6, 1.3, 0],       // v2.12.111 依實景照片 20261118_132826 / 20261123_073313，此處為通往坡道之混凝土曲徑步道，圓錐柏樹改位於草坪中段（-10.35, 1.85）
+  ["442323", "風鈴木", -3.3, -53.9, 0],    // v2.12.121 依 20261116_071557.jpg：貼齊北棟西翼採光井北緣草皮帶（第四棵細長喬木）
+  // ["442123", "黃槿", -1.7, -28.7, 0],     // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置，避免立於幾何花磚上
+  // ["442211", "樟樹", 2.6, -1.3, 0],       // v2.12.110 依實景照片 003 移至西側樓梯右側隔壁草地綠帶，改由 buildSouthBuilding 14.7 精緻建置
+  // ["442204", "瓊崖海棠", 6.4, -1.6, 0],   // v2.12.110 依實景照片 003，草綠圓窗塔前至西端草坡無此瓊崖海棠
+  // ["442115", "水黃皮", 4.1, -27.4, 0],    // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
+  // ["442218", "茄冬", 11.4, -1.2, 0],      // v2.12.110 依實景照片 003 移至草坡西端（西側樓梯左旁），改由 buildSouthBuilding 14.7 精緻建置
+  // ["442107", "火焰木", 8.4, -26.2, 0],    // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
+  ["442334", "印度紫檀", 10.5, -52.7, 0],  // v2.12.117 貼齊北棟中央後門西側，讓出 5.1m 車道
+  ["442330", "印度紫檀", 14.4, -52.3, 0],  // v2.12.117 對應照片 093249 無障礙坡道西端旁高大喬木，讓出 5.1m 車道
+  // ["442230", "黃金風鈴木", 17.6, -1.6, 0], // v2.12.110 依實景照片 002/003 改由 buildSouthBuilding 14.7 精緻建置（微向左傾主幹）
+  // ["442100", "黃槿", 26.9, -22.8, 0],     // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
+  // ["442237", "火焰木", 29.5, -1.1, 0],    // v2.12.110 依實景照片 001/002，天藍圓窗塔前沙土丘由大葉欖仁主導，無此火焰木
+  // ["442092", "黃金風鈴木", 30.9, -22.6, 0], // v2.12.105 改由北棟前庭草地植物區（nfg）依實景精確配置
+  // ["442263", "樟樹", 31.8, -0.7, 0],      // v2.12.110 依實景照片 001 改由 buildSouthBuilding 14.7 精緻建置（竹柏右側纖細年輕樟樹）
+  // ["442252", "竹柏", 33.6, -2.0, 0],      // v2.12.110 依實景照片 001 改由 buildSouthBuilding 14.7 精緻建置（興學樓樓梯旁前緣纖細竹柏）
+  // ["441975", "印度紫檀", 55.1, -50.6, 0],   // v2.12.113 實景對應北棟與東棟連廊北側中庭大樹（已於 buildNorthBuilding D 區依實景照片 north_east_bridge_exterior.jpg 建置）；普查轉換座標誤落於北側車道路面且造成重複，故停用
+  ["839658", "大葉羅漢松", 66.5, 18.6, 0],
+  ["839651", "臺灣海桐", 67.5, 18.6, 0],
+  ["442057", "水黃皮", 74.9, 17.0, 0],
+  ["442065", "可可椰子", 79.8, 18.4, 0],
+  ["839652", "田代氏石斑木", 86.8, -58.5, 0],
+  ["442082", "大王椰子", 86.6, 11.8, 0],
+  // ["442025", "欖仁樹", 87.4, -39.3, 1],   // v2.12.108 前庭北側草坪實景無欖仁樹；中庭南棟前土丘小恐龍旁已有依實景建模之大葉欖仁
+  ["442033", "蘭嶼肉桂", 89.5, -58.3, 0],
+  ["442076", "黃椰子", 89.5, 18.6, 0],
+  ["442019", "稜果榕", 90.9, -58.1, 0],
+  ["442013", "黃椰子", 92.8, -57.9, 0],
+  ["442029", "緬梔", 93.1, -57.9, 0],
+  ["442077", "扇葉蒲葵", 93.1, 13.2, 0],
+  ["442067", "樟樹", 105.5, 8.2, 0],      // v2.12.108 移至大門南側草坪東北段（依前庭廣場俯瞰與街景照，位於訪客停車位南側）
+  ["442103", "苦楝", 104.0, 12.0, 0],     // v2.12.108 移至大門南側斜向木欄杆圍籬內側草坪（依復興路街景照與空拍圖）
+  ["442071", "大王椰子", 101.8, 12.4, 0], // v2.12.108 移至苦楝西側、緊鄰大門南側草坪樹群（依復興路街景照）
+  ["441983", "陰香", 102.7, -34.8, 0]
+];
+
+(function buildRegistryTrees() {
+  const grp = new THREE.Group();
+  const up = new THREE.Vector3(0, 1, 0);
+  let sd = 977; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const matCache = {};
+  const M = (c, rough = 0.82) => (matCache[c] = matCache[c] || new THREE.MeshStandardMaterial({ color: c, roughness: rough }));
+  // 物候分層材質：每個樹種各自一組（內層葉 core／外層葉 outer／花 flower／果 fruit），季節切換時只改顏色與可見性
+  let curSp = '';
+  const LP = (o, i, role) => {
+    const base = o.leaves[i % o.leaves.length];
+    const r2 = role || (i % 2 ? 'outer' : 'core');
+    return phenoMat(curSp, r2, base.color.getHex());
+  };
+  const FM = c => { PHENO_STATE[curSp] && (PHENO_STATE[curSp].inlineFlower = true); return phenoMat(curSp, 'flower', c.color ? c.color.getHex() : c); };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const limb = (a, b, r0, r1, mat, seg = 7) => {
+    const d = new THREE.Vector3().subVectors(b, a);
+    const m = addMesh(grp, new THREE.CylinderGeometry(r1, r0, d.length(), seg), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    m.quaternion.setFromUnitVectors(up, d.normalize());
+  };
+  const blob = (x, y, z, rad, mat, sx = 1.25, sy = 0.75, det = 0) => {
+    const m = addMesh(grp, lumpyGeometry(new THREE.IcosahedronGeometry(rad, det), det ? 0.16 : 0.22), mat, x, y, z);
+    m.scale.set(sx, sy, sx); m.rotation.y = r() * 3;
+    if (mat.userData.phenoRole) m.userData.phenoRole = mat.userData.phenoRole;
+    return m;
+  };
+  // ---- 樹形家族 ----
+  // 闊葉樹：主幹 → 分叉 → nB 支主枝 → 枝端葉團
+  const broad = (x, z, o) => {
+    const lean = o.lean || 0, leanZ = o.leanZ || 0;
+    const fork = V(x + lean, o.forkH, z + leanZ);
+    limb(V(x, 0, z), fork, o.tr, o.tr * 0.78, o.bark, 9);
+    if (o.buttress) for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2 + r();
+      const rt = addBox(grp, o.tr * 3.2, o.tr * 0.8, 0.12, o.bark, x + Math.cos(a) * o.tr * 1.3, o.tr * 0.3, z + Math.sin(a) * o.tr * 1.3);
+      rt.rotation.y = -a; rt.rotation.z = 0.2;
+    }
+    if (o.roots) for (let k = 0; k < o.roots; k++) {           // 榕屬氣根
+      const a = r() * Math.PI * 2, rr = 0.6 + r() * o.spread * 0.7, h = 1 + r() * (o.forkH + 1);
+      addMesh(grp, new THREE.CylinderGeometry(0.015, 0.025, h, 4), o.bark, x + Math.cos(a) * rr, o.H * 0.55 - h / 2, z + Math.sin(a) * rr, false);
+    }
+    for (let b = 0; b < o.nB; b++) {
+      const a = (b / o.nB) * Math.PI * 2 + r() * 0.6;
+      const reach = o.spread * (0.7 + r() * 0.35);
+      const e = V(fork.x + Math.cos(a) * reach, o.H * (o.endY + r() * 0.1), fork.z + Math.sin(a) * reach);
+      limb(fork, e, o.tr * 0.55, o.tr * 0.2, o.bark, 6);
+      for (let c = 0; c < o.nC; c++) {
+        const ca = r() * Math.PI * 2, cr = r() * o.leaf * 1.3;
+        blob(e.x + Math.cos(ca) * cr, e.y + o.leaf * 0.35 + (r() - 0.4) * o.leaf, e.z + Math.sin(ca) * cr, o.leaf * (0.75 + r() * 0.5), LP(o, c), 1.25, o.flat, o.det || 0);
+      }
+      if (o.flowers && r() < 0.6) blob(e.x, e.y + o.leaf * 0.9, e.z, o.leaf * 0.35, FM(o.flowers), 1.3, 0.5);
+    }
+    for (let c = 0; c < (o.top || 3); c++) {
+      const ca = r() * Math.PI * 2, cr = r() * o.spread * 0.55;
+      blob(fork.x + Math.cos(ca) * cr, o.H * 0.9 + r() * o.leaf * 0.6, fork.z + Math.sin(ca) * cr, o.leaf * 1.05, LP(o, c, 'core'), 1.3, o.flat, o.det || 0);
+    }
+  };
+  // 分層水平枝（欖仁、馬拉巴栗）
+  const tiered = (x, z, o) => {
+    limb(V(x, 0, z), V(x, o.H, z), o.tr, o.tr * 0.35, o.bark, 9);
+    for (let t = 0; t < o.tiers; t++) {
+      const y = o.H * (0.35 + t * (0.6 / (o.tiers - 1)));
+      const reach = o.spread * (1 - t / (o.tiers + 1));
+      for (let b = 0; b < 5; b++) {
+        const a = (b / 5) * Math.PI * 2 + t * 0.7;
+        const e = V(x + Math.cos(a) * reach, y + 0.3, z + Math.sin(a) * reach);
+        limb(V(x, y, z), e, o.tr * 0.3, o.tr * 0.12, o.bark, 5);
+        for (let k = 0; k < 3; k++) blob(x + (e.x - x) * (0.5 + k * 0.22), e.y + 0.15, z + (e.z - z) * (0.5 + k * 0.22), o.leaf, LP(o, k + t), 1.45, 0.42);
+      }
+    }
+  };
+  // 直立柱狀／圓錐常綠（福木、蘭嶼肉桂、陰香、龍柏、竹柏、羅漢松）
+  const columnar = (x, z, o) => {
+    limb(V(x, 0, z), V(x, o.H * 0.4, z), o.tr, o.tr * 0.8, o.bark, 8);
+    const n = o.n || 8;
+    for (let k = 0; k < n; k++) {
+      const t = k / (n - 1);
+      const rad = o.w * (o.cone ? (1 - t * 0.75) : Math.sin(Math.PI * (0.18 + t * 0.7))) + 0.2;
+      const a = k * 2.4;
+      blob(x + Math.cos(a) * rad * 0.25, o.H * (0.3 + t * 0.66), z + Math.sin(a) * rad * 0.25, rad * 0.85, LP(o, k), 1.0, o.cone ? 1.15 : 1.05, o.det || 0);
+    }
+  };
+  // 棕櫚類
+  const palm = (x, z, o) => {
+    const trunkM = M(o.trunk);
+    const frondM = new THREE.MeshStandardMaterial({ color: o.frond, roughness: 0.8, side: THREE.DoubleSide });
+    const nStem = o.cluster || 1;
+    for (let s = 0; s < nStem; s++) {
+      const a = (s / nStem) * Math.PI * 2, off = nStem > 1 ? 0.5 : 0;
+      const H = o.H * (nStem > 1 ? 0.7 + r() * 0.4 : 1);
+      const bx = x + Math.cos(a) * off, bz = z + Math.sin(a) * off;
+      const top = V(bx + Math.cos(a) * (o.bend || 0), H, bz + Math.sin(a) * (o.bend || 0));
+      limb(V(bx, 0, bz), top, o.tr * 1.2, o.tr, trunkM, 10);
+      if (o.shaft) addMesh(grp, new THREE.CylinderGeometry(o.tr * 0.9, o.tr, 1.4, 10), M(0x5f8f3e), top.x, H + 0.7, top.z);
+      const ty = H + (o.shaft ? 1.3 : 0.1);
+      const nF = o.fan ? 16 : 12;
+      for (let f = 0; f < nF; f++) {
+        const fg = new THREE.Group();
+        fg.position.set(top.x, ty, top.z); fg.rotation.y = (f / nF) * Math.PI * 2 + r() * 0.3;
+        if (o.fan) {                                   // 扇葉
+          const leaf = new THREE.Mesh(new THREE.CircleGeometry(o.len * 0.55, 10, 0, Math.PI), frondM);
+          leaf.position.set(o.len * 0.5, 0.2 - (f % 3) * 0.3, 0); leaf.rotation.set(-Math.PI / 2 + 0.5, 0, -Math.PI / 2);
+          fg.add(leaf);
+        } else {
+          let px = 0, py = 0, tilt = 0.5 - (f % 3) * 0.25;
+          for (let k = 0; k < 4; k++) {
+            const seg = o.len / 4, dx = Math.cos(tilt) * seg, dy = Math.sin(tilt) * seg;
+            const leaf = new THREE.Mesh(new THREE.BoxGeometry(seg + 0.05, 0.03, 0.8 - k * 0.15), frondM);
+            leaf.position.set(px + dx / 2, py + dy / 2, 0); leaf.rotation.set(0.3 * (k % 2 ? 1 : -1), 0, tilt); leaf.castShadow = true;
+            fg.add(leaf); px += dx; py += dy; tilt -= 0.4;
+          }
+        }
+        grp.add(fg);
+      }
+      if (o.coconuts) for (let c = 0; c < 4; c++) addMesh(grp, new THREE.SphereGeometry(0.16, 8, 6), M(0x6b8a2e), top.x + Math.cos(c * 1.6) * 0.3, ty - 0.35, top.z + Math.sin(c * 1.6) * 0.3);
+    }
+  };
+  // 灌木狀小喬木（七里香、金露花、桂花、海桐、石斑木）
+  const shrub = (x, z, o) => {
+    if (o.stem) limb(V(x, 0, z), V(x, o.stem, z), 0.06, 0.05, M(0x6b5a48), 6);
+    for (let k = 0; k < 6; k++) {
+      const a = r() * Math.PI * 2, rr = r() * o.w * 0.45;
+      blob(x + Math.cos(a) * rr, (o.stem || 0) + o.w * 0.5 + r() * o.h * 0.5, z + Math.sin(a) * rr, o.w * (0.4 + r() * 0.2), LP(o, k), 1.1, 0.9, 1);
+    }
+    if (o.flowers) for (let k = 0; k < 7; k++) blob(x + (r() - 0.5) * o.w * 0.8, (o.stem || 0) + o.h * (0.5 + r() * 0.45), z + (r() - 0.5) * o.w * 0.8, 0.11, FM(o.flowers), 1, 1);
+  };
+  // 雞蛋花：燭台狀叉枝 + 枝端葉叢
+  const plumeria = (x, z, o) => {
+    const bark = M(0x8a7d6e), leafM = phenoMat(curSp, 'outer', 0x2f6e2f), plFlower = FM(0xfffbeb);
+    const base = V(x, 1.0, z);
+    limb(V(x, 0, z), base, 0.2, 0.17, bark, 8);
+    const fork = (p, a, tilt, len, rad, d) => {
+      const e = V(p.x + Math.cos(a) * Math.sin(tilt) * len, p.y + Math.cos(tilt) * len, p.z + Math.sin(a) * Math.sin(tilt) * len);
+      limb(p, e, rad, rad * 0.75, bark, 6);
+      if (d === 0) { blob(e.x, e.y + 0.2, e.z, 0.45, leafM, 1.3, 0.5); if (r() < 0.7) blob(e.x, e.y + 0.45, e.z, 0.14, plFlower, 1, 0.6); return; }
+      fork(e, a - 0.6, tilt * 0.85, len * 0.75, rad * 0.75, d - 1); fork(e, a + 0.6, tilt * 0.85, len * 0.75, rad * 0.75, d - 1);
+    };
+    [0.3, 1.9, 3.4, 4.9].forEach(a => fork(base, a, 0.8, 1.1 * o.k, 0.11, 2));
+  };
+
+  // 依物候表於葉團間補上花朵與果實（樹形本身已含花者不再重複）
+  const decoratePheno = (sp, n0, tx, tz) => {
+    const ph = PHENO[sp], st = PHENO_STATE[sp];
+    if (!ph) return;
+    const leafMeshes = [];
+    for (let i = n0; i < grp.children.length; i++) {
+      const m = grp.children[i];
+      if (m.isMesh && m.userData.phenoRole && /core|outer/.test(m.userData.phenoRole)) leafMeshes.push(m);
+    }
+    // 樹下落葉／落花地被（半徑取樹冠水平範圍）
+    let crown = 1.2;
+    leafMeshes.forEach(m => { crown = Math.max(crown, Math.hypot(m.position.x - tx, m.position.z - tz)); });
+    buildPhenoGround(grp, sp, tx, 0.1, tz, Math.min(7.5, crown * 0.9));
+    if (ph.flower && !st.inlineFlower) {
+      const fMat = phenoMat(sp, 'flower', ph.flower.color);
+      const step = Math.max(1, Math.round(1 / (ph.flower.dens || 0.6)));
+      leafMeshes.forEach((m, k) => {
+        if (k % step) return;
+        const rad = (m.geometry.parameters.radius || 0.8) * m.scale.x;
+        blob(m.position.x + (r() - 0.5) * rad * 0.6, m.position.y + rad * 0.45 * (m.scale.y / m.scale.x) + 0.1, m.position.z + (r() - 0.5) * rad * 0.6, Math.min(0.9, rad * 0.42), fMat, 1.25, 0.6);
+      });
+    }
+    if (ph.fruit) {
+      const fr = phenoMat(sp, 'fruit', ph.fruit.color);
+      leafMeshes.forEach((m, k) => {
+        if (k % 3) return;
+        const rad = (m.geometry.parameters.radius || 0.8) * m.scale.x;
+        for (let j = 0; j < 2; j++) addMesh(grp, new THREE.SphereGeometry(ph.fruit.size || 0.12, 6, 5), fr, m.position.x + (r() - 0.5) * rad, m.position.y - rad * 0.25, m.position.z + (r() - 0.5) * rad, false);
+      });
+    }
+  };
+  const G = c => M(c), bDark = M(0x4a3d31), bGrey = M(0x7a7268), bLight = M(0x9a8f80), bRed = M(0x6b4a3a);
+  const SP = {
+    '大花紫薇': (x, z) => broad(x, z, { H: 7.5, forkH: 1.9, tr: 0.2, bark: M(0xa08a74), nB: 6, spread: 2.3, endY: 0.74, nC: 7, leaf: 0.95, flat: 0.8, top: 4, leaves: [G(0x3f7032), G(0x4f8038)] }),
+    '麵包樹':   (x, z) => broad(x, z, { H: 8.5, forkH: 2.4, tr: 0.26, bark: bDark, nB: 5, spread: 2.4, endY: 0.72, nC: 7, leaf: 1.15, flat: 0.8, top: 4, det: 1, leaves: [G(0x2b5a2a), G(0x376a31)] }),
+    '菲島福木': (x, z) => columnar(x, z, { H: 7.5, tr: 0.18, w: 1.15, n: 8, bark: bDark, det: 1, leaves: [G(0x24502a), G(0x2e5e2f)] }),
+    '蘭嶼肉桂': (x, z) => columnar(x, z, { H: 6.5, tr: 0.16, w: 1.25, n: 7, bark: bDark, det: 1, leaves: [G(0x2f6a2f), G(0x6a5a2e), G(0x3c7535)] }),
+    '陰香':     (x, z) => columnar(x, z, { H: 8.5, tr: 0.2, w: 1.6, n: 8, bark: bDark, det: 1, leaves: [G(0x2f6a2f), G(0x7a5a35)] }),
+    '龍柏':     (x, z) => columnar(x, z, { H: 4.2, tr: 0.12, w: 1.0, n: 9, cone: true, bark: bDark, leaves: [G(0x1f4f26), G(0x2f6a2e)] }),
+    '竹柏':     (x, z) => columnar(x, z, { H: 6.5, tr: 0.14, w: 1.1, n: 8, cone: true, bark: bRed, leaves: [G(0x2c5f2c), G(0x3a6e32)] }),
+    '大葉羅漢松': (x, z) => columnar(x, z, { H: 5.0, tr: 0.13, w: 0.9, n: 8, cone: true, bark: bRed, leaves: [G(0x24502a), G(0x30602e)] }),
+    '印度紫檀': (x, z) => broad(x, z, { H: 12.5, forkH: 3.6, tr: 0.38, bark: bGrey, nB: 6, spread: 4.3, endY: 0.7, nC: 9, leaf: 1.2, flat: 0.62, top: 6, leaves: [G(0x355f2c), G(0x467235), G(0x58803c)] }),
+    '大葉桃花心木': (x, z) => broad(x, z, { H: 13, forkH: 3.2, tr: 0.42, bark: bDark, buttress: true, nB: 6, spread: 4.6, endY: 0.68, nC: 9, leaf: 1.45, flat: 0.72, top: 8, det: 1, leaves: [G(0x24502a), G(0x2f5f30), G(0x3a6c35)] }),
+    '榕樹':     (x, z) => broad(x, z, { H: 10, forkH: 2.6, tr: 0.5, bark: bDark, roots: 22, nB: 7, spread: 5.0, endY: 0.66, nC: 8, leaf: 1.4, flat: 0.7, top: 7, det: 1, leaves: [G(0x234f24), G(0x32692f), G(0x49823c)] }),
+    '稜果榕':   (x, z) => broad(x, z, { H: 7, forkH: 2.0, tr: 0.26, bark: bGrey, nB: 5, spread: 2.6, endY: 0.7, nC: 6, leaf: 1.0, flat: 0.75, det: 1, leaves: [G(0x2b5e2b), G(0x3b6e33)] }),
+    '樟樹':     (x, z) => broad(x, z, { H: 11, forkH: 2.8, tr: 0.36, bark: bDark, nB: 6, spread: 4.0, endY: 0.7, nC: 9, leaf: 1.25, flat: 0.78, top: 6, det: 1, leaves: [G(0x3d7232), G(0x4f8a3a), G(0x2f6a2c)] }),
+    '茄冬':     (x, z) => broad(x, z, { H: 10, forkH: 2.6, tr: 0.36, bark: bRed, nB: 6, spread: 3.6, endY: 0.7, nC: 8, leaf: 1.2, flat: 0.72, top: 5, det: 1, leaves: [G(0x2f6a2c), G(0x3f7a34)] }),
+    '雨豆樹':   (x, z) => broad(x, z, { H: 11, forkH: 2.4, tr: 0.45, bark: bDark, nB: 8, spread: 6.2, endY: 0.72, nC: 8, leaf: 1.35, flat: 0.5, top: 6, leaves: [G(0x3f7232), G(0x4f8238)] }),
+    '鳳凰木':   (x, z) => broad(x, z, { H: 9, forkH: 2.4, tr: 0.32, bark: bGrey, nB: 7, spread: 4.8, endY: 0.75, nC: 8, leaf: 1.05, flat: 0.45, top: 4, leaves: [G(0x4f8a36), G(0x62993f)] }),
+    '波羅蜜':   (x, z) => broad(x, z, { H: 9, forkH: 2.2, tr: 0.3, bark: bDark, nB: 5, spread: 2.8, endY: 0.72, nC: 7, leaf: 1.15, flat: 0.85, top: 4, det: 1, leaves: [G(0x24522a), G(0x2f5f2f)] }),
+    '瓊崖海棠': (x, z) => broad(x, z, { H: 7.5, forkH: 2.0, tr: 0.28, bark: bDark, nB: 5, spread: 2.5, endY: 0.72, nC: 7, leaf: 1.0, flat: 0.85, det: 1, leaves: [G(0x235428), G(0x2f6230)] }),
+    '水黃皮':   (x, z) => broad(x, z, { H: 8, forkH: 2.0, tr: 0.26, bark: bGrey, nB: 6, spread: 3.0, endY: 0.7, nC: 7, leaf: 1.0, flat: 0.72, leaves: [G(0x3f7a34), G(0x4f8a3a)] }),
+    '黃槿':     (x, z) => broad(x, z, { H: 6.5, forkH: 1.6, tr: 0.26, bark: bGrey, nB: 6, spread: 2.8, endY: 0.72, nC: 7, leaf: 1.0, flat: 0.75, det: 1, flowers: G(0xf5d742), leaves: [G(0x3c7a34), G(0x4a8a3a)] }),
+    '苦楝':     (x, z) => broad(x, z, { H: 9, forkH: 2.6, tr: 0.26, bark: bDark, nB: 5, spread: 3.4, endY: 0.76, nC: 8, leaf: 0.85, flat: 0.55, leaves: [G(0x5f9445), G(0x74a64e)] }),
+    '藍花楹':   (x, z) => broad(x, z, { H: 8.5, forkH: 3.0, tr: 0.22, bark: bDark, nB: 5, spread: 3.0, endY: 0.78, nC: 8, leaf: 0.8, flat: 0.5, leaves: [G(0x6f9e3f), G(0x86b04c)] }),
+    '火焰木':   (x, z) => broad(x, z, { H: 10, forkH: 3.4, tr: 0.26, bark: bGrey, nB: 5, spread: 2.6, endY: 0.8, nC: 7, leaf: 1.0, flat: 0.8, flowers: G(0xe8541a), leaves: [G(0x2f6a2c), G(0x3f7a34)] }),
+    '海南菜豆樹': (x, z) => broad(x, z, { H: 8, forkH: 2.6, tr: 0.22, bark: bGrey, nB: 5, spread: 2.2, endY: 0.78, nC: 7, leaf: 0.9, flat: 0.8, leaves: [G(0x3f8034), G(0x55913e)] }),
+    '光蠟樹':   (x, z) => broad(x, z, { H: 9, forkH: 3.0, tr: 0.22, bark: bLight, nB: 5, spread: 2.6, endY: 0.78, nC: 7, leaf: 0.85, flat: 0.65, leaves: [G(0x5a9142), G(0x6aa24a)] }),
+    '臺灣櫸':   (x, z) => broad(x, z, { H: 10, forkH: 2.8, tr: 0.24, bark: bLight, nB: 6, spread: 2.8, endY: 0.8, nC: 7, leaf: 0.85, flat: 0.75, leaves: [G(0x4f8a3a), G(0x62993f)] }),
+    '楓香':     (x, z) => broad(x, z, { H: 10, forkH: 4.2, tr: 0.2, bark: bLight, nB: 5, spread: 1.6, endY: 0.82, nC: 6, leaf: 0.9, flat: 0.95, leaves: [G(0x587f3a), G(0x6a8f40), G(0x7a9a46)] }),
+    '黃金風鈴木': (x, z) => broad(x, z, { H: 7, forkH: 2.2, tr: 0.2, bark: bGrey, nB: 5, spread: 2.4, endY: 0.78, nC: 6, leaf: 0.9, flat: 0.7, leaves: [G(0x4f8a3a), G(0x62993f)] }),
+    '風鈴木':   (x, z) => broad(x, z, { H: 8, forkH: 2.4, tr: 0.22, bark: bGrey, nB: 5, spread: 2.6, endY: 0.78, nC: 6, leaf: 0.95, flat: 0.7, leaves: [G(0x3f7a34), G(0x55913e)] }),
+    '欖仁樹':   (x, z, lean) => tiered(x + (lean ? 0.9 : 0), z, { H: 9, tr: 0.32, tiers: 4, spread: 3.4, leaf: 0.85, bark: bDark, leaves: [G(0x3c7431), G(0x55893a)] }),
+    '馬拉巴栗': (x, z) => tiered(x, z, { H: 6, tr: 0.18, tiers: 4, spread: 1.8, leaf: 0.6, bark: M(0x6f7a4a), leaves: [G(0x3f8034), G(0x55913e)] }),
+    '大王椰子': (x, z) => palm(x, z, { H: 12.5, tr: 0.24, trunk: 0xb4b0a6, frond: 0x3f7a35, len: 4.2, shaft: true }),
+    '可可椰子': (x, z) => palm(x, z, { H: 9, tr: 0.2, trunk: 0x8a7d6c, frond: 0x4f8a36, len: 4.0, bend: 0.9, coconuts: true }),
+    '黃椰子':   (x, z) => palm(x, z, { H: 4.5, tr: 0.08, trunk: 0xa8a050, frond: 0x6fa045, len: 2.2, cluster: 5 }),
+    '扇葉蒲葵': (x, z) => palm(x, z, { H: 6.5, tr: 0.18, trunk: 0x7a7066, frond: 0x3f7a35, len: 2.4, fan: true }),
+    '緬梔':     (x, z) => plumeria(x, z, { k: 1.0 }),
+    '七里香':   (x, z) => shrub(x, z, { w: 1.6, h: 2.2, stem: 0.5, leaves: [G(0x2f6a2c), G(0x3c7a32)], flowers: G(0xfffbeb) }),
+    '金露花':   (x, z) => shrub(x, z, { w: 1.4, h: 1.6, leaves: [G(0x7fae3a), G(0x95c040)], flowers: G(0x7a5ac8) }),
+    '桂花':     (x, z) => shrub(x, z, { w: 1.8, h: 2.6, stem: 0.6, leaves: [G(0x2b5a2a), G(0x376a31)], flowers: G(0xfff2a8) }),
+    '臺灣海桐': (x, z) => shrub(x, z, { w: 1.8, h: 2.0, stem: 0.4, leaves: [G(0x2f6a2c), G(0x3f7a34)], flowers: G(0xffffff) }),
+    '田代氏石斑木': (x, z) => shrub(x, z, { w: 1.5, h: 1.8, stem: 0.4, leaves: [G(0x2b5a2a), G(0x376a31)], flowers: G(0xffe4ec) })
+  };
+  const crownR = { '菲島福木': 1.3, '蘭嶼肉桂': 1.4, '龍柏': 1.0, '竹柏': 1.2, '大葉羅漢松': 1.0, '七里香': 0.9, '金露花': 0.8, '桂花': 1.0, '臺灣海桐': 1.0, '田代氏石斑木': 0.9, '黃椰子': 1.6, '扇葉蒲葵': 1.8, '可可椰子': 3.0, '大王椰子': 3.2, '雨豆樹': 6.5, '榕樹': 5.5, '大葉桃花心木': 5.5, '印度紫檀': 5.0, '樟樹': 4.5, '鳳凰木': 5.0 };
+  // v2.12.121 依實景照片 20261116_071557.jpg 與屋頂俯拍實景（從頂樓看02 / 向下01 / 3F通往頂樓）：
+  // 北棟北側車道後半段四棵喬木（442315、442319、442332、442323）：
+  // 深黑褐粗糙細長樹幹（底部微外擴根基）、自地面一路向北側車道自然傾斜、於 5.4～6.2 m 高處呈陡峭 V 字形分叉主枝直上屋頂高度，
+  // 上層配輕盈通透的橄欖黃綠羽狀複葉小葉團，使深色枝幹與藍天於樹冠間清晰透出
+  const bVeryDark = M(0x2d241c);
+  const northRearOliveLeaves = [G(0x5c7332), G(0x6e853b), G(0x829446)];
+  const northRearTree = (x, z, o) => {
+    const lz1 = o.leanZ * 0.45, lx1 = (o.leanX || 0) * 0.45;
+    const mid = V(x + lx1, o.forkH * 0.52, z + lz1);
+    const fork = V(x + (o.leanX || 0), o.forkH, z + o.leanZ);
+    // 根基微外擴＋兩段自然微彎深褐樹幹
+    limb(V(x, 0, z), V(x + lx1 * 0.12, 0.75, z + lz1 * 0.12), o.tr * 1.32, o.tr * 0.98, o.bark, 9);
+    limb(V(x + lx1 * 0.12, 0.72, z + lz1 * 0.12), mid, o.tr * 0.98, o.tr * 0.86, o.bark, 9);
+    limb(mid, fork, o.tr * 0.86, o.tr * 0.74, o.bark, 8);
+    // 高位陡峭 V/Y 字形上揚主枝（延續向北傾勢，形成實景中清晰可見的深色高枝骨架）
+    const nMain = o.nMain || 2;
+    for (let m = 0; m < nMain; m++) {
+      const mAng = (m / nMain) * Math.PI * 2 + (o.angOff || 0.35);
+      const mSpread = o.spread * (0.34 + 0.16 * (m % 2));
+      const mH = o.H * (0.72 + 0.08 * (m % 2));
+      const mEnd = V(
+        fork.x + Math.cos(mAng) * mSpread + (o.leanX || 0) * 0.35,
+        mH,
+        fork.z + Math.sin(mAng) * mSpread + o.leanZ * 0.55
+      );
+      limb(fork, mEnd, o.tr * 0.62, o.tr * 0.28, o.bark, 7);
+      // 由主枝上段分出細長亞枝與輕盈通透之橄欖黃綠葉叢
+      const nSub = o.nSub || 3;
+      for (let s = 0; s < nSub; s++) {
+        const sa = mAng + (s - (nSub - 1) / 2) * 1.15 + (r() - 0.5) * 0.45;
+        const tStart = 0.48 + (s / Math.max(1, nSub)) * 0.45;
+        const p0 = new THREE.Vector3().lerpVectors(fork, mEnd, tStart);
+        const sReach = o.spread * (0.48 + r() * 0.42);
+        const p1 = V(
+          p0.x + Math.cos(sa) * sReach,
+          Math.min(o.H * 0.98, p0.y + (o.H - o.forkH) * (0.28 + r() * 0.26)),
+          p0.z + Math.sin(sa) * sReach + o.leanZ * 0.18
+        );
+        limb(p0, p1, o.tr * 0.28, o.tr * 0.10, o.bark, 5);
+        for (let c = 0; c < o.nC; c++) {
+          const ca = r() * Math.PI * 2, cr = r() * o.leaf * 1.35;
+          const lt = 0.55 + r() * 0.55;
+          const lx = p0.x + (p1.x - p0.x) * lt + Math.cos(ca) * cr;
+          const ly = p0.y + (p1.y - p0.y) * lt + (r() - 0.35) * o.leaf * 0.7;
+          const lz = p0.z + (p1.z - p0.z) * lt + Math.sin(ca) * cr;
+          blob(lx, ly, lz, o.leaf * (0.72 + r() * 0.48), LP(o, c + s + m), 1.32, o.flat, 0);
+        }
+      }
+    }
+    // 頂梢輕盈羽葉（拉高輪廓至屋頂上方而不厚重）
+    for (let c = 0; c < (o.top || 3); c++) {
+      const ca = r() * Math.PI * 2, cr = r() * o.spread * 0.48;
+      blob(fork.x + Math.cos(ca) * cr, o.H * (0.88 + r() * 0.11), fork.z + o.leanZ * 0.55 + Math.sin(ca) * cr, o.leaf * 0.95, LP(o, c, 'core'), 1.35, o.flat, 0);
+    }
+  };
+  const NORTH_REAR_WEST_TREES = {
+    '442315': { slender: true, H: 15.2, forkH: 5.4, tr: 0.22, leanX: -0.25, leanZ: -1.15, bark: bVeryDark, nMain: 3, nSub: 3, spread: 2.5, nC: 4, leaf: 0.56, flat: 0.44, top: 4, angOff: 0.55, leaves: northRearOliveLeaves, crownR: 2.7 },
+    '442319': { slender: true, H: 13.6, forkH: 6.2, tr: 0.13, leanX: -0.10, leanZ: -0.85, bark: bVeryDark, nMain: 2, nSub: 3, spread: 1.9, nC: 3, leaf: 0.48, flat: 0.44, top: 3, angOff: 0.20, leaves: northRearOliveLeaves, crownR: 2.1 },
+    '442332': { slender: true, H: 13.4, forkH: 5.6, tr: 0.16, leanX: -0.10, leanZ: -0.80, bark: bVeryDark, nMain: 2, nSub: 3, spread: 2.2, nC: 4, leaf: 0.52, flat: 0.46, top: 3, angOff: 0.90, leaves: northRearOliveLeaves, crownR: 2.4 },
+    '442323': { slender: true, H: 13.2, forkH: 5.4, tr: 0.17, leanX: -0.08, leanZ: -0.80, bark: bVeryDark, nMain: 3, nSub: 3, spread: 2.3, nC: 4, leaf: 0.54, flat: 0.46, top: 3, angOff: 0.40, leaves: northRearOliveLeaves, crownR: 2.5 },
+    '442334': { H: 13.4, forkH: 5.0, tr: 0.20, leanZ: -0.65, bark: bDark, nB: 5, spread: 2.7, endY: 0.78, nC: 5, leaf: 0.78, flat: 0.54, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.8 },
+    '442330': { H: 13.6, forkH: 4.8, tr: 0.22, leanZ: -0.65, bark: bDark, nB: 5, spread: 2.8, endY: 0.78, nC: 5, leaf: 0.80, flat: 0.54, top: 3, leaves: [G(0x3a6630), G(0x4b7838), G(0x5c8640)], crownR: 2.9 }
+  };
+  const SPORTS_KIND_SP = { breadfruit: '麵包樹', crapeMyrtle: '大花紫薇', rosewood: '印度紫檀' };
+  const allTrees = CAMPUS_TREE_REGISTRY.concat(SPORTS_NAMED_TREES.map((t, i) => ['photo' + i, SPORTS_KIND_SP[t.kind], t.x, t.z, 0]));
+  allTrees.forEach(([id, sp, x, z, lean]) => {
+    const fn = SP[sp];
+    if (!fn) return;
+    const n0 = grp.children.length;
+    curSp = sp;
+    phenoState(sp);
+    window.__phenoCounts = window.__phenoCounts || {}; window.__phenoCounts[sp] = (window.__phenoCounts[sp] || 0) + 1;
+    phenoTreeAt(sp, x, z);
+    const custom = NORTH_REAR_WEST_TREES[id];
+    if (custom && custom.slender) northRearTree(x, z, custom);
+    else if (custom) broad(x, z, custom);
+    else fn(x, z, lean);
+    decoratePheno(sp, n0, x, z);
+    // 依樹幹位置決定標高：南棟前草地土丘貼合丘面高程、新棟前庭草坪置於草坪頂（+0.14）、其餘下沉中庭內整株下移；全部標記 keepLevel
+    const hillY = window.__southHillAt ? window.__southHillAt(x, z) : null;
+    const inNewYard = (x >= -23.4 && x <= -4.65 && z >= -4.15 && z <= 4.98);
+    const yOff = hillY !== null ? (hillY - 0.08) : (inNewYard ? 0.14 : (inCourtyardSink(x, z) ? -COURTYARD_SINK.D : 0));
+    for (let i = n0; i < grp.children.length; i++) {
+      const o = grp.children[i];
+      o.position.y += yOff;
+      o.traverse(c => { c.userData.keepLevel = true; });
+    }
+    campusTreeRecords.push({ x, z, r: (custom && custom.crownR) || crownR[sp] || 3.2, species: /椰|蒲葵/.test(sp) ? 'palm' : (/風鈴|緬梔|紫薇|火焰|鳳凰|藍花楹/.test(sp) ? 'flowering' : 'broad') });
+  });
+  layerGroups.vegetation.add(grp);
+  window.__registryTreeCount = CAMPUS_TREE_REGISTRY.length;
+  applyPhenology(phenoMonth());
+})();
+(function buildSportsNamedTrees() {
+  return;   // v2.12.18：已併入 buildRegistryTrees（物候分層材質）
+  const grp = new THREE.Group();
+  const up = new THREE.Vector3(0, 1, 0);
+  let sd = 131; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.82 });
+  const limb = (a, b, r0, r1, mat) => {
+    const d = new THREE.Vector3().subVectors(b, a);
+    const m = addMesh(grp, new THREE.CylinderGeometry(r1, r0, d.length(), 8), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    m.quaternion.setFromUnitVectors(up, d.normalize());
+  };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  // 通用：主幹 → 分叉高度 forkH → nB 支斜生主枝 → 枝端葉團（葉團大小 leafR、每枝 nC 團、扁平度 flat）
+  const tree = (t, o) => {
+    const base = V(t.x, 0, t.z), fork = V(t.x + (o.lean || 0), o.forkH, t.z);
+    limb(base, fork, o.trunkR, o.trunkR * 0.78, o.bark);
+    if (o.buttress) for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2 + r();
+      const rt = addBox(grp, o.trunkR * 3.4, o.trunkR * 0.9, 0.12, o.bark, t.x + Math.cos(a) * o.trunkR * 1.4, o.trunkR * 0.35, t.z + Math.sin(a) * o.trunkR * 1.4);
+      rt.rotation.y = -a; rt.rotation.z = 0.2;
+    }
+    for (let b = 0; b < o.nB; b++) {
+      const a = (b / o.nB) * Math.PI * 2 + r() * 0.6;
+      const reach = o.spread * (0.75 + r() * 0.3);
+      const e = V(t.x + Math.cos(a) * reach, o.H * (o.endY + r() * 0.12), t.z + Math.sin(a) * reach);
+      limb(fork, e, o.trunkR * 0.55, o.trunkR * 0.22, o.bark);
+      for (let c = 0; c < o.nC; c++) {
+        const ca = r() * Math.PI * 2, cr = r() * o.leafR * 1.4;
+        const cl = addMesh(grp, new THREE.IcosahedronGeometry(o.leafR * (0.75 + r() * 0.5), o.detail || 0), o.leaves[c % o.leaves.length],
+          e.x + Math.cos(ca) * cr, e.y + o.leafR * 0.4 + (r() - 0.4) * o.leafR, e.z + Math.sin(ca) * cr);
+        cl.scale.set(1.25, o.flat, 1.25);
+      }
+    }
+    if (o.crownTop) {                                    // 樹冠頂部補團，使輪廓飽滿
+      for (let c = 0; c < o.crownTop; c++) {
+        const ca = r() * Math.PI * 2, cr = r() * o.spread * 0.6;
+        const cl = addMesh(grp, new THREE.IcosahedronGeometry(o.leafR * 1.1, o.detail || 0), o.leaves[c % o.leaves.length], t.x + Math.cos(ca) * cr, o.H * 0.92 + r() * o.leafR, t.z + Math.sin(ca) * cr);
+        cl.scale.set(1.3, o.flat, 1.3);
+      }
+    }
+  };
+  const darkBark = M(0x4a3d31), greyBark = M(0x7a7268), lightBark = M(0x9a8f80);
+  const SPEC = {
+    // 桃花心木：粗壯深褐主幹約 3 m 分枝，濃密深綠圓頂大樹冠（高約 13 m、冠幅約 13 m）
+    mahogany: { H: 13, forkH: 3.2, trunkR: 0.42, bark: darkBark, buttress: true, nB: 6, spread: 4.6, endY: 0.68, nC: 9, leafR: 1.5, flat: 0.72, crownTop: 8, detail: 1, leaves: [M(0x24502a), M(0x2f5f30), M(0x3a6c35)] },
+    // 印度紫檀：灰褐主幹，大枝斜展後略下垂，細碎羽葉構成寬闊濃密的傘形樹冠（高約 13 m）
+    rosewood: { H: 12.5, forkH: 3.6, trunkR: 0.38, bark: greyBark, nB: 6, spread: 4.4, endY: 0.7, nC: 10, leafR: 1.25, flat: 0.62, crownTop: 6, leaves: [M(0x355f2c), M(0x467235), M(0x58803c)] },
+    // 楓香：通直淺灰主幹、枝條短而上揚，窄卵形疏朗樹冠（高約 10 m）
+    sweetgum: { H: 10, forkH: 4.2, trunkR: 0.2, bark: lightBark, nB: 5, spread: 1.6, endY: 0.82, nC: 6, leafR: 0.9, flat: 0.95, crownTop: 4, leaves: [M(0x587f3a), M(0x6a8f40), M(0x7a9a46)] },
+    // 麵包樹：深褐主幹，大型裂葉形成濃密深綠圓形樹冠（高約 8 m）
+    breadfruit: { H: 8.5, forkH: 2.4, trunkR: 0.26, bark: darkBark, nB: 5, spread: 2.4, endY: 0.72, nC: 7, leafR: 1.15, flat: 0.8, crownTop: 4, detail: 1, leaves: [M(0x2b5a2a), M(0x376a31)] },
+    // 大花紫薇：光滑淺褐主幹，低處多分枝，圓形中型樹冠（高約 7.5 m）
+    crapeMyrtle: { H: 7.5, forkH: 1.9, trunkR: 0.2, bark: M(0xa08a74), nB: 6, spread: 2.3, endY: 0.74, nC: 7, leafR: 0.95, flat: 0.8, crownTop: 4, leaves: [M(0x3f7032), M(0x4f8038)] }
+  };
+  SPORTS_NAMED_TREES.forEach(t => {
+    tree(t, SPEC[t.kind]);
+    // 樹穴（楓香、印度紫檀位於跑道外圍步道上）
+    if (t.kind === 'sweetgum' || t.kind === 'rosewood') addMesh(grp, new THREE.CylinderGeometry(0.75, 0.75, 0.04, 16), M(0x4f4235), t.x, 0.17, t.z, false);
+    campusTreeRecords.push({ x: t.x, z: t.z, r: t.r, species: 'broad' });
+  });
+  layerGroups.vegetation.add(grp);
+})();
+// v2.12.16：車道林蔭樹改由樹木普查登錄資料呈現（原 6 株通用樹停用）
 
 // Exterior Commuter Walkway Buffer Street Trees (`圍牆外通學步道緩衝帶行道樹`, positioned outside `V0(56,22)->V6(56,328)->V5(180,480)->V4(405,392)`)
 const commuterWalkwayTrees = [
   // Along West Commuter Walkway (`建興南路50巷` & `建興南路` 學校後圍牆外側通學步道)
-  [44, 52, 0.76, 'broad'], [44, 138, 0.78, 'flowering'], [44, 205, 0.76, 'broad'], [44, 248, 0.74, 'flowering'],
-  [68, 362, 0.78, 'broad'], [108, 412, 0.80, 'flowering'], [148, 462, 0.76, 'broad'],
-  // Along South/SW Sports Ground Commuter Walkway (`建興南路42巷` 學校後圍牆外側與南側通學步道)
-  [222, 476, 0.78, 'flowering'], [285, 452, 0.76, 'broad'], [352, 425, 0.80, 'flowering'],
-  [452, 392, 0.74, 'broad'], [565, 379, 0.76, 'flowering'], [665, 378, 0.74, 'broad'], [815, 376, 0.78, 'flowering']
+  [44, 52, 0.76, 'broad'],
+  // v2.12.9 依街景：運動場西側與西南側人行道上無行道樹（樹木皆在圍牆內），原 6 株移除
+  // 建興南路42巷（運動場、幼兒園、南棟段）：v2.12.4 依 2024 街景，人行道外側無行道樹（原 7 株位於調整後之車道上，移除）；
+  //   運動場段樹木改由圍牆內福木列呈現，南棟段行道樹於南棟建模中配置
 ];
 commuterWalkwayTrees.forEach(([px, py, sc, sp]) => addTree(X(px), Z(py), sc, sp));
 
@@ -18229,10 +22834,10 @@ commuterWalkwayTrees.forEach(([px, py, sc, sp]) => addTree(X(px), Z(py), sc, sp)
 const streetLightCoords = [
   // (依指示移除前庭迎賓大道兩側突兀立柱路燈，保持車道開闊視野)
   [X(690), Z(155)], [X(575), Z(155)], [X(465), Z(155)],
-  [X(690), Z(268)], [X(575), Z(268)], [X(465), Z(268)],
+  // v2.12.10：南棟／新棟前（中庭南緣）實景無路燈，原 3 支移除
   [X(382), Z(200)], [X(382), Z(295)], [X(208), Z(200)], [X(208), Z(295)],
   // Commuter Walkway Buffer Streetlights (`後圍牆外通學步道照明燈`)
-  [X(46), Z(165)], [X(46), Z(312)], [X(118), Z(422)], [X(255), Z(464)], [X(368), Z(418)], [X(615), Z(376)], [X(845), Z(374)]
+  [X(44), Z(80)], [X(40), Z(140)], [X(118), Z(422)], [X(255), Z(464)], [X(368), Z(418)], [X(615), Z(376)], [X(845), Z(374)]
 ];
 const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffe4a0 });
 streetLightCoords.forEach(([lx, lz]) => {
@@ -18275,17 +22880,17 @@ const pedestrianAgents = [];
     // Loop 4: Running Track Oval (Students jogging on the 200m PU track inside the Rear Wall & Campus Lawn Buffer Zone)
     (() => {
       const pts = [];
-      const cx = X(288), cz = Z(248), r = 56 * S, hs = 64 * S;
+      const cx = TRACK_CFG.cx, cz = TRACK_CFG.cz, r = TRACK_CFG.rx - 3.0, hs = TRACK_CFG.straight / 2;   // v2.12.33 跑道依航照
       for (let i = 0; i < 16; i++) {
         const a = (i / 16) * Math.PI * 2;
-        pts.push([cx + Math.cos(a) * r, cz + Math.sin(a) * (r + hs)]);
+        pts.push(trackToWorld(cx + Math.cos(a) * r, cz + Math.sin(a) * (r + hs)));
       }
       return pts;
     })(),
     // Loop 5: Exterior Commuter Walkway Buffer (`後圍牆外通學步道師生步行路線`: 西側後門 -> 運動場西側通學步道 -> 西南轉角 -> 建興南路42巷通學步道 -> 南側門)
     [
-      [X(46), Z(90)], [X(46), Z(328)], [X(174), Z(490)], [X(406), Z(402)], [X(506), Z(380)],
-      [X(722), Z(373)], [X(506), Z(380)], [X(406), Z(402)], [X(174), Z(490)], [X(46), Z(328)]
+      [X(46), Z(90)], [X(34), Z(180)], [X(174), Z(490)], [X(406), Z(402)], [X(506), Z(380)],
+      [X(722), Z(373)], [X(506), Z(380)], [X(406), Z(402)], [X(174), Z(490)], [X(34), Z(180)]
     ]
   ];
 
@@ -18374,9 +22979,208 @@ let activeRoomCode = null;
 let activeFilter = 'featured';
 let activeMode = '3d'; // '3d' or 'plan'
 let timeOfDay = 10.5;  // 6.0 to 21.0
-let activeSeason = 'summer';
+// ============================================================================
+// v2.12.18 校園樹木物候（屏東平地一般物候；月份 1–12）
+//   leaf：12 字元依序為 1～12 月葉況 —— G 綠葉、T 轉色、S 換葉稀疏、D 落葉（僅剩枝幹）、N 新葉
+//   flower / fruit：月份、顏色、密度；turn 轉色色、newLeaf 新葉色
+//   若學校有實際觀察記錄，直接修改本表即可
+// ============================================================================
+const PHENO = {
+  '黃金風鈴木': { leaf: 'GTDNGGGGGGGG', flower: { m: [3], color: 0xf7c51e, dens: 1 }, turn: 0xc9a23a },
+  '風鈴木':     { leaf: 'GGSNGGGGGGGG', flower: { m: [3, 4], color: 0xe889b2, dens: 0.8 } },
+  '火焰木':     { leaf: 'GGGGGGGGGGGG', flower: { m: [2, 3, 4], color: 0xe8541a } },
+  '苦楝':       { leaf: 'DDNGGGGGGGTT', flower: { m: [3, 4], color: 0xc9b0e4, dens: 0.8 }, fruit: { m: [11, 12, 1, 2], color: 0xe0b84a }, turn: 0xc9b040 },
+  '印度紫檀':   { leaf: 'GSNGGGGGGGGG', flower: { m: [4, 5], color: 0xf2c418, dens: 1 } },
+  '藍花楹':     { leaf: 'GSDSNGGGGGGG', flower: { m: [4, 5], color: 0x8a78d8, dens: 1 } },
+  '鳳凰木':     { leaf: 'DDSNGGGGGGGT', flower: { m: [5, 6], color: 0xe63f1c, dens: 1 }, turn: 0xc9b040 },
+  '大花紫薇':   { leaf: 'DDNGGGGGGGTT', flower: { m: [5, 6, 7], color: 0xb06fd8, dens: 0.9 }, turn: 0xb4532c },
+  '雨豆樹':     { leaf: 'GSNGGGGGGGGG', flower: { m: [5, 6], color: 0xf0a0b8, dens: 0.6 } },
+  '緬梔':       { leaf: 'DDDNGGGGGGTD', flower: { m: [4, 5, 6, 7, 8, 9, 10], color: 0xfffbeb }, turn: 0xc9b040 },
+  '水黃皮':     { leaf: 'GGSNGGGGGGGG', flower: { m: [4, 5, 6], color: 0xc9a0d8, dens: 0.6 } },
+  '欖仁樹':     { leaf: 'TDNGGGGGGGTT', turn: 0xb4432c },
+  '小葉欖仁':   { leaf: 'DDNGGGGGGGGT', turn: 0xc9a23a },
+  '楓香':       { leaf: 'TDNGGGGGGGGT', turn: 0xc8702c },
+  '臺灣櫸':     { leaf: 'TDNGGGGGGGGT', turn: 0xb07a3a },
+  '大葉桃花心木': { leaf: 'GSNGGGGGGGGG', newLeaf: 0xa8743a, fruit: { m: [10, 11, 12, 1, 2], color: 0x7a5a3a, size: 0.2 } },
+  '樟樹':       { leaf: 'GTNGGGGGGGGG', turn: 0xb4532c, newLeaf: 0xa8d860, flower: { m: [4], color: 0xf0f0d0, dens: 0.3 } },
+  '茄冬':       { leaf: 'GSNGGGGGGGGG', fruit: { m: [9, 10, 11], color: 0x6a4a5a } },
+  '光蠟樹':     { leaf: 'GSNGGGGGGGGG', flower: { m: [5, 6], color: 0xf0f0e0, dens: 0.5 } },
+  '蘭嶼肉桂':   { leaf: 'GGNNGGGGGGGG', newLeaf: 0xa85a3a },
+  '陰香':       { leaf: 'GGNNGGGGGGGG', newLeaf: 0xb0583a },
+  '黃槿':       { leaf: 'GGGGGGGGGGGG', flower: { m: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], color: 0xf5d742 } },
+  '海南菜豆樹': { leaf: 'GGGGGGGGGGGG', flower: { m: [4, 5, 6], color: 0xfffbe0, dens: 0.5 } },
+  '馬拉巴栗':   { leaf: 'GGGGGGGGGGGG', flower: { m: [4, 5], color: 0xf0e8c0, dens: 0.4 } },
+  '菲島福木':   { leaf: 'GGGGGGGGGGGG', fruit: { m: [7, 8, 9, 10], color: 0xe8b030 } },
+  '榕樹':       { leaf: 'GGNGGGGGGGGG', newLeaf: 0x7ab050 },
+  '麵包樹':     { leaf: 'GGGGGGGGGGGG', fruit: { m: [6, 7, 8], color: 0x8ab040, size: 0.22 } },
+  '可可椰子':   { leaf: 'GGGGGGGGGGGG' },
+  '龍柏':       { leaf: 'GGGGGGGGGGGG' },
+  '竹柏':       { leaf: 'GGGGGGGGGGGG' },
+  '大葉羅漢松': { leaf: 'GGGGGGGGGGGG' },
+  '大王椰子':   { leaf: 'GGGGGGGGGGGG' },
+  '黃椰子':     { leaf: 'GGGGGGGGGGGG' },
+  '扇葉蒲葵':   { leaf: 'GGGGGGGGGGGG' },
+  '稜果榕':     { leaf: 'GGNGGGGGGGGG', newLeaf: 0x7ab050 },
+  '波羅蜜':     { leaf: 'GGGGGGGGGGGG', fruit: { m: [5, 6, 7, 8], color: 0x9aa040, size: 0.28 } },
+  '瓊崖海棠':   { leaf: 'GGGGGGGGGGGG', flower: { m: [5, 6], color: 0xffffff, dens: 0.5 } },
+  '七里香':     { leaf: 'GGGGGGGGGGGG', flower: { m: [6, 7, 8, 9, 10], color: 0xfffbeb } },
+  '桂花':       { leaf: 'GGGGGGGGGGGG', flower: { m: [9, 10, 11, 12, 1, 2], color: 0xfff2a8 } },
+  '金露花':     { leaf: 'GGGGGGGGGGGG', flower: { m: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], color: 0x7a5ac8 }, fruit: { m: [7, 8, 9, 10, 11, 12], color: 0xe8a020, size: 0.08 } },
+  '臺灣海桐':   { leaf: 'GGGGGGGGGGGG', flower: { m: [3, 4], color: 0xffffff } },
+  '田代氏石斑木': { leaf: 'GGGGGGGGGGGG', flower: { m: [3, 4], color: 0xffe4ec } }
+};
+const PHENO_STATE = {};
+function phenoState(sp) {
+  return (PHENO_STATE[sp] = PHENO_STATE[sp] || { core: new Map(), outer: new Map(), flower: [], fruit: [], inlineFlower: false });
+}
+const _phenoMatCache = {};
+function phenoMat(sp, role, color) {
+  const key = sp + '|' + role + '|' + color;
+  if (_phenoMatCache[key]) return _phenoMatCache[key];
+  const m = new THREE.MeshStandardMaterial({ color, roughness: role === 'flower' ? 0.6 : 0.82 });
+  m.userData.phenoRole = role;
+  const st = phenoState(sp);
+  if (role === 'core' || role === 'outer') st[role].set(m, color);
+  else st[role].push(m);
+  return (_phenoMatCache[key] = m);
+}
+const phenoMonth = () => (typeof seasonsEnabled !== 'undefined' && !seasonsEnabled ? 7 : activeMonth);
+const _pc = new THREE.Color(), _pc2 = new THREE.Color();
+function applyPhenology(month) {
+  drainPhenoPending();
+  applyLawnSeason(month);
+  const idx = (month - 1) % 12;
+  Object.entries(PHENO_STATE).forEach(([sp, st]) => {
+    const ph = PHENO[sp];
+    const code = ph ? ph.leaf[idx] : 'G';
+    const turn = (ph && ph.turn) || 0xc9a23a, fresh = (ph && ph.newLeaf) || 0x9acd5a;
+    const set = (map, mix, target, visible) => map.forEach((base, m) => {
+      m.visible = visible;
+      _pc.setHex(base);
+      if (target !== null) _pc.lerp(_pc2.setHex(target), mix);
+      m.color.copy(_pc);
+    });
+    if (code === 'G') { set(st.core, 0, null, true); set(st.outer, 0, null, true); }
+    else if (code === 'T') { set(st.core, 0.45, turn, true); set(st.outer, 0.85, turn, true); }
+    else if (code === 'S') { set(st.core, 0, null, true); set(st.outer, 0, null, false); }
+    else if (code === 'D') { set(st.core, 0.6, turn, false); set(st.outer, 0, null, false); }
+    else if (code === 'N') { set(st.core, 0.45, fresh, true); set(st.outer, 0.75, fresh, true); }
+    const inBloom = !!(ph && ph.flower && ph.flower.m.includes(month));
+    st.flower.forEach(m => { m.visible = inBloom; });
+    const inFruit = !!(ph && ph.fruit && ph.fruit.m.includes(month));
+    st.fruit.forEach(m => { m.visible = inFruit; });
+    (st.litter || []).forEach(m => { m.visible = /[TDS]/.test(code); });
+    (st.petal || []).forEach(m => { m.visible = inBloom; });
+  });
+  if (typeof markShadowsDirty === 'function') markShadowsDirty();
+}
+// 本月花況：回傳 [{ sp, count, kind }]（kind：flower 花期、bare 落葉、turn 轉色、new 新葉、fruit 果期）
+function phenologyHighlights(month) {
+  const idx = (month - 1) % 12, out = [];
+  Object.keys(PHENO).forEach(sp => {
+    const ph = PHENO[sp];
+    const n = (window.__phenoCounts || {})[sp] || 0;
+    if (!n) return;                                   // 校園中沒有此樹種
+    if (ph.flower && ph.flower.m.includes(month)) out.push({ sp, n, kind: '開花' });
+    else if (ph.leaf[idx] === 'D') out.push({ sp, n, kind: '落葉' });
+    else if (ph.leaf[idx] === 'T') out.push({ sp, n, kind: '轉色' });
+    else if (ph.leaf[idx] === 'N') out.push({ sp, n, kind: '新葉' });
+    else if (ph.fruit && ph.fruit.m.includes(month)) out.push({ sp, n, kind: '結果' });
+  });
+  return out;
+}
+window.applyPhenology = applyPhenology;
+
+// v2.12.19 個別建模樹木、落葉地被、乾季草坪
+//   建模程式可能早於本段執行，故以佇列暫存，於 applyPhenology 時併入
+// 各樹種位置（供「本月花況」點選飛往）
+var PHENO_TREES = window.__phenoTrees = window.__phenoTrees || {};   // var：建築建模可能早於此行呼叫
+function phenoTreeAt(sp, x, z, isPhoto = false) {
+  PHENO_TREES = window.__phenoTrees = window.__phenoTrees || {};
+  const arr = (PHENO_TREES[sp] = PHENO_TREES[sp] || []);
+  if (!arr.some(t => Math.hypot(t.x - x, t.z - z) < 1.5)) arr.push({ x, z });
+  if (isPhoto) { window.__phenoCounts = window.__phenoCounts || {}; window.__phenoCounts[sp] = arr.length; }
+}
+function registerPhenoMats(sp, roles) {
+  (window.__phenoPending = window.__phenoPending || []).push({ sp, roles });
+}
+function addPhenoGround(parent, sp, x, y, z, rad) {
+  phenoTreeAt(sp, x, z, true);
+  (window.__phenoGroundPending = window.__phenoGroundPending || []).push({ parent, sp, x, y, z, rad });
+}
+function registerLawnMat(mat) {
+  (window.__lawnMats = window.__lawnMats || []).push({ mat, base: mat.color.getHex(), textured: !!mat.map });
+}
+let _litterAlpha = null;
+function litterAlphaTexture() {
+  if (_litterAlpha) return _litterAlpha;
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 256, 256);
+  let sd = 5; const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  for (let k = 0; k < 420; k++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * 118;          // 中心較密、外緣漸疏
+    const v = 150 + Math.floor(r() * 105) - Math.floor(d * 0.6);
+    if (v < 40) continue;
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.save(); ctx.translate(128 + Math.cos(a) * d, 128 + Math.sin(a) * d); ctx.rotate(r() * Math.PI);
+    ctx.beginPath(); ctx.ellipse(0, 0, 3 + r() * 4, 1.5 + r() * 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+  _litterAlpha = new THREE.CanvasTexture(c);
+  return _litterAlpha;
+}
+function groundMat(sp, role, color) {
+  const key = sp + '|' + role + '|' + color;
+  if (_phenoMatCache[key]) return _phenoMatCache[key];
+  const m = new THREE.MeshStandardMaterial({ color, roughness: 0.95, alphaMap: litterAlphaTexture(), transparent: true, alphaTest: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+  m.userData.phenoRole = role;
+  const st = phenoState(sp);
+  (st[role] = st[role] || []).push(m);
+  return (_phenoMatCache[key] = m);
+}
+function buildPhenoGround(parent, sp, x, y, z, rad) {
+  const ph = PHENO[sp]; if (!ph) return;
+  const out = [];
+  if (/[TDS]/.test(ph.leaf)) {
+    const c = new THREE.Color(ph.turn || 0xc9a23a).lerp(new THREE.Color(0x8a6a40), 0.4).getHex();
+    out.push(groundMat(sp, 'litter', c));
+  }
+  if (ph.flower && (ph.flower.dens || 0.6) >= 0.8) out.push(groundMat(sp, 'petal', ph.flower.color));
+  out.forEach((mat, i) => {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(rad * (i ? 0.8 : 1), 28), mat);
+    m.rotation.x = -Math.PI / 2; m.rotation.z = i * 1.3 + x;
+    m.position.set(x, y + 0.02 + i * 0.01, z);
+    m.receiveShadow = true;
+    m.userData.keepLevel = true;
+    parent.add(m);
+  });
+}
+function drainPhenoPending() {
+  (window.__phenoPending || []).splice(0).forEach(({ sp, roles }) => {
+    const st = phenoState(sp);
+    ['core', 'outer'].forEach(role => (roles[role] || []).forEach(m => st[role].set(m, m.color.getHex())));
+    (roles.flower || []).forEach(m => st.flower.push(m));
+    (roles.fruit || []).forEach(m => st.fruit.push(m));
+  });
+  (window.__phenoGroundPending || []).splice(0).forEach(g => buildPhenoGround(g.parent, g.sp, g.x, g.y, g.z, g.rad));
+}
+// 乾季（12～3 月）草坪轉黃綠，雨季恢復翠綠
+const LAWN_DRY = [0.55, 0.65, 0.5, 0.25, 0.05, 0, 0, 0, 0, 0.05, 0.15, 0.35];
+function applyLawnSeason(month) {
+  const f = LAWN_DRY[(month - 1) % 12];
+  (window.__lawnMats || []).forEach(({ mat, base, textured }) => {
+    _pc.setHex(base).lerp(_pc2.setHex(textured ? 0xe6d79a : 0xb4a96a), f * 0.55);
+    mat.color.copy(_pc);
+  });
+}
+
+let activeMonth = new Date().getMonth() + 1;
+const MONTH_SEASON = m => (m >= 3 && m <= 5 ? 'spring' : m >= 6 && m <= 8 ? 'summer' : m >= 9 && m <= 11 ? 'autumn' : 'winter');
+const SEASON_MONTH = { spring: 3, summer: 6, autumn: 10, winter: 1 };
+let activeSeason = MONTH_SEASON(activeMonth);
 let activeWeather = 'clear';
 let activeQuality = 'fine';
+let adaptiveDpr = 1;
 let activeViewMode = 'oblique';
 let isOrbiting = false;
 let isTopView = false;
@@ -18393,10 +23197,12 @@ let followingPedestrianIdx = -1;
 // 3D Floor Cutaway & Interactive Plan Layout State (`#plan-toolbar` + `plan3DOverlayGroup`)
 let activePlanFloor = '1F';
 let planShowRooms = true;
-let planShowExt = true;
+let planShowExt = false;   // v2.12.87 依使用者指示移除「處室分機表」選項，快查表預設不顯示
 let planShowPaths = true;
 let planShowTrees = true;
 let planShowImg = false;
+let planShowSat = false;   // v2.12.32 疊加空拍底圖（校園樹木資訊平臺航照，已依樹木普查座標對位）
+let _satTex = null;
 
 const plan3DOverlayGroup = new THREE.Group();
 const planRooms3DGroup = new THREE.Group();
@@ -18425,6 +23231,8 @@ pinRingGeo.rotateX(-Math.PI / 2);
 
 function init360SpotBeacons() {
   const spots = window.CAMPUS_360_SPOTS || [];
+  // 下沉中庭內的 1F 實景點：標示高度隨中庭下移
+  spots.forEach(s => { if ((s.floor || '1F') === '1F' && inCourtyardSink(s.x, s.z) && !s.__sunk) { s.y -= COURTYARD_SINK.D; s.__sunk = true; } });
   spots.forEach((s, idx) => {
     const pinGroup = new THREE.Group();
     pinGroup.position.set(s.x, s.y, s.z);
@@ -18483,6 +23291,129 @@ function init360SpotBeacons() {
 
 init360SpotBeacons();
 
+// ============================================================================
+// 2F / 3F 實景標示外移：標示放在「該地點前走廊外面」的半空中，從校園鳥瞰就看得到，
+// 不會被屋頂與走廊雨遮擋住；並以細線連回實際拍攝位置。
+// 作法：建築構建完成後，以正交相機由上往下渲染一次「屋頂高度圖」(GPU，數毫秒)，
+// 再由每個被遮住的景點往東西南北找最近一處「該樓層高度以上已無建築物」的位置（即走廊雨遮外緣）。
+// ============================================================================
+const HMAP = { X0: -135, X1: 140, Z0: -70, Z1: 90, RES: 4 };   // 每公尺 4 像素
+let roofHeightData = null;
+function buildRoofHeightMap() {
+  const W = (HMAP.X1 - HMAP.X0) * HMAP.RES, H = (HMAP.Z1 - HMAP.Z0) * HMAP.RES;
+  const rt = new THREE.WebGLRenderTarget(W, H);
+  const cam = new THREE.OrthographicCamera(HMAP.X0, HMAP.X1, -HMAP.Z0, -HMAP.Z1, 0.1, 400);
+  cam.position.set(0, 200, 0); cam.up.set(0, 0, -1); cam.lookAt(0, 0, 0);
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.DoubleSide,
+    vertexShader: `varying float vY;
+      void main() {
+        vec4 p = vec4(position, 1.0);
+        #ifdef USE_INSTANCING
+          p = instanceMatrix * p;
+        #endif
+        vec4 w = modelMatrix * p; vY = w.y;
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
+    fragmentShader: `varying float vY;
+      void main() {
+        float h = clamp(vY, 0.0, 50.99) / 51.0 * 255.0;   // 0～51 m，以 R(整數) + G(小數) 編碼
+        gl_FragColor = vec4(floor(h) / 255.0, fract(h), 0.0, 1.0);
+      }`
+  });
+  const saved = scene.children.map(o => o.visible);
+  const savedBg = scene.background, savedOverride = scene.overrideMaterial, savedRT = renderer.getRenderTarget();
+  const savedClear = renderer.getClearColor(new THREE.Color()), savedAlpha = renderer.getClearAlpha();
+  const savedShadow = renderer.shadowMap.enabled;
+  scene.children.forEach(o => { o.visible = (o === layerGroups.buildings); });
+  scene.background = null; scene.overrideMaterial = mat; renderer.shadowMap.enabled = false;
+  renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 1); renderer.clear();
+  renderer.render(scene, cam);
+  const buf = new Uint8Array(W * H * 4);
+  renderer.readRenderTargetPixels(rt, 0, 0, W, H, buf);
+  renderer.setRenderTarget(savedRT); renderer.setClearColor(savedClear, savedAlpha);
+  scene.children.forEach((o, i) => { o.visible = saved[i]; });
+  scene.background = savedBg; scene.overrideMaterial = savedOverride; renderer.shadowMap.enabled = savedShadow;
+  rt.dispose(); mat.dispose();
+  roofHeightData = { buf, W, H };
+}
+function roofHeightAt(x, z) {
+  if (!roofHeightData) return 0;
+  const { buf, W, H } = roofHeightData;
+  const c = Math.floor((x - HMAP.X0) * HMAP.RES), r = Math.floor((HMAP.Z1 - z) * HMAP.RES);   // 讀回資料第 0 列為畫面底部 (z = Z1)
+  if (c < 0 || r < 0 || c >= W || r >= H) return 0;
+  const i = (r * W + c) * 4;
+  return (buf[i] + buf[i + 1] / 255) * 51 / 255;
+}
+// 各棟前走廊方向（校方提供）：東棟→東、北棟→南、南棟→北、西棟→東
+const FRONT_CORRIDOR_DIR = {
+  'east-building': [1, 0],
+  'north-building': [0, 1],
+  'south-building': [0, -1],
+  'west-building': [1, 0]
+};
+function buildingAt(x, z) {
+  let best = null, bestArea = Infinity;
+  for (const id of Object.keys(FRONT_CORRIDOR_DIR)) {
+    const g = landmarkGroupMap.get(id);
+    if (!g) continue;
+    if (!g.userData.__box) g.userData.__box = new THREE.Box3().setFromObject(g);
+    const b = g.userData.__box;
+    if (x >= b.min.x - 0.5 && x <= b.max.x + 0.5 && z >= b.min.z - 0.5 && z <= b.max.z + 0.5) {
+      const area = (b.max.x - b.min.x) * (b.max.z - b.min.z);
+      if (area < bestArea) { bestArea = area; best = id; }
+    }
+  }
+  return best;
+}
+const upperLeaderGroup = new THREE.Group();
+scene.add(upperLeaderGroup);
+function placeUpperFloorBeacons() {
+  try { buildRoofHeightMap(); } catch (err) { console.warn('[Beacons] 高度圖建立失敗，標示維持原位', err); return; }
+  while (upperLeaderGroup.children.length) { const c = upperLeaderGroup.children.pop(); c.geometry.dispose(); }
+  const lineMat = new THREE.LineDashedMaterial({ color: 0x923c32, dashSize: 0.35, gapSize: 0.22, transparent: true, opacity: 0.85 });
+  const spots = window.CAMPUS_360_SPOTS || [];
+  let moved = 0;
+  for (const s of spots) {
+    if (!s.floor || s.floor === '1F' || s.floor === 'BF') continue;
+    const floorTop = s.y - 2.3;           // 2F ≈ 4.5 m、3F ≈ 8.9 m：比樓板略低即視為「屋外」
+    delete s.displayX; delete s.displayZ; delete s.outwardX; delete s.outwardZ; delete s.markerBuilding;
+    if (roofHeightAt(s.x, s.z) < floorTop) continue;   // 標示本來就在屋外（看得到），維持原位
+    let best = null;
+    const bld = buildingAt(s.x, s.z);
+    const front = bld && FRONT_CORRIDOR_DIR[bld];
+    // 先找所在建築的「前走廊」方向；該方向 16 m 內找不到屋外時，才退回四個方向中最近的一側
+    const dirSets = front ? [[front], [[1, 0], [-1, 0], [0, 1], [0, -1]]] : [[[1, 0], [-1, 0], [0, 1], [0, -1]]];
+    for (const dirs of dirSets) { if (best) break;
+    for (const [dx, dz] of dirs) {
+      let clear = 0;
+      for (let d = 0.25; d <= 16; d += 0.25) {
+        if (roofHeightAt(s.x + dx * d, s.z + dz * d) < floorTop) { if (++clear >= 3) { const dd = d - 0.5; if (!best || dd < best.d) best = { d: dd, dx, dz }; break; } }
+        else clear = 0;
+      }
+    }
+    }
+    if (!best) continue;
+    const out = best.d + 1.4;             // 走出雨遮外緣後再留 1.4 m
+    s.displayX = s.x + best.dx * out; s.displayZ = s.z + best.dz * out;
+    s.outwardX = best.dx; s.outwardZ = best.dz; s.markerBuilding = bld || null;
+    const pin = panoBeaconMeshes.find(p => p.userData.spotId === s.id);
+    if (pin) pin.position.set(s.displayX, s.y, s.displayZ);
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(s.x, s.y - 1.6, s.z), new THREE.Vector3(s.displayX, s.y - 1.6, s.displayZ), new THREE.Vector3(s.displayX, s.y, s.displayZ)
+    ]);
+    const line = new THREE.Line(geo, lineMat); line.computeLineDistances(); line.userData.spotId = s.id;
+    upperLeaderGroup.add(line);
+    moved++;
+  }
+  console.log(`[Beacons] ${moved} 個 2F/3F 實景標示已移至前走廊外側`);
+  requestRender(20);
+}
+window.__roofHeightAt = (x, z) => roofHeightAt(x, z);
+window.__placeUpperFloorBeacons = placeUpperFloorBeacons;
+if (window.__buildComplete) placeUpperFloorBeacons();
+else window.addEventListener('campus-build-complete', () => setTimeout(placeUpperFloorBeacons, 50), { once: true });
+
 function updateBeaconHighlight(targetSpotId) {
   panoBeaconMeshes.forEach(pin => {
     const isTarget = (pin.userData.spotId === targetSpotId);
@@ -18493,6 +23424,7 @@ function updateBeaconHighlight(targetSpotId) {
       floorVisible = (pinFloor === activePlanFloor);
     }
     pin.visible = floorVisible;
+    upperLeaderGroup.children.forEach(l => { if (l.userData.spotId === pin.userData.spotId) l.visible = floorVisible; });
 
     if (isTarget) {
       pin.userData.mat.color.setHex(0x10b981);
@@ -18536,8 +23468,11 @@ function select360Spot(spotId, origin = 'manual') {
     el.classList.toggle('is-selected', el.dataset.spotId === spot.id);
   });
 
-  const eyePos = [spot.x + 8.5, spot.y + 13.5, spot.z + 17.5];
-  const lookPos = [spot.x, spot.y + 0.8, spot.z];
+  const px = spot.displayX ?? spot.x, pz = spot.displayZ ?? spot.z;
+  const eyePos = spot.outwardX !== undefined
+    ? [px + spot.outwardX * 18, spot.y + 9, pz + spot.outwardZ * 18]     // 2F/3F：由走廊外側正面看向標示與走廊
+    : [px + 8.5, spot.y + 13.5, pz + 17.5];
+  const lookPos = [px, spot.y + 0.8, pz];
   flyTo(eyePos, lookPos, 850);
 
   if (origin === 'manual' || origin === '3d') {
@@ -18562,6 +23497,16 @@ let panoDownX = 0, panoDownY = 0, panoDownLon = 0, panoDownLat = 0;
 let panoHotspotsGroup = null;
 const panoRaycaster = new THREE.Raycaster();
 const panoMouse = new THREE.Vector2();
+
+// 環景畫布尺寸與容器同步（容器隱藏時建立會得到 0×0 畫布 → 整片黑）
+function syncPanoSize() {
+  const host = document.getElementById('panoHost');
+  if (!host || !panoRenderer || !panoCamera) return;
+  const w = host.clientWidth || window.innerWidth, h = host.clientHeight || window.innerHeight;
+  panoCamera.aspect = w / h;
+  panoCamera.updateProjectionMatrix();
+  panoRenderer.setSize(w, h);
+}
 
 function initPanoViewer() {
   const host = document.getElementById('panoHost');
@@ -18739,13 +23684,15 @@ function panoRenderLoop() {
   panoRenderer.render(panoScene, panoCamera);
 }
 
+let panoLoadToken = 0;
 function openPano(spotId = 'spot-10') {
   const wrap = document.getElementById('pano-wrap');
   const loading = document.getElementById('panoLoading');
   if (!wrap) return;
 
+  wrap.hidden = false;                 // 先顯示容器，才能量到正確尺寸
   initPanoViewer();
-  wrap.hidden = false;
+  syncPanoSize();
   if (loading) loading.style.display = 'flex';
 
   const spot = (window.CAMPUS_360_SPOTS || []).find(s => s.id === spotId || (spotId === 'courtyard-360' && s.id === 'spot-10')) || (window.CAMPUS_360_SPOTS || [])[0];
@@ -18786,32 +23733,66 @@ function openPano(spotId = 'spot-10') {
     }
   }
 
+  // ---- 360° 照片載入鏈：自架 ./pano/<spot-id>.jpg → Google 圖源 → 縮圖；全部失敗則顯示說明與 Google 地圖按鈕 ----
+  // Google 地圖照片網址 (lh3.googleusercontent.com/gps-cs-s/…) 為有時效的簽章連結，過期後回 403，
+  // 且未提供 CORS 標頭，WebGL 無法使用 → 以前會整片黑畫面。建議將環景照片放進 repo 的 pano/ 資料夾自架。
+  const loadToken = ++panoLoadToken;
+  const errEl = document.getElementById('panoError');
+  if (errEl) errEl.hidden = true;
+  const candidates = [
+    spot.localPano || `./pano/${spot.id}.jpg`,
+    spot.panoUrl,
+    spot.thumb
+  ].filter((u, i, arr) => u && arr.indexOf(u) === i);
   const texLoader = new THREE.TextureLoader();
   texLoader.crossOrigin = 'anonymous';
-  texLoader.load(spot.panoUrl, texture => {
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.minFilter = THREE.LinearFilter;
-    if (panoMesh) {
-      panoMesh.material.map = texture;
-      panoMesh.material.needsUpdate = true;
+  const tryLoad = idx => {
+    if (loadToken !== panoLoadToken) return;               // 使用者已切換到其他景點
+    if (idx >= candidates.length) {
+      if (panoMesh) { panoMesh.material.map = null; panoMesh.material.color.set(0x111111); panoMesh.material.needsUpdate = true; }
+      if (loading) loading.style.display = 'none';
+      if (errEl) {
+        const link = document.getElementById('panoErrorLink');
+        if (link) {
+          link.href = spot.externalUrl || '#';
+          link.hidden = !spot.externalUrl;
+        }
+        errEl.hidden = false;
+      }
+      console.warn('[Pano] 所有 360° 圖源皆無法載入：', spot.id, candidates);
+      return;
     }
-    if (loading) loading.style.display = 'none';
-  }, undefined, () => {
-    texLoader.load(spot.thumb || './tex/courtyard_panorama.jpg', fallbackTex => {
-      fallbackTex.colorSpace = THREE.SRGBColorSpace;
+    let settled = false;
+    const timer = setTimeout(() => { if (!settled) { settled = true; tryLoad(idx + 1); } }, 15000);
+    texLoader.load(candidates[idx], texture => {
+      if (settled) { texture.dispose(); return; }
+      settled = true; clearTimeout(timer);
+      if (loadToken !== panoLoadToken) { texture.dispose(); return; }
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.minFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
       if (panoMesh) {
-        panoMesh.material.map = fallbackTex;
+        const old = panoMesh.material.map;
+        panoMesh.material.color.set(0xffffff);   // 底色必須為白色，否則照片會被乘暗成黑色
+        panoMesh.material.map = texture;
         panoMesh.material.needsUpdate = true;
+        if (old && old !== texture) old.dispose();
       }
       if (loading) loading.style.display = 'none';
+    }, undefined, () => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      tryLoad(idx + 1);
     });
-  });
+  };
+  tryLoad(0);
 
   if (!panoAnimId) panoRenderLoop();
   showToast(`已進入 360° 實景環景：${spot.name}`);
 }
 
 function closePano() {
+  panoLoadToken++;   // 取消尚未完成的照片載入
   const wrap = document.getElementById('pano-wrap');
   if (wrap) wrap.hidden = true;
   if (panoAnimId) {
@@ -18828,6 +23809,7 @@ const walkState = {
   yaw: 0,
   pitch: 0,
   keys: { forward: false, backward: false, left: false, right: false, up: false, down: false, sprint: false },
+  joy: { active: false, x: 0, y: 0 },
   dragging: false,
   lastX: 0,
   lastY: 0,
@@ -19091,13 +24073,10 @@ function updateSelectionOutline(landmarkId) {
   const [x1, y1, x2, y2] = lm.pxBounds;
   const w = (x2 - x1) * S + 2.2, d = (y2 - y1) * S + 2.2;
   const cx = X((x1 + x2) / 2), cz = Z((y1 + y2) / 2);
-  const ringGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(cx - w / 2, 0.32, cz - d / 2),
-    new THREE.Vector3(cx + w / 2, 0.32, cz - d / 2),
-    new THREE.Vector3(cx + w / 2, 0.32, cz + d / 2),
-    new THREE.Vector3(cx - w / 2, 0.32, cz + d / 2),
-    new THREE.Vector3(cx - w / 2, 0.32, cz - d / 2)
-  ]);
+  const ringGeo = new THREE.BufferGeometry().setFromPoints([[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([sx, sz]) => {
+    const [rx, rz] = lmToWorld(lm, cx + sx * w / 2, cz + sz * d / 2);   // v2.12.40 依建築定位轉換
+    return new THREE.Vector3(rx, 0.32, rz);
+  }));
   const ringLine = new THREE.Line(ringGeo, new THREE.LineBasicMaterial({ color: 0x923c32, linewidth: 2 }));
   selectionOutlineGroup.add(ringLine);
 }
@@ -19152,11 +24131,8 @@ function buildSceneLabels() {
           rEl.dataset.shortText = shortDisp;
           rEl.textContent = rEl.dataset.fullText;
           rEl.title = `${lm.name} · ${floorKey === 'B1' ? 'BF' : floorKey} · ${rm.name}（單擊對焦詳情，雙擊進入 3D 走廊視角）`;
-          const worldPos = new THREE.Vector3(
-            bx0 + rm.rx * bw,
-            ry,
-            Z((y1 + y2) / 2) + rm.rz * bd
-          );
+          const [pwx, pwz] = lmToWorld(lm, bx0 + rm.rx * bw, Z((y1 + y2) / 2) + rm.rz * bd);   // v2.12.40
+          const worldPos = new THREE.Vector3(pwx, ry, pwz);
           rEl.addEventListener('click', e => {
             e.stopPropagation();
             selectedId = lm.id;
@@ -19585,8 +24561,13 @@ function getClassroomCorridorView(lm, floorKey, rm, worldPos) {
   const lmId = lm?.id || '';
   const flNum = floorKey === 'B1' ? -0.5 : (floorKey === '1F' ? 0 : (floorKey === '2F' ? 1 : 2));
   const eyeY = (worldPos ? worldPos.y : flNum * 3.5 + 2.4) + 0.35;
-  const wx = worldPos ? worldPos.x : (lm?.center ? lm.center[0] : 0);
-  const wz = worldPos ? worldPos.z : (lm?.center ? lm.center[2] : 0);
+  // v2.12.40 北棟／東棟／西棟：於建築局部座標計算視角後再換回世界座標
+  const _xf = (window.BUILDING_XF || {})[lmId];
+  const [wx, wz] = (() => {
+    const x0 = worldPos ? worldPos.x : (lm?.center ? lm.center[0] : 0);
+    const z0 = worldPos ? worldPos.z : (lm?.center ? lm.center[2] : 0);
+    return _xf ? _xf.toLocal(x0, z0) : [x0, z0];
+  })();
 
   let p, t;
 
@@ -19596,8 +24577,8 @@ function getClassroomCorridorView(lm, floorKey, rm, worldPos) {
     t = [wx, eyeY - 0.20, -30.5];
   } else if (lmId === 'south-building') {
     // 南棟・興學樓：前走廊位於北側（面向中庭花園，走廊軸線 Z ≈ 8.78~10.78m），視線朝南 (+Z) 正對教室前門窗與新配備課桌椅黑板
-    p = [wx, eyeY + 0.25, 6.8];
-    t = [wx, eyeY - 0.20, 13.8];
+    p = [wx, eyeY + 0.25, 6.8 + SOUTH_SHIFT];
+    t = [wx, eyeY - 0.20, 13.8 + SOUTH_SHIFT];
   } else if (lmId === 'west-building') {
     // 西棟・育樂樓：前走廊位於東側（面向中庭花園，走廊軸線 X ≈ -25.7m），視線朝西 (-X) 正對教室前走廊與內部空間
     p = [-21.8, eyeY + 0.25, wz];
@@ -19608,14 +24589,15 @@ function getClassroomCorridorView(lm, floorKey, rm, worldPos) {
     t = [58.5, eyeY - 0.20, wz];
   } else if (lmId === 'new-building') {
     // 新棟・幼兒園：前走廊位於北側（面向中庭與草皮區，走廊軸線 Z ≈ 16.0~19.0m），視線朝南 (+Z) 正對幼兒園活動室教室
-    p = [wx, eyeY + 0.25, 13.8];
-    t = [wx, eyeY - 0.20, 21.6];
+    p = [wx, eyeY + 0.25, 13.8 + SOUTH_SHIFT];
+    t = [wx, eyeY - 0.20, 21.6 + SOUTH_SHIFT];
   } else {
     // 通用開放場域或其它空間備用視角
     p = [wx, eyeY + 1.2, wz + 6.5];
     t = [wx, eyeY, wz];
   }
 
+  if (_xf) [p, t].forEach(v => { const [a, b] = _xf.toWorld(v[0], v[2]); v[0] = a; v[2] = b; });
   return { p, t };
 }
 
@@ -19626,8 +24608,13 @@ function getClassroomBirdEyeView(lm, floorKey, rm, worldPos) {
   const lmId = lm?.id || '';
   const flNum = floorKey === 'B1' ? -0.5 : (floorKey === '1F' ? 0 : (floorKey === '2F' ? 1 : 2));
   const ry = worldPos ? worldPos.y : (flNum * 3.5 + 2.4);
-  const wx = worldPos ? worldPos.x : (lm?.center ? lm.center[0] : 0);
-  const wz = worldPos ? worldPos.z : (lm?.center ? lm.center[2] : 0);
+  // v2.12.40 北棟／東棟／西棟：於建築局部座標計算視角後再換回世界座標
+  const _xf = (window.BUILDING_XF || {})[lmId];
+  const [wx, wz] = (() => {
+    const x0 = worldPos ? worldPos.x : (lm?.center ? lm.center[0] : 0);
+    const z0 = worldPos ? worldPos.z : (lm?.center ? lm.center[2] : 0);
+    return _xf ? _xf.toLocal(x0, z0) : [x0, z0];
+  })();
 
   let p, t;
 
@@ -19657,6 +24644,7 @@ function getClassroomBirdEyeView(lm, floorKey, rm, worldPos) {
     t = [wx, ry || 3.0, wz];
   }
 
+  if (_xf) [p, t].forEach(v => { const [a, b] = _xf.toWorld(v[0], v[2]); v[0] = a; v[2] = b; });
   return { p, t };
 }
 
@@ -19712,7 +24700,8 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
         const ry = floorNum * 3.5 + 2.4;
         const foundRm = Object.values(lm.rooms).flat().find(r => r.code === highlightRoomCode);
         if (foundRm) {
-          const wPos = new THREE.Vector3(bx0 + foundRm.rx * bw, ry, Z((y1 + y2) / 2) + foundRm.rz * bd);
+          const [pwx, pwz] = lmToWorld(lm, bx0 + foundRm.rx * bw, Z((y1 + y2) / 2) + foundRm.rz * bd);
+          const wPos = new THREE.Vector3(pwx, ry, pwz);
           pin = { pos: wPos, room: foundRm, floorKey: initialFloor };
         }
       }
@@ -19749,7 +24738,7 @@ function selectLandmark(id, origin = 'manual', initialFloor = '1F', highlightRoo
       syncFloorButtons(activePlanFloor);
     }
     const [x1, y1, x2, y2] = lm.pxBounds;
-    const cx = X((x1 + x2) / 2), cz = Z((y1 + y2) / 2);
+    const [cx, cz] = lmToWorld(lm, X((x1 + x2) / 2), Z((y1 + y2) / 2));
     const pin = highlightRoomCode ? roomPinElements.find(p => p.code === highlightRoomCode) : null;
     const tx = pin ? pin.pos.x : cx;
     const tz = pin ? pin.pos.z : cz;
@@ -19864,7 +24853,8 @@ function renderDetailCard(lm, activeFloor = '1F') {
             const bx0 = X(x1);
             const floorNum = currentFloor === 'B1' ? -0.5 : (currentFloor === '1F' ? 0 : (currentFloor === '2F' ? 1 : 2));
             const ry = floorNum * 3.5 + 2.4;
-            const worldPos = new THREE.Vector3(bx0 + rm.rx * bw, ry, Z((y1 + y2) / 2) + rm.rz * bd);
+            const [pwx, pwz] = lmToWorld(lm, bx0 + rm.rx * bw, Z((y1 + y2) / 2) + rm.rz * bd);
+            const worldPos = new THREE.Vector3(pwx, ry, pwz);
             focusClassroom(lm, currentFloor, rm, worldPos);
           }
         }
@@ -20051,10 +25041,12 @@ function updateEnvironmentSimulation() {
   const sunY = isNight ? 95 : Math.max(24, Math.sin(sunAngle) * 170);
   const sunZ = 75 + Math.sin(sunAngle * 0.8) * 35;
   sunLight.position.set(sunX, sunY, sunZ);
+  sunGlowSprite.position.copy(sunLight.position).normalize().multiplyScalar(900);
 
   const cfg = LIGHTING_PRESETS[presetKey];
 
   // Apply seasonal foliage colors across all 4 botanical material groups
+  if (typeof applyPhenology === 'function' && window.__registryTreeCount) applyPhenology(phenoMonth());
   if (seasonsEnabled) {
     const seasonCfg = SEASON_PALETTES[activeSeason] || SEASON_PALETTES.summer;
     foliageMats.forEach((mat, idx) => {
@@ -20074,6 +25066,9 @@ function updateEnvironmentSimulation() {
   scene.fog = new THREE.Fog(cfg.horizon, fogNear, fogFar);
 
   sunLight.color.setHex(cfg.sunColor);
+  sunGlowSprite.material.color.setHex(cfg.sunColor);
+  sunGlowSprite.material.opacity = isNight ? 0.45 : (activeWeather === 'clear' ? 0.9 : 0.35);
+  sunGlowSprite.scale.setScalar(isNight ? 140 : 300);
   sunLight.intensity = activeWeather === 'clear' ? cfg.sunIntensity : cfg.sunIntensity * 0.68;
   hemiLight.color.setHex(cfg.hemiSky);
   hemiLight.groundColor.setHex(cfg.hemiGround);
@@ -20082,6 +25077,7 @@ function updateEnvironmentSimulation() {
 
   // Toggle Night / Dusk Window Glow & Streetlights
   const winGlow = isNight ? 0.92 : (isDuskOrDawn ? 0.32 : 0);
+  if (window.__postFX) window.__postFX.setNight(isNight, isDuskOrDawn);
   nightWindowMaterials.forEach(m => { m.emissiveIntensity = winGlow; });
   streetLightBulbs.forEach(b => { b.visible = isNight || isDuskOrDawn; });
 
@@ -20100,19 +25096,27 @@ function updateEnvironmentSimulation() {
     weatherPoints.visible = false;
   }
 
-  const seasonWord = { spring: '春', summer: '夏', autumn: '秋', winter: '冬' }[activeSeason];
+  const seasonWord = `${activeMonth}月`;
+  updateMonthUi();
   const weatherWord = { clear: '晴', rain: '雨', mist: '霧', snow: '雪' }[activeWeather];
   document.getElementById('env-button-label').textContent = `光影與生活 · ${timeStr} ${seasonWord}·${weatherWord}`;
   updateMinimap();
   renderPlanSvg();
 }
 
+// 時間滑桿：同一影格內的多次 input 事件合併成一次更新（含小地圖與平面圖重繪），拖曳更順
+let _timeSliderRaf = 0;
 document.getElementById('time-of-day').addEventListener('input', e => {
   timeOfDay = parseFloat(e.target.value);
-  document.querySelectorAll('[data-preset-time]').forEach(b => {
-    b.classList.toggle('is-active', Math.abs(parseFloat(b.dataset.presetTime) - timeOfDay) < 0.4);
+  if (_timeSliderRaf) return;
+  _timeSliderRaf = requestAnimationFrame(() => {
+    _timeSliderRaf = 0;
+    document.querySelectorAll('[data-preset-time]').forEach(b => {
+      b.classList.toggle('is-active', Math.abs(parseFloat(b.dataset.presetTime) - timeOfDay) < 0.4);
+    });
+    updateEnvironmentSimulation();
+    requestRender(20);
   });
-  updateEnvironmentSimulation();
 });
 
 document.querySelectorAll('[data-preset-time]').forEach(btn => {
@@ -20126,10 +25130,52 @@ document.querySelectorAll('[data-preset-time]').forEach(btn => {
 document.querySelectorAll('[data-season]').forEach(btn => {
   btn.addEventListener('click', () => {
     activeSeason = btn.dataset.season;
-    document.querySelectorAll('[data-season]').forEach(b => b.classList.toggle('is-active', b === btn));
+    activeMonth = SEASON_MONTH[activeSeason];
     updateEnvironmentSimulation();
-    showToast(`季節氛圍已切換為：${SEASON_PALETTES[activeSeason].label}`);
+    showToast(`季節氛圍已切換為：${SEASON_PALETTES[activeSeason].label}（${activeMonth} 月）`);
   });
+});
+// v2.12.18 月份滑桿：依樹種物候呈現開花、落葉、轉色與新葉
+function updateMonthUi() {
+  document.querySelectorAll('[data-season]').forEach(b => b.classList.toggle('is-active', b.dataset.season === activeSeason));
+  const sl = document.getElementById('month-slider'), lb = document.getElementById('month-label'), bl = document.getElementById('bloom-now');
+  if (sl) sl.value = String(activeMonth);
+  if (lb) lb.textContent = `${activeMonth} 月`;
+  if (bl) {
+    if (!seasonsEnabled) { bl.textContent = '四季動態已關閉（樹木維持綠葉）'; return; }
+    const hs = phenologyHighlights(activeMonth);
+    const groups = {};
+    hs.forEach(h => { (groups[h.kind] = groups[h.kind] || []).push(`<button type="button" class="bloom-chip" data-sp="${h.sp}" title="飛往${h.sp}">${h.sp}${h.n > 1 ? `×${h.n}` : ''}</button>`); });
+    bl.innerHTML = Object.keys(groups).length
+      ? ['開花', '新葉', '轉色', '落葉', '結果'].filter(k => groups[k]).map(k => `<div class="bloom-row"><b>${k}</b>${groups[k].join('')}</div>`).join('')
+      : '本月校園樹木以常綠綠葉為主';
+  }
+}
+// 點選樹種：鏡頭飛往該樹並以光環標示；同種多棵時依序輪流
+const bloomRing = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.1, 40), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.9, depthTest: false, side: THREE.DoubleSide }));
+bloomRing.rotation.x = -Math.PI / 2; bloomRing.renderOrder = 999; bloomRing.visible = false;
+scene.add(bloomRing);
+const bloomCycle = {};
+let bloomRingTimer = null;
+document.getElementById('bloom-now')?.addEventListener('click', e => {
+  const btn = e.target.closest('.bloom-chip'); if (!btn) return;
+  const sp = btn.dataset.sp, list = PHENO_TREES[sp] || [];
+  if (!list.length) return;
+  const i = (bloomCycle[sp] = ((bloomCycle[sp] ?? -1) + 1) % list.length);
+  const t = list[i];
+  const y = typeof inCourtyardSink === 'function' && inCourtyardSink(t.x, t.z) ? -COURTYARD_SINK.D : 0;
+  flyTo([t.x + 13, y + 11, t.z + 13], [t.x, y + 3.5, t.z], 1100);
+  bloomRing.position.set(t.x, y + 0.25, t.z); bloomRing.visible = true;
+  clearTimeout(bloomRingTimer);
+  bloomRingTimer = setTimeout(() => { bloomRing.visible = false; requestRender(2); }, 6000);
+  requestRender(2);
+  showToast(`${sp}（第 ${i + 1}／${list.length} 棵）`);
+});
+const monthSliderEl = document.getElementById('month-slider');
+if (monthSliderEl) monthSliderEl.addEventListener('input', e => {
+  activeMonth = parseInt(e.target.value, 10) || 1;
+  activeSeason = MONTH_SEASON(activeMonth);
+  updateEnvironmentSimulation();
 });
 
 document.querySelectorAll('[data-weather]').forEach(btn => {
@@ -20149,25 +25195,52 @@ try {
   if (['smooth', 'auto', 'fine'].includes(savedQ)) activeQuality = savedQ;
 } catch {}
 
+// ---- 後處理（GTAO 環境光遮蔽 + Bloom）：僅「精緻」畫質且為桌機時啟用，模組以動態 import 延遲載入 ----
+// 網址 ?fx 可在行動裝置強制開啟、?nofx 一律關閉。狀態放在 window 上，避免宣告前被呼叫（TDZ）。
+const POSTFX_PARAMS = new URLSearchParams(window.location.search);
+let _postFXLoading = null;
+function setPostFXForQuality(q) {
+  const want = !POSTFX_PARAMS.has('nofx') && q === 'fine' && (!isMobileDevice || POSTFX_PARAMS.has('fx'));
+  if (!want) { if (window.__postFX) window.__postFX.enabled = false; requestRender(3); return; }
+  if (window.__postFX) { window.__postFX.enabled = true; requestRender(3); return; }
+  if (_postFXLoading) return;
+  _postFXLoading = import('./campus-post.js?v=2.12.99').then(mod => {
+    const fx = mod.createPostFX(renderer, scene, camera);
+    const h = timeOfDay;
+    fx.setNight(h >= 18.5 || h < 6.3, (h >= 16.5 && h < 18.5) || (h >= 6.3 && h < 7.8));
+    fx.enabled = activeQuality === 'fine';
+    window.__postFX = fx;
+    requestRender(5);
+  }).catch(err => { console.warn('[PostFX] 後處理載入失敗，維持一般繪製：', err); });
+}
+
+// 畫質預設：smooth（省電）/ auto（依實測 FPS 動態調整解析度）/ fine（最高畫質）
+function qualityDprCap(q) {
+  const dpr = window.devicePixelRatio || 1;
+  if (q === 'smooth') return Math.min(dpr, 1.25) * 0.9;
+  if (q === 'fine') return Math.min(dpr, 2);
+  return Math.min(dpr, isMobileDevice ? 1.5 : 1.65);
+}
+function applyQualityPreset(q) {
+  activeQuality = q;
+  adaptiveDpr = qualityDprCap(q);
+  renderer.setPixelRatio(adaptiveDpr);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  sunLight.castShadow = q !== 'smooth';
+  markShadowsDirty();
+  setPostFXForQuality(q);
+  document.querySelectorAll('[data-quality]').forEach(b => b.classList.toggle('is-active', b.dataset.quality === q));
+  requestRender(30);
+}
 document.querySelectorAll('[data-quality]').forEach(btn => {
-  btn.classList.toggle('is-active', btn.dataset.quality === activeQuality);
   btn.addEventListener('click', () => {
-    activeQuality = btn.dataset.quality;
-    try { localStorage.setItem('fuxing.quality.preset', activeQuality); } catch {}
-    document.querySelectorAll('[data-quality]').forEach(b => b.classList.toggle('is-active', b === btn));
-    if (activeQuality === 'smooth') {
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25) * 0.9);
-      sunLight.castShadow = false;
-    } else if (activeQuality === 'fine') {
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-      sunLight.castShadow = true;
-    } else {
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
-      sunLight.castShadow = true;
-    }
+    try { localStorage.setItem('fuxing.quality.preset', btn.dataset.quality); } catch {}
+    applyQualityPreset(btn.dataset.quality);
     showToast(`繪圖畫質已切換為：${btn.textContent}`);
   });
 });
+// 開啟網頁即套用已儲存（或行動裝置預設）的畫質，而非等使用者點擊才生效
+applyQualityPreset(activeQuality);
 
 // Scene Toggles inside `#environment`
 document.getElementById('toggle-labels').addEventListener('change', e => {
@@ -20265,12 +25338,12 @@ const ROUTE_NODES = {
   'new-south-gate':  [772, 320],
   'track-east':      [382, 235],
   'sports-track':    [294, 255],
-  'command-stage':   [192, 268],
-  'ball-courts':     [145, 205],
+  'command-stage':   [166, 208],
+  'ball-courts':     [122, 145],
   'east-gate':       [955, 73],
-  'carport':         [568, 73],
+  'carport':         [564, 6],
   'driveway-mid':    [370, 85],
-  'west-back-gate':  [56, 90]
+  'west-back-gate':  [62.44, -18.1]
 };
 
 const ROUTE_EDGES = [
@@ -20479,8 +25552,9 @@ function placeCameraOnRoute(t) {
 // 10. COLLISION-AWARE FIRST-PERSON GROUND WALK (`PKU-3D FirstPerson` class)
 // ============================================================================
 // Solid building obstacle footprints (excluding open plazas/tracks and East Breezeway passage)
+// v2.12.40 北棟由局部座標專屬判斷；西棟、東棟改以局部座標障礙盒（見下方 LOCAL_BUILDING_OBSTACLES）
 const SOLID_BUILDING_OBSTACLES = LANDMARKS
-  .filter(lm => ['north-building', 'south-building', 'west-building', 'new-building'].includes(lm.id) && lm.pxBounds)
+  .filter(lm => ['south-building'].includes(lm.id) && lm.pxBounds)
   .map(lm => {
     const [x1, y1, x2, y2] = lm.pxBounds;
     return {
@@ -20490,18 +25564,25 @@ const SOLID_BUILDING_OBSTACLES = LANDMARKS
       maxZ: Z(y2) + 0.65
     };
   });
-// Add East Building North & South wings while leaving the 1F Central Breezeway (`Z(185)..Z(225)`) open for walking!
-SOLID_BUILDING_OBSTACLES.push(
-  { minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(88) - 0.5,  maxZ: Z(199) },
-  { minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(233),       maxZ: Z(315) + 0.5 }
-);
+// 局部座標障礙盒：東棟南北兩翼（保留 1F 中央穿堂 Z(199)..Z(233) 可通行）、西棟主體與北側廚房增建（含 v2.12.40 擴建段）
+const LOCAL_BUILDING_OBSTACLES = [
+  ...LANDMARKS.filter(lm => lm.id === 'new-building' && lm.pxBounds).map(lm => { const [x1, y1, x2, y2] = lm.pxBounds; return { xf: NEW_XF, minX: X(x1) - 0.65, maxX: X(x2) + 0.65, minZ: Z(y1) - 0.65, maxZ: Z(y2) + 0.65 }; }),
+  { xf: EAST_XF, minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(88) - 0.5,  maxZ: Z(199) },
+  { xf: EAST_XF, minX: X(715) - 0.5, maxX: X(762) + 0.5, minZ: Z(233),       maxZ: Z(315) + 0.5 },
+  { xf: WEST_XF, minX: -38.25, maxX: -24.0, minZ: -23.35 - 0.65, maxZ: 15.918 + 0.65 },   // v2.12.68 東緣止於東走廊外緣（柱廊開放），避免走廊旁出現不可通行窄帶
+  // v2.12.41 廚房：西翼南段與東翼（北側凸出部 1F 為穿廊、長巷可通行）
+  { xf: WEST_XF, minX: -38.11 - 0.5, maxX: -31.0, minZ: -27.18 - 0.4, maxZ: -23.35 },
+  { xf: WEST_XF, minX: -31.0, maxX: -23.22 + 0.3, minZ: -27.18 - 0.4, maxZ: -20.0 }
+];
 
 // Collision footprint exclusions: allow walking inside North Building (愛悅樓) Front/Rear corridors, Central Stairwell, Basement & Lightwells!
 function isWalkPointAllowed(wx, wz) {
   if (wx < -125 || wx > 130 || wz < -60 || wz > 80) return false;
 
-  // North Building (愛悅樓):
+  // North Building (愛悅樓)：v2.12.40 以北棟局部座標判斷
   const C = window.NORTH_COLLISION;
+  const [wx0, wz0] = [wx, wz];
+  [wx, wz] = NORTH_XF.toLocal(wx0, wz0);
   if (C && wx > C.x1 - 0.2 && wx < C.eastX + 0.2 && wz > C.zb - 1.95 && wz < C.zf + 2.65) {
     // If exploring Basement (camera Y <= 1.55m): allow full basement rooms, central stair lobby, and lightwells!
     if (typeof camera !== 'undefined' && camera.position.y <= 1.55) {
@@ -20525,20 +25606,24 @@ function isWalkPointAllowed(wx, wz) {
 
   // West Building (育樂樓): allow walking along 1F East Corridor (`-27.04..-24.31`), 1F West Corridor (`-38.11..-34.13`),
   // and through the 4-bay open 1F Breezeway (`川堂`, `z = -14.19..-1.06`) & North Entrance Corridor (`z = -16.84..-14.19`)!
+  // v2.12.40 以西棟局部座標判斷（恢復原始 9 跨，南端局部 15.918）
+  [wx, wz] = WEST_XF.toLocal(wx0, wz0);
   if (wx >= -38.8 && wx <= -23.0 && wz >= -24.0 && wz <= 16.2) {
     if (wx >= -27.1 && wx <= -24.0 && wz >= -17.9 && wz <= 15.9) return true; // 1F/2F/3F East Front Corridor
     if (wx >= -38.3 && wx <= -34.0 && wz >= -17.9 && wz <= 15.9) return true; // 1F/2F/3F West Rear Corridor
     if (wz >= -17.90 && wz <= -1.05 && wx >= -38.3 && wx <= -24.0) return true; // 1F 川堂, East-Up Staircase & Right-Turn Passage
   }
+  [wx, wz] = [wx0, wz0];
+  // v2.12.68 新棟北側：1F 入口階梯、入口平台與西側 1F 走廊平台、北走廊、西棟↔新棟連通樓梯可通行（新棟建置局部座標）
+  { const [nx, nz0] = NEW_XF.toLocal(wx0, wz0), nz = nz0 - SOUTH_SHIFT;
+    if (nx >= -27.1 && nx <= -6.7 && nz >= 13.398 - 2.4 && nz <= 15.918) return true; }
 
   // New Building <-> South Building `⑩–⑪` Shared Corridor (`wx = -6.72..-4.22`, `wz = 8.78..24.15`): allow walking through the south picket gate and shared corridor!
-  if (wx >= -6.85 && wx <= -4.10 && wz >= 8.20 && wz <= 24.50) return true;
+  { const [nx, nz] = NEW_XF.toLocal(wx, wz); if (nx >= -6.85 && nx <= -4.10 && nz >= SHARED_CORRIDOR_ZG - 0.58 + SOUTH_SHIFT && nz <= 24.50 + SOUTH_SHIFT) return true; }
 
   // Remaining solid building obstacles (north-building box is handled above)
-  return !SOLID_BUILDING_OBSTACLES.some(b => {
-    if (b.minX < -20 && b.maxX > 50 && b.minZ < -35 && b.maxZ > -28) return false;
-    return wx > b.minX && wx < b.maxX && wz > b.minZ && wz < b.maxZ;
-  });
+  if (LOCAL_BUILDING_OBSTACLES.some(b => { const [lx, lz] = b.xf.toLocal(wx, wz); return lx > b.minX && lx < b.maxX && lz > b.minZ && lz < b.maxZ; })) return false;
+  return !SOLID_BUILDING_OBSTACLES.some(b => wx > b.minX && wx < b.maxX && wz > b.minZ && wz < b.maxZ);
 }
 
 function syncWalkHUD() {
@@ -20600,11 +25685,14 @@ function startWalkMode(startPos = null, lookTarget = null, keepRoute = false) {
 
   document.getElementById('walk-hud').hidden = false;
   document.getElementById('walk-pad').hidden = false;
+  if (walkJoyEl && isCoarsePointer) walkJoyEl.hidden = false;
   document.getElementById('walk-start').classList.add('is-active');
   document.getElementById('view-hint').textContent = '步行模式 · W A S D 或方向鍵移動 · 拖曳畫面環顧四周 · Esc 退出';
   syncWalkHUD();
   showToast('已進入第一人稱校園地面步行模式（身高 1.72m · 自動避開建築牆體）');
 }
+
+window.__walk = { start: (...a) => startWalkMode(...a), exit: () => exitWalkMode(), state: walkState, allowed: (x, z) => isWalkPointAllowed(x, z) };   // v2.12.68 自動化步行測試用
 
 function exitWalkMode() {
   if (!walkState.active) return;
@@ -20614,6 +25702,7 @@ function exitWalkMode() {
   controls.enabled = true;
   document.getElementById('walk-hud').hidden = true;
   document.getElementById('walk-pad').hidden = true;
+  if (walkJoyEl) { walkJoyEl.hidden = true; resetWalkJoy(); }
   document.getElementById('walk-start').classList.remove('is-active');
   document.getElementById('view-hint').textContent = '左鍵旋轉 · 右鍵平移 · 滾輪縮放 · 點擊建築查看立面與教室';
   syncWalkHUD();
@@ -20661,6 +25750,42 @@ document.getElementById('walk-floor-bf')?.addEventListener('click', () => jumpTo
 document.getElementById('walk-floor-1f')?.addEventListener('click', () => jumpToNorthFloor(1));
 document.getElementById('walk-floor-2f')?.addEventListener('click', () => jumpToNorthFloor(2));
 document.getElementById('walk-floor-3f')?.addEventListener('click', () => jumpToNorthFloor(3));
+
+// ---- 觸控類比搖桿 (#walk-joy)：手機/平板上取代方向鍵，可 360° 任意方向平滑行走 ----
+const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+const walkJoyEl = document.getElementById('walk-joy');
+const walkJoyKnob = document.getElementById('walk-joy-knob');
+function resetWalkJoy() {
+  walkState.joy.active = false; walkState.joy.x = 0; walkState.joy.y = 0;
+  if (walkJoyKnob) walkJoyKnob.style.transform = 'translate(-50%, -50%)';
+}
+if (isCoarsePointer) document.getElementById('walk-pad')?.classList.add('has-joy');
+if (walkJoyEl) {
+  let joyPointer = null;
+  const moveJoy = e => {
+    const r = walkJoyEl.getBoundingClientRect();
+    const R = r.width / 2;
+    let x = (e.clientX - (r.left + R)) / R, y = (e.clientY - (r.top + R)) / R;
+    const m = Math.hypot(x, y);
+    if (m > 1) { x /= m; y /= m; }
+    const dead = Math.hypot(x, y) < 0.12;
+    walkState.joy.x = dead ? 0 : x; walkState.joy.y = dead ? 0 : y;
+    walkJoyKnob.style.transform = `translate(calc(-50% + ${x * R * 0.62}px), calc(-50% + ${y * R * 0.62}px))`;
+    requestRender(10);
+  };
+  walkJoyEl.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    joyPointer = e.pointerId;
+    try { walkJoyEl.setPointerCapture(e.pointerId); } catch {}
+    walkState.joy.active = true;
+    if (routeWalkActive) { routeWalkActive = false; walkState.detachedFromRoute = true; syncWalkHUD(); }
+    moveJoy(e);
+  });
+  walkJoyEl.addEventListener('pointermove', e => { if (e.pointerId === joyPointer) moveJoy(e); });
+  const endJoy = e => { if (e.pointerId === joyPointer) { joyPointer = null; resetWalkJoy(); } };
+  walkJoyEl.addEventListener('pointerup', endJoy);
+  walkJoyEl.addEventListener('pointercancel', endJoy);
+}
 
 // Touch / Mouse D-Pad buttons (`#walk-pad`)
 document.querySelectorAll('#walk-pad button').forEach(btn => {
@@ -20872,6 +25997,15 @@ function renderPlanSvg() {
 
   // 4) Update 3D Official Floor Plan Texture Overlay (`☐ 疊加官方原圖`)
   while (planImg3DGroup.children.length) planImg3DGroup.remove(planImg3DGroup.children[0]);
+  if (planShowSat) {
+    // 空拍底圖：涵蓋模型座標 x −140～130 m、z −100～78 m（assets/sat_aligned.jpg，每公尺 5 像素）
+    if (!_satTex) { _satTex = new THREE.TextureLoader().load('./assets/sat_aligned.jpg', () => requestRender(4)); _satTex.colorSpace = THREE.SRGBColorSpace; }
+    const satMesh = new THREE.Mesh(new THREE.PlaneGeometry(270, 178), new THREE.MeshBasicMaterial({ map: _satTex, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide }));
+    satMesh.rotation.x = -Math.PI / 2;
+    satMesh.position.set(-5, 0.4, -11);
+    satMesh.renderOrder = 5;
+    planImg3DGroup.add(satMesh);
+  }
   if (planShowImg) {
     const tex = getPlanOverlayTexture(activePlanFloor);
     const imgPlaneGeo = new THREE.PlaneGeometry(1024 * S, 745 * S);
@@ -20921,8 +26055,7 @@ function renderPlanSvg() {
           const pin = roomPinElements.find(p => p.code === rm.code && p.floorKey === flKey);
           const isAct = activeRoomCode === rm.code;
           const hex = isAct ? 0xd93829 : (catColorHex[pin?.catClass] || 0x315b4e);
-          const wx = bx0 + rm.rx * bw;
-          const wz = bz0 + rm.rz * bd;
+          const [wx, wz] = lmToWorld(lm, bx0 + rm.rx * bw, bz0 + rm.rz * bd);
 
           const slabGeo = new THREE.BoxGeometry(slabW, 0.24, slabD);
           const slabMat = new THREE.MeshBasicMaterial({
@@ -20932,6 +26065,7 @@ function renderPlanSvg() {
           });
           const slabMesh = new THREE.Mesh(slabGeo, slabMat);
           slabMesh.position.set(wx, flSlabY, wz);
+          slabMesh.rotation.y = BUILDING_XF_ROT(lm.id);
           slabMesh.userData = { landmarkId: lm.id, roomCode: rm.code, floorKey: flKey, isPlanRoomSlab: true };
           planRooms3DGroup.add(slabMesh);
 
@@ -20939,6 +26073,7 @@ function renderPlanSvg() {
           const edges = new THREE.EdgesGeometry(slabGeo);
           const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: isAct ? 0xffffff : 0xfaf8f2 }));
           line.position.copy(slabMesh.position);
+          line.rotation.y = slabMesh.rotation.y;
           planRooms3DGroup.add(line);
         });
       });
@@ -20953,7 +26088,8 @@ function renderPlanSvg() {
       el.classList.add('plan-bldg-header');
       if (txtSpan) txtSpan.textContent = customHeader;
       const [x1, y1, x2, y2] = lm.pxBounds;
-      pos.set(X((x1 + x2) / 2), cfg.slabY + 1.2, Z(y1) - 3.2);
+      const [hx, hz] = lmToWorld(lm, X((x1 + x2) / 2), Z(y1) - 3.2);
+      pos.set(hx, cfg.slabY + 1.2, hz);
     } else {
       el.classList.remove('plan-bldg-header');
       if (txtSpan) txtSpan.textContent = lm.name;
@@ -21127,6 +26263,11 @@ document.getElementById('plan-show-trees')?.addEventListener('change', e => {
   renderPlanSvg();
   showToast(planShowTrees ? '已顯示 3D 校園樹冠綠植' : '已隱藏 3D 校園樹冠（可清楚檢視 1F 走廊）');
 });
+document.getElementById('plan-show-sat')?.addEventListener('change', e => {
+  planShowSat = e.target.checked;
+  renderPlanSvg();
+  showToast(planShowSat ? '已疊加校園空拍底圖（依樹木普查座標對位，可比對模型與實景）' : '已關閉空拍底圖');
+});
 document.getElementById('plan-show-img')?.addEventListener('change', e => {
   planShowImg = e.target.checked;
   renderPlanSvg();
@@ -21183,7 +26324,7 @@ function updateMinimap() {
 
   let svgHtml = `
     <polygon points="${X(40)},${Z(8)} ${X(972)},${Z(8)} ${X(972)},${Z(336)} ${X(770)},${Z(330)} ${X(494)},${Z(328)} ${X(438)},${Z(384)} ${X(365)},${Z(384)} ${X(176)},${Z(498)} ${X(40)},${Z(334)}" fill="none" stroke="rgba(197,118,94,0.55)" stroke-width="1.2" stroke-dasharray="2 2"/>
-    <polygon points="${X(56)},${Z(22)} ${X(955)},${Z(22)} ${X(955)},${Z(326)} ${X(772)},${Z(320)} ${X(496)},${Z(318)} ${X(438)},${Z(374)} ${X(367)},${Z(374)} ${X(180)},${Z(480)} ${X(56)},${Z(328)}" fill="none" stroke="${isNight ? '#8bc7b0' : '#315b4e'}" stroke-width="1.5" opacity="0.85"/>
+    <polygon points="${X(65.7)},${Z(-67.6)} ${X(955)},${Z(22)} ${X(955)},${Z(326)} ${X(772)},${Z(320)} ${X(715)},${Z(294.9)} ${X(496)},${Z(294.9)} ${X(438)},${Z(374)} ${X(367)},${Z(374)} ${X(180)},${Z(480)} ${X(152.9)},${Z(437.2)} ${X(134.6)},${Z(381.8)} ${X(105.2)},${Z(308.8)} ${X(76.2)},${Z(245.3)} ${X(45)},${Z(193.7)} ${X(39.2)},${Z(158.8)} ${X(51.4)},${Z(149.4)}" fill="none" stroke="${isNight ? '#8bc7b0' : '#315b4e'}" stroke-width="1.5" opacity="0.85"/>
     <polygon points="${X(58)},${Z(24)} ${X(412)},${Z(24)} ${X(412)},${Z(386)} ${X(403)},${Z(390)} ${X(180)},${Z(477)} ${X(58)},${Z(327)}" fill="${isNight ? 'rgba(54,94,68,0.38)' : 'rgba(165,208,148,0.45)'}" stroke="none"/>
     <rect x="${X(224)}" y="${Z(120)}" width="${128 * S}" height="${256 * S}" rx="${64 * S}" fill="none" stroke="#c85a40" stroke-width="3.2" opacity="0.85"/>
   `;
@@ -21196,9 +26337,10 @@ function updateMinimap() {
   LANDMARKS.forEach(lm => {
     if (!lm.pxBounds || lm.id === 'courtyard-plaza' || lm.id === 'sports-track') return;
     const [x1, y1, x2, y2] = lm.pxBounds;
-    const rx = X(x1), ry = Z(y1), rw = (x2 - x1) * S, rh = (y2 - y1) * S;
     const isSel = selectedId === lm.id;
-    svgHtml += `<rect data-mid="${lm.id}" x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="1.5" fill="${isSel ? '#923c32' : bFill}" stroke="${isSel ? '#faf8f2' : bStroke}" stroke-width="${isSel ? 1.8 : 1}"/>`;
+    // v2.12.40 依建築定位轉換後以多邊形繪製
+    const pts = [[X(x1), Z(y1)], [X(x2), Z(y1)], [X(x2), Z(y2)], [X(x1), Z(y2)]].map(([px, pz]) => lmToWorld(lm, px, pz).map(v => v.toFixed(2)).join(',')).join(' ');
+    svgHtml += `<polygon data-mid="${lm.id}" points="${pts}" fill="${isSel ? '#923c32' : bFill}" stroke="${isSel ? '#faf8f2' : bStroke}" stroke-width="${isSel ? 1.8 : 1}"/>`;
   });
 
   const cx = THREE.MathUtils.clamp(camera.position.x, -120, 125);
@@ -21574,6 +26716,7 @@ document.getElementById('shareViewBtn').addEventListener('click', async () => {
   if (selectedId) params.set('place', selectedId);
   params.set('time', String(timeOfDay));
   params.set('season', activeSeason);
+  params.set('month', String(activeMonth));
   params.set('p', p);
   params.set('t', t);
   const url = `${location.origin}${location.pathname}#${params.toString()}`;
@@ -21698,7 +26841,8 @@ renderer.domElement.addEventListener('dblclick', e => {
     }
   }
 
-  const hits = raycaster.intersectObjects(scene.children, true);
+  // 只對校園圖層取交點（排除天氣粒子、行人、平面圖疊層等），減少雙擊時的射線測試量
+  const hits = raycaster.intersectObjects(Object.values(layerGroups), true);
   if (hits.length > 0) {
     const pt = hits[0].point;
     if (e.shiftKey) {
@@ -21868,7 +27012,9 @@ function restoreHashSnapshot() {
   const tVal = parseFloat(params.get('time'));
   if (Number.isFinite(tVal)) timeOfDay = THREE.MathUtils.clamp(tVal, 6, 21);
   const sVal = params.get('season');
-  if (sVal && SEASON_PALETTES[sVal]) activeSeason = sVal;
+  if (sVal && SEASON_PALETTES[sVal]) { activeSeason = sVal; activeMonth = SEASON_MONTH[sVal]; }
+  const mVal = parseInt(params.get('month'), 10);
+  if (mVal >= 1 && mVal <= 12) { activeMonth = mVal; activeSeason = MONTH_SEASON(mVal); }
   updateEnvironmentSimulation();
 
   const place = params.get('place');
@@ -21940,7 +27086,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   if (window.innerWidth > 820 && window.innerHeight > 640) setDetailCompact(false);
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(getOptimalDpr());
+  renderer.setPixelRatio(Math.min(getOptimalDpr(), adaptiveDpr || getOptimalDpr()));
   renderer.setSize(window.innerWidth, window.innerHeight);
   requestRender(35);
 });
@@ -21974,7 +27120,87 @@ function isLabelBlocked(sx, sy, bw, bh, panelRects, occupiedBoxes, isPriority = 
   return false;
 }
 
-renderer.setAnimationLoop(now => {
+// ---- 陰影貼圖按需更新：以「太陽位置 + 各群組可見性 + 模型數量」作為簽章，變動才重算 ----
+function updateShadowMapIfNeeded() {
+  if (!renderer.shadowMap.enabled) return;
+  const sp = sunLight.position;
+  let sig = `${sunLight.castShadow ? 1 : 0}|${sp.x.toFixed(1)},${sp.y.toFixed(1)},${sp.z.toFixed(1)}|`;
+  for (const g of Object.values(layerGroups)) sig += (g.visible ? '1' : '0') + g.children.length + ',';
+  for (let i = 0; i < clickableGroups.length; i++) sig += clickableGroups[i].visible ? '1' : '0';
+  sig += '|';
+  for (let i = 0; i < LOD_REGISTRY.length; i++) sig += LOD_REGISTRY[i].detailGroup.visible ? '1' : '0';
+  sig += plan3DOverlayGroup.visible ? '|p1' : '|p0';
+  if (sig !== shadowSignature) {
+    shadowSignature = sig;
+    renderer.shadowMap.needsUpdate = true;
+  }
+}
+
+// ---- 動態解析度：操作（旋轉、飛行、步行）時暫時降到 0.72× 解析度，停止約 0.25 秒後補繪全解析度 ----
+// 只在目標解析度 > 1 時啟用（低於 1 再降會明顯變糊）；網址加 ?nodyn 可關閉。
+const DYN_RES_ENABLED = !new URLSearchParams(window.location.search).has('nodyn');
+let _dynLowered = false, _dynTimer = 0;
+window.__dynState = () => ({ lowered: _dynLowered, sinceMotion: Math.round(performance.now() - lastMotionAt), demand: renderDemandFrames, adaptiveDpr });
+function applyMotionResolution(now) {
+  if (!DYN_RES_ENABLED) return;
+  const moving = performance.now() - lastMotionAt < 250;
+  if (_dynLowered && moving) {
+    // 影格用完時迴圈會停止，因此以計時器保證操作結束後再喚醒一次，讓下一影格以全解析度補繪
+    clearTimeout(_dynTimer);
+    _dynTimer = setTimeout(() => requestRender(3), 300);
+  }
+  if (moving && !_dynLowered && adaptiveDpr > 1.0) {
+    _dynLowered = true;
+    renderer.setPixelRatio(Math.max(0.9, adaptiveDpr * 0.72));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  } else if (!moving && _dynLowered) {
+    _dynLowered = false;
+    renderer.setPixelRatio(adaptiveDpr);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    requestRender(3);
+  }
+}
+
+// ---- 效能監測 + 自動畫質（動態解析度）：連續動畫期間 FPS 過低就降解析度，充裕時再逐步回升 ----
+const perfState = { last: 0, frames: 0, acc: 0, low: 0, high: 0 };
+function perfMonitorTick(now) {
+  const dt = now - perfState.last;
+  perfState.last = now;
+  if (dt <= 0 || dt > 120) return;           // 只統計「連續渲染」中的幀（按需渲染的單幀不計）
+  perfState.frames++; perfState.acc += dt;
+  if (perfState.acc < 1000) return;
+  const fps = (perfState.frames * 1000) / perfState.acc;
+  perfState.frames = 0; perfState.acc = 0;
+  const info = renderer.info.render;
+  window.__perf = { fps: Math.round(fps), calls: info.calls, triangles: info.triangles, dpr: +renderer.getPixelRatio().toFixed(2) };
+  const statEl = document.getElementById('perfStats');
+  if (statEl) statEl.textContent = `${info.calls} draw calls · ${(info.triangles / 1000).toFixed(0)}k 三角面 · 解析度 ×${renderer.getPixelRatio().toFixed(2)}`;
+  if (activeQuality !== 'auto') return;
+  const cap = qualityDprCap('auto');
+  if (fps < 40) { perfState.low++; perfState.high = 0; } else if (fps > 56) { perfState.high++; perfState.low = 0; } else { perfState.low = perfState.high = 0; }
+  if (perfState.low >= 2 && adaptiveDpr > 0.75) {
+    adaptiveDpr = Math.max(0.75, adaptiveDpr - 0.2); perfState.low = 0;
+    renderer.setPixelRatio(adaptiveDpr); renderer.setSize(window.innerWidth, window.innerHeight);
+  } else if (perfState.high >= 3 && adaptiveDpr < cap) {
+    adaptiveDpr = Math.min(cap, adaptiveDpr + 0.1); perfState.high = 0;
+    renderer.setPixelRatio(adaptiveDpr); renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+}
+
+// 分頁切到背景時完全停止渲染迴圈（省電、避免手機發燙），回到前景再恢復
+let mainLoopFn = null;
+document.addEventListener('visibilitychange', () => {
+  if (!mainLoopFn) return;
+  if (document.hidden) {
+    renderer.setAnimationLoop(null);
+  } else {
+    lastFrameTime = performance.now();
+    renderer.setAnimationLoop(mainLoopFn);
+    requestRender(20);
+  }
+});
+
+renderer.setAnimationLoop(mainLoopFn = now => {
   const dt = Math.min(100, now - lastFrameTime);
   const dtSec = dt * 0.001;
   lastFrameTime = now;
@@ -21991,6 +27217,7 @@ renderer.setAnimationLoop(now => {
 
   if (hasContinuousAnimation) {
     requestRender(10);
+    if (Boolean(camAnim) || walkState.active || routeWalkActive || isOrbiting || tourRunning || followingPedestrianIdx >= 0) lastMotionAt = now;
   }
 
   // When scene is static and no interaction is occurring: bypass rendering & physics to save battery & prevent heating
@@ -22031,7 +27258,10 @@ renderer.setAnimationLoop(now => {
       if (minDist < 6.5 && nearestSpot) {
         walk360El.hidden = false;
         walk360El.dataset.spotId = nearestSpot.id;
-        walk360El.innerHTML = `🌐 按 E 進入 360° 實景：<strong>${nearestSpot.name}</strong>`;
+        if (walk360El.dataset.renderedSpot !== nearestSpot.id) {
+          walk360El.dataset.renderedSpot = nearestSpot.id;   // 只在最近地點改變時才改寫 DOM，避免每幀重排
+          walk360El.innerHTML = `🌐 ${isCoarsePointer ? '點此' : '按 E '}進入 360° 實景：<strong>${nearestSpot.name}</strong>`;
+        }
       } else {
         walk360El.hidden = true;
       }
@@ -22051,10 +27281,16 @@ renderer.setAnimationLoop(now => {
     if (walkState.keys.backward) { moveX -= fwdX; moveZ -= fwdZ; }
     if (walkState.keys.right) { moveX += rightX; moveZ += rightZ; }
     if (walkState.keys.left) { moveX -= rightX; moveZ -= rightZ; }
+    // 觸控類比搖桿：推得越遠走得越快（參考 gses-campus-3d 的 #joy 設計）
+    if (walkState.joy.active) {
+      moveX += fwdX * -walkState.joy.y + rightX * walkState.joy.x;
+      moveZ += fwdZ * -walkState.joy.y + rightZ * walkState.joy.x;
+    }
     const len = Math.hypot(moveX, moveZ);
     if (len > 0.001) {
-      const dx = (moveX / len) * speed;
-      const dz = (moveZ / len) * speed;
+      const mag = Math.min(1, len);
+      const dx = (moveX / len) * speed * mag;
+      const dz = (moveZ / len) * speed * mag;
       const curX = camera.position.x, curZ = camera.position.z;
       // Check full step, or slide along X / Z axis (`PKU-3D FirstPerson.move` line 63)
       if (isWalkPointAllowed(curX + dx, curZ + dz)) {
@@ -22073,12 +27309,15 @@ renderer.setAnimationLoop(now => {
       } else if (walkState.keys.down) {
         camera.position.y = Math.max(-0.78, camera.position.y - vSpeed);
       } else {
+        // v2.12.40 北棟／西棟已依航照定位：樓梯判斷改用各棟局部座標
+        const [_nX, _nZ] = NORTH_XF.toLocal(camera.position.x, camera.position.z);
+        const [_wX, _wZ] = WEST_XF.toLocal(camera.position.x, camera.position.z);
         // Automatic Stair Climbing inside North Building Central Stairwell (⑪–⑫: X from 17.0 to 23.0, Z from -38.5 to -26.5)
-        const inStairwell = (camera.position.x >= 17.0 && camera.position.x <= 23.0 && camera.position.z >= -38.5 && camera.position.z <= -26.5);
+        const inStairwell = (_nX >= 17.0 && _nX <= 23.0 && _nZ >= -38.5 && _nZ <= -26.5);
         if (inStairwell) {
           // Downward flight to Basement on west run (x <= 20.0, z from -26.0 to -32.5, y < 3.20)
-          if (camera.position.x <= 20.0 && camera.position.y < 3.20 && camera.position.z >= -32.5 && camera.position.z <= -26.0) {
-            const bfProg = (-26.0 - camera.position.z) / 6.0; // 0 at 1F (z=-26.0), 1 at BF (z=-32.0)
+          if (_nX <= 20.0 && camera.position.y < 3.20 && _nZ >= -32.5 && _nZ <= -26.0) {
+            const bfProg = (-26.0 - _nZ) / 6.0; // 0 at 1F (z=-26.0), 1 at BF (z=-32.0)
             const targetY = THREE.MathUtils.lerp(2.97, -0.78, THREE.MathUtils.clamp(bfProg, 0, 1));
             camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
           } else {
@@ -22086,43 +27325,81 @@ renderer.setAnimationLoop(now => {
             // West flight (x <= 20.0): goes up from north (Z=-35.0) to south (Z=-26.5)
             const curFloor = Math.floor(Math.max(0, (camera.position.y - 1.72 - 1.25) / 3.6));
             const floorBaseY = 1.25 + curFloor * 3.6 + 1.72;
-            const isEastUp = camera.position.x > 20.0;
-            if (isEastUp && camera.position.z <= -26.5 && camera.position.z >= -35.0) {
-              const stairProgress = (-26.5 - camera.position.z) / 8.5; // 0 to 1
+            const isEastUp = _nX > 20.0;
+            if (isEastUp && _nZ <= -26.5 && _nZ >= -35.0) {
+              const stairProgress = (-26.5 - _nZ) / 8.5; // 0 to 1
               const targetY = floorBaseY + THREE.MathUtils.clamp(stairProgress, 0, 1) * 1.8;
               camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
-            } else if (!isEastUp && camera.position.z >= -35.0 && camera.position.z <= -26.5) {
-              const stairProgress = (camera.position.z - (-35.0)) / 8.5; // 0 to 1
+            } else if (!isEastUp && _nZ >= -35.0 && _nZ <= -26.5) {
+              const stairProgress = (_nZ - (-35.0)) / 8.5; // 0 to 1
               const targetY = floorBaseY + 1.8 + THREE.MathUtils.clamp(stairProgress, 0, 1) * 1.8;
               camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
             }
           }
         }
         // Stepped Garden Planters descent to Basement South Lightwell (X: -26.5..-17.5 & 32.0..43.0, Z: -21.65..-19.15)
-        const inSteppedPlanter = (camera.position.z >= -21.65 && camera.position.z <= -19.15 &&
-          ((camera.position.x >= -26.5 && camera.position.x <= -17.5) || (camera.position.x >= 32.0 && camera.position.x <= 43.0)));
+        const inSteppedPlanter = (_nZ >= -21.65 && _nZ <= -19.15 &&
+          ((_nX >= -26.5 && _nX <= -17.5) || (_nX >= 32.0 && _nX <= 43.0)));
         if (inSteppedPlanter) {
-          const pProg = (camera.position.z - (-19.25)) / (-2.40); // 0 at south ground, 1 at sunken lightwell
+          const pProg = (_nZ - (-19.25)) / (-2.40); // 0 at south ground, 1 at sunken lightwell
           const targetY = THREE.MathUtils.lerp(1.72, -0.78, THREE.MathUtils.clamp(pProg, 0, 1));
           camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
         }
         // Automatic Stair Climbing inside West Building North Staircase (東面上樓：X from -26.80 to -32.15, Z from -16.05 to -14.19)
-        const inWestNorthStair = (camera.position.x >= -32.25 && camera.position.x <= -26.70 && camera.position.z >= -16.05 && camera.position.z <= -14.19);
+        const inWestNorthStair = (_wX >= -32.25 && _wX <= -26.70 && _wZ >= -16.05 && _wZ <= -14.19);
         if (inWestNorthStair) {
           const curFloor = (camera.position.y - 1.72 >= 3.80) ? 1 : 0;
           const baseFloorY = (curFloor === 0 ? 0.25 : 3.95) + 1.72;
           const riseH = (curFloor === 0 ? 3.70 : 3.75);
-          const stairProgress = (-26.80 - camera.position.x) / 5.35; // 0 (East) to 1 (West)
+          const stairProgress = (-26.80 - _wX) / 5.35; // 0 (East) to 1 (West)
           const targetY = baseFloorY + THREE.MathUtils.clamp(stairProgress, 0, 1) * riseH;
           camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
         }
-        // Automatic Stair Climbing for North Building West Rear Staircase (Outdoor 9-Step Entrance Flight: X from -27.8 to -30.0, Z from -36.5 to -34.0)
-        const inNorthWestStair = (camera.position.x >= -30.2 && camera.position.x <= -27.7 && camera.position.z >= -36.6 && camera.position.z <= -34.0);
-        if (inNorthWestStair && camera.position.y < 3.5) {
-          const stairProg = (-27.80 - camera.position.x) / 1.80; // 0 at ground (East), 1 at 1F platform (West)
-          const targetY = 1.72 + THREE.MathUtils.clamp(stairProg, 0, 1) * 1.25;
-          camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.18);
+        // 北棟西側後走廊戶外直梯：地面 8 階入口踏步、三段西→東直梯與東西端平台（v2.12.118 新幾何）
+        const NS = window.NORTH_REAR_STAIR;
+        if (NS) {
+          const px = _nX, pz = _nZ, eye = 1.72;
+          const feet = camera.position.y - eye;
+          const zEastN = NS.zEastNorth !== undefined ? NS.zEastNorth : NS.zFlightN;
+          let targetFeet = null;
+          if (pz <= zEastN && pz >= NS.zBoxNorth && px >= NS.xs && px <= NS.eX0 && feet < NS.baseH + 1.0) {
+            targetFeet = NS.baseH * THREE.MathUtils.clamp((NS.eX0 - px) / (NS.eX0 - NS.xs), 0, 1);      // 1F 入口踏步
+          } else if (pz <= NS.zFlightS && pz >= NS.zFlightN && px >= NS.xs && px <= NS.xe) {
+            const prog = (px - NS.xs) / (NS.xe - NS.xs);
+            let best = null;
+            for (let k = 0; k < 3; k++) { const fy = NS.baseH + k * NS.FH + prog * NS.FH; if (best === null || Math.abs(fy - feet) < Math.abs(best - feet)) best = fy; }
+            targetFeet = best;                                                                           // 直梯
+          } else if ((pz <= NS.zb && pz >= NS.zBoxNorth && px >= NS.b2L && px < NS.xs) ||
+                     (pz <= NS.zb && pz >= zEastN && px > NS.xe && px <= NS.xEastBoxEnd)) {
+            const maxLv = (px < NS.xs) ? 2 : 3;
+            const lv = Math.max(0, Math.min(maxLv, Math.round((feet - NS.baseH) / NS.FH)));
+            targetFeet = NS.baseH + lv * NS.FH;                                                          // 西端（1F~3F）／東端（2F~屋頂）平台
+          }
+          if (targetFeet !== null) camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetFeet + eye, 0.18);
         }
+      }
+      // v2.12.69 新棟北側入口階梯、1F 走廊平台、連通樓梯與北走廊之自動升降（新棟建置局部座標，僅 1F）
+      if (!walkState.keys.up && !walkState.keys.down && camera.position.y < 3.2) {
+        const [nx, nz0] = NEW_XF.toLocal(camera.position.x, camera.position.z), nz = nz0 - SOUTH_SHIFT;
+        const zF = 13.398, zStair0 = zF - 6 * 0.34, entCx = -19.58;
+        let feet = null;
+        if (nz >= zStair0 && nz < zF && nx >= entCx - 1.30 && nx <= entCx + 1.30) feet = 0.72 * THREE.MathUtils.clamp((nz - zStair0) / (zF - zStair0), 0, 1);   // 入口階梯
+        else if (nz >= zStair0 && nz < 13.633 && nx >= -24.31 && nx < entCx + 1.30) feet = 0.72;                                                                   // 1F 走廊平台、入口平台
+        else if (nz >= 13.633 && nz <= 15.918 && nx >= -27.04 && nx <= -6.7) {
+          if (nx < -24.31) feet = 0.40;                                                                     // 西棟端下層平台
+          else if (nx < -21.51) feet = 0.40 + 0.80 * (nx + 24.31) / 2.80;                                    // 連通樓梯 8 階
+          else feet = 1.20;                                                                                  // 新棟 1F 北走廊
+        }
+        if (feet !== null) camera.position.y = THREE.MathUtils.lerp(camera.position.y, feet + 1.72, 0.2);
+        else if (camera.position.y > 1.75 && camera.position.y < 3.0 && walkState.__newRaised) camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72, 0.2);
+        walkState.__newRaised = feet !== null || camera.position.y > 1.76;
+      }
+      // 下沉中庭：進入中庭範圍時視高隨地面下降，離開時回復（東棟坡道／台階由其本身邏輯處理）
+      {
+        const inC = inCourtyardSink(camera.position.x, camera.position.z, -0.4);
+        const onRamp = window.EAST_REAR_RAMP && EAST_XF.toLocal(camera.position.x, camera.position.z)[0] > window.EAST_REAR_RAMP.xA1 - 0.3;   // v2.12.40 東棟局部座標
+        if (inC && !onRamp && camera.position.y < 2.8) { camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72 - COURTYARD_SINK.D, 0.18); walkState.sunk = true; }
+        else if (!inC && walkState.sunk && camera.position.y < 1.6) { camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.72, 0.18); if (Math.abs(camera.position.y - 1.72) < 0.02) walkState.sunk = false; }
       }
       camera.position.y += Math.sin(now * 0.012) * (len > 0.001 ? 0.018 : 0);
       updateWalkCameraTarget();
@@ -22232,7 +27509,7 @@ renderer.setAnimationLoop(now => {
       const pz = curA[1] + (curB[1] - curA[1]) * ag.segT;
       const cycle = now * 0.0085 * ag.speed + ag.phase;
       const bob = Math.abs(Math.cos(cycle)) * 0.025;
-      ag.mesh.position.set(px, 0.10 + bob, pz);
+      ag.mesh.position.set(px, 0.10 + bob - (inCourtyardSink(px, pz) ? COURTYARD_SINK.D : 0), pz);
       ag.mesh.rotation.y = Math.atan2(curB[0] - curA[0], curB[1] - curA[1]);
       const swing = Math.sin(cycle) * 0.46;
       ag.legL.rotation.x = swing;
@@ -22402,7 +27679,12 @@ renderer.setAnimationLoop(now => {
       });
     }
 
-    renderer.render(scene, camera);
+    updateShadowMapIfNeeded();
+    applyMotionResolution(now);
+    const fx = window.__postFX;
+    if (fx && fx.enabled) fx.render(performance.now() - lastMotionAt < 250);
+    else renderer.render(scene, camera);
+    perfMonitorTick(now);
     if (!window.__hasFirst3DRender) {
       window.__hasFirst3DRender = true;
       onFirst3DFrameReady();
@@ -22617,6 +27899,77 @@ const ALL_BUILD_TASKS = [
   { id: 'campus-context', name: '校園林蔭與環境設施', fn: buildCampusContext, pct: 100 }
 ];
 
+// ---- 靜態幾何合批：每棟建築構建完成即合併 (draw call 降一個數量級) ----
+window.__batchStats = { batches: 0, ms: 0 };
+// 下沉中庭：將完全位於中庭範圍內、原本貼地建置的物件（樹木、植栽、花台、長椅…）整體下移 D
+const courtyardLowered = new WeakSet();
+const _cbox = new THREE.Box3(), _cpos = new THREE.Vector3();
+function lowerCourtyardContents() {
+  const C = COURTYARD_SINK;
+  const SKIP = new Set(['courtyard-plaza', 'playground-zone', 'north-building']);
+  const todo = [];
+  // 先更新世界矩陣：剛建好的群組 matrixWorld 尚為單位矩陣，setFromObject 不會更新祖先，
+  // 會把位於校園他處的群組子物件誤判為「位於原點附近（中庭內）」而錯誤下移（v2.12.4 修正）
+  Object.values(layerGroups).forEach(root => root.updateMatrixWorld(true));
+  Object.values(layerGroups).forEach(root => root.traverse(o => {
+    if (!o.isMesh || o.isInstancedMesh || courtyardLowered.has(o)) return;
+    courtyardLowered.add(o);
+    if (o.userData.keepLevel || o.name.startsWith('batch:')) return;
+    let a = o, lm = '';
+    while (a && !lm) { lm = a.userData?.landmarkId || ''; a = a.parent; }
+    if (SKIP.has(lm)) return;
+    _cbox.setFromObject(o);   // v2.12.98 修正：先算「自己」的包圍盒再判斷。原本南棟的高度判斷讀到上一個網格殘留的 _cbox，下沉與否隨遍歷順序亂跳
+    if (lm === 'south-building' && (_cbox.max.y > 0.3 || o.userData.keepLevel)) return;   // v2.12.34 南棟北移：僅下移貼地地磚帶
+    if (_cbox.isEmpty() || _cbox.min.y < -0.3) return;
+    // v2.12.40 四邊形中庭：外接盒四角皆須位於中庭內
+    if (!inCourtyardSink(_cbox.min.x, _cbox.min.z) || !inCourtyardSink(_cbox.max.x, _cbox.min.z) ||
+        !inCourtyardSink(_cbox.min.x, _cbox.max.z) || !inCourtyardSink(_cbox.max.x, _cbox.max.z)) return;
+    todo.push(o);
+  }));
+  todo.forEach(o => {
+    o.getWorldPosition(_cpos); _cpos.y -= C.D;
+    o.parent.worldToLocal(_cpos); o.position.copy(_cpos); o.updateMatrix();
+  });
+  return todo.length;
+}
+
+function runStaticBatching(label) {
+  try { applyPhenology(phenoMonth()); if (typeof updateMonthUi === 'function') updateMonthUi(); } catch (err) { console.warn('[Pheno] skipped:', err); }   // 併入各建築新登錄之物候材質與地被
+  try { lowerCourtyardContents(); } catch (err) { console.warn('[Courtyard] lowering skipped:', err); }
+  if (new URLSearchParams(window.location.search).has('nobatch')) return;
+  try {
+    const exclude = [
+      pedestriansGroup, weatherGroup, route3DGroup, plan3DOverlayGroup, selectionOutlineGroup,
+      ...streetLightBulbs,
+      ...((window.__campusFlags || []).map(f => f.mesh))
+    ];
+    // 材質去重的保護名單：所有「執行期會被改色 / 顯隱 / 換貼圖」的材質（四季樹葉、物候、草坪、夜間窗光…）
+    const protect = new Set([...foliageMats, ...nightWindowMaterials, ...Object.values(_phenoMatCache)]);
+    Object.values(PHENO_STATE).forEach(st => {
+      for (const k of Object.keys(st)) {
+        const v = st[k];
+        if (v instanceof Map) v.forEach((_, m) => protect.add(m));
+        else if (Array.isArray(v)) v.forEach(m => m && m.isMaterial && protect.add(m));
+      }
+    });
+    (window.__lawnMats || []).forEach(({ mat }) => protect.add(mat));
+    const dedupe = !new URLSearchParams(window.location.search).has('nodedup');
+    const cellParam = new URLSearchParams(window.location.search).get('cell');   // ?cell=0 可關閉空間切塊以便比對
+    const r = batchStaticMeshes(Object.values(layerGroups), {
+      exclude, dedupe, protect, cellSize: cellParam === null ? 0 : Number(cellParam),
+      // 跨中間群組合併（?nohoist 可關閉）：邊界為會被個別顯示/隱藏的群組——可點選建築（單體觀察）與 LOD 細節群組
+      hoist: !new URLSearchParams(window.location.search).has('nohoist'),
+      boundaries: [...clickableGroups, ...LOD_REGISTRY.map(it => it.detailGroup)]
+    });   // 實測：切塊反而增加 draw calls（4145→5140~5428），預設關閉
+    const st = window.__batchStats;
+    st.batches += r.batches; st.ms += r.ms;
+    st.last = { label, ...r };
+    markShadowsDirty();
+  } catch (err) {
+    console.warn('[Batch] static batching skipped:', err);
+  }
+}
+
 function runChunkedSceneBuild() {
   const params = new URLSearchParams(window.location.search);
   const targetBldg = params.get('bldg') || params.get('landmark') || params.get('place') || findBuildingIdForRoom(params.get('room')) || 'north-building';
@@ -22637,6 +27990,7 @@ function runChunkedSceneBuild() {
   } catch (err) {
     console.error(`[Build] Failed to build priority task ${priorityTask.id}:`, err);
   }
+  runStaticBatching(priorityTask.id);
 
   if (window.__updateProgress) {
     window.__updateProgress(75, `${priorityTask.name}就緒，正在呈現校園...`);
@@ -22659,8 +28013,13 @@ function runChunkedSceneBuild() {
       if (window.__updateProgress) {
         window.__updateProgress(100, '3D 校園全景構建完成');
       }
+      // 最後一輪：合併建構期間在各建築函式之外加入的零散物件
+      runStaticBatching('final');
+      pedestriansGroup.traverse(o => { if (o.isMesh) o.castShadow = false; });
+      window.__buildComplete = true;
+      window.dispatchEvent(new CustomEvent('campus-build-complete'));
       requestRender(30);
-      console.log('[Campus3D] Progressive time-sliced 3D build completed (v2.6.0)');
+      console.log('[Campus3D] Progressive time-sliced 3D build completed (v2.9.0)', window.__batchStats);
       return;
     }
 
@@ -22670,6 +28029,7 @@ function runChunkedSceneBuild() {
     } catch (err) {
       console.error(`[Build] Failed to build task ${task.id}:`, err);
     }
+    runStaticBatching(task.id);
 
     if (window.__updateProgress) {
       window.__updateProgress(task.pct, `正在構建${task.name}...`);
