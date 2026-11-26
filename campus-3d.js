@@ -21470,49 +21470,68 @@ function buildOrganicFarm() {
     ctx.beginPath();
     ctx.ellipse(152, 148, 120, 62, 0.08, 0, Math.PI * 2);
     ctx.fill();
-    // 中右：紅披風與粉洋裝小女孩
+    // 中左：紅披風與粉洋裝小女孩
     // 紅色流動披風
     ctx.fillStyle = '#b43d34';
     ctx.beginPath();
-    ctx.moveTo(278, 92);
-    ctx.quadraticCurveTo(356, 126, 448, 224);
-    ctx.lineTo(272, 224);
-    ctx.quadraticCurveTo(260, 152, 278, 92);
+    ctx.moveTo(232, 92);
+    ctx.quadraticCurveTo(305, 126, 396, 224);
+    ctx.lineTo(226, 224);
+    ctx.quadraticCurveTo(214, 152, 232, 92);
     ctx.fill();
     // 棕色長髮
     ctx.fillStyle = '#6c4932';
     ctx.beginPath();
-    ctx.ellipse(308, 72, 34, 38, 0, 0, Math.PI * 2);
+    ctx.ellipse(260, 72, 32, 36, 0, 0, Math.PI * 2);
     ctx.fill();
     // 臉部
     ctx.fillStyle = '#f2d9c2';
     ctx.beginPath();
-    ctx.ellipse(304, 74, 23, 25, 0, 0, Math.PI * 2);
+    ctx.ellipse(256, 74, 21, 24, 0, 0, Math.PI * 2);
     ctx.fill();
     // 粉紅色洋裝與伸展手臂
     ctx.fillStyle = '#e59fb3';
     ctx.beginPath();
-    ctx.moveTo(298, 102);
-    ctx.lineTo(314, 102);
-    ctx.lineTo(334, 182);
-    ctx.lineTo(286, 182);
+    ctx.moveTo(250, 102);
+    ctx.lineTo(266, 102);
+    ctx.lineTo(284, 182);
+    ctx.lineTo(238, 182);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = '#e59fb3';
     ctx.lineWidth = 7;
-    ctx.beginPath(); ctx.moveTo(312, 118); ctx.lineTo(350, 138); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(264, 118); ctx.lineTo(300, 138); ctx.stroke();
     // 小愛心點綴
     ctx.fillStyle = '#e08ca4';
-    ctx.beginPath(); ctx.arc(362, 42, 6, 0, Math.PI * 2); ctx.arc(384, 48, 5, 0, Math.PI * 2); ctx.fill();
-    // 右側藍色地球與土褐陸塊
+    ctx.beginPath(); ctx.arc(310, 42, 6, 0, Math.PI * 2); ctx.arc(330, 48, 5, 0, Math.PI * 2); ctx.fill();
+    // 中右：藍色地球與土褐陸塊
     ctx.fillStyle = '#4f92c8';
     ctx.beginPath();
-    ctx.arc(448, 138, 62, 0, Math.PI * 2);
+    ctx.arc(362, 136, 54, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#c2905c';
-    ctx.beginPath(); ctx.ellipse(422, 112, 22, 15, 0.3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(466, 156, 26, 22, -0.4, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(446, 136, 14, 10, 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(340, 114, 19, 13, 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(378, 152, 22, 18, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(360, 134, 12, 9, 0.1, 0, Math.PI * 2); ctx.fill();
+    // 右側：第二位孩童人物（紅白衣裙，依 20261125_093444 / 093503 實拍補全）
+    ctx.fillStyle = '#c45242';
+    ctx.beginPath();
+    ctx.moveTo(430, 106);
+    ctx.lineTo(456, 106);
+    ctx.lineTo(474, 206);
+    ctx.lineTo(414, 206);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#e8dfd5';
+    ctx.fillRect(432, 112, 22, 54);
+    ctx.fillStyle = '#f2d9c2';
+    ctx.beginPath();
+    ctx.ellipse(443, 76, 20, 23, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#73533a';
+    ctx.beginPath();
+    ctx.arc(443, 66, 21, Math.PI, Math.PI * 2);
+    ctx.fill();
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
@@ -21953,11 +21972,12 @@ function buildOrganicFarm() {
   }
 
   // =========================================================================
-  // G. 東端地標：彩繪落葉堆肥池（少女、地球、綠丘壁畫＋枯黃落葉堆）與雞蛋花樹（083322 / 083304）
+  // G. 東端地標：堆肥區 — 彩繪落葉堆肥池（少女、地球、孩童、綠丘壁畫＋低矮藍面踏板＋枯黃落葉堆）與雞蛋花樹
+  //    （v2.12.123 依 20261125_093444 / 093503 / 093513 實拍：位於變電箱鐵網區西側、有機農場場地東側）
   // =========================================================================
   {
-    const cbMinX = 95.3, cbMaxX = 98.5, cbW = cbMaxX - cbMinX, cbCx = (cbMinX + cbMaxX) / 2;
-    const cbSouthZ = -47.1, cbNorthZ = -50.1, cbD = cbSouthZ - cbNorthZ, cbCz = (cbSouthZ + cbNorthZ) / 2;
+    const cbMinX = 95.3, cbMaxX = 99.1, cbW = cbMaxX - cbMinX, cbCx = (cbMinX + cbMaxX) / 2;
+    const cbSouthZ = -47.1, cbNorthZ = -50.2, cbD = cbSouthZ - cbNorthZ, cbCz = (cbSouthZ + cbNorthZ) / 2;
     const cbH = 0.98, wallT = 0.16;
     const concreteWallMat = new THREE.MeshStandardMaterial({ color: 0xc2c5bf, roughness: 0.88 });
     const muralMat = new THREE.MeshStandardMaterial({ map: makeCompostMuralTexture(), roughness: 0.78 });
@@ -21969,16 +21989,32 @@ function buildOrganicFarm() {
     addBox(ofg, wallT, cbH, cbD, concreteWallMat, cbMinX + wallT / 2, cbH / 2, cbCz);
     addBox(ofg, wallT, cbH, cbD, concreteWallMat, cbMaxX - wallT / 2, cbH / 2, cbCz);
 
-    // 堆滿高出池緣之枯黃落葉堆肥堆（083322.jpg 右側滿溢落葉堆）
+    // 堆肥池南側前方低矮水泥藍漆踏板台階（20261125_093444 / 093503 / 093513 實拍）
+    const stepBaseMat = new THREE.MeshStandardMaterial({ color: 0x9aa09a, roughness: 0.90 });
+    const stepBlueMat = new THREE.MeshStandardMaterial({ color: 0x4b779e, roughness: 0.82 });
+    addBox(ofg, 2.35, 0.15, 0.72, stepBaseMat, cbCx + 0.08, 0.075, cbSouthZ + 0.44, false);
+    addBox(ofg, 2.30, 0.03, 0.68, stepBlueMat, cbCx + 0.08, 0.165, cbSouthZ + 0.44, false);
+
+    // 有機農場東端轉角矮牆上之黑色鏤空塑膠籃（20261125_093513 實拍）
+    const basketBlkMat = new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.78 });
+    addMesh(ofg, new THREE.CylinderGeometry(0.24, 0.19, 0.42, 10), basketBlkMat, 93.85, 0.60, -47.25);
+
+    // 堆滿高出池緣之枯黃落葉堆肥堆與枯枝（20261125_093444 / 093503 實拍）
     addBox(ofg, cbW - 0.34, cbH - 0.14, cbD - 0.34, dryLeavesMat, cbCx, (cbH - 0.14) / 2, cbCz, false);
-    const leafMound = addMesh(ofg, new THREE.DodecahedronGeometry(1.15, 2), dryLeavesMat, cbCx, cbH + 0.02, cbCz);
-    leafMound.scale.set(1.22, 0.42, 1.08);
-    [[-0.65, 0.12, 0.35, 0.58], [0.58, 0.16, -0.25, 0.62], [0.15, 0.24, 0.18, 0.55]].forEach(([ox, oy, oz, r]) => {
+    const leafMound = addMesh(ofg, new THREE.DodecahedronGeometry(1.25, 2), dryLeavesMat, cbCx, cbH + 0.04, cbCz);
+    leafMound.scale.set(1.32, 0.44, 1.08);
+    [[-0.85, 0.12, 0.35, 0.62], [0.75, 0.18, -0.25, 0.68], [0.15, 0.26, 0.18, 0.58]].forEach(([ox, oy, oz, r]) => {
       const m = addMesh(ofg, new THREE.DodecahedronGeometry(r, 1), dryLeavesMat, cbCx + ox, cbH + oy, cbCz + oz);
-      m.scale.set(1.25, 0.45, 1.15);
+      m.scale.set(1.28, 0.45, 1.15);
+    });
+    // 落葉堆上方散落乾枯枝條
+    const twigMat = new THREE.MeshStandardMaterial({ color: 0x6e5136, roughness: 0.92 });
+    [[-0.35, 1.24, 0.12, 0.4, 0.6], [0.45, 1.28, -0.18, -0.5, 0.8], [0.05, 1.32, 0.28, 0.25, -0.7]].forEach(([ox, oy, oz, rz, ry]) => {
+      const tw = addMesh(ofg, new THREE.CylinderGeometry(0.016, 0.024, 1.15, 5), twigMat, cbCx + ox, oy, cbCz + oz, false);
+      tw.rotation.set(0.35, ry, rz);
     });
 
-    // 堆肥池後方「雞蛋花（緬梔）樹」（083322.jpg / 083304.jpg 右側分叉開展樹姿）
+    // 堆肥池後方「雞蛋花（緬梔）樹」（20261125_093444 / 093503 / 093513 分叉開展樹姿）
     const plX = 95.8, plZ = -51.6;
     const plumBarkMat = new THREE.MeshStandardMaterial({ color: 0x7c7468, roughness: 0.88 });
     const plumLeafMat = new THREE.MeshStandardMaterial({ color: 0x3b6826, roughness: 0.72 });
@@ -22038,32 +22074,291 @@ function buildOrganicFarm() {
   landmarkGroupMap.set('organic-farm', ofg);
 }
 
-// ---- 21 東北角環保場與資源回收區 (`recycling-depot`) ----
+// ---- 21 東北角變電箱與綠色鐵網圍籬區 (`recycling-depot` — v2.12.123 依 20261125_093444 / 093503 實拍 1:1 重建) ----
+// 由東側小門往西依序為：東側小門北牆與太陽能路燈 → 變電箱與綠色鐵網圍籬區（本區）→ 彩繪落葉堆肥池（堆肥區）→ 有機農場場地
 function buildRecyclingDepot() {
   const rdg = new THREE.Group();
   rdg.userData = { landmarkId: 'recycling-depot' };
-  const rx = X(922), rz = Z(42);
-  const depotSlabMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.85 });
-  const depotRoofMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.45, metalness: 0.35 });
-  const postSteelMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5, metalness: 0.6 });
 
-  addBox(rdg, 11.5, 0.14, 6.2, depotSlabMat, rx, 0.07, rz, false);
-  addBox(rdg, 11.8, 0.18, 6.5, depotRoofMat, rx, 3.05, rz);
-  [-5.2, 0, 5.2].forEach(ox => {
-    [-2.8, 2.8].forEach(oz => {
-      addBox(rdg, 0.16, 3.0, 0.16, postSteelMat, rx + ox, 1.5, rz + oz);
+  // 1) 綠色菱形鏈條鐵絲網透明紋理（透視後方灰色變電箱、米白變電柱與垃圾分類區）
+  function makeGreenChainLinkTexture() {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 128;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#1f5e36';
+    ctx.lineWidth = 3.2;
+    const step = 16;
+    for (let i = -128; i <= 256; i += step) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + 128, 128); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(i + 128, 0); ctx.lineTo(i, 128); ctx.stroke();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(3, 4);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 2) 變電箱基座「黑黃斜紋警示帶」紋理（20261125_093503 實拍）
+  function makeHazardPlinthTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#d4a62a';
+    ctx.fillRect(0, 0, 256, 64);
+    ctx.fillStyle = '#252624';
+    for (let x = -64; x < 320; x += 36) {
+      ctx.beginPath();
+      ctx.moveTo(x, 64); ctx.lineTo(x + 18, 64);
+      ctx.lineTo(x + 42, 0); ctx.lineTo(x + 24, 0);
+      ctx.closePath(); ctx.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(3, 1);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 3) 鐵網大門「高壓電危險」白底紅頭直式警示牌
+  function makeHighVoltageSignTexture() {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 192;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#f4f4f0';
+    ctx.fillRect(0, 0, 128, 192);
+    ctx.strokeStyle = '#c53030';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(4, 4, 120, 184);
+    ctx.fillStyle = '#c53030';
+    ctx.fillRect(8, 8, 112, 42);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px "Noto Sans TC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('高壓電危險', 64, 36);
+    ctx.fillStyle = '#222222';
+    ctx.font = 'bold 18px "Noto Sans TC", sans-serif';
+    ctx.fillText('非工作人員', 64, 96);
+    ctx.fillText('請勿靠近', 64, 130);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
+  // 共用材質
+  const frameGreenMat   = new THREE.MeshStandardMaterial({ color: 0x1e6036, roughness: 0.55, metalness: 0.35 });
+  const wireMeshMat     = new THREE.MeshStandardMaterial({ map: makeGreenChainLinkTexture(), transparent: true, alphaTest: 0.15, roughness: 0.72, metalness: 0.25, side: THREE.DoubleSide });
+  const concretePlinth  = new THREE.MeshStandardMaterial({ color: 0x86857d, roughness: 0.92 });
+  const pillarCreamMat  = new THREE.MeshStandardMaterial({ color: 0xd8d3c0, roughness: 0.80 });
+  const pillarCapMat    = new THREE.MeshStandardMaterial({ color: 0xc9c4b2, roughness: 0.84 });
+  const insulatorMat    = new THREE.MeshStandardMaterial({ color: 0x9ca19e, roughness: 0.45, metalness: 0.15 });
+  const meterBoxMat     = new THREE.MeshStandardMaterial({ color: 0x3b5240, roughness: 0.65, metalness: 0.25 });
+  const cabinetGrayMat  = new THREE.MeshStandardMaterial({ color: 0xc2c6c2, roughness: 0.52, metalness: 0.30 });
+  const cabinetDarkMat  = new THREE.MeshStandardMaterial({ color: 0x6f7570, roughness: 0.62, metalness: 0.25 });
+  const hazardPlinthMat = new THREE.MeshStandardMaterial({ map: makeHazardPlinthTexture(), roughness: 0.85 });
+  const grassVergeMat   = new THREE.MeshStandardMaterial({ color: 0x5d7a3c, roughness: 0.95 });
+  const insideGroundMat = new THREE.MeshStandardMaterial({ color: 0x6a5c44, roughness: 0.96 });
+  const endWallMat      = new THREE.MeshStandardMaterial({ color: 0x6c6b66, roughness: 0.92 });
+
+  // 輔助函式：建立單扇綠色鐵框＋菱形鐵絲網圍籬面板（沿 X 方向，中心 (cx, h/2, cz)）
+  function addFencePanelX(cx, cz, w, h) {
+    const t = 0.045;
+    addBox(rdg, w, t, t, frameGreenMat, cx, h - t / 2, cz);           // 上橫管
+    addBox(rdg, w, t, t, frameGreenMat, cx, 0.08, cz);                // 下橫管
+    addBox(rdg, t, h, t, frameGreenMat, cx - w / 2, h / 2, cz);       // 左立柱
+    addBox(rdg, t, h, t, frameGreenMat, cx + w / 2, h / 2, cz);       // 右立柱
+    const meshPlane = addMesh(rdg, new THREE.PlaneGeometry(w - 0.06, h - 0.14), wireMeshMat, cx, h / 2 + 0.02, cz, false);
+    meshPlane.material = wireMeshMat;
+  }
+  function addFencePanelZ(cx, cz, d, h) {
+    const t = 0.045;
+    addBox(rdg, t, t, d, frameGreenMat, cx, h - t / 2, cz);
+    addBox(rdg, t, t, d, frameGreenMat, cx, 0.08, cz);
+    addBox(rdg, t, h, t, frameGreenMat, cx, h / 2, cz - d / 2);
+    addBox(rdg, t, h, t, frameGreenMat, cx, h / 2, cz + d / 2);
+    const p = addMesh(rdg, new THREE.PlaneGeometry(d - 0.06, h - 0.14), wireMeshMat, cx, h / 2 + 0.02, cz, false);
+    p.rotation.y = Math.PI / 2;
+  }
+
+  // A. 前方草皮綠帶（車道北緣至鐵網圍籬之間）與圍籬內枯葉地坪
+  addBox(rdg, 11.4, 0.05, 1.55, grassVergeMat, 104.8, 0.025, -46.55, false);
+  addBox(rdg, 10.7, 0.06, 4.6, insideGroundMat, 104.55, 0.03, -49.45, false);
+
+  // B. 西側雜物／垃圾暫置鐵網隔間（lx = 99.2..102.2，緊鄰彩繪落葉堆肥池東側，20261125_093444 / 093503）
+  const fH = 1.88, fZ = -47.1;
+  // 最西端綠色鐵網小門（微向外開，緊貼堆肥池東壁）
+  {
+    const gateGrp = new THREE.Group();
+    gateGrp.position.set(100.15, 0, fZ);
+    gateGrp.rotation.y = 0.22;
+    const gw = 0.92, gh = 1.84, t = 0.045;
+    addBox(gateGrp, gw, t, t, frameGreenMat, -gw / 2, gh - t / 2, 0);
+    addBox(gateGrp, gw, t, t, frameGreenMat, -gw / 2, 0.08, 0);
+    addBox(gateGrp, gw, t * 0.8, t * 0.8, frameGreenMat, -gw / 2, gh * 0.48, 0);
+    addBox(gateGrp, t, gh, t, frameGreenMat, -gw, gh / 2, 0);
+    addBox(gateGrp, t, gh, t, frameGreenMat, 0, gh / 2, 0);
+    addMesh(gateGrp, new THREE.PlaneGeometry(gw - 0.06, gh - 0.14), wireMeshMat, -gw / 2, gh / 2 + 0.02, 0, false);
+    rdg.add(gateGrp);
+  }
+  addFencePanelX(100.68, fZ, 1.06, fH);
+  addFencePanelX(101.70, fZ, 1.00, fH);
+  // 雜物區內外之黑色鏤空垃圾籃、粉紅／藍／黑／白色垃圾袋與斜靠掃把（20261125_093503 實拍）
+  {
+    const blkBasketMat = new THREE.MeshStandardMaterial({ color: 0x1e2124, roughness: 0.78 });
+    const pinkBagMat   = new THREE.MeshStandardMaterial({ color: 0xe84d8a, roughness: 0.48 });
+    const blueBagMat   = new THREE.MeshStandardMaterial({ color: 0x2b8cd6, roughness: 0.48 });
+    const blkBagMat    = new THREE.MeshStandardMaterial({ color: 0x202326, roughness: 0.55 });
+    const whtBagMat    = new THREE.MeshStandardMaterial({ color: 0xe6e4de, roughness: 0.52 });
+    const broomMat     = new THREE.MeshStandardMaterial({ color: 0xa68152, roughness: 0.88 });
+    const dustpanMat   = new THREE.MeshStandardMaterial({ color: 0xd6453a, roughness: 0.62 });
+
+    // 圍籬內側粉紅與藍色垃圾袋堆
+    addMesh(rdg, new THREE.CylinderGeometry(0.26, 0.22, 0.44, 10), blkBasketMat, 100.55, 0.24, -47.65);
+    const pb = addMesh(rdg, new THREE.DodecahedronGeometry(0.32, 1), pinkBagMat, 100.55, 0.62, -47.65);
+    pb.scale.set(1.1, 0.95, 1.0);
+    const bb = addMesh(rdg, new THREE.DodecahedronGeometry(0.28, 1), blueBagMat, 100.92, 0.56, -47.85);
+    bb.scale.set(1.0, 0.95, 1.0);
+
+    // 圍籬外側草地上之黑色鏤空籃、黑垃圾袋與白塑膠袋
+    [[101.25, -46.62, 0.24], [101.68, -46.55, 0.26]].forEach(([bx, bz, br]) => {
+      addMesh(rdg, new THREE.CylinderGeometry(br, br * 0.82, 0.48, 10), blkBasketMat, bx, 0.26, bz);
+      const bbg = addMesh(rdg, new THREE.DodecahedronGeometry(br * 0.95, 1), blkBagMat, bx, 0.56, bz);
+      bbg.scale.set(1.05, 0.78, 1.0);
     });
-  });
-  // 四色資源回收分類大桶 (藍、綠、黃、紅)
-  [
-    [-3.6, 0x2563eb], [-1.2, 0x16a34a], [1.2, 0xeab308], [3.6, 0xdc2626]
-  ].forEach(([bx, col]) => {
-    const bMat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.4 });
-    addBox(rdg, 1.25, 1.28, 1.15, bMat, rx + bx, 0.71, rz - 0.8);
-    addBox(rdg, 1.32, 0.12, 1.22, bMat, rx + bx, 1.38, rz - 0.8);
-  });
+    const wb = addMesh(rdg, new THREE.DodecahedronGeometry(0.25, 1), whtBagMat, 100.92, 0.22, -46.38);
+    wb.scale.set(1.15, 0.78, 1.05);
+
+    // 斜靠鐵網的掃把柄與紅畚箕
+    [101.45, 101.62, 101.92].forEach((sx, idx) => {
+      const st = addMesh(rdg, new THREE.CylinderGeometry(0.014, 0.016, 1.25, 6), broomMat, sx, 0.62, -46.88, false);
+      st.rotation.z = (idx - 1) * 0.22;
+      st.rotation.x = -0.18;
+    });
+    addBox(rdg, 0.24, 0.14, 0.22, dustpanMat, 102.05, 0.10, -46.82, false);
+  }
+
+  // C. 中央突出「米白色高立式變電柱／電表箱」與 U 型前凸綠色鐵網護籠（lx = 102.2..103.8，20261125_093444 / 093503）
+  {
+    const pCx = 103.0, pCz = -47.25;
+    // 抬高水泥台基
+    addBox(rdg, 1.56, 0.52, 1.68, concretePlinth, pCx, 0.26, pCz);
+    // 米白色高聳主變電柱與頂部微凸帽蓋（高出鐵網圍籬約 1.1m）
+    addBox(rdg, 0.66, 2.52, 0.72, pillarCreamMat, pCx + 0.08, 0.52 + 1.26, pCz - 0.12);
+    addBox(rdg, 0.78, 0.12, 0.84, pillarCapMat, pCx + 0.08, 3.08, pCz - 0.12);
+    // 柱身西側／南西側三組灰色陶瓷礙子套管（20261125_093444 / 093503 清晰可見）
+    [1.68, 1.98, 2.26].forEach(iy => {
+      const ins = addMesh(rdg, new THREE.CylinderGeometry(0.065, 0.085, 0.26, 8), insulatorMat, pCx - 0.28, iy, pCz + 0.05);
+      ins.rotation.z = Math.PI / 2;
+      addMesh(rdg, new THREE.CylinderGeometry(0.095, 0.095, 0.04, 8), insulatorMat, pCx - 0.34, iy, pCz + 0.05).rotation.z = Math.PI / 2;
+    });
+    // 柱身南面下部暗綠色電表箱
+    addBox(rdg, 0.32, 0.58, 0.18, meterBoxMat, pCx + 0.02, 1.05, pCz + 0.28);
+    addBox(rdg, 0.16, 0.14, 0.02, new THREE.MeshStandardMaterial({ color: 0x9fb0a8, roughness: 0.25, metalness: 0.4 }), pCx + 0.02, 1.16, pCz + 0.375, false);
+
+    // 前凸 U 型綠色鐵網護籠（南面 lz = -46.42，左右側翼接回主鐵網線 -47.1）
+    const cageH = 1.92;
+    addFencePanelX(pCx, -46.42, 1.56, cageH);
+    addFencePanelZ(102.22, -46.76, 0.68, cageH);
+    addFencePanelZ(103.78, -46.76, 0.68, cageH);
+  }
+
+  // D. 東半段變電箱圍籬：5 跨綠色鐵框鐵網（含雙開大門、圓形門鎖板、高壓電警示牌）＋ 3 座灰色變電箱（lx = 103.8..109.8）
+  {
+    const nBays = 5, bayW = 1.20;
+    for (let i = 0; i < nBays; i++) {
+      const bx = 103.8 + (i + 0.5) * bayW;
+      addFencePanelX(bx, fZ, bayW, fH);
+    }
+    // 第 3～4 跨雙開大門中央圓形綠色鎖扣圓盤（20261125_093503 右中）
+    const lockDisc = addMesh(rdg, new THREE.CylinderGeometry(0.16, 0.16, 0.04, 14), frameGreenMat, 107.4, 1.04, fZ + 0.03);
+    lockDisc.rotation.x = Math.PI / 2;
+    // 左扇大門上方「高壓電危險」白底紅頭直式警示牌
+    const warnMat = new THREE.MeshStandardMaterial({ map: makeHighVoltageSignTexture(), roughness: 0.55 });
+    addBox(rdg, 0.26, 0.38, 0.02, warnMat, 107.02, 1.52, fZ + 0.035, false);
+    // 東側回折鐵網與深灰風化水泥端柱（銜接東側小門北牆與太陽能路燈）
+    addFencePanelZ(109.8, -48.9, 3.6, fH);
+    addBox(rdg, 0.42, 1.86, 0.48, endWallMat, 110.05, 0.93, -47.18);
+
+    // 圍籬內「黑黃斜紋水泥基座」與三座淺灰色變電箱／配電箱（20261125_093503 透過鐵網清晰可見）
+    addBox(rdg, 4.95, 0.36, 1.45, hazardPlinthMat, 106.45, 0.18, -48.95);
+    [104.85, 106.35, 107.85].forEach(tx => {
+      addBox(rdg, 1.02, 1.58, 0.88, cabinetGrayMat, tx, 0.36 + 0.79, -49.02);
+      // 變電箱頂蓋與箱門接縫／散熱百葉細節
+      addBox(rdg, 1.08, 0.06, 0.94, cabinetDarkMat, tx, 1.96, -49.02);
+      addBox(rdg, 0.025, 1.38, 0.02, cabinetDarkMat, tx, 1.14, -48.57, false);
+      addBox(rdg, 0.72, 0.18, 0.02, cabinetDarkMat, tx, 0.62, -48.57, false);
+    });
+
+    // 鐵網前草地上之灰磚小台、斜放銀灰金屬蓋箱與傾倒橘色三角錐（20261125_093503 前景細節）
+    addBox(rdg, 0.92, 0.28, 0.56, concretePlinth, 104.72, 0.14, -46.62, false);
+    const tiltBox = addBox(rdg, 0.72, 0.32, 0.48, cabinetGrayMat, 104.75, 0.42, -46.64);
+    tiltBox.rotation.z = -0.18;
+    const tipCone = addMesh(rdg, new THREE.ConeGeometry(0.14, 0.58, 10), new THREE.MeshStandardMaterial({ color: 0xe85a2a, roughness: 0.45 }), 104.12, 0.14, -46.50);
+    tipCone.rotation.z = -Math.PI / 2 + 0.12;
+  }
+
+  // E. 變電箱與堆肥區後方茂密高大背景樹群（20261125_093444 / 093503 滿幅綠蔭大樹，右翼帶淡粉白花簇）
+  {
+    const bTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4c3f34, roughness: 0.92 });
+    const leafDeep  = new THREE.MeshStandardMaterial({ color: 0x275722, roughness: 0.84 });
+    const leafMid   = new THREE.MeshStandardMaterial({ color: 0x3f7c2c, roughness: 0.80 });
+    const leafFresh = new THREE.MeshStandardMaterial({ color: 0x569438, roughness: 0.76 });
+    const leafRusset= new THREE.MeshStandardMaterial({ color: 0x6b4f34, roughness: 0.84 });
+    const blossomMat= new THREE.MeshStandardMaterial({ color: 0xe8d5d0, roughness: 0.75 });
+
+    // 1) 左中濃蔭大喬木（位於堆肥池與變電柱後方）
+    addMesh(rdg, new THREE.CylinderGeometry(0.24, 0.36, 4.2, 8), bTrunkMat, 102.4, 2.1, -52.1);
+    [
+      [0.0, 5.2, 0.3, 2.25, leafDeep],
+      [-1.7, 4.6, 0.5, 1.85, leafMid],
+      [1.6, 4.9, 0.2, 1.95, leafDeep],
+      [-0.4, 6.4, -0.3, 1.80, leafMid],
+      [0.8, 3.9, 0.9, 1.25, leafRusset]
+    ].forEach(([ox, oy, oz, r, m]) => {
+      const cl = addMesh(rdg, new THREE.DodecahedronGeometry(r, 1), m, 102.4 + ox, oy, -52.1 + oz);
+      cl.scale.set(1.28, 0.86, 1.15);
+    });
+
+    // 2) 中央後方最高羽葉樹冠（高聳出輪廓頂部）
+    addMesh(rdg, new THREE.CylinderGeometry(0.22, 0.34, 5.2, 8), bTrunkMat, 104.8, 2.6, -53.3);
+    [
+      [0.0, 7.6, 0.0, 2.35, leafMid],
+      [-1.8, 6.8, 0.3, 1.85, leafDeep],
+      [1.9, 7.0, 0.2, 1.90, leafDeep],
+      [0.2, 8.7, -0.2, 1.65, leafFresh]
+    ].forEach(([ox, oy, oz, r, m]) => {
+      const cl = addMesh(rdg, new THREE.DodecahedronGeometry(r, 1), m, 104.8 + ox, oy, -53.3 + oz);
+      cl.scale.set(1.32, 0.80, 1.15);
+    });
+
+    // 3) 右東側大葉茂密綠樹（覆蔭三座灰色變電箱上方，右側點綴淡粉白花簇）
+    addMesh(rdg, new THREE.CylinderGeometry(0.22, 0.32, 3.8, 8), bTrunkMat, 107.6, 1.9, -51.7);
+    [
+      [0.0, 4.8, 0.4, 2.35, leafFresh],
+      [-1.6, 4.4, 0.5, 1.85, leafMid],
+      [1.6, 4.3, 0.3, 1.85, leafFresh],
+      [0.2, 6.0, -0.2, 1.90, leafMid],
+      [1.9, 3.8, 0.9, 0.72, blossomMat],
+      [1.3, 4.6, 1.2, 0.62, blossomMat]
+    ].forEach(([ox, oy, oz, r, m]) => {
+      const cl = addMesh(rdg, new THREE.DodecahedronGeometry(r, 1), m, 107.6 + ox, oy, -51.7 + oz);
+      cl.scale.set(1.22, 0.86, 1.15);
+    });
+  }
 
   rdg.traverse(o => { if (o.isMesh) o.userData.landmarkId = 'recycling-depot'; });
+  {   // 與 buildOrganicFarm() 完全共用相同北側車道對齊變換，確保「變電箱鐵網區 → 堆肥區 → 有機農場」無縫銜接
+    const cx = 74.5, cz = -51.3, halfD = 4.9;
+    const dx = 113.5 - 57.6, dz = -45.0 - (-51.8);
+    const th = -Math.atan2(dz, dx), cs = Math.cos(th), sn = Math.sin(th);
+    const roadZ = -51.8 + (cx - 57.6) * (dz / dx);
+    const tz = roadZ - 2.55 - 0.30 - halfD;
+    rdg.rotation.y = th;
+    rdg.position.set(cx - (cx * cs + cz * sn), 0, tz - (-cx * sn + cz * cs));
+    const ux = dx / Math.hypot(dx, dz), uz = dz / Math.hypot(dx, dz);
+    rdg.position.x += 4.8 * ux; rdg.position.z += 4.8 * uz;
+  }
   layerGroups.buildings.add(rdg);
   clickableGroups.push(rdg);
   landmarkGroupMap.set('recycling-depot', rdg);
